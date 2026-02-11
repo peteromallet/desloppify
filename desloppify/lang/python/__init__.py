@@ -78,6 +78,7 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
     from ...detectors.large import detect_large_files
     from ...detectors.complexity import detect_complexity
     from ...detectors.gods import detect_gods
+    from ...detectors.flat_dirs import detect_flat_dirs
     from .extractors import detect_passthrough_functions, extract_py_classes
 
     structural: dict[str, dict] = {}
@@ -97,6 +98,19 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
         add_structural_signal(structural, e["file"], e["signal_text"], e["detail"])
 
     results = merge_structural_signals(structural, log)
+
+    # Flat directories
+    from ...state import make_finding
+    flat_entries = detect_flat_dirs(path, file_finder=lang.file_finder)
+    for e in flat_entries:
+        results.append(make_finding(
+            "structural", e["directory"], "flat_dir",
+            tier=3, confidence="medium",
+            summary=f"Flat directory: {e['file_count']} files — consider grouping by domain",
+            detail={"file_count": e["file_count"]},
+        ))
+    if flat_entries:
+        log(f"         flat dirs: {len(flat_entries)} directories with 20+ files")
 
     # Passthrough functions
     results.extend(make_passthrough_findings(

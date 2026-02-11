@@ -5,7 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from ....utils import PROJECT_ROOT
+from ....utils import PROJECT_ROOT, _extra_exclusions
 
 
 def detect_unused(path: Path, category: str = "all") -> list[dict]:
@@ -58,6 +58,8 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
         code = d.get("code", "")
         message = d.get("message", "")
         filepath = d.get("filename", "")
+        if _extra_exclusions and any(ex in filepath for ex in _extra_exclusions):
+            continue
         location = d.get("location", {})
         line = location.get("row", 0)
 
@@ -102,8 +104,11 @@ def _try_pyflakes(path: Path, category: str) -> list[dict] | None:
     for line in (result.stdout + result.stderr).splitlines():
         m = import_re.match(line)
         if m and category in ("all", "imports"):
+            filepath = m.group(1)
+            if _extra_exclusions and any(ex in filepath for ex in _extra_exclusions):
+                continue
             entries.append({
-                "file": m.group(1),
+                "file": filepath,
                 "line": int(m.group(2)),
                 "col": 0,
                 "name": m.group(3),
@@ -113,8 +118,11 @@ def _try_pyflakes(path: Path, category: str) -> list[dict] | None:
 
         m = var_re.match(line)
         if m and category in ("all", "vars"):
+            filepath = m.group(1)
+            if _extra_exclusions and any(ex in filepath for ex in _extra_exclusions):
+                continue
             entries.append({
-                "file": m.group(1),
+                "file": filepath,
                 "line": int(m.group(2)),
                 "col": 0,
                 "name": m.group(3),

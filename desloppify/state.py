@@ -236,9 +236,11 @@ def merge_scan(state: dict, current_findings: list[dict], *,
       findings are NOT auto-resolved (likely a transient detector failure).
     - The note for reopened findings correctly captures the previous status.
     """
+    from .utils import compute_tool_hash
     now = _now()
     state["last_scan"] = now
     state["scan_count"] = state.get("scan_count", 0) + 1
+    state["tool_hash"] = compute_tool_hash()
     ignore = state.get("config", {}).get("ignore", [])
     existing = state["findings"]
 

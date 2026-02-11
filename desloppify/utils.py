@@ -1,5 +1,6 @@
 """Shared utilities: paths, colors, output formatting, file discovery."""
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -12,6 +13,23 @@ SRC_PATH = PROJECT_ROOT / os.environ.get("DESLOPPIFY_SRC", "src")
 
 # Extra exclusions set via --exclude CLI flag, applied to all file discovery
 _extra_exclusions: tuple[str, ...] = ()
+
+
+def set_exclusions(patterns: list[str]):
+    """Set global exclusion patterns (called once from CLI at startup)."""
+    global _extra_exclusions
+    _extra_exclusions = tuple(patterns)
+    _find_source_files_cached.cache_clear()
+
+
+def run_grep(cmd: list[str]) -> str:
+    """Run a grep command, filtering results by active exclusions."""
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
+    if not _extra_exclusions or not result.stdout:
+        return result.stdout
+    lines = result.stdout.splitlines()
+    filtered = [l for l in lines if not any(ex in l for ex in _extra_exclusions)]
+    return "\n".join(filtered) + ("\n" if filtered else "")
 
 COLORS = {
     "reset": "\033[0m",
@@ -134,6 +152,34 @@ def find_tsx_files(path: str | Path) -> list[str]:
 def find_py_files(path: str | Path) -> list[str]:
     """Find all .py files under a path, excluding common non-source dirs."""
     return find_source_files(path, [".py"], ["__pycache__", ".venv", "node_modules"])
+
+
+TOOL_DIR = Path(__file__).resolve().parent
+
+
+def compute_tool_hash() -> str:
+    """Compute a content hash of all .py files in the desloppify package.
+
+    Changes to any tool source file produce a different hash, enabling
+    staleness detection for scan results.
+    """
+    h = hashlib.sha256()
+    for py_file in sorted(TOOL_DIR.rglob("*.py")):
+        h.update(str(py_file.relative_to(TOOL_DIR)).encode())
+        h.update(py_file.read_bytes())
+    return h.hexdigest()[:12]
+
+
+def check_tool_staleness(state: dict) -> str | None:
+    """Return a warning string if tool code has changed since last scan, else None."""
+    stored = state.get("tool_hash")
+    if not stored:
+        return None
+    current = compute_tool_hash()
+    if current != stored:
+        return (f"Tool code changed since last scan (was {stored}, now {current}). "
+                f"Consider re-running: desloppify scan")
+    return None
 
 
 def get_area(filepath: str) -> str:

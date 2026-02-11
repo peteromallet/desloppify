@@ -65,6 +65,11 @@ def cmd_show(args):
         print(c("No scans yet. Run: desloppify scan", "yellow"))
         return
 
+    from ..utils import check_tool_staleness
+    stale_warning = check_tool_staleness(state)
+    if stale_warning:
+        print(c(f"  {stale_warning}", "yellow"))
+
     chronic = getattr(args, "chronic", False)
     pattern = args.pattern
 

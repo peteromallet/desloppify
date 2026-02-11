@@ -72,6 +72,8 @@ examples:
   desloppify ignore "smells::*::async_no_await"
   desloppify detect logs --top 10
   desloppify detect dupes --threshold 0.9
+  desloppify move src/shared/hooks/useFoo.ts src/shared/hooks/video/useFoo.ts --dry-run
+  desloppify move scripts/foo/bar.py scripts/foo/baz/bar.py
 """
 
 
@@ -82,9 +84,11 @@ def create_parser() -> argparse.ArgumentParser:
         epilog=USAGE_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # Global --lang flag
+    # Global flags
     parser.add_argument("--lang", type=str, default=None,
                         help="Language to scan (typescript, python). Auto-detected if omitted.")
+    parser.add_argument("--exclude", action="append", default=None, metavar="PATTERN",
+                        help="Path substring to exclude (repeatable: --exclude foo --exclude bar)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_scan = sub.add_parser("scan", help="Run all detectors, update state, show diff")
@@ -93,8 +97,6 @@ def create_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--skip-slow", action="store_true", help="Skip slow detectors (dupes)")
     p_scan.add_argument("--force-resolve", action="store_true",
                         help="Bypass suspect-detector protection (use when a detector legitimately went to 0)")
-    p_scan.add_argument("--exclude", nargs="+", metavar="DIR",
-                        help="Directories to exclude from scanning (e.g. --exclude migrations tests)")
 
     p_status = sub.add_parser("status", help="Score dashboard with per-tier progress")
     p_status.add_argument("--state", type=str, default=None)
@@ -166,39 +168,29 @@ def create_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--threshold", type=float, default=None,
                           help="LOC threshold (large) or similarity (dupes)")
     p_detect.add_argument("--file", type=str, default=None, help="Show deps for specific file")
-    p_detect.add_argument("--exclude", nargs="+", metavar="DIR",
-                        help="Directories to exclude from scanning")
+
+    p_move = sub.add_parser("move", help="Move a file and update all import references")
+    p_move.add_argument("source", type=str, help="File to move (relative to project root)")
+    p_move.add_argument("dest", type=str, help="Destination path (file or directory)")
+    p_move.add_argument("--dry-run", action="store_true", help="Show changes without modifying files")
 
     return parser
 
 
-def _apply_persisted_exclusions(args):
-    """Load exclusions from state and apply to file discovery.
+def _apply_persisted_exclusions(args, state: dict):
+    """Merge CLI --exclude with persisted config.exclude, set on utils global."""
+    from .utils import set_exclusions, c
 
-    --exclude on the command line takes precedence. Otherwise, reuse
-    whatever was persisted from the last scan.
-    """
-    explicit = getattr(args, "exclude", None)
-    if explicit:
-        # Explicit --exclude on this command — will be persisted by scan
-        from . import utils as _utils
-        _utils._extra_exclusions = tuple(explicit)
-        _utils._find_source_files_cached.cache_clear()
+    cli_exclusions = getattr(args, "exclude", None) or []
+    persisted = state.get("config", {}).get("exclude", [])
+    combined = list(cli_exclusions) + [e for e in persisted if e not in cli_exclusions]
+    if combined:
+        set_exclusions(combined)
         import sys
-        print(_utils.c(f"  Excluding: {', '.join(explicit)}", "dim"), file=sys.stderr)
-        return
-
-    # No explicit flag — check state for persisted exclusions
-    sp = _state_path(args)
-    from .state import load_state
-    state = load_state(sp)
-    persisted = (state.get("config") or {}).get("exclude")
-    if persisted:
-        from . import utils as _utils
-        _utils._extra_exclusions = tuple(persisted)
-        _utils._find_source_files_cached.cache_clear()
-        import sys
-        print(_utils.c(f"  Excluding (from state): {', '.join(persisted)}", "dim"), file=sys.stderr)
+        if cli_exclusions:
+            print(c(f"  Excluding: {', '.join(combined)}", "dim"), file=sys.stderr)
+        else:
+            print(c(f"  Excluding (from state): {', '.join(combined)}", "dim"), file=sys.stderr)
 
 
 def main():
@@ -213,8 +205,13 @@ def main():
         else:
             args.path = str(DEFAULT_PATH)
 
-    # Load persisted exclusions from state (applied to all file discovery)
-    _apply_persisted_exclusions(args)
+    # Load state once and apply exclusions before any command runs
+    sp = _state_path(args)
+    from .state import load_state
+    state = load_state(sp)
+    _apply_persisted_exclusions(args, state)
+    args._preloaded_state = state
+    args._state_path = sp
 
     # Lazy-load command handlers from commands/
     from .commands.scan import cmd_scan
@@ -238,13 +235,16 @@ def main():
         "detect": cmd_detect,
     }
 
-    # Lazy-loaded visualization commands
+    # Lazy-loaded commands
     if args.command == "tree":
         from .visualize import cmd_tree
         commands["tree"] = cmd_tree
     elif args.command == "viz":
         from .visualize import cmd_viz
         commands["viz"] = cmd_viz
+    elif args.command == "move":
+        from .commands.move import cmd_move
+        commands["move"] = cmd_move
 
     try:
         commands[args.command](args)

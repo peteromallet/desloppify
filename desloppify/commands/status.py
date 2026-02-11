@@ -27,6 +27,11 @@ def cmd_status(args):
         print(c("No scans yet. Run: desloppify scan", "yellow"))
         return
 
+    from ..utils import check_tool_staleness
+    stale_warning = check_tool_staleness(state)
+    if stale_warning:
+        print(c(f"  {stale_warning}", "yellow"))
+
     score = state.get("score", 0)
     strict_score = state.get("strict_score", 0)
     by_tier = stats.get("by_tier", {})

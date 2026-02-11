@@ -131,6 +131,7 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
     from ...detectors.large import detect_large_files
     from ...detectors.complexity import detect_complexity
     from ...detectors.gods import detect_gods
+    from ...detectors.flat_dirs import detect_flat_dirs
     from .extractors import extract_ts_components, detect_passthrough_components
     from .detectors.concerns import detect_mixed_concerns
     from .detectors.props import detect_prop_interface_bloat
@@ -156,6 +157,18 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
                               {"concerns": e["concerns"]})
 
     results = merge_structural_signals(structural, log)
+
+    # Flat directories (too many files → missing sub-organization)
+    flat_entries = detect_flat_dirs(path, file_finder=lang.file_finder)
+    for e in flat_entries:
+        results.append(make_finding(
+            "structural", e["directory"], "flat_dir",
+            tier=3, confidence="medium",
+            summary=f"Flat directory: {e['file_count']} files — consider grouping by domain",
+            detail={"file_count": e["file_count"]},
+        ))
+    if flat_entries:
+        log(f"         flat dirs: {len(flat_entries)} directories with 20+ files")
 
     # TS-specific: props bloat
     for e in detect_prop_interface_bloat(path):

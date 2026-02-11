@@ -14,6 +14,12 @@ def cmd_next(args):
 
     sp = _state_path(args)
     state = load_state(sp)
+
+    from ..utils import check_tool_staleness
+    stale_warning = check_tool_staleness(state)
+    if stale_warning:
+        print(c(f"  {stale_warning}", "yellow"))
+
     tier = getattr(args, "tier", None)
     count = getattr(args, "count", 1) or 1
 
