@@ -18,7 +18,7 @@ from ....utils import PROJECT_ROOT, c, print_table, rel
 TAG_EXTRACT_RE = re.compile(r"\[([^\]]+)\]")
 
 
-def detect_logs(path: Path) -> list[dict]:
+def detect_logs(path: Path) -> tuple[list[dict], int]:
     # Pattern 1: Direct and emoji-prefixed tags — console.log('[Tag]' or console.log('emoji [Tag]'
     # The .{0,4} allows up to 4 chars of emoji/whitespace before the bracket
     result1 = subprocess.run(
@@ -35,6 +35,8 @@ def detect_logs(path: Path) -> list[dict]:
         capture_output=True, text=True, cwd=PROJECT_ROOT,
     )
 
+    from ....utils import find_ts_files
+    total_files = len(find_ts_files(path))
     seen: set[tuple[str, str]] = set()  # (filepath, lineno) dedup
     entries = []
 
@@ -52,11 +54,11 @@ def detect_logs(path: Path) -> list[dict]:
             tag = tag_match.group(1) if tag_match else "unknown"
             entries.append({"file": filepath, "line": int(lineno), "tag": tag, "content": content.strip()})
 
-    return entries
+    return entries, total_files
 
 
 def cmd_logs(args):
-    entries = detect_logs(Path(args.path))
+    entries, _ = detect_logs(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return

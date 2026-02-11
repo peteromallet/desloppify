@@ -3,16 +3,21 @@
 import difflib
 
 
-def detect_duplicates(functions, threshold: float = 0.8) -> list[dict]:
+def detect_duplicates(functions, threshold: float = 0.8) -> tuple[list[dict], int]:
     """Find duplicate/near-duplicate functions.
 
     Args:
         functions: list of FunctionInfo objects with .file, .name, .line, .loc,
                    .normalized, .body_hash attrs.
         threshold: similarity threshold for near-duplicates.
+
+    Returns:
+        (entries, total_pairs_checked)
     """
+    n = len(functions)
+    total_pairs = n * (n - 1) // 2 if n > 1 else 0
     if not functions:
-        return []
+        return [], 0
 
     # Phase 1: Exact duplicates (same hash)
     by_hash: dict[str, list] = {}
@@ -67,4 +72,4 @@ def detect_duplicates(functions, threshold: float = 0.8) -> list[dict]:
                     "kind": "near-duplicate",
                 })
 
-    return sorted(entries, key=lambda e: -e["similarity"])
+    return sorted(entries, key=lambda e: -e["similarity"]), total_pairs

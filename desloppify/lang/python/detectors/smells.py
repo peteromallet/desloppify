@@ -135,11 +135,15 @@ def _match_is_in_string(line: str, match_start: int) -> bool:
     return in_string is not None
 
 
-def detect_smells(path: Path) -> list[dict]:
-    """Detect Python code smell patterns."""
-    smell_counts: dict[str, list[dict]] = {s["id"]: [] for s in SMELL_CHECKS}
+def detect_smells(path: Path) -> tuple[list[dict], int]:
+    """Detect Python code smell patterns.
 
-    for filepath in find_py_files(path):
+    Returns (entries, total_files_checked).
+    """
+    smell_counts: dict[str, list[dict]] = {s["id"]: [] for s in SMELL_CHECKS}
+    files = find_py_files(path)
+
+    for filepath in files:
         try:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
@@ -180,7 +184,7 @@ def detect_smells(path: Path) -> list[dict]:
                 "matches": matches[:50],
             })
     entries.sort(key=lambda e: (severity_order.get(e["severity"], 9), -e["count"]))
-    return entries
+    return entries, len(files)
 
 
 def _walk_except_blocks(lines: list[str]):

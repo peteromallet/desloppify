@@ -47,6 +47,9 @@ def cmd_next(args):
         print(c(f"Wrote {len(items)} items to {output_file}", "green"))
         return
 
+    # Look up dimension info for context
+    dim_scores = state.get("dimension_scores", {})
+
     for i, item in enumerate(items):
         if i > 0:
             print()
@@ -64,6 +67,16 @@ def cmd_next(args):
             print(f"  Category: {detail['category']}")
         if detail.get("importers") is not None:
             print(f"  Active importers: {detail['importers']}")
+
+        # Dimension context
+        if dim_scores:
+            from ..scoring import get_dimension_for_detector
+            det = item.get("detector", "")
+            dim = get_dimension_for_detector(det)
+            if dim and dim.name in dim_scores:
+                ds = dim_scores[dim.name]
+                print(c(f"\n  Dimension: {dim.name} — {ds['score']:.1f}% "
+                        f"({ds['issues']} of {ds['checks']:,} checks failing)", "dim"))
 
     if len(items) == 1:
         item = items[0]

@@ -25,7 +25,7 @@ def _classify_convention(filename: str) -> str | None:
 
 def detect_naming_inconsistencies(path: Path, file_finder,
                                    skip_names: set[str] | None = None,
-                                   skip_dirs: set[str] | None = None) -> list[dict]:
+                                   skip_dirs: set[str] | None = None) -> tuple[list[dict], int]:
     """Find directories where minority naming convention is significant.
 
     Args:
@@ -83,4 +83,4 @@ def detect_naming_inconsistencies(path: Path, file_finder,
                 "outliers": sorted(conv_files[:10]),
             })
 
-    return sorted(entries, key=lambda e: -e["minority_count"])
+    return sorted(entries, key=lambda e: -e["minority_count"]), len(dir_files)

@@ -14,7 +14,7 @@ TS6133_RE = re.compile(r"^(.+)\((\d+),(\d+)\): error TS6133: '(\S+)' is declared
 TS6192_RE = re.compile(r"^(.+)\((\d+),(\d+)\): error TS6192: All imports in import declaration are unused\.")
 
 
-def detect_unused(path: Path, category: str = "all") -> list[dict]:
+def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     # Create a temporary tsconfig that enables unused detection
     # (the project tsconfig has noUnusedLocals/Parameters: false)
     tmp_tsconfig = {
@@ -34,6 +34,8 @@ def detect_unused(path: Path, category: str = "all") -> list[dict]:
     finally:
         tmp_path.unlink(missing_ok=True)
 
+    from ....utils import find_ts_files
+    total_files = len(find_ts_files(path))
     entries = []
     for line in result.stdout.splitlines() + result.stderr.splitlines():
         m = TS6133_RE.match(line)
@@ -59,7 +61,7 @@ def detect_unused(path: Path, category: str = "all") -> list[dict]:
         if category != "all" and cat != category:
             continue
         entries.append({"file": filepath, "line": lineno, "col": col, "name": name, "category": cat})
-    return entries
+    return entries, total_files
 
 
 def _categorize_unused(filepath: str, lineno: int) -> str:
@@ -91,7 +93,7 @@ def _categorize_unused(filepath: str, lineno: int) -> str:
 
 def cmd_unused(args):
     print(c("Running tsc... (this may take a moment)", "dim"), file=sys.stderr)
-    entries = detect_unused(Path(args.path), args.category)
+    entries, _ = detect_unused(Path(args.path), args.category)
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return

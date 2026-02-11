@@ -9,13 +9,17 @@ def detect_single_use_abstractions(
     path: Path,
     graph: dict,
     barrel_names: set[str],
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     """Find exported symbols imported by exactly 1 file — candidates for inlining.
 
     Args:
         barrel_names: set of barrel filenames to skip. Required.
+
+    Returns:
+        (entries, total_candidate_files) — candidates are files with exactly 1 importer.
     """
     entries = []
+    total_candidates = 0
     for filepath, entry in graph.items():
         if entry["importer_count"] != 1:
             continue
@@ -26,6 +30,7 @@ def detect_single_use_abstractions(
             basename = p.name
             if basename in barrel_names:
                 continue
+            total_candidates += 1
             loc = len(p.read_text().splitlines())
             if loc < 20 or loc > 300:
                 continue
@@ -37,4 +42,4 @@ def detect_single_use_abstractions(
             })
         except (OSError, UnicodeDecodeError):
             continue
-    return sorted(entries, key=lambda e: -e["loc"])
+    return sorted(entries, key=lambda e: -e["loc"]), total_candidates

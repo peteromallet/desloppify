@@ -8,20 +8,24 @@ from pathlib import Path
 from ....utils import PROJECT_ROOT, _extra_exclusions
 
 
-def detect_unused(path: Path, category: str = "all") -> list[dict]:
+def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     """Detect unused imports and variables using ruff.
 
     Falls back to pyflakes if ruff is not available.
+    Returns (entries, total_statements_checked).
     """
+    from ....utils import find_py_files
+    total_files = len(find_py_files(path))
+
     entries = _try_ruff(path, category)
     if entries is not None:
-        return entries
+        return entries, total_files
 
     entries = _try_pyflakes(path, category)
     if entries is not None:
-        return entries
+        return entries, total_files
 
-    return []
+    return [], total_files
 
 
 def _try_ruff(path: Path, category: str) -> list[dict] | None:

@@ -52,11 +52,10 @@ TIER_WEIGHTS = {1: 1, 2: 2, 3: 3, 4: 4}
 
 
 def _recompute_stats(state: dict):
-    """Recompute stats and score from findings.
+    """Recompute stats, progress scores, and objective health scores from findings.
 
-    Score uses tier weighting: T4 architectural fixes are weighted 4x a T1
-    mechanical fix. This ensures structural debt matters more per-finding
-    than volume of auto-fixable items.
+    Progress score (score/strict_score): what % of findings have been addressed.
+    Objective score (objective_score/objective_strict): what % of checked items are clean.
     """
     findings = state["findings"]
     counters = {"open": 0, "fixed": 0, "auto_resolved": 0, "wontfix": 0, "false_positive": 0}
@@ -72,7 +71,7 @@ def _recompute_stats(state: dict):
 
     total = sum(counters.values())
 
-    # Weighted score: structural/architectural issues (T3/T4) have more impact
+    # Weighted progress score: structural/architectural issues (T3/T4) have more impact
     total_weight = 0
     addressed_weight = 0
     fixed_weight = 0  # strict: actual fixes + false positives (not real issues)
@@ -91,6 +90,27 @@ def _recompute_stats(state: dict):
     }
     state["score"] = round((addressed_weight / total_weight) * 100, 1) if total_weight > 0 else 100
     state["strict_score"] = round((fixed_weight / total_weight) * 100, 1) if total_weight > 0 else 100
+
+    # Objective health scores (dimension-based, from potentials)
+    all_potentials = state.get("potentials", {})
+    if all_potentials:
+        from .scoring import merge_potentials, compute_dimension_scores, compute_objective_score
+        merged = merge_potentials(all_potentials)
+        if merged:
+            dim_scores = compute_dimension_scores(findings, merged, strict=False)
+            strict_dim_scores = compute_dimension_scores(findings, merged, strict=True)
+            state["dimension_scores"] = {}
+            for name in dim_scores:
+                state["dimension_scores"][name] = {
+                    "score": dim_scores[name]["score"],
+                    "strict": strict_dim_scores[name]["score"],
+                    "checks": dim_scores[name]["checks"],
+                    "issues": dim_scores[name]["issues"],
+                    "tier": dim_scores[name]["tier"],
+                    "detectors": dim_scores[name].get("detectors", {}),
+                }
+            state["objective_score"] = round(compute_objective_score(dim_scores), 1)
+            state["objective_strict"] = round(compute_objective_score(strict_dim_scores), 1)
 
 
 def is_ignored(finding_id: str, file: str, ignore_patterns: list[str]) -> bool:
@@ -220,7 +240,9 @@ def _auto_resolve_disappeared(
 def merge_scan(state: dict, current_findings: list[dict], *,
                lang: str | None = None, scan_path: str | None = None,
                force_resolve: bool = False,
-               exclude: tuple[str, ...] = ()) -> dict:
+               exclude: tuple[str, ...] = (),
+               potentials: dict[str, int] | None = None,
+               codebase_metrics: dict | None = None) -> dict:
     """Merge a fresh scan into existing state. Returns diff summary.
 
     Args:
@@ -230,6 +252,8 @@ def merge_scan(state: dict, current_findings: list[dict], *,
             detector legitimately went to 0).
         exclude: Directory exclusion patterns — findings from excluded dirs are
             not auto-resolved (they disappeared because of the filter, not a fix).
+        potentials: Per-detector checked counts from this scan (full scans only).
+        codebase_metrics: Total files/LOC/directories for this language.
 
     Protections against detector instability:
     - If a detector previously had findings but now returns zero, its open
@@ -241,6 +265,12 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     state["last_scan"] = now
     state["scan_count"] = state.get("scan_count", 0) + 1
     state["tool_hash"] = compute_tool_hash()
+
+    # Store per-language potentials (full scans only — path-scoped scans skip)
+    if potentials is not None and lang:
+        state.setdefault("potentials", {})[lang] = potentials
+    if codebase_metrics is not None and lang:
+        state.setdefault("codebase_metrics", {})[lang] = codebase_metrics
     ignore = state.get("config", {}).get("ignore", [])
     existing = state["findings"]
 

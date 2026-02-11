@@ -58,7 +58,7 @@ def _build_reference_index(search_path: Path, names: set[str]) -> dict[str, set[
         os.unlink(patterns_file)
 
 
-def detect_dead_exports(path: Path) -> list[dict]:
+def detect_dead_exports(path: Path) -> tuple[list[dict], int]:
     # Phase 1: Find all export declarations in the scoped path
     result = subprocess.run(
         ["grep", "-rn", "--include=*.ts", "--include=*.tsx", "-E",
@@ -83,8 +83,9 @@ def detect_dead_exports(path: Path) -> list[dict]:
             continue
         exports.append({"file": filepath, "line": int(lineno), "name": name})
 
+    total_exports = len(exports)
     if not exports:
-        return []
+        return [], 0
 
     # Phase 2: Build reference index from full src/ (not just --path scope)
     all_names = {e["name"] for e in exports}
@@ -100,12 +101,12 @@ def detect_dead_exports(path: Path) -> list[dict]:
         if not external_refs:
             dead.append(exp)
 
-    return dead
+    return dead, total_exports
 
 
 def cmd_exports(args):
     print(c("Scanning exports...", "dim"), file=sys.stderr)
-    entries = detect_dead_exports(Path(args.path))
+    entries, _ = detect_dead_exports(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return

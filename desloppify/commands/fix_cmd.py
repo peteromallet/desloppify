@@ -122,7 +122,7 @@ def _get_fixer(name: str) -> dict | None:
         from ..lang.typescript.fixers import fix_unused_imports
         return {
             "label": "unused imports",
-            "detect": lambda path: detect_unused(path, category="imports"),
+            "detect": lambda path: detect_unused(path, category="imports")[0],
             "fix": fix_unused_imports,
             "detector": "unused",
             "verb": "Removed", "dry_verb": "Would remove",
@@ -132,7 +132,7 @@ def _get_fixer(name: str) -> dict | None:
         from ..lang.typescript.fixers import fix_debug_logs
         return {
             "label": "tagged debug logs",
-            "detect": detect_logs,
+            "detect": lambda path: detect_logs(path)[0],
             "fix": _wrap_debug_logs_fix(fix_debug_logs),
             "detector": "logs",
             "verb": "Removed", "dry_verb": "Would remove",
@@ -143,7 +143,7 @@ def _get_fixer(name: str) -> dict | None:
         from ..lang.typescript.fixers import fix_dead_exports
         return {
             "label": "dead exports",
-            "detect": detect_dead_exports,
+            "detect": lambda path: detect_dead_exports(path)[0],
             "fix": fix_dead_exports,
             "detector": "exports",
             "verb": "De-exported", "dry_verb": "Would de-export",
@@ -153,7 +153,7 @@ def _get_fixer(name: str) -> dict | None:
         from ..lang.typescript.fixers import fix_unused_vars
         return {
             "label": "unused vars",
-            "detect": lambda path: detect_unused(path, category="vars"),
+            "detect": lambda path: detect_unused(path, category="vars")[0],
             "fix": _wrap_unused_vars_fix(fix_unused_vars),
             "detector": "unused",
             "verb": "Removed", "dry_verb": "Would remove",
@@ -163,7 +163,7 @@ def _get_fixer(name: str) -> dict | None:
         from ..lang.typescript.fixers import fix_unused_params
         return {
             "label": "unused params",
-            "detect": lambda path: detect_unused(path, category="vars"),
+            "detect": lambda path: detect_unused(path, category="vars")[0],
             "fix": fix_unused_params,
             "detector": "unused",
             "verb": "Prefixed", "dry_verb": "Would prefix",
@@ -221,7 +221,7 @@ def _wrap_debug_logs_fix(fix_fn):
 def _detect_smell_flat(path: Path, smell_id: str) -> list[dict]:
     """Run smell detector and extract flat match list for a specific smell type."""
     from ..lang.typescript.detectors.smells import detect_smells
-    entries = detect_smells(path)
+    entries, _ = detect_smells(path)
     for e in entries:
         if e["id"] == smell_id:
             return e.get("matches", [])
@@ -313,7 +313,7 @@ def _cascade_import_cleanup(path: Path, state: dict, prev_score: int, dry_run: b
     from ..lang.typescript.fixers import fix_unused_imports
 
     print(c("\n  Running cascading import cleanup...", "dim"), file=sys.stderr)
-    import_entries = detect_unused(path, category="imports")
+    import_entries, _ = detect_unused(path, category="imports")
     if not import_entries:
         print(c("  Cascade: no orphaned imports found", "dim"))
         return

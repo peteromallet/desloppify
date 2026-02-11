@@ -109,7 +109,7 @@ def _build_census(path: Path) -> dict[str, dict[str, set[str]]]:
     return dict(census)
 
 
-def detect_pattern_anomalies(path: Path) -> list[dict]:
+def detect_pattern_anomalies(path: Path) -> tuple[list[dict], int]:
     """Detect areas with competing pattern fragmentation.
 
     Only analyzes "competing" families — complementary families are excluded.
@@ -117,14 +117,16 @@ def detect_pattern_anomalies(path: Path) -> list[dict]:
     Anomalies detected:
     - Fragmentation: area uses >= threshold patterns from a competing family
     - Outlier: area uses a competing pattern adopted by <10% of areas
+
+    Returns (entries, total_areas).
     """
     census = _build_census(path)
     if not census:
-        return []
+        return [], 0
 
     total_areas = len(census)
     if total_areas < 5:
-        return []  # too few areas for meaningful analysis
+        return [], total_areas  # too few areas for meaningful analysis
 
     # Build adoption stats for competing families only
     competing_families = {
@@ -180,7 +182,7 @@ def detect_pattern_anomalies(path: Path) -> list[dict]:
                     "review": " | ".join(reasons),
                 })
 
-    return sorted(anomalies, key=lambda a: (-a["pattern_count"], a["area"], a["family"]))
+    return sorted(anomalies, key=lambda a: (-a["pattern_count"], a["area"], a["family"])), total_areas
 
 
 def cmd_patterns(args):
@@ -191,7 +193,7 @@ def cmd_patterns(args):
     """
     path = Path(args.path)
     census = _build_census(path)
-    anomalies = detect_pattern_anomalies(path)
+    anomalies, _ = detect_pattern_anomalies(path)
 
     if args.json:
         serializable = {

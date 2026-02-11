@@ -18,7 +18,7 @@ def make_cmd_large(file_finder: Callable, default_threshold: int):
     def cmd_large(args):
         from ..detectors.large import detect_large_files
         threshold = getattr(args, "threshold", default_threshold)
-        entries = detect_large_files(Path(args.path), file_finder=file_finder,
+        entries, _ = detect_large_files(Path(args.path), file_finder=file_finder,
                                      threshold=threshold)
         display_entries(args, entries,
             label=f"Large files (>{threshold} LOC)",
@@ -34,7 +34,7 @@ def make_cmd_complexity(
     """Factory: detect complexity signals."""
     def cmd_complexity(args):
         from ..detectors.complexity import detect_complexity
-        entries = detect_complexity(Path(args.path), signals=signals,
+        entries, _ = detect_complexity(Path(args.path), signals=signals,
                                     file_finder=file_finder, threshold=default_threshold)
         display_entries(args, entries,
             label="Complexity signals",
@@ -50,7 +50,7 @@ def make_cmd_single_use(build_dep_graph: Callable, barrel_names: set[str]):
     def cmd_single_use(args):
         from ..detectors.single_use import detect_single_use_abstractions
         graph = build_dep_graph(Path(args.path))
-        entries = detect_single_use_abstractions(
+        entries, _ = detect_single_use_abstractions(
             Path(args.path), graph, barrel_names=barrel_names)
         display_entries(args, entries,
             label="Single-use abstractions",
@@ -87,7 +87,7 @@ def make_cmd_naming(
         kwargs = dict(file_finder=file_finder, skip_names=skip_names)
         if skip_dirs:
             kwargs["skip_dirs"] = skip_dirs
-        entries = detect_naming_inconsistencies(Path(args.path), **kwargs)
+        entries, _ = detect_naming_inconsistencies(Path(args.path), **kwargs)
         display_entries(args, entries,
             label="Naming inconsistencies",
             empty_msg="\nNo naming inconsistencies found.",

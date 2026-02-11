@@ -67,13 +67,14 @@ def _get_py_area(filepath: str) -> str:
 # ── Phase runners ──────────────────────────────────────────
 
 
-def _phase_unused(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.unused import detect_unused
     from ..base import make_unused_findings
-    return make_unused_findings(detect_unused(path), log)
+    entries, total_files = detect_unused(path)
+    return make_unused_findings(entries, log), {"unused": total_files}
 
 
-def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     """Merge large + complexity + god classes into structural findings."""
     from ...detectors.large import detect_large_files
     from ...detectors.complexity import detect_complexity
@@ -83,28 +84,32 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
 
     structural: dict[str, dict] = {}
 
-    for e in detect_large_files(path, file_finder=lang.file_finder,
-                                threshold=lang.large_threshold):
+    large_entries, file_count = detect_large_files(path, file_finder=lang.file_finder,
+                                                    threshold=lang.large_threshold)
+    for e in large_entries:
         add_structural_signal(structural, e["file"], f"large ({e['loc']} LOC)",
                               {"loc": e["loc"]})
 
-    for e in detect_complexity(path, signals=PY_COMPLEXITY_SIGNALS, file_finder=lang.file_finder,
-                               threshold=lang.complexity_threshold):
+    complexity_entries, _ = detect_complexity(path, signals=PY_COMPLEXITY_SIGNALS,
+                                              file_finder=lang.file_finder,
+                                              threshold=lang.complexity_threshold)
+    for e in complexity_entries:
         add_structural_signal(structural, e["file"], f"complexity score {e['score']}",
                               {"complexity_score": e["score"],
                                "complexity_signals": e["signals"]})
 
-    for e in detect_gods(extract_py_classes(path), PY_GOD_RULES):
+    god_entries, god_count = detect_gods(extract_py_classes(path), PY_GOD_RULES)
+    for e in god_entries:
         add_structural_signal(structural, e["file"], e["signal_text"], e["detail"])
 
     results = merge_structural_signals(structural, log)
 
     # Flat directories
     from ...state import make_finding
-    flat_entries = detect_flat_dirs(path, file_finder=lang.file_finder)
+    flat_entries, dir_count = detect_flat_dirs(path, file_finder=lang.file_finder)
     for e in flat_entries:
         results.append(make_finding(
-            "structural", e["directory"], "flat_dir",
+            "flat_dirs", e["directory"], "",
             tier=3, confidence="medium",
             summary=f"Flat directory: {e['file_count']} files — consider grouping by domain",
             detail={"file_count": e["file_count"]},
@@ -113,13 +118,18 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
         log(f"         flat dirs: {len(flat_entries)} directories with 20+ files")
 
     # Passthrough functions
-    results.extend(make_passthrough_findings(
-        detect_passthrough_functions(path), "function", "total_params", log))
+    pt_entries = detect_passthrough_functions(path)
+    results.extend(make_passthrough_findings(pt_entries, "function", "total_params", log))
 
-    return results
+    potentials = {
+        "structural": file_count,
+        "flat_dirs": dir_count,
+        "props": len(pt_entries) if pt_entries else 0,
+    }
+    return results, potentials
 
 
-def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.deps import build_dep_graph
     from ...detectors.graph import detect_cycles
     from ...detectors.orphaned import detect_orphaned_files
@@ -127,22 +137,32 @@ def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
 
     graph = build_dep_graph(path)
 
-    results = make_single_use_findings(
-        detect_single_use_abstractions(path, graph, barrel_names=lang.barrel_names),
-        lang.get_area, stderr_fn=log)
-    results.extend(make_cycle_findings(detect_cycles(graph), log))
-    results.extend(make_orphaned_findings(
-        detect_orphaned_files(path, graph, extensions=lang.extensions,
-                              extra_entry_patterns=lang.entry_patterns,
-                              extra_barrel_names=lang.barrel_names), log))
+    single_entries, single_candidates = detect_single_use_abstractions(
+        path, graph, barrel_names=lang.barrel_names)
+    results = make_single_use_findings(single_entries, lang.get_area, stderr_fn=log)
+
+    cycle_entries, total_edges = detect_cycles(graph)
+    results.extend(make_cycle_findings(cycle_entries, log))
+
+    orphan_entries, total_graph_files = detect_orphaned_files(
+        path, graph, extensions=lang.extensions,
+        extra_entry_patterns=lang.entry_patterns,
+        extra_barrel_names=lang.barrel_names)
+    results.extend(make_orphaned_findings(orphan_entries, log))
 
     log(f"         -> {len(results)} coupling/structural findings total")
-    return results
+    potentials = {
+        "single_use": single_candidates,
+        "cycles": total_edges,
+        "orphaned": total_graph_files,
+    }
+    return results, potentials
 
 
-def _phase_smells(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.smells import detect_smells
-    return make_smell_findings(detect_smells(path), log)
+    entries, total_files = detect_smells(path)
+    return make_smell_findings(entries, log), {"smells": total_files}
 
 
 # ── Build the config ──────────────────────────────────────

@@ -9,7 +9,7 @@ from ....utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
 MAX_EFFECT_BODY = 1000  # max characters to scan for brace-matching a useEffect callback
 
 
-def detect_state_sync(path: Path) -> list[dict]:
+def detect_state_sync(path: Path) -> tuple[list[dict], int]:
     """Find useEffect blocks whose only statements are setState calls.
 
     This pattern causes an unnecessary extra render cycle — the derived value
@@ -20,6 +20,7 @@ def detect_state_sync(path: Path) -> list[dict]:
     Returns one entry per occurrence with setter names and line number.
     """
     entries = []
+    total_effects = 0
 
     for filepath in find_tsx_files(path):
         try:
@@ -37,7 +38,8 @@ def detect_state_sync(path: Path) -> list[dict]:
         if not setters:
             continue
 
-        # Find useEffect blocks
+        # Count all useEffect calls (potential) and find matching blocks
+        total_effects += len(re.findall(r"useEffect\s*\(", content))
         effect_re = re.compile(r"useEffect\s*\(\s*\(\s*\)\s*=>\s*\{")
         for m in effect_re.finditer(content):
             # Extract the callback body using brace tracking
@@ -104,12 +106,12 @@ def detect_state_sync(path: Path) -> list[dict]:
                     "content": lines[line_no - 1].strip()[:100] if line_no <= len(lines) else "",
                 })
 
-    return entries
+    return entries, total_effects
 
 
 def cmd_react(args):
     """Show React anti-patterns (state sync via useEffect)."""
-    entries = detect_state_sync(Path(args.path))
+    entries, _ = detect_state_sync(Path(args.path))
 
     if args.json:
         print(json.dumps({"count": len(entries), "entries": [

@@ -117,7 +117,7 @@ def cmd_deps(args):
 def cmd_cycles(args):
     """Show import cycles in the codebase."""
     graph = build_dep_graph(Path(args.path))
-    cycles = detect_cycles(graph)
+    cycles, _ = detect_cycles(graph)
 
     if args.json:
         print(json.dumps({"count": len(cycles), "cycles": [

@@ -38,7 +38,7 @@ cmd_naming = make_cmd_naming(find_ts_files, skip_names=TS_SKIP_NAMES, skip_dirs=
 def cmd_gods(args):
     from ...detectors.gods import detect_gods
     from .extractors import extract_ts_components
-    entries = detect_gods(extract_ts_components(Path(args.path)), TS_GOD_RULES)
+    entries, _ = detect_gods(extract_ts_components(Path(args.path)), TS_GOD_RULES)
     display_entries(args, entries,
         label="God components",
         empty_msg="No god components found.",
@@ -53,7 +53,7 @@ def cmd_orphaned(args):
     from .detectors.deps import build_dep_graph, build_dynamic_import_targets, ts_alias_resolver
     from ...detectors.orphaned import detect_orphaned_files
     graph = build_dep_graph(Path(args.path))
-    entries = detect_orphaned_files(
+    entries, _ = detect_orphaned_files(
         Path(args.path), graph, extensions=[".ts", ".tsx"],
         dynamic_import_finder=build_dynamic_import_targets,
         alias_resolver=ts_alias_resolver)
@@ -86,7 +86,7 @@ def cmd_dupes(args):
         if "node_modules" in filepath or ".d.ts" in filepath:
             continue
         functions.extend(extract_ts_functions(filepath))
-    entries = detect_duplicates(functions, threshold=getattr(args, "threshold", None) or 0.8)
+    entries, _ = detect_duplicates(functions, threshold=getattr(args, "threshold", None) or 0.8)
     if getattr(args, "json", False):
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
@@ -122,7 +122,7 @@ def cmd_dupes(args):
 def cmd_smells(args):
     import json
     from .detectors.smells import detect_smells
-    entries = detect_smells(Path(args.path))
+    entries, _ = detect_smells(Path(args.path))
     if getattr(args, "json", False):
         print(json.dumps({"entries": entries}, indent=2))
         return
@@ -152,9 +152,9 @@ def cmd_coupling(args):
     graph = build_dep_graph(Path(args.path))
     shared_prefix = f"{SRC_PATH}/shared/"
     tools_prefix = f"{SRC_PATH}/tools/"
-    violations = detect_coupling_violations(Path(args.path), graph,
+    violations, _ = detect_coupling_violations(Path(args.path), graph,
                                              shared_prefix=shared_prefix, tools_prefix=tools_prefix)
-    candidates = detect_boundary_candidates(Path(args.path), graph,
+    candidates, _ = detect_boundary_candidates(Path(args.path), graph,
                                              shared_prefix=shared_prefix, tools_prefix=tools_prefix)
     if getattr(args, "json", False):
         print(json.dumps({
@@ -172,7 +172,7 @@ def cmd_coupling(args):
         print_table(["Shared File", "Imports From", "Tool"], rows, [50, 50, 20])
     else:
         print(c("\nNo coupling violations (shared → tools).", "green"))
-    cross_tool = detect_cross_tool_imports(Path(args.path), graph, tools_prefix=tools_prefix)
+    cross_tool, _ = detect_cross_tool_imports(Path(args.path), graph, tools_prefix=tools_prefix)
     print()
     if cross_tool:
         print(c(f"Cross-tool imports (tools → tools): {len(cross_tool)}\n", "bold"))

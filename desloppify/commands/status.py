@@ -18,6 +18,11 @@ def cmd_status(args):
     if getattr(args, "json", False):
         print(json.dumps({"score": state.get("score", 0),
                           "strict_score": state.get("strict_score", 0),
+                          "objective_score": state.get("objective_score"),
+                          "objective_strict": state.get("objective_strict"),
+                          "dimension_scores": state.get("dimension_scores"),
+                          "potentials": state.get("potentials"),
+                          "codebase_metrics": state.get("codebase_metrics"),
                           "stats": stats,
                           "scan_count": state.get("scan_count", 0),
                           "last_scan": state.get("last_scan")}, indent=2))
@@ -34,31 +39,60 @@ def cmd_status(args):
 
     score = state.get("score", 0)
     strict_score = state.get("strict_score", 0)
+    obj_score = state.get("objective_score")
+    obj_strict = state.get("objective_strict")
+    dim_scores = state.get("dimension_scores", {})
     by_tier = stats.get("by_tier", {})
 
-    print(c(f"\n  Desloppify Score: {score}/100", "bold") + c(f"  (strict: {strict_score}/100)", "dim"))
-    print(c(f"  Scans: {state.get('scan_count', 0)} | Last: {state.get('last_scan', 'never')}", "dim"))
+    # Header: prefer objective score when available
+    if obj_score is not None:
+        print(c(f"\n  Desloppify Health: {obj_score:.1f}/100", "bold") +
+              c(f"  (strict: {obj_strict:.1f})", "dim"))
+    else:
+        print(c(f"\n  Desloppify Score: {score}/100", "bold") +
+              c(f"  (strict: {strict_score}/100)", "dim"))
+
+    # Codebase metrics
+    metrics = state.get("codebase_metrics", {})
+    total_files = sum(m.get("total_files", 0) for m in metrics.values())
+    total_loc = sum(m.get("total_loc", 0) for m in metrics.values())
+    total_dirs = sum(m.get("total_directories", 0) for m in metrics.values())
+    if total_files:
+        loc_str = f"{total_loc:,}" if total_loc < 10000 else f"{total_loc // 1000}K"
+        print(c(f"  {total_files} files · {loc_str} LOC · {total_dirs} dirs · "
+                f"Last scan: {state.get('last_scan', 'never')}", "dim"))
+    else:
+        print(c(f"  Scans: {state.get('scan_count', 0)} | Last: {state.get('last_scan', 'never')}", "dim"))
     print(c("  " + "─" * 60, "dim"))
 
-    rows = []
-    for tier_num in [1, 2, 3, 4]:
-        ts = by_tier.get(str(tier_num), {})
-        t_open = ts.get("open", 0)
-        t_fixed = ts.get("fixed", 0) + ts.get("auto_resolved", 0)
-        t_fp = ts.get("false_positive", 0)
-        t_wontfix = ts.get("wontfix", 0)
-        t_total = sum(ts.values())
-        strict_pct = round((t_fixed + t_fp) / t_total * 100) if t_total else 100
-        bar_len = 20
-        filled = round(strict_pct / 100 * bar_len)
-        bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
-        rows.append([f"Tier {tier_num}", bar, f"{strict_pct}%",
-                     str(t_open), str(t_fixed), str(t_wontfix)])
+    # Dimension table (when available)
+    if dim_scores:
+        _show_dimension_table(dim_scores)
+    else:
+        # Fall back to tier-based display
+        rows = []
+        for tier_num in [1, 2, 3, 4]:
+            ts = by_tier.get(str(tier_num), {})
+            t_open = ts.get("open", 0)
+            t_fixed = ts.get("fixed", 0) + ts.get("auto_resolved", 0)
+            t_fp = ts.get("false_positive", 0)
+            t_wontfix = ts.get("wontfix", 0)
+            t_total = sum(ts.values())
+            strict_pct = round((t_fixed + t_fp) / t_total * 100) if t_total else 100
+            bar_len = 20
+            filled = round(strict_pct / 100 * bar_len)
+            bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
+            rows.append([f"Tier {tier_num}", bar, f"{strict_pct}%",
+                         str(t_open), str(t_fixed), str(t_wontfix)])
 
-    print_table(["Tier", "Strict Progress", "%", "Open", "Fixed", "Debt"], rows,
-                [40, 22, 5, 6, 6, 6])
+        print_table(["Tier", "Strict Progress", "%", "Open", "Fixed", "Debt"], rows,
+                    [40, 22, 5, 6, 6, 6])
 
     _show_structural_areas(state)
+
+    # Focus suggestion (lowest-scoring dimension)
+    if dim_scores:
+        _show_focus_suggestion(dim_scores, state)
 
     ignores = state.get("config", {}).get("ignore", [])
     if ignores:
@@ -68,9 +102,93 @@ def cmd_status(args):
     print()
 
     _write_query({"command": "status", "score": score, "strict_score": strict_score,
+                  "objective_score": obj_score, "objective_strict": obj_strict,
+                  "dimension_scores": dim_scores,
                   "stats": stats, "scan_count": state.get("scan_count", 0),
                   "last_scan": state.get("last_scan"),
-                  "by_tier": by_tier, "ignores": ignores})
+                  "by_tier": by_tier, "ignores": ignores,
+                  "potentials": state.get("potentials"),
+                  "codebase_metrics": state.get("codebase_metrics")})
+
+
+def _show_dimension_table(dim_scores: dict):
+    """Show dimension health table with progress bars."""
+    from ..scoring import DIMENSIONS
+
+    print()
+    bar_len = 20
+    # Header
+    print(c(f"  {'Dimension':<22} {'Checks':>7}  {'Pass':>6}  {'Bar':<{bar_len+2}}  {'Tier'}", "dim"))
+    print(c("  " + "─" * 66, "dim"))
+
+    # Find lowest score for focus arrow
+    lowest_name = None
+    lowest_score = 101
+    for dim in DIMENSIONS:
+        ds = dim_scores.get(dim.name)
+        if ds and ds["score"] < lowest_score:
+            lowest_score = ds["score"]
+            lowest_name = dim.name
+
+    for dim in DIMENSIONS:
+        ds = dim_scores.get(dim.name)
+        if not ds:
+            continue
+        score_val = ds["score"]
+        checks = ds["checks"]
+        issues = ds["issues"]
+
+        filled = round(score_val / 100 * bar_len)
+        if score_val >= 98:
+            bar = c("█" * filled + "░" * (bar_len - filled), "green")
+        elif score_val >= 93:
+            bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
+        else:
+            bar = c("█" * filled, "yellow") + c("░" * (bar_len - filled), "dim")
+
+        focus = c(" ←", "yellow") if dim.name == lowest_name else "  "
+        checks_str = f"{checks:>7,}"
+        print(f"  {dim.name:<22} {checks_str}  {score_val:5.1f}%  {bar}  T{dim.tier}{focus}")
+
+    print()
+
+
+def _show_focus_suggestion(dim_scores: dict, state: dict):
+    """Show the lowest-scoring dimension as the focus area."""
+    lowest_name = None
+    lowest_score = 101
+    lowest_issues = 0
+    for name, ds in dim_scores.items():
+        if ds["score"] < lowest_score:
+            lowest_score = ds["score"]
+            lowest_name = name
+            lowest_issues = ds["issues"]
+
+    if lowest_name and lowest_score < 100:
+        # Estimate impact
+        from ..scoring import merge_potentials, compute_score_impact
+        potentials = merge_potentials(state.get("potentials", {}))
+        # Find the detector with most issues in this dimension
+        from ..scoring import DIMENSIONS
+        target_dim = next((d for d in DIMENSIONS if d.name == lowest_name), None)
+        if target_dim:
+            impact = 0.0
+            for det in target_dim.detectors:
+                det_data = dim_scores[lowest_name].get("detectors") if "detectors" in dim_scores.get(lowest_name, {}) else None
+                # Use the score impact calculation
+                impact = compute_score_impact(
+                    {k: {"score": v["score"], "tier": v.get("tier", 3),
+                          "detectors": v.get("detectors", {})}
+                     for k, v in dim_scores.items()
+                     if "score" in v},
+                    potentials, det, lowest_issues)
+                if impact > 0:
+                    break
+
+            impact_str = f" for +{impact:.1f} pts" if impact > 0 else ""
+            print(c(f"  Focus: {lowest_name} ({lowest_score:.1f}%) — "
+                    f"fix {lowest_issues} items{impact_str}", "cyan"))
+            print()
 
 
 def _show_structural_areas(state: dict):

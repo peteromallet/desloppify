@@ -37,7 +37,7 @@ cmd_naming = make_cmd_naming(find_py_files, skip_names=PY_SKIP_NAMES)
 def cmd_gods(args):
     from ...detectors.gods import detect_gods
     from .extractors import extract_py_classes
-    entries = detect_gods(extract_py_classes(Path(args.path)), PY_GOD_RULES)
+    entries, _ = detect_gods(extract_py_classes(Path(args.path)), PY_GOD_RULES)
     display_entries(args, entries,
         label="God classes",
         empty_msg="No god classes found.",
@@ -51,7 +51,7 @@ def cmd_orphaned(args):
     from .detectors.deps import build_dep_graph
     from ...detectors.orphaned import detect_orphaned_files
     graph = build_dep_graph(Path(args.path))
-    entries = detect_orphaned_files(
+    entries, _ = detect_orphaned_files(
         Path(args.path), graph, extensions=[".py"],
         extra_entry_patterns=PY_ENTRY_PATTERNS,
         extra_barrel_names={"__init__.py"})
@@ -73,7 +73,7 @@ def cmd_orphaned(args):
 def cmd_unused(args):
     import json
     from .detectors.unused import detect_unused
-    entries = detect_unused(Path(args.path))
+    entries, _ = detect_unused(Path(args.path))
     if getattr(args, "json", False):
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
@@ -104,7 +104,7 @@ def cmd_cycles(args):
     from .detectors.deps import build_dep_graph
     from ...detectors.graph import detect_cycles
     graph = build_dep_graph(Path(args.path))
-    cycles = detect_cycles(graph)
+    cycles, _ = detect_cycles(graph)
     if getattr(args, "json", False):
         print(json.dumps({"count": len(cycles), "cycles": cycles}, indent=2))
         return
@@ -124,7 +124,7 @@ def cmd_cycles(args):
 def cmd_smells(args):
     import json
     from .detectors.smells import detect_smells
-    entries = detect_smells(Path(args.path))
+    entries, _ = detect_smells(Path(args.path))
     if getattr(args, "json", False):
         print(json.dumps({"entries": entries}, indent=2))
         return
@@ -147,7 +147,7 @@ def cmd_dupes(args):
     functions = []
     for filepath in find_py_files(Path(args.path)):
         functions.extend(extract_py_functions(filepath))
-    entries = detect_duplicates(functions, threshold=getattr(args, "threshold", None) or 0.8)
+    entries, _ = detect_duplicates(functions, threshold=getattr(args, "threshold", None) or 0.8)
     if getattr(args, "json", False):
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return

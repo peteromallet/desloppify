@@ -38,7 +38,7 @@ def detect_orphaned_files(
     extra_barrel_names: set[str] | None = None,
     dynamic_import_finder: Callable[[Path, list[str]], set[str]] | None = None,
     alias_resolver: Callable[[str], str] | None = None,
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     """Find files with zero importers that aren't known entry points.
 
     Args:
@@ -56,6 +56,7 @@ def detect_orphaned_files(
 
     dynamic_targets = dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
 
+    total_files = len(graph)
     entries = []
     for filepath, entry in graph.items():
         if entry["importer_count"] > 0:
@@ -83,4 +84,4 @@ def detect_orphaned_files(
 
         entries.append({"file": filepath, "loc": loc})
 
-    return sorted(entries, key=lambda e: -e["loc"])
+    return sorted(entries, key=lambda e: -e["loc"]), total_files

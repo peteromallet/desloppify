@@ -12,19 +12,24 @@ from ..utils import rel
 
 def detect_coupling_violations(path: Path, graph: dict,
                                 shared_prefix: str = "",
-                                tools_prefix: str = "") -> list[dict]:
+                                tools_prefix: str = "") -> tuple[list[dict], int]:
     """Find files in shared/ that import from tools/ (backwards coupling).
 
     Args:
         shared_prefix: absolute path prefix for shared code. Required.
         tools_prefix: absolute path prefix for tool code. Required.
+
+    Returns:
+        (entries, total_cross_boundary_edges_checked)
     """
+    total_edges = 0
     entries = []
     for filepath, entry in graph.items():
         if not filepath.startswith(shared_prefix):
             continue
         for target in entry["imports"]:
             if target.startswith(tools_prefix):
+                total_edges += 1
                 remainder = target[len(tools_prefix):]
                 tool = remainder.split("/")[0] if "/" in remainder else remainder
                 entries.append({
@@ -33,22 +38,29 @@ def detect_coupling_violations(path: Path, graph: dict,
                     "tool": tool,
                     "direction": "shared→tools",
                 })
-    return sorted(entries, key=lambda e: (e["file"], e["target"]))
+            elif target.startswith(shared_prefix):
+                total_edges += 1  # Count shared→shared edges too for the universe
+    return sorted(entries, key=lambda e: (e["file"], e["target"])), total_edges
 
 
 def detect_boundary_candidates(path: Path, graph: dict,
                                 shared_prefix: str = "",
-                                tools_prefix: str = "") -> list[dict]:
+                                tools_prefix: str = "") -> tuple[list[dict], int]:
     """Find shared/ files whose importers ALL come from a single tool.
 
     Args:
         shared_prefix: absolute path prefix for shared code. Required.
         tools_prefix: absolute path prefix for tool code. Required.
+
+    Returns:
+        (entries, total_shared_files_checked)
     """
+    total_shared = 0
     entries = []
     for filepath, entry in graph.items():
         if not filepath.startswith(shared_prefix):
             continue
+        total_shared += 1
         basename = Path(filepath).name
         if basename in ("index.ts", "index.tsx"):
             continue
@@ -79,16 +91,20 @@ def detect_boundary_candidates(path: Path, graph: dict,
                 "loc": loc,
             })
 
-    return sorted(entries, key=lambda e: -e["loc"])
+    return sorted(entries, key=lambda e: -e["loc"]), total_shared
 
 
 def detect_cross_tool_imports(path: Path, graph: dict,
-                               tools_prefix: str = "") -> list[dict]:
+                               tools_prefix: str = "") -> tuple[list[dict], int]:
     """Find tools/A files that import from tools/B (cross-tool coupling).
 
     Args:
         tools_prefix: absolute path prefix for tool code. Required.
+
+    Returns:
+        (entries, total_cross_tool_edges)
     """
+    total_edges = 0
     entries = []
     for filepath, entry in graph.items():
         if not filepath.startswith(tools_prefix):
@@ -102,6 +118,7 @@ def detect_cross_tool_imports(path: Path, graph: dict,
                 continue
             target_tool = target[len(tools_prefix):].split("/")[0]
             if source_tool != target_tool:
+                total_edges += 1
                 entries.append({
                     "file": filepath,
                     "target": rel(target),
@@ -109,4 +126,6 @@ def detect_cross_tool_imports(path: Path, graph: dict,
                     "target_tool": target_tool,
                     "direction": "tools→tools",
                 })
-    return sorted(entries, key=lambda e: (e["source_tool"], e["file"]))
+            else:
+                total_edges += 1  # Same-tool edge (passes check)
+    return sorted(entries, key=lambda e: (e["source_tool"], e["file"])), total_edges

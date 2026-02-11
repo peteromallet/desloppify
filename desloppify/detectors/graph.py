@@ -15,14 +15,13 @@ def finalize_graph(graph: dict) -> dict:
     return graph
 
 
-def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> list[dict]:
+def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> tuple[list[dict], int]:
     """Find import cycles using Tarjan's strongly connected components.
 
     When skip_deferred=True (default), deferred imports (inside functions) are
     excluded from cycle detection — they can't cause circular import errors.
 
-    Returns one entry per cycle (SCC with >1 node), sorted by cycle length desc.
-    Each entry: {"files": [abs_paths], "length": int}
+    Returns (entries, total_edges). Each entry: {"files": [abs_paths], "length": int}
     """
     index_counter = [0]
     stack: list[str] = []
@@ -70,7 +69,8 @@ def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> list[dict]:
         if v not in index:
             strongconnect(v)
 
-    return [{"files": scc, "length": len(scc)} for scc in sorted(sccs, key=lambda s: -len(s))]
+    total_edges = sum(len(_get_edges(v)) for v in graph)
+    return [{"files": scc, "length": len(scc)} for scc in sorted(sccs, key=lambda s: -len(s))], total_edges
 
 
 def get_coupling_score(filepath: str, graph: dict) -> dict:

@@ -283,12 +283,14 @@ def make_smell_findings(entries: list[dict], stderr_fn) -> list[dict]:
     return results
 
 
-def phase_dupes(path: Path, lang: LangConfig) -> list[dict]:
+def phase_dupes(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     """Shared phase runner: detect duplicate functions via lang.extract_functions."""
     from ..detectors.dupes import detect_duplicates
     from ..utils import log
     functions = lang.extract_functions(path)
-    return make_dupe_findings(detect_duplicates(functions), log)
+    entries, total_pairs = detect_duplicates(functions)
+    findings = make_dupe_findings(entries, log)
+    return findings, {"dupes": total_pairs}
 
 
 def make_passthrough_findings(

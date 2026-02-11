@@ -85,12 +85,16 @@ TS_SMELL_CHECKS = [
 ]
 
 
-def detect_smells(path: Path) -> list[dict]:
-    """Detect TypeScript/React code smell patterns across the codebase."""
+def detect_smells(path: Path) -> tuple[list[dict], int]:
+    """Detect TypeScript/React code smell patterns across the codebase.
+
+    Returns (entries, total_files_checked).
+    """
     checks = TS_SMELL_CHECKS
     smell_counts: dict[str, list[dict]] = {s["id"]: [] for s in checks}
+    files = find_ts_files(path)
 
-    for filepath in find_ts_files(path):
+    for filepath in files:
         if "node_modules" in filepath or ".d.ts" in filepath:
             continue
         try:
@@ -134,7 +138,7 @@ def detect_smells(path: Path) -> list[dict]:
                 "matches": matches[:50],
             })
     entries.sort(key=lambda e: (severity_order.get(e["severity"], 9), -e["count"]))
-    return entries
+    return entries, len(files)
 
 
 # ── Multi-line smell helpers (brace-tracked) ──────────────

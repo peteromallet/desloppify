@@ -7,14 +7,17 @@ from pathlib import Path
 from ....utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
 
 
-def detect_mixed_concerns(path: Path) -> list[dict]:
+def detect_mixed_concerns(path: Path) -> tuple[list[dict], int]:
     """Find files that mix UI rendering with data fetching, state management, and business logic.
 
     Heuristic: a .tsx file that has both JSX returns AND direct API/supabase calls
     or both UI components AND heavy data transformation.
+
+    Returns (entries, total_files_checked).
     """
+    files = find_tsx_files(path)
     entries = []
-    for filepath in find_tsx_files(path):
+    for filepath in files:
         try:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
@@ -58,11 +61,11 @@ def detect_mixed_concerns(path: Path) -> list[dict]:
                 })
         except (OSError, UnicodeDecodeError):
             continue
-    return sorted(entries, key=lambda e: -e["concern_count"])
+    return sorted(entries, key=lambda e: -e["concern_count"]), len(files)
 
 
 def cmd_concerns(args):
-    entries = detect_mixed_concerns(Path(args.path))
+    entries, _ = detect_mixed_concerns(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return

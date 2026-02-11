@@ -69,9 +69,9 @@ TS_SKIP_DIRS = {"src/shared/components/ui"}
 # ── Phase runners ──────────────────────────────────────────
 
 
-def _phase_logs(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_logs(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.logs import detect_logs
-    log_entries = detect_logs(path)
+    log_entries, total_files = detect_logs(path)
     log_groups: dict[tuple, list] = defaultdict(list)
     for e in log_entries:
         log_groups[(e["file"], e["tag"])].append(e)
@@ -84,18 +84,19 @@ def _phase_logs(path: Path, lang: LangConfig) -> list[dict]:
             detail={"count": len(entries), "lines": [e["line"] for e in entries[:20]]},
         ))
     log(f"         {len(log_entries)} instances → {len(results)} findings")
-    return results
+    return results, {"logs": total_files}
 
 
-def _phase_unused(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.unused import detect_unused
     from ..base import make_unused_findings
-    return make_unused_findings(detect_unused(path), log)
+    entries, total_files = detect_unused(path)
+    return make_unused_findings(entries, log), {"unused": total_files}
 
 
-def _phase_exports(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_exports(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.exports import detect_dead_exports
-    export_entries = detect_dead_exports(path)
+    export_entries, total_exports = detect_dead_exports(path)
     results = []
     for e in export_entries:
         results.append(make_finding(
@@ -105,12 +106,12 @@ def _phase_exports(path: Path, lang: LangConfig) -> list[dict]:
             detail={"line": e.get("line"), "kind": e.get("kind")},
         ))
     log(f"         {len(export_entries)} instances → {len(results)} findings")
-    return results
+    return results, {"exports": total_exports}
 
 
-def _phase_deprecated(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_deprecated(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.deprecated import detect_deprecated
-    dep_entries = detect_deprecated(path)
+    dep_entries, total_deprecated = detect_deprecated(path)
     results = []
     for e in dep_entries:
         if e["kind"] == "property":
@@ -124,10 +125,10 @@ def _phase_deprecated(path: Path, lang: LangConfig) -> list[dict]:
             detail={"importers": e["importers"], "line": e["line"]},
         ))
     log(f"         {len(dep_entries)} instances → {len(results)} findings (properties suppressed)")
-    return results
+    return results, {"deprecated": total_deprecated}
 
 
-def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from ...detectors.large import detect_large_files
     from ...detectors.complexity import detect_complexity
     from ...detectors.gods import detect_gods
@@ -138,20 +139,25 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
 
     structural: dict[str, dict] = {}
 
-    for e in detect_large_files(path, file_finder=lang.file_finder):
+    large_entries, file_count = detect_large_files(path, file_finder=lang.file_finder)
+    for e in large_entries:
         add_structural_signal(structural, e["file"], f"large ({e['loc']} LOC)",
                               {"loc": e["loc"]})
 
-    for e in detect_complexity(path, signals=TS_COMPLEXITY_SIGNALS, file_finder=lang.file_finder):
+    complexity_entries, _ = detect_complexity(path, signals=TS_COMPLEXITY_SIGNALS,
+                                              file_finder=lang.file_finder)
+    for e in complexity_entries:
         add_structural_signal(structural, e["file"], f"complexity score {e['score']}",
                               {"complexity_score": e["score"], "complexity_signals": e["signals"]})
 
-    for e in detect_gods(extract_ts_components(path), TS_GOD_RULES, min_reasons=2):
+    god_entries, _ = detect_gods(extract_ts_components(path), TS_GOD_RULES, min_reasons=2)
+    for e in god_entries:
         add_structural_signal(structural, e["file"],
                               f"{e['detail'].get('hook_total', 0)} hooks ({', '.join(e['reasons'][:2])})",
                               {"hook_total": e["detail"].get("hook_total", 0), "hook_reasons": e["reasons"]})
 
-    for e in detect_mixed_concerns(path):
+    concern_entries, _ = detect_mixed_concerns(path)
+    for e in concern_entries:
         add_structural_signal(structural, e["file"],
                               f"mixed: {', '.join(e['concerns'][:3])}",
                               {"concerns": e["concerns"]})
@@ -159,10 +165,10 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
     results = merge_structural_signals(structural, log)
 
     # Flat directories (too many files → missing sub-organization)
-    flat_entries = detect_flat_dirs(path, file_finder=lang.file_finder)
+    flat_entries, dir_count = detect_flat_dirs(path, file_finder=lang.file_finder)
     for e in flat_entries:
         results.append(make_finding(
-            "structural", e["directory"], "flat_dir",
+            "flat_dirs", e["directory"], "",
             tier=3, confidence="medium",
             summary=f"Flat directory: {e['file_count']} files — consider grouping by domain",
             detail={"file_count": e["file_count"]},
@@ -171,7 +177,8 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
         log(f"         flat dirs: {len(flat_entries)} directories with 20+ files")
 
     # TS-specific: props bloat
-    for e in detect_prop_interface_bloat(path):
+    prop_entries, prop_count = detect_prop_interface_bloat(path)
+    for e in prop_entries:
         results.append(make_finding(
             "props", e["file"], e["interface"],
             tier=3, confidence="medium",
@@ -180,7 +187,8 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
         ))
 
     # TS-specific: passthrough components
-    for e in detect_passthrough_components(path):
+    pt_entries = detect_passthrough_components(path)
+    for e in pt_entries:
         results.append(make_finding(
             "props", e["file"], f"passthrough::{e['component']}",
             tier=e["tier"], confidence=e["confidence"],
@@ -193,13 +201,18 @@ def _phase_structural(path: Path, lang: LangConfig) -> list[dict]:
                 "direct_props": e["direct_props"],
             },
         ))
-    return results
+    potentials = {
+        "structural": file_count,
+        "flat_dirs": dir_count,
+        "props": max(prop_count, len(pt_entries)) if prop_count else len(pt_entries),
+    }
+    return results, potentials
 
 
 def _make_boundary_findings(
     single_entries: list[dict], path: Path, graph: dict,
     lang: LangConfig, shared_prefix: str, tools_prefix: str,
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     """Create boundary-candidate findings, deduplicated against single-use."""
     from ...detectors.coupling import detect_boundary_candidates
 
@@ -213,8 +226,9 @@ def _make_boundary_findings(
 
     results = []
     deduped = 0
-    for e in detect_boundary_candidates(path, graph,
-                                         shared_prefix=shared_prefix, tools_prefix=tools_prefix):
+    boundary_entries, total_shared = detect_boundary_candidates(
+        path, graph, shared_prefix=shared_prefix, tools_prefix=tools_prefix)
+    for e in boundary_entries:
         if rel(e["file"]) in single_use_emitted:
             deduped += 1
             continue
@@ -228,10 +242,10 @@ def _make_boundary_findings(
         ))
     if deduped:
         log(f"         ({deduped} boundary candidates skipped — covered by single_use)")
-    return results
+    return results, total_shared
 
 
-def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from ...detectors.single_use import detect_single_use_abstractions
     from ...detectors.graph import detect_cycles
     from ...detectors.coupling import detect_coupling_violations, detect_cross_tool_imports
@@ -245,12 +259,14 @@ def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
     graph = build_dep_graph(path)
 
     # Single-use (shared helper)
-    single_entries = detect_single_use_abstractions(path, graph, barrel_names=lang.barrel_names)
+    single_entries, single_candidates = detect_single_use_abstractions(
+        path, graph, barrel_names=lang.barrel_names)
     results.extend(make_single_use_findings(single_entries, lang.get_area, stderr_fn=log))
     shared_prefix = f"{SRC_PATH}/shared/"
     tools_prefix = f"{SRC_PATH}/tools/"
-    for e in detect_coupling_violations(path, graph,
-                                         shared_prefix=shared_prefix, tools_prefix=tools_prefix):
+    coupling_entries, coupling_edges = detect_coupling_violations(
+        path, graph, shared_prefix=shared_prefix, tools_prefix=tools_prefix)
+    for e in coupling_entries:
         results.append(make_finding(
             "coupling", e["file"], e["target"],
             tier=2, confidence="high",
@@ -259,11 +275,13 @@ def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
         ))
 
     # TS-specific: boundary candidates (deduplicated against single-use)
-    results.extend(_make_boundary_findings(
-        single_entries, path, graph, lang, shared_prefix, tools_prefix))
+    boundary_findings, _ = _make_boundary_findings(
+        single_entries, path, graph, lang, shared_prefix, tools_prefix)
+    results.extend(boundary_findings)
 
     # TS-specific: cross-tool imports
-    cross_tool = detect_cross_tool_imports(path, graph, tools_prefix=tools_prefix)
+    cross_tool, cross_edges = detect_cross_tool_imports(
+        path, graph, tools_prefix=tools_prefix)
     for e in cross_tool:
         results.append(make_finding(
             "coupling", e["file"], e["target"],
@@ -276,16 +294,19 @@ def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
         log(f"         cross-tool: {len(cross_tool)} imports")
 
     # Cycles + orphaned (shared helpers)
-    results.extend(make_cycle_findings(detect_cycles(graph), log))
-    results.extend(make_orphaned_findings(
-        detect_orphaned_files(path, graph, extensions=lang.extensions,
-                              extra_entry_patterns=lang.entry_patterns,
-                              extra_barrel_names=lang.barrel_names,
-                              dynamic_import_finder=build_dynamic_import_targets,
-                              alias_resolver=ts_alias_resolver), log))
+    cycle_entries, total_edges = detect_cycles(graph)
+    results.extend(make_cycle_findings(cycle_entries, log))
+    orphan_entries, total_graph_files = detect_orphaned_files(
+        path, graph, extensions=lang.extensions,
+        extra_entry_patterns=lang.entry_patterns,
+        extra_barrel_names=lang.barrel_names,
+        dynamic_import_finder=build_dynamic_import_targets,
+        alias_resolver=ts_alias_resolver)
+    results.extend(make_orphaned_findings(orphan_entries, log))
 
     # TS-specific: pattern consistency
-    for e in detect_pattern_anomalies(path):
+    pattern_entries, total_areas = detect_pattern_anomalies(path)
+    for e in pattern_entries:
         results.append(make_finding(
             "patterns", e["area"], e["family"],
             tier=3, confidence=e.get("confidence", "low"),
@@ -295,9 +316,10 @@ def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
         ))
 
     # TS-specific: naming consistency
-    for e in detect_naming_inconsistencies(
+    naming_entries, total_dirs = detect_naming_inconsistencies(
             path, file_finder=lang.file_finder,
-            skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS):
+            skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS)
+    for e in naming_entries:
         results.append(make_finding(
             "naming", e["directory"], e["minority"],
             tier=3, confidence="low",
@@ -308,16 +330,25 @@ def _phase_coupling(path: Path, lang: LangConfig) -> list[dict]:
                     "outliers": e["outliers"]},
         ))
     log(f"         → {len(results)} coupling/structural findings total")
-    return results
+    potentials = {
+        "single_use": single_candidates,
+        "coupling": coupling_edges + cross_edges,
+        "cycles": total_edges,
+        "orphaned": total_graph_files,
+        "patterns": total_areas,
+        "naming": total_dirs,
+    }
+    return results, potentials
 
 
-def _phase_smells(path: Path, lang: LangConfig) -> list[dict]:
+def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.smells import detect_smells
-    results = make_smell_findings(detect_smells(path), log)
+    smell_entries, total_smell_files = detect_smells(path)
+    results = make_smell_findings(smell_entries, log)
 
     # TS-specific: React state sync anti-patterns
     from .detectors.react import detect_state_sync
-    react_entries = detect_state_sync(path)
+    react_entries, total_effects = detect_state_sync(path)
     for e in react_entries:
         setter_str = ", ".join(e["setters"])
         results.append(make_finding(
@@ -328,7 +359,7 @@ def _phase_smells(path: Path, lang: LangConfig) -> list[dict]:
         ))
     if react_entries:
         log(f"         react: {len(react_entries)} state sync anti-patterns")
-    return results
+    return results, {"smells": total_smell_files, "react": total_effects}
 
 
 def _get_ts_fixers() -> dict[str, FixerConfig]:
@@ -336,7 +367,7 @@ def _get_ts_fixers() -> dict[str, FixerConfig]:
     return {
         "unused-imports": FixerConfig(
             label="unused imports",
-            detect=lambda path: __import__("desloppify.lang.typescript.detectors.unused", fromlist=["detect_unused"]).detect_unused(path, category="imports"),
+            detect=lambda path: __import__("desloppify.lang.typescript.detectors.unused", fromlist=["detect_unused"]).detect_unused(path, category="imports")[0],
             fix=lambda entries, **kw: __import__("desloppify.lang.typescript.fixers", fromlist=["fix_unused_imports"]).fix_unused_imports(entries, **kw),
             detector="unused",
             verb="Removed", dry_verb="Would remove",

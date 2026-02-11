@@ -27,16 +27,44 @@ def cmd_scan(args):
     lang_label = f" ({lang.name})" if lang else ""
 
     print(c(f"\nDesloppify Scan{lang_label}\n", "bold"))
-    findings = generate_findings(path, include_slow=include_slow, lang=lang)
+    findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang)
+
+    # Collect codebase metrics for this language
+    codebase_metrics = None
+    if lang and lang.file_finder:
+        files = lang.file_finder(path)
+        total_loc = 0
+        dirs = set()
+        for f in files:
+            try:
+                total_loc += len(Path(f).read_text().splitlines())
+                dirs.add(str(Path(f).parent))
+            except (OSError, UnicodeDecodeError):
+                pass
+        codebase_metrics = {
+            "total_files": len(files),
+            "total_loc": total_loc,
+            "total_directories": len(dirs),
+        }
+
+    # Only store potentials for full scans (not path-scoped)
+    from ..utils import rel, _extra_exclusions, PROJECT_ROOT
+    scan_path_rel = rel(str(path))
+    is_full_scan = (path.resolve() == PROJECT_ROOT.resolve() or
+                    scan_path_rel == lang.default_src if lang else False)
 
     prev_score = state.get("score", 0)
     prev_strict = state.get("strict_score", 0)
-    from ..utils import rel, _extra_exclusions
+    prev_obj = state.get("objective_score")
+    prev_obj_strict = state.get("objective_strict")
+    prev_dim_scores = state.get("dimension_scores", {})
     diff = merge_scan(state, findings,
                       lang=lang.name if lang else None,
-                      scan_path=rel(str(path)),
+                      scan_path=scan_path_rel,
                       force_resolve=getattr(args, "force_resolve", False),
-                      exclude=_extra_exclusions)
+                      exclude=_extra_exclusions,
+                      potentials=potentials if is_full_scan else None,
+                      codebase_metrics=codebase_metrics if is_full_scan else None)
     save_state(state, sp)
 
     new_score = state["score"]
@@ -60,19 +88,37 @@ def cmd_scan(args):
     if diff.get("suspect_detectors"):
         print(c(f"  ⚠ Skipped auto-resolve for: {', '.join(diff['suspect_detectors'])} (returned 0 — likely transient)", "yellow"))
 
-    # Score
-    delta = new_score - prev_score
-    delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if delta != 0 else ""
-    color = "green" if delta > 0 else ("red" if delta < 0 else "dim")
-    strict_delta = new_strict - prev_strict
-    strict_delta_str = f" ({'+' if strict_delta > 0 else ''}{strict_delta:.1f})" if strict_delta != 0 else ""
-    strict_color = "green" if strict_delta > 0 else ("red" if strict_delta < 0 else "dim")
-    print(f"  Score: {c(f'{new_score:.1f}/100{delta_str}', color)}" +
-          c(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
-          c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
+    # Score — prefer objective score when available
+    new_obj = state.get("objective_score")
+    new_obj_strict = state.get("objective_strict")
+    if new_obj is not None:
+        obj_delta = new_obj - prev_obj if prev_obj is not None else 0
+        obj_delta_str = f" ({'+' if obj_delta > 0 else ''}{obj_delta:.1f})" if obj_delta != 0 else ""
+        obj_color = "green" if obj_delta > 0 else ("red" if obj_delta < 0 else "dim")
+        strict_obj_delta = new_obj_strict - prev_obj_strict if prev_obj_strict is not None else 0
+        strict_obj_delta_str = f" ({'+' if strict_obj_delta > 0 else ''}{strict_obj_delta:.1f})" if strict_obj_delta != 0 else ""
+        strict_obj_color = "green" if strict_obj_delta > 0 else ("red" if strict_obj_delta < 0 else "dim")
+        print(f"  Health: {c(f'{new_obj:.1f}/100{obj_delta_str}', obj_color)}" +
+              c(f"  strict: {new_obj_strict:.1f}/100{strict_obj_delta_str}", strict_obj_color) +
+              c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
+    else:
+        delta = new_score - prev_score
+        delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if delta != 0 else ""
+        color = "green" if delta > 0 else ("red" if delta < 0 else "dim")
+        strict_delta = new_strict - prev_strict
+        strict_delta_str = f" ({'+' if strict_delta > 0 else ''}{strict_delta:.1f})" if strict_delta != 0 else ""
+        strict_color = "green" if strict_delta > 0 else ("red" if strict_delta < 0 else "dim")
+        print(f"  Score: {c(f'{new_score:.1f}/100{delta_str}', color)}" +
+              c(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
+              c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
 
     # Per-detector progress
     _show_detector_progress(state)
+
+    # Dimension deltas (show which dimensions moved)
+    new_dim_scores = state.get("dimension_scores", {})
+    if new_dim_scores and prev_dim_scores:
+        _show_dimension_deltas(prev_dim_scores, new_dim_scores)
 
     # Post-scan analysis
     warnings = []
@@ -109,7 +155,11 @@ def cmd_scan(args):
 
     _write_query({"command": "scan", "score": new_score, "strict_score": new_strict,
                   "prev_score": prev_score, "diff": diff, "stats": stats,
-                  "warnings": warnings, "next_action": next_action})
+                  "warnings": warnings, "next_action": next_action,
+                  "objective_score": state.get("objective_score"),
+                  "objective_strict": state.get("objective_strict"),
+                  "dimension_scores": state.get("dimension_scores"),
+                  "potentials": state.get("potentials")})
 
 
 def _show_detector_progress(state: dict):
@@ -160,6 +210,32 @@ def _show_detector_progress(state: dict):
 
         print(f"  {det_label} {bar} {pct:3d}%  {open_str}  {c(f'/ {total}', 'dim')}")
 
+    print()
+
+
+def _show_dimension_deltas(prev: dict, current: dict):
+    """Show which dimensions changed between scans."""
+    from ..scoring import DIMENSIONS
+    moved = []
+    for dim in DIMENSIONS:
+        p = prev.get(dim.name, {})
+        n = current.get(dim.name, {})
+        if not p or not n:
+            continue
+        old_score = p.get("score", 100)
+        new_score = n.get("score", 100)
+        delta = new_score - old_score
+        if abs(delta) >= 0.1:
+            moved.append((dim.name, old_score, new_score, delta))
+
+    if not moved:
+        return
+
+    print(c("  Moved:", "dim"))
+    for name, old, new, delta in sorted(moved, key=lambda x: x[3]):
+        sign = "+" if delta > 0 else ""
+        color = "green" if delta > 0 else "red"
+        print(c(f"    {name:<22} {old:.1f}% → {new:.1f}%  ({sign}{delta:.1f}%)", color))
     print()
 
 

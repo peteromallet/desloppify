@@ -8,7 +8,7 @@ from pathlib import Path
 from ....utils import PROJECT_ROOT, SRC_PATH, c, print_table, rel, resolve_path
 
 
-def detect_deprecated(path: Path) -> list[dict]:
+def detect_deprecated(path: Path) -> tuple[list[dict], int]:
     result = subprocess.run(
         ["grep", "-rn", "--include=*.ts", "--include=*.tsx", "-E",
          r"@deprecated", str(path)],
@@ -37,7 +37,7 @@ def detect_deprecated(path: Path) -> list[dict]:
             "kind": kind,
             "importers": importers,
         })
-    return sorted(entries, key=lambda e: e["importers"])
+    return sorted(entries, key=lambda e: e["importers"]), len(entries)
 
 
 def _extract_deprecated_symbol(filepath: str, lineno: int, content: str) -> tuple[str | None, str]:
@@ -124,7 +124,7 @@ def _count_importers(name: str, declaring_file: str) -> int:
 
 
 def cmd_deprecated(args):
-    entries = detect_deprecated(Path(args.path))
+    entries, _ = detect_deprecated(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return

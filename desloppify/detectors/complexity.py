@@ -7,7 +7,7 @@ from ..utils import PROJECT_ROOT
 
 
 def detect_complexity(path: Path, signals, file_finder,
-                      threshold: int = 15, min_loc: int = 50) -> list[dict]:
+                      threshold: int = 15, min_loc: int = 50) -> tuple[list[dict], int]:
     """Detect files with complexity signals.
 
     Args:
@@ -16,9 +16,13 @@ def detect_complexity(path: Path, signals, file_finder,
         file_finder: callable(path) -> list[str]. Required.
         threshold: minimum score to flag a file.
         min_loc: minimum LOC to consider.
+
+    Returns:
+        (entries, total_files_checked)
     """
+    files = file_finder(path)
     entries = []
-    for filepath in file_finder(path):
+    for filepath in files:
         try:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
@@ -51,4 +55,4 @@ def detect_complexity(path: Path, signals, file_finder,
                 })
         except (OSError, UnicodeDecodeError):
             continue
-    return sorted(entries, key=lambda e: -e["score"])
+    return sorted(entries, key=lambda e: -e["score"]), len(files)

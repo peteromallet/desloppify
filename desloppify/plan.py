@@ -23,11 +23,14 @@ TIER_LABELS = {
 CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
-def generate_findings(path: Path, *, include_slow: bool = True, lang=None) -> list[dict]:
+def generate_findings(
+    path: Path, *, include_slow: bool = True, lang=None,
+) -> tuple[list[dict], dict[str, int]]:
     """Run all detectors and convert results to normalized findings.
 
     Dispatches through the LangConfig phase pipeline.
     Auto-detects language when none is specified.
+    Returns (findings, potentials) where potentials maps detector names to checked counts.
     """
     if lang is None:
         from .lang import get_lang, auto_detect_lang
@@ -37,7 +40,9 @@ def generate_findings(path: Path, *, include_slow: bool = True, lang=None) -> li
     return _generate_findings_from_lang(path, lang, include_slow=include_slow)
 
 
-def _generate_findings_from_lang(path: Path, lang, *, include_slow: bool = True) -> list[dict]:
+def _generate_findings_from_lang(
+    path: Path, lang, *, include_slow: bool = True,
+) -> tuple[list[dict], dict[str, int]]:
     """Run detector phases from a LangConfig."""
     stderr = lambda msg: print(c(msg, "dim"), file=sys.stderr)
 
@@ -46,18 +51,24 @@ def _generate_findings_from_lang(path: Path, lang, *, include_slow: bool = True)
         phases = [p for p in phases if not p.slow]
 
     findings: list[dict] = []
+    all_potentials: dict[str, int] = {}
     total = len(phases)
     for i, phase in enumerate(phases):
         stderr(f"  [{i+1}/{total}] {phase.label}...")
-        results = phase.run(path, lang)
-        findings += results
+        result = phase.run(path, lang)
+        if isinstance(result, tuple):
+            phase_findings, phase_potentials = result
+            all_potentials.update(phase_potentials)
+        else:
+            phase_findings = result  # backward compat
+        findings += phase_findings
 
     # Stamp language on all findings so state can scope by language
     for f in findings:
         f["lang"] = lang.name
 
     stderr(f"\n  Total: {len(findings)} findings")
-    return findings
+    return findings, all_potentials
 
 
 def generate_plan_md(state: dict) -> str:
@@ -66,16 +77,60 @@ def generate_plan_md(state: dict) -> str:
     score = state.get("score", 0)
     stats = state.get("stats", {})
 
+    # Use objective score if available, fall back to progress score
+    obj_score = state.get("objective_score")
+    obj_strict = state.get("objective_strict")
+    if obj_score is not None:
+        header_score = f"**Health: {obj_score:.1f}/100** (strict: {obj_strict:.1f})"
+    else:
+        header_score = f"**Score: {score}/100**"
+
+    # Codebase metrics header
+    metrics = state.get("codebase_metrics", {})
+    total_files = sum(m.get("total_files", 0) for m in metrics.values())
+    total_loc = sum(m.get("total_loc", 0) for m in metrics.values())
+    total_dirs = sum(m.get("total_directories", 0) for m in metrics.values())
+    metrics_str = ""
+    if total_files:
+        loc_str = f"{total_loc:,}" if total_loc < 10000 else f"{total_loc // 1000}K"
+        metrics_str = f"\n{total_files} files · {loc_str} LOC · {total_dirs} directories\n"
+
     lines = [
         f"# Desloppify Plan — {date.today().isoformat()}",
         "",
-        f"**Score: {score}/100** | "
+        f"{header_score} | "
         f"{stats.get('open', 0)} open | "
         f"{stats.get('fixed', 0)} fixed | "
         f"{stats.get('wontfix', 0)} wontfix | "
         f"{stats.get('auto_resolved', 0)} auto-resolved",
         "",
     ]
+    if metrics_str:
+        lines.append(metrics_str)
+
+    # Dimension health table (when objective data available)
+    dim_scores = state.get("dimension_scores", {})
+    if dim_scores:
+        lines.extend([
+            "## Health by Dimension",
+            "",
+            "| Dimension | Tier | Checks | Issues | Pass |",
+            "|-----------|------|--------|--------|------|",
+        ])
+        from .scoring import DIMENSIONS
+        for dim in DIMENSIONS:
+            ds = dim_scores.get(dim.name)
+            if not ds:
+                continue
+            checks = ds.get("checks", 0)
+            issues = ds.get("issues", 0)
+            score_val = ds.get("score", 100)
+            bold = "**" if score_val < 93 else ""
+            lines.append(
+                f"| {bold}{dim.name}{bold} | T{dim.tier} | "
+                f"{checks:,} | {issues} | {score_val:.1f}% |"
+            )
+        lines.append("")
 
     # Tier breakdown
     by_tier = stats.get("by_tier", {})

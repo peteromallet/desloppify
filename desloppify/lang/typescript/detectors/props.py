@@ -7,9 +7,13 @@ from pathlib import Path
 from ....utils import PROJECT_ROOT, c, find_ts_files, print_table, rel
 
 
-def detect_prop_interface_bloat(path: Path) -> list[dict]:
-    """Find interfaces/types with >10 properties — signals need for composition or context."""
+def detect_prop_interface_bloat(path: Path) -> tuple[list[dict], int]:
+    """Find interfaces/types with >10 properties — signals need for composition or context.
+
+    Returns (entries, total_interfaces_checked).
+    """
     entries = []
+    total_interfaces = 0
     # Match interface blocks
     interface_re = re.compile(r"(?:export\s+)?(?:interface|type)\s+(\w+Props\w*)\s*(?:=\s*)?{", re.MULTILINE)
 
@@ -18,6 +22,7 @@ def detect_prop_interface_bloat(path: Path) -> list[dict]:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
             for m in interface_re.finditer(content):
+                total_interfaces += 1
                 name = m.group(1)
                 start = m.end()
                 # Count properties by finding the closing brace
@@ -50,11 +55,11 @@ def detect_prop_interface_bloat(path: Path) -> list[dict]:
                     })
         except (OSError, UnicodeDecodeError):
             continue
-    return sorted(entries, key=lambda e: -e["prop_count"])
+    return sorted(entries, key=lambda e: -e["prop_count"]), total_interfaces
 
 
 def cmd_props(args):
-    entries = detect_prop_interface_bloat(Path(args.path))
+    entries, _ = detect_prop_interface_bloat(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
