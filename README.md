@@ -10,35 +10,40 @@ pip install git+https://github.com/peteromallet/desloppify.git
 
 ## Use with Any AI Agent
 
-Paste this into any AI coding agent (Cursor, Windsurf, Copilot, Claude Code, etc.):
+Copy-paste this into any AI coding agent (Cursor, Windsurf, Copilot, etc.):
 
-> Install desloppify: `pip install git+https://github.com/peteromallet/desloppify.git`
->
-> Scan my codebase: `desloppify scan --path src/`. Then: `desloppify status` for the score, `desloppify next` for the top finding to fix. After fixing: `desloppify resolve fixed "<id>"`. For auto-fixable stuff: `desloppify fix unused-imports --dry-run`. Rescan after each batch. Work tier by tier: T1 (auto-fix) → T2 (quick) → T3 (judgment) → T4 (refactor). `desloppify show <detector>` to dig in, `desloppify plan` for a prioritized plan. Use `--lang python` for Python projects.
->
-> As you work, note any false positives, missing detectors, or improvements that would make desloppify more useful — suggest them to the user so they can report them at https://github.com/peteromallet/desloppify/issues.
+```
+Install desloppify: pip install git+https://github.com/peteromallet/desloppify.git
+
+Scan my codebase: desloppify scan --path src/. Then: desloppify status for the score,
+desloppify next for the top finding to fix. After fixing: desloppify resolve fixed "<id>".
+For auto-fixable stuff: desloppify fix unused-imports --dry-run. Rescan after each batch.
+Work tier by tier: T1 (auto-fix) → T2 (quick) → T3 (judgment) → T4 (refactor).
+desloppify show <detector> to dig in, desloppify plan for a prioritized plan.
+Use --lang python for Python projects.
+
+As you work, note any false positives, missing detectors, or improvements and suggest
+them to me so I can report them at https://github.com/peteromallet/desloppify/issues.
+```
 
 ## Claude Code
 
-**Skill** (recommended) — one command, Claude auto-discovers it:
+**Skill** — copy-paste this into Claude Code to set up auto-discovery:
 
-```bash
-mkdir -p .claude/skills/desloppify && curl -sL \
-  https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md \
-  -o .claude/skills/desloppify/SKILL.md
+```
+Install desloppify and set up the skill:
+pip install git+https://github.com/peteromallet/desloppify.git
+mkdir -p .claude/skills/desloppify && curl -sL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md -o .claude/skills/desloppify/SKILL.md
 ```
 
-**MCP Server** — structured tool interface (`pip install "mcp[cli]"` first). Add to `.mcp.json` at project root:
+**MCP Server** — copy-paste this to add structured tool access:
 
-```json
-{
-  "mcpServers": {
-    "desloppify": {
-      "command": "python",
-      "args": ["-m", "desloppify.mcp_server"]
-    }
-  }
-}
+```
+Install desloppify and mcp, then add the MCP server config:
+pip install git+https://github.com/peteromallet/desloppify.git "mcp[cli]"
+Add this to .mcp.json at the project root:
+{"mcpServers":{"desloppify":{"command":"python","args":["-m","desloppify.mcp_server"]}}}
+Then restart Claude Code.
 ```
 
 Both work together: skill provides workflow guidance, MCP provides structured data.
