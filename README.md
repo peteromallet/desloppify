@@ -8,9 +8,9 @@ Codebase health scanner. Detects cruft (dead code, duplication, complexity, smel
 pip install git+https://github.com/peteromallet/desloppify.git
 ```
 
-## Use with Any AI Agent
+## Use with AI Agents
 
-Copy-paste this into any AI coding agent (Cursor, Windsurf, Copilot, etc.):
+Copy-paste into any AI coding agent (Cursor, Windsurf, Copilot, etc.):
 
 ```
 Install desloppify: pip install git+https://github.com/peteromallet/desloppify.git
@@ -26,27 +26,12 @@ As you work, note any false positives, missing detectors, or improvements and su
 them to me so I can report them at https://github.com/peteromallet/desloppify/issues.
 ```
 
-## Claude Code
-
-**Skill** — copy-paste this into Claude Code to set up auto-discovery:
+**Claude Code** — copy-paste this instead to also install the skill (auto-discovery + workflow guidance):
 
 ```
-Install desloppify and set up the skill:
 pip install git+https://github.com/peteromallet/desloppify.git
 mkdir -p .claude/skills/desloppify && curl -sL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md -o .claude/skills/desloppify/SKILL.md
 ```
-
-**MCP Server** — copy-paste this to add structured tool access:
-
-```
-Install desloppify and mcp, then add the MCP server config:
-pip install git+https://github.com/peteromallet/desloppify.git "mcp[cli]"
-Add this to .mcp.json at the project root:
-{"mcpServers":{"desloppify":{"command":"python","args":["-m","desloppify.mcp_server"]}}}
-Then restart Claude Code.
-```
-
-Both work together: skill provides workflow guidance, MCP provides structured data.
 
 ## Quick Start
 
