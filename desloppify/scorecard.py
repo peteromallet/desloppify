@@ -105,7 +105,24 @@ def _draw_vert_rule_with_ornament(draw, x: int, y1: int, y2: int, cy: int, line_
 
 
 def _get_project_name() -> str:
-    """Get project name from git remote (owner/repo) or fall back to directory name."""
+    """Get project name from GitHub API, git remote, or directory name.
+
+    Tries `gh` CLI first for the canonical owner/repo (handles renames and
+    transfers). Falls back to parsing the git remote URL, then directory name.
+    """
+    # Try gh CLI for canonical name (handles username renames, repo transfers)
+    try:
+        name = subprocess.check_output(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+            cwd=str(PROJECT_ROOT), stderr=subprocess.DEVNULL, text=True,
+            timeout=5,
+        ).strip()
+        if "/" in name:
+            return name
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Fall back to git remote URL parsing
     try:
         url = subprocess.check_output(
             ["git", "config", "--get", "remote.origin.url"],
@@ -115,10 +132,8 @@ def _get_project_name() -> str:
         # HTTPS: https://github.com/owner/repo.git
         # HTTPS+token: https://TOKEN@github.com/owner/repo.git
         if url.startswith("git@") and ":" in url:
-            # SSH format only — require git@ prefix to avoid matching token URLs
             path = url.split(":")[-1]
         else:
-            # HTTPS (with or without embedded credentials) — take last 2 path segments
             path = "/".join(url.split("/")[-2:])
         return path.removesuffix(".git")
     except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
