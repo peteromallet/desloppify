@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from .utils import PROJECT_ROOT
@@ -103,6 +104,23 @@ def _draw_vert_rule_with_ornament(draw, x: int, y1: int, y2: int, cy: int, line_
     _draw_ornament(draw, x, cy, _s(3), ornament_fill)
 
 
+def _get_project_name() -> str:
+    """Get project name from git remote (owner/repo) or fall back to directory name."""
+    try:
+        url = subprocess.check_output(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=str(PROJECT_ROOT), stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        # SSH: git@github.com:owner/repo.git  HTTPS: https://github.com/owner/repo.git
+        if ":" in url and "@" in url:
+            path = url.split(":")[-1]
+        else:
+            path = "/".join(url.split("/")[-2:])
+        return path.removesuffix(".git")
+    except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
+        return PROJECT_ROOT.name
+
+
 # -- Palette used by all drawing functions --
 _BG = (247, 240, 228)
 _BG_SCORE = (240, 232, 217)
@@ -115,13 +133,14 @@ _ACCENT = (148, 112, 82)
 _FRAME = (172, 152, 126)
 
 
-def _draw_left_panel(draw, main_score: float, strict_score: float,
+def _draw_left_panel(draw, main_score: float, strict_score: float, project_name: str,
                      lp_left: int, lp_right: int, lp_top: int, lp_bot: int):
-    """Draw the left panel: score panel background, title, score, strict, URL."""
+    """Draw the left panel: score panel background, title, score, strict, project name."""
     font_title = _load_font(15, serif=True, bold=True)
     font_big = _load_font(42, serif=True, bold=True)
     font_strict_label = _load_font(12, serif=True)
     font_strict_val = _load_font(19, serif=True, bold=True)
+    font_project = _load_font(9, serif=True)
 
     lp_cx = (lp_left + lp_right) // 2
 
@@ -145,10 +164,18 @@ def _draw_left_panel(draw, main_score: float, strict_score: float,
     strict_h = max(strict_label_bbox[3] - strict_label_bbox[1],
                    strict_val_bbox[3] - strict_val_bbox[1])
 
-    # Stack heights: title → ornament rule → score → strict
+    proj_bbox = draw.textbbox((0, 0), project_name, font=font_project)
+    proj_h = proj_bbox[3] - proj_bbox[1]
+
+    # Stack: title → ornament rule → score → strict → project pill
     ornament_gap = _s(7)
     score_gap = _s(6)
-    total_h = title_h + ornament_gap + _s(6) + ornament_gap + score_h + score_gap + strict_h
+    proj_gap = _s(8)
+    pill_pad_y = _s(3)
+    pill_pad_x = _s(8)
+    proj_pill_h = proj_h + 2 * pill_pad_y
+    total_h = (title_h + ornament_gap + _s(6) + ornament_gap +
+               score_h + score_gap + strict_h + proj_gap + proj_pill_h)
     y0 = (lp_top + lp_bot) // 2 - total_h // 2 + _s(3)
 
     # Title
@@ -176,6 +203,19 @@ def _draw_left_panel(draw, main_score: float, strict_score: float,
               font=font_strict_label)
     draw.text((strict_x + sl_w + gap, strict_y - strict_val_bbox[1]), strict_val_str,
               fill=_score_color(strict_score, muted=True), font=font_strict_val)
+
+    # Project name in a subtle pill
+    pill_top = strict_y + strict_h + proj_gap
+    proj_y = pill_top + pill_pad_y
+    pw = draw.textlength(project_name, font=font_project)
+    pill_left = lp_cx - pw / 2 - pill_pad_x
+    pill_right = lp_cx + pw / 2 + pill_pad_x
+    pill_bot = pill_top + proj_pill_h
+    draw.rounded_rectangle(
+        (pill_left, pill_top, pill_right, pill_bot),
+        radius=_s(3), fill=_BG, outline=_BORDER, width=1)
+    draw.text((lp_cx - pw / 2, proj_y - proj_bbox[1]), project_name,
+              fill=_DIM, font=font_project)
 
 
 
@@ -248,13 +288,16 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     main_score = obj_score if obj_score is not None else state.get("score", 0)
     strict_score = obj_strict if obj_strict is not None else state.get("strict_score", 0)
 
-    # Layout — landscape (wide)
+    project_name = _get_project_name()
+
+    # Layout — landscape (wide), File health first
     active_dims = [(name, data) for name, data in dim_scores.items()
                    if data.get("checks", 0) > 0]
+    active_dims.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
     row_count = len(active_dims)
     row_h = _s(22)
     divider_x = _s(248)
-    W = _s(670)
+    W = _s(620)
     frame_inset = _s(5)
 
     # Height driven by whichever side is taller
@@ -276,8 +319,8 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     content_bot = H - frame_inset - _s(1)
     content_mid_y = (content_top + content_bot) // 2
 
-    # Left panel: title + score + URL
-    _draw_left_panel(draw, main_score, strict_score,
+    # Left panel: title + score + project name
+    _draw_left_panel(draw, main_score, strict_score, project_name,
                      lp_left=frame_inset + _s(6), lp_right=divider_x - _s(8),
                      lp_top=content_top + _s(4), lp_bot=content_bot - _s(4))
 
