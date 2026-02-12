@@ -1,4 +1,4 @@
-# Desloppify - make your codebase 🤌
+# Desloppify - agent tools to make your codebase 🤌
 
 Codebase health scanner. Detects cruft (dead code, duplication, complexity, smells), tracks findings across scans, auto-fixes mechanical issues, reports a weighted score. It gives you a shortlist of issues to either solve with your agent or mindfully ignore. TypeScript/React and Python out of the box, but you can get your agent to add any language.
 
