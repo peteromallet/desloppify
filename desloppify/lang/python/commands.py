@@ -7,7 +7,7 @@ from pathlib import Path
 from ...utils import c, display_entries, find_py_files, print_table, rel
 from . import PY_COMPLEXITY_SIGNALS, PY_GOD_RULES, PY_SKIP_NAMES, PY_ENTRY_PATTERNS
 from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_single_use,
-                             make_cmd_passthrough, make_cmd_naming)
+                             make_cmd_passthrough, make_cmd_naming, make_cmd_smells)
 
 
 DETECTOR_NAMES = [
@@ -118,26 +118,11 @@ def cmd_cycles(args):
               + (f" -> +{len(files) - 6}" if len(files) > 6 else ""))
 
 
-# ── Complex wrappers (unique display logic) ───────────────
-
-
-def cmd_smells(args):
-    import json
+def _detect_py_smells(path):
     from .detectors.smells import detect_smells
-    entries, _ = detect_smells(Path(args.path))
-    if getattr(args, "json", False):
-        print(json.dumps({"entries": entries}, indent=2))
-        return
-    if not entries:
-        print(c("No code smells detected.", "green"))
-        return
-    total = sum(e["count"] for e in entries)
-    print(c(f"\nCode smells: {total} instances across {len(entries)} patterns\n", "bold"))
-    rows = []
-    for e in entries[:getattr(args, "top", 20)]:
-        sev_color = {"high": "red", "medium": "yellow", "low": "dim"}.get(e["severity"], "dim")
-        rows.append([c(e["severity"].upper(), sev_color), e["label"], str(e["count"]), str(e["files"])])
-    print_table(["Sev", "Pattern", "Count", "Files"], rows, [8, 40, 6, 6])
+    return detect_smells(path)
+
+cmd_smells = make_cmd_smells(_detect_py_smells)
 
 
 def cmd_dupes(args):

@@ -136,6 +136,11 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
                 continue
             for i, line in enumerate(lines):
                 if re.search(check["pattern"], line):
+                    # Skip URLs assigned to module-level constants
+                    if check["id"] == "hardcoded_url" and re.match(
+                        r"^(?:export\s+)?(?:const|let|var)\s+[A-Z_][A-Z0-9_]*\s*=", line.strip()
+                    ):
+                        continue
                     smell_counts[check["id"]].append({
                         "file": filepath,
                         "line": i + 1,

@@ -7,7 +7,7 @@ from pathlib import Path
 from ...utils import c, display_entries, find_ts_files, print_table, rel, SRC_PATH
 from . import TS_COMPLEXITY_SIGNALS, TS_GOD_RULES, TS_SKIP_NAMES, TS_SKIP_DIRS
 from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_single_use,
-                             make_cmd_passthrough, make_cmd_naming)
+                             make_cmd_passthrough, make_cmd_naming, make_cmd_smells)
 
 
 DETECTOR_NAMES = [
@@ -119,29 +119,11 @@ def cmd_dupes(args):
         print_table(["Function A", "Function B", "Sim"], rows, [50, 50, 5])
 
 
-def cmd_smells(args):
-    import json
+def _detect_ts_smells(path):
     from .detectors.smells import detect_smells
-    entries, _ = detect_smells(Path(args.path))
-    if getattr(args, "json", False):
-        print(json.dumps({"entries": entries}, indent=2))
-        return
-    if not entries:
-        print(c("No code smells detected.", "green"))
-        return
-    total = sum(e["count"] for e in entries)
-    print(c(f"\nCode smells: {total} instances across {len(entries)} patterns\n", "bold"))
-    rows = []
-    for e in entries[:getattr(args, "top", 20)]:
-        sev_color = {"high": "red", "medium": "yellow", "low": "dim"}.get(e["severity"], "dim")
-        rows.append([c(e["severity"].upper(), sev_color), e["label"],
-                     str(e["count"]), str(e["files"])])
-    print_table(["Sev", "Pattern", "Count", "Files"], rows, [8, 40, 6, 6])
-    high = [e for e in entries if e["severity"] == "high"]
-    for e in high:
-        print(c(f"\n  {e['label']} ({e['count']} instances):", "red"))
-        for m in e["matches"][:10]:
-            print(f"    {rel(m['file'])}:{m['line']}  {m['content'][:60]}")
+    return detect_smells(path)
+
+cmd_smells = make_cmd_smells(_detect_ts_smells)
 
 
 def cmd_coupling(args):

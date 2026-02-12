@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from ..utils import display_entries, rel
+from ..utils import c, display_entries, print_table, rel
 
 
 def make_cmd_large(file_finder: Callable, default_threshold: int):
@@ -99,3 +99,30 @@ def make_cmd_naming(
                 ", ".join(e["outliers"][:5])
                 + (f" (+{len(e['outliers']) - 5})" if len(e["outliers"]) > 5 else "")])
     return cmd_naming
+
+
+def make_cmd_smells(detect_smells_fn: Callable):
+    """Factory: detect code smells."""
+    def cmd_smells(args):
+        import json
+        entries, _ = detect_smells_fn(Path(args.path))
+        if getattr(args, "json", False):
+            print(json.dumps({"entries": entries}, indent=2))
+            return
+        if not entries:
+            print(c("No code smells detected.", "green"))
+            return
+        total = sum(e["count"] for e in entries)
+        print(c(f"\nCode smells: {total} instances across {len(entries)} patterns\n", "bold"))
+        rows = []
+        for e in entries[:getattr(args, "top", 20)]:
+            sev_color = {"high": "red", "medium": "yellow", "low": "dim"}.get(e["severity"], "dim")
+            rows.append([c(e["severity"].upper(), sev_color), e["label"],
+                         str(e["count"]), str(e["files"])])
+        print_table(["Sev", "Pattern", "Count", "Files"], rows, [8, 40, 6, 6])
+        high = [e for e in entries if e["severity"] == "high"]
+        for e in high:
+            print(c(f"\n  {e['label']} ({e['count']} instances):", "red"))
+            for m in e["matches"][:10]:
+                print(f"    {rel(m['file'])}:{m['line']}  {m['content'][:60]}")
+    return cmd_smells

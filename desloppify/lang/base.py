@@ -149,13 +149,17 @@ def add_structural_signal(structural: dict, file: str, signal: str, detail: dict
     structural[f]["detail"].update(detail)
 
 
-def merge_structural_signals(structural: dict, stderr_fn) -> list[dict]:
+def merge_structural_signals(structural: dict, stderr_fn,
+                              *, complexity_only_min: int = 35) -> list[dict]:
     """Convert per-file structural signals into tiered findings.
 
     3+ signals -> T4/high (needs decomposition).
     1-2 signals -> T3/medium.
+    Complexity-only files (no large/god signals) need score >= complexity_only_min
+    to be flagged — lower complexity in small files is normal, not decomposition-worthy.
     """
     results = []
+    suppressed = 0
     for filepath, data in structural.items():
         if "loc" not in data["detail"]:
             try:
@@ -164,16 +168,27 @@ def merge_structural_signals(structural: dict, stderr_fn) -> list[dict]:
             except (OSError, UnicodeDecodeError):
                 data["detail"]["loc"] = 0
 
-        signal_count = len(data["signals"])
+        # Suppress complexity-only findings below the elevated threshold
+        signals = data["signals"]
+        is_complexity_only = all(s.startswith("complexity") for s in signals)
+        if is_complexity_only:
+            score = data["detail"].get("complexity_score", 0)
+            if score < complexity_only_min:
+                suppressed += 1
+                continue
+
+        signal_count = len(signals)
         tier = 4 if signal_count >= 3 else 3
         confidence = "high" if signal_count >= 3 else "medium"
-        summary = "Needs decomposition: " + " / ".join(data["signals"])
+        summary = "Needs decomposition: " + " / ".join(signals)
         results.append(make_finding(
             "structural", filepath, "",
             tier=tier, confidence=confidence,
             summary=summary,
             detail=data["detail"],
         ))
+    if suppressed:
+        stderr_fn(f"         {suppressed} complexity-only files below threshold (< {complexity_only_min})")
     stderr_fn(f"         -> {len(results)} structural findings")
     return results
 
@@ -184,12 +199,14 @@ def make_single_use_findings(
     *,
     loc_range: tuple[int, int] = (50, 200),
     suppress_colocated: bool = True,
+    skip_dir_names: set[str] | None = None,
     stderr_fn,
 ) -> list[dict]:
     """Filter and normalize single-use entries into findings.
 
-    Suppresses entries within the LOC range (they're appropriately-sized abstractions)
-    and optionally entries co-located with their sole importer.
+    Suppresses entries within the LOC range (they're appropriately-sized abstractions),
+    entries co-located with their sole importer, and entries in skip_dir_names
+    directories (e.g., commands/ — CLI modules are single-use by design).
     """
     results = []
     colocated_suppressed = 0
@@ -197,6 +214,11 @@ def make_single_use_findings(
     for e in entries:
         if lo <= e["loc"] <= hi:
             continue
+        # Skip files in directories that are single-use by design (e.g., commands/)
+        if skip_dir_names:
+            parts = Path(e["file"]).parts
+            if any(p in skip_dir_names for p in parts):
+                continue
         if suppress_colocated and get_area:
             src_area = get_area(rel(e["file"]))
             imp_area = get_area(e["sole_importer"])

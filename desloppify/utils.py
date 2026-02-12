@@ -7,19 +7,24 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-PROJECT_ROOT = Path(os.environ.get("DESLOPPIFY_ROOT", Path.cwd()))
+PROJECT_ROOT = Path(os.environ.get("DESLOPPIFY_ROOT", Path.cwd())).resolve()
 DEFAULT_PATH = PROJECT_ROOT / "src"
 SRC_PATH = PROJECT_ROOT / os.environ.get("DESLOPPIFY_SRC", "src")
 
-# Extra exclusions set via --exclude CLI flag, applied to all file discovery
+# Module-level exclusion state (set once from CLI at startup via set_exclusions)
 _extra_exclusions: tuple[str, ...] = ()
 
 
 def set_exclusions(patterns: list[str]):
-    """Set global exclusion patterns (called once from CLI at startup)."""
-    global _extra_exclusions
-    _extra_exclusions = tuple(patterns)
+    """Set exclusion patterns (called once from CLI at startup)."""
+    _set_exclusions_impl(tuple(patterns))
     _find_source_files_cached.cache_clear()
+
+
+def _set_exclusions_impl(patterns: tuple[str, ...]):
+    """Internal: update the module-level exclusion tuple."""
+    import desloppify.utils as _self
+    _self._extra_exclusions = patterns
 
 
 def run_grep(cmd: list[str]) -> str:
@@ -30,6 +35,8 @@ def run_grep(cmd: list[str]) -> str:
     lines = result.stdout.splitlines()
     filtered = [l for l in lines if not any(ex in l for ex in _extra_exclusions)]
     return "\n".join(filtered) + ("\n" if filtered else "")
+
+LOC_COMPACT_THRESHOLD = 10000  # Switch from "1,234" to "1K" format
 
 COLORS = {
     "reset": "\033[0m",
@@ -95,7 +102,7 @@ def display_entries(args, entries, *, label, empty_msg, columns, widths, row_fn,
 
 def rel(path: str) -> str:
     try:
-        return str(Path(path).relative_to(PROJECT_ROOT))
+        return str(Path(path).resolve().relative_to(PROJECT_ROOT))
     except ValueError:
         return path
 

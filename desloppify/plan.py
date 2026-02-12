@@ -71,11 +71,9 @@ def _generate_findings_from_lang(
     return findings, all_potentials
 
 
-def generate_plan_md(state: dict) -> str:
-    """Generate a prioritized markdown plan from state."""
-    findings = state["findings"]
+def _plan_header(state: dict, stats: dict) -> list[str]:
+    """Build the plan header: title, score line, and codebase metrics."""
     score = state.get("score", 0)
-    stats = state.get("stats", {})
 
     # Use objective score if available, fall back to progress score
     obj_score = state.get("objective_score")
@@ -85,15 +83,11 @@ def generate_plan_md(state: dict) -> str:
     else:
         header_score = f"**Score: {score}/100**"
 
-    # Codebase metrics header
+    # Codebase metrics
     metrics = state.get("codebase_metrics", {})
     total_files = sum(m.get("total_files", 0) for m in metrics.values())
     total_loc = sum(m.get("total_loc", 0) for m in metrics.values())
     total_dirs = sum(m.get("total_directories", 0) for m in metrics.values())
-    metrics_str = ""
-    if total_files:
-        loc_str = f"{total_loc:,}" if total_loc < 10000 else f"{total_loc // 1000}K"
-        metrics_str = f"\n{total_files} files · {loc_str} LOC · {total_dirs} directories\n"
 
     lines = [
         f"# Desloppify Plan — {date.today().isoformat()}",
@@ -105,51 +99,51 @@ def generate_plan_md(state: dict) -> str:
         f"{stats.get('auto_resolved', 0)} auto-resolved",
         "",
     ]
-    if metrics_str:
-        lines.append(metrics_str)
+    if total_files:
+        from .utils import LOC_COMPACT_THRESHOLD
+        loc_str = f"{total_loc:,}" if total_loc < LOC_COMPACT_THRESHOLD else f"{total_loc // 1000}K"
+        lines.append(f"\n{total_files} files · {loc_str} LOC · {total_dirs} directories\n")
 
-    # Dimension health table (when objective data available)
+    return lines
+
+
+def _plan_dimension_table(state: dict) -> list[str]:
+    """Build the dimension health table rows (empty list when no data)."""
     dim_scores = state.get("dimension_scores", {})
-    if dim_scores:
-        lines.extend([
-            "## Health by Dimension",
-            "",
-            "| Dimension | Tier | Checks | Issues | Pass |",
-            "|-----------|------|--------|--------|------|",
-        ])
-        from .scoring import DIMENSIONS
-        for dim in DIMENSIONS:
-            ds = dim_scores.get(dim.name)
-            if not ds:
-                continue
-            checks = ds.get("checks", 0)
-            issues = ds.get("issues", 0)
-            score_val = ds.get("score", 100)
-            bold = "**" if score_val < 93 else ""
-            lines.append(
-                f"| {bold}{dim.name}{bold} | T{dim.tier} | "
-                f"{checks:,} | {issues} | {score_val:.1f}% |"
-            )
-        lines.append("")
+    if not dim_scores:
+        return []
 
-    # Tier breakdown
-    by_tier = stats.get("by_tier", {})
-    for tier_num in [1, 2, 3, 4]:
-        ts = by_tier.get(str(tier_num), {})
-        t_open = ts.get("open", 0)
-        t_total = sum(ts.values())
-        t_addressed = t_total - t_open
-        pct = round(t_addressed / t_total * 100) if t_total else 100
-        label = TIER_LABELS.get(tier_num, f"Tier {tier_num}")
-        lines.append(f"- **Tier {tier_num}** ({label}): {t_open} open / {t_total} total ({pct}% addressed)")
+    lines = [
+        "## Health by Dimension",
+        "",
+        "| Dimension | Tier | Checks | Issues | Pass |",
+        "|-----------|------|--------|--------|------|",
+    ]
+    from .scoring import DIMENSIONS
+    for dim in DIMENSIONS:
+        ds = dim_scores.get(dim.name)
+        if not ds:
+            continue
+        checks = ds.get("checks", 0)
+        issues = ds.get("issues", 0)
+        score_val = ds.get("score", 100)
+        bold = "**" if score_val < 93 else ""
+        lines.append(
+            f"| {bold}{dim.name}{bold} | T{dim.tier} | "
+            f"{checks:,} | {issues} | {score_val:.1f}% |"
+        )
     lines.append("")
+    return lines
 
-    # Group open findings by tier, then by file
+
+def _plan_tier_sections(findings: dict) -> list[str]:
+    """Build per-tier sections listing open findings grouped by file."""
     open_findings = [f for f in findings.values() if f["status"] == "open"]
     by_tier_file: dict[int, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     for f in open_findings:
         by_tier_file[f["tier"]][f["file"]].append(f)
 
+    lines: list[str] = []
     for tier_num in [1, 2, 3, 4]:
         tier_files = by_tier_file.get(tier_num, {})
         if not tier_files:
@@ -174,6 +168,32 @@ def generate_plan_md(state: dict) -> str:
                 lines.append(f"- [ ] {conf_badge} {f['summary']}")
                 lines.append(f"      `{f['id']}`")
             lines.append("")
+
+    return lines
+
+
+def generate_plan_md(state: dict) -> str:
+    """Generate a prioritized markdown plan from state."""
+    findings = state["findings"]
+    stats = state.get("stats", {})
+
+    lines = _plan_header(state, stats)
+    lines.extend(_plan_dimension_table(state))
+
+    # Tier breakdown summary
+    by_tier = stats.get("by_tier", {})
+    for tier_num in [1, 2, 3, 4]:
+        ts = by_tier.get(str(tier_num), {})
+        t_open = ts.get("open", 0)
+        t_total = sum(ts.values())
+        t_addressed = t_total - t_open
+        pct = round(t_addressed / t_total * 100) if t_total else 100
+        label = TIER_LABELS.get(tier_num, f"Tier {tier_num}")
+        lines.append(f"- **Tier {tier_num}** ({label}): {t_open} open / {t_total} total ({pct}% addressed)")
+    lines.append("")
+
+    # Per-tier open finding sections
+    lines.extend(_plan_tier_sections(findings))
 
     # Addressed findings summary
     addressed = [f for f in findings.values() if f["status"] != "open"]

@@ -9,21 +9,49 @@ from ...detectors.passthrough import _classify_params, classify_passthrough_tier
 from ...utils import PROJECT_ROOT, find_py_files
 
 
-def extract_py_functions(filepath: str) -> list[FunctionInfo]:
-    """Extract function bodies from a Python file.
-
-    Uses indentation to determine function boundaries (Python has no braces).
-    Returns FunctionInfo with normalized body and hash for comparison.
-    """
+def _read_file(filepath: str) -> str | None:
+    """Read a file, returning None on error."""
     p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
     try:
-        content = p.read_text()
+        return p.read_text()
     except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _find_block_end(lines: list[str], start: int, base_indent: int,
+                    limit: int | None = None) -> int:
+    """Find end of an indented block. Returns first line at or below base_indent."""
+    end = limit if limit is not None else len(lines)
+    j = start
+    while j < end:
+        if lines[j].strip() == "":
+            j += 1
+            continue
+        if len(lines[j]) - len(lines[j].lstrip()) <= base_indent:
+            break
+        j += 1
+    return j
+
+
+def _find_signature_end(lines: list[str], start: int) -> int | None:
+    """Find the line where a function signature closes (')' then ':'). None if not found."""
+    for j in range(start, len(lines)):
+        lt = lines[j]
+        if ")" in lt and ":" in lt[lt.rindex(")") + 1:]:
+            return j
+        if j > start and lt.strip().endswith(":"):
+            return j
+    return None
+
+
+def extract_py_functions(filepath: str) -> list[FunctionInfo]:
+    """Extract function bodies from a Python file using indentation-based boundaries."""
+    content = _read_file(filepath)
+    if content is None:
         return []
 
     lines = content.splitlines()
     functions = []
-
     fn_re = re.compile(r"^(\s*)def\s+(\w+)\s*\(")
 
     i = 0
@@ -33,75 +61,38 @@ def extract_py_functions(filepath: str) -> list[FunctionInfo]:
             i += 1
             continue
 
-        fn_indent_str = m.group(1)
-        fn_indent = len(fn_indent_str)
+        fn_indent = len(m.group(1))
         name = m.group(2)
         start_line = i
 
-        # Handle multi-line signatures: find the closing ')' then ':'
-        j = i
-        sig_closed = False
-        while j < len(lines):
-            line_text = lines[j]
-            if ")" in line_text:
-                after_paren = line_text[line_text.rindex(")") + 1:]
-                if ":" in after_paren:
-                    sig_closed = True
-                    break
-            if j > i and line_text.strip().endswith(":"):
-                sig_closed = True
-                break
-            j += 1
-
-        if not sig_closed:
+        # Find end of multi-line signature (closing ')' followed by ':')
+        j = _find_signature_end(lines, i)
+        if j is None:
             i += 1
             continue
 
-        # Body: collect all lines indented past fn_indent (blank lines included)
-        body_start = j + 1
-        k = body_start
-        last_content_line = j
-
-        while k < len(lines):
-            line_text = lines[k]
-            stripped = line_text.strip()
-            if stripped == "":
-                k += 1
-                continue
-            line_indent = len(line_text) - len(line_text.lstrip())
-            if line_indent <= fn_indent:
-                break
-            last_content_line = k
-            k += 1
-
-        end_line = last_content_line + 1
-        body_lines = lines[start_line:end_line]
-        body = "\n".join(body_lines)
-        loc = end_line - start_line
-
+        # Find body extent: all lines indented past fn_indent, trim trailing blanks
+        block_end = _find_block_end(lines, j + 1, fn_indent)
+        end_line = block_end
+        while end_line > j + 1 and not lines[end_line - 1].strip():
+            end_line -= 1
+        body = "\n".join(lines[start_line:end_line])
         normalized = normalize_py_body(body)
+
         if len(normalized.splitlines()) >= 3:
             functions.append(FunctionInfo(
-                name=name,
-                file=filepath,
-                line=start_line + 1,
-                end_line=end_line,
-                loc=loc,
-                body=body,
+                name=name, file=filepath, line=start_line + 1,
+                end_line=end_line, loc=end_line - start_line, body=body,
                 normalized=normalized,
                 body_hash=hashlib.md5(normalized.encode()).hexdigest(),
             ))
-
         i = end_line
 
     return functions
 
 
 def normalize_py_body(body: str) -> str:
-    """Normalize a Python function body for comparison.
-
-    Strips docstrings, comments, print/logging statements, leading whitespace.
-    """
+    """Normalize a Python function body: strip docstrings, comments, print/logging."""
     lines = body.splitlines()
     normalized = []
     in_docstring = False
@@ -122,21 +113,16 @@ def normalize_py_body(body: str) -> str:
             in_docstring = True
             continue
 
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
+        if not stripped or stripped.startswith("#"):
             continue
 
         # Strip inline comments
-        comment_pos = stripped.find("  #")
-        if comment_pos > 0:
-            stripped = stripped[:comment_pos].rstrip()
+        cp = stripped.find("  #")
+        if cp > 0:
+            stripped = stripped[:cp].rstrip()
 
-        if re.match(r"print\s*\(", stripped):
+        if re.match(r"(?:print\s*\(|(?:logging|logger|log)\.\w+\s*\()", stripped):
             continue
-        if re.match(r"(?:logging|logger|log)\.\w+\s*\(", stripped):
-            continue
-
         if stripped:
             normalized.append(stripped)
 
@@ -144,19 +130,13 @@ def normalize_py_body(body: str) -> str:
 
 
 def extract_py_classes(path: Path) -> list[ClassInfo]:
-    """Extract Python classes with method/attribute/base-class metrics.
-
-    Scans all .py files under path. Only includes classes >=50 LOC.
-    """
+    """Extract Python classes with method/attribute/base-class metrics (>=50 LOC)."""
     results = []
     for filepath in find_py_files(path):
-        try:
-            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
-            content = p.read_text()
-            lines = content.splitlines()
-        except (OSError, UnicodeDecodeError):
+        content = _read_file(filepath)
+        if content is None:
             continue
-        results.extend(_extract_classes_from_file(filepath, lines))
+        results.extend(_extract_classes_from_file(filepath, content.splitlines()))
     return results
 
 
@@ -176,45 +156,24 @@ def _extract_classes_from_file(filepath: str, lines: list[str]) -> list[ClassInf
         bases = m.group(2) or ""
         class_start = i
         class_indent = len(lines[i]) - len(lines[i].lstrip())
-
-        # Find class body extent
-        j = i + 1
-        while j < len(lines):
-            if lines[j].strip() == "":
-                j += 1
-                continue
-            line_indent = len(lines[j]) - len(lines[j].lstrip())
-            if line_indent <= class_indent and lines[j].strip():
-                break
-            j += 1
-        class_end = j
+        class_end = _find_block_end(lines, i + 1, class_indent)
         class_loc = class_end - class_start
 
         if class_loc < 50:
             i = class_end
             continue
 
-        # Extract methods as FunctionInfo (with LOC)
         methods = _extract_methods(lines, class_start + 1, class_end, class_indent)
-
-        # Extract attributes from __init__
         attributes = _extract_init_attributes(lines, class_start, class_end)
-
-        # Parse base classes (excluding common mixins)
         base_list = [b.strip() for b in bases.split(",") if b.strip()] if bases else []
         non_mixin_bases = [b for b in base_list
                            if not b.endswith("Mixin") and b not in ("object", "ABC")]
 
         results.append(ClassInfo(
-            name=class_name,
-            file=filepath,
-            line=class_start + 1,
-            loc=class_loc,
-            methods=methods,
-            attributes=attributes,
+            name=class_name, file=filepath, line=class_start + 1,
+            loc=class_loc, methods=methods, attributes=attributes,
             base_classes=non_mixin_bases,
         ))
-
         i = class_end
 
     return results
@@ -233,27 +192,12 @@ def _extract_methods(lines: list[str], start: int, end: int,
             i += 1
             continue
 
-        method_name = m.group(1)
         method_indent = len(lines[i]) - len(lines[i].lstrip())
         method_start = i
-
-        j = i + 1
-        while j < end:
-            if lines[j].strip() == "":
-                j += 1
-                continue
-            if len(lines[j]) - len(lines[j].lstrip()) <= method_indent:
-                break
-            j += 1
-
-        method_loc = j - method_start
+        j = _find_block_end(lines, i + 1, method_indent, limit=end)
         methods.append(FunctionInfo(
-            name=method_name,
-            file="",  # not needed for method-level analysis
-            line=method_start + 1,
-            end_line=j,
-            loc=method_loc,
-            body="",  # not needed for god-class detection
+            name=m.group(1), file="", line=method_start + 1,
+            end_line=j, loc=j - method_start, body="",
         ))
         i = j
 
@@ -274,8 +218,7 @@ def _extract_init_attributes(lines: list[str], class_start: int,
             init_indent = len(lines[k]) - len(lines[k].lstrip())
             continue
         if in_init:
-            line_ind = len(lines[k]) - len(lines[k].lstrip())
-            if lines[k].strip() and line_ind <= init_indent:
+            if lines[k].strip() and len(lines[k]) - len(lines[k].lstrip()) <= init_indent:
                 in_init = False
                 continue
             for attr_m in re.finditer(r"self\.(\w+)\s*=", lines[k]):
@@ -285,19 +228,13 @@ def _extract_init_attributes(lines: list[str], class_start: int,
 
 
 def extract_py_params(param_str: str) -> list[str]:
-    """Extract parameter names from a Python function signature.
-
-    Handles: simple names, defaults (p=val), type annotations (p: int),
-    *args, **kwargs. Filters out self and cls.
-    """
+    """Extract parameter names from a Python function signature."""
     params = []
-    param_str = " ".join(param_str.split())
-    for token in param_str.split(","):
+    for token in " ".join(param_str.split()).split(","):
         token = token.strip()
-        if not token or token == "self" or token == "cls":
+        if not token or token in ("self", "cls"):
             continue
-        clean = token.lstrip("*")
-        name = clean.split(":")[0].split("=")[0].strip()
+        name = token.lstrip("*").split(":")[0].split("=")[0].strip()
         if name and name.isidentifier():
             params.append(name)
     return params
@@ -318,36 +255,25 @@ _PY_FUNC_PATTERN = re.compile(
 def detect_passthrough_functions(path: Path) -> list[dict]:
     """Detect Python functions where most params are same-name forwarded."""
     entries = []
-
     for filepath in find_py_files(path):
-        try:
-            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
-            content = p.read_text()
-        except (OSError, UnicodeDecodeError):
+        content = _read_file(filepath)
+        if content is None:
             continue
 
         for m in _PY_FUNC_PATTERN.finditer(content):
             name = m.group(1)
-            param_str = m.group(2)
-            params = extract_py_params(param_str)
-
+            params = extract_py_params(m.group(2))
             if len(params) < 4:
                 continue
 
-            body_start = m.end()
-            rest = content[body_start:]
-            body_end = len(rest)
-            for bm in re.finditer(r"\n(?=[^\s\n#])", rest):
-                body_end = bm.start()
-                break
-            body = rest[:body_end]
+            # Extract function body (up to next top-level definition)
+            rest = content[m.end():]
+            bm = re.search(r"\n(?=[^\s\n#])", rest)
+            body = rest[:bm.start()] if bm else rest
 
             has_kwargs_spread = bool(re.search(r"\*\*kwargs\b", body))
-
             pt, direct = _classify_params(
-                params, body, py_passthrough_pattern,
-                occurrences_per_match=2,
-            )
+                params, body, py_passthrough_pattern, occurrences_per_match=2)
 
             if len(pt) < 4 and not has_kwargs_spread:
                 continue
@@ -359,22 +285,15 @@ def detect_passthrough_functions(path: Path) -> list[dict]:
                 continue
             tier, confidence = classification
 
-            line = content[:m.start()].count("\n") + 1
             entries.append({
-                "file": filepath,
-                "function": name,
-                "total_params": len(params),
-                "passthrough": len(pt),
-                "direct": len(direct),
-                "ratio": round(ratio, 2),
-                "line": line,
-                "tier": tier,
-                "confidence": confidence,
+                "file": filepath, "function": name,
+                "total_params": len(params), "passthrough": len(pt),
+                "direct": len(direct), "ratio": round(ratio, 2),
+                "line": content[:m.start()].count("\n") + 1,
+                "tier": tier, "confidence": confidence,
                 "passthrough_params": sorted(pt),
                 "direct_params": sorted(direct),
                 "has_kwargs_spread": has_kwargs_spread,
             })
 
     return sorted(entries, key=lambda e: (-e["passthrough"], -e["ratio"]))
-
-

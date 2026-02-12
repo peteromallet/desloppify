@@ -3,7 +3,7 @@
 import json
 from collections import defaultdict
 
-from ..utils import c, get_area, print_table
+from ..utils import LOC_COMPACT_THRESHOLD, c, get_area, print_table
 from ..cli import _state_path, _write_query
 
 
@@ -58,7 +58,7 @@ def cmd_status(args):
     total_loc = sum(m.get("total_loc", 0) for m in metrics.values())
     total_dirs = sum(m.get("total_directories", 0) for m in metrics.values())
     if total_files:
-        loc_str = f"{total_loc:,}" if total_loc < 10000 else f"{total_loc // 1000}K"
+        loc_str = f"{total_loc:,}" if total_loc < LOC_COMPACT_THRESHOLD else f"{total_loc // 1000}K"
         print(c(f"  {total_files} files · {loc_str} LOC · {total_dirs} dirs · "
                 f"Last scan: {state.get('last_scan', 'never')}", "dim"))
     else:
@@ -136,7 +136,6 @@ def _show_dimension_table(dim_scores: dict):
             continue
         score_val = ds["score"]
         checks = ds["checks"]
-        issues = ds["issues"]
 
         filled = round(score_val / 100 * bar_len)
         if score_val >= 98:
@@ -174,7 +173,6 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
         if target_dim:
             impact = 0.0
             for det in target_dim.detectors:
-                det_data = dim_scores[lowest_name].get("detectors") if "detectors" in dim_scores.get(lowest_name, {}) else None
                 # Use the score impact calculation
                 impact = compute_score_impact(
                     {k: {"score": v["score"], "tier": v.get("tier", 3),

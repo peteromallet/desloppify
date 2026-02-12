@@ -6,74 +6,28 @@ from ..utils import c
 from ..cli import _state_path, _write_query
 
 
-def cmd_scan(args):
-    """Run all detectors, update persistent state, show diff."""
-    from ..state import load_state, save_state, merge_scan
-    from ..plan import generate_findings
+def _collect_codebase_metrics(lang, path: Path) -> dict | None:
+    """Collect LOC/file/directory counts for the configured language."""
+    if not lang or not lang.file_finder:
+        return None
+    files = lang.file_finder(path)
+    total_loc = 0
+    dirs = set()
+    for f in files:
+        try:
+            total_loc += len(Path(f).read_text().splitlines())
+            dirs.add(str(Path(f).parent))
+        except (OSError, UnicodeDecodeError):
+            pass
+    return {
+        "total_files": len(files),
+        "total_loc": total_loc,
+        "total_directories": len(dirs),
+    }
 
-    sp = _state_path(args)
-    state = load_state(sp)
-    path = Path(args.path)
-    include_slow = not getattr(args, "skip_slow", False)
 
-    # Persist --exclude in state so subsequent commands reuse it
-    exclude = getattr(args, "exclude", None)
-    if exclude:
-        state.setdefault("config", {})["exclude"] = list(exclude)
-
-    # Resolve language config
-    from ..cli import _resolve_lang
-    lang = _resolve_lang(args)
-    lang_label = f" ({lang.name})" if lang else ""
-
-    print(c(f"\nDesloppify Scan{lang_label}\n", "bold"))
-    findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang)
-
-    # Collect codebase metrics for this language
-    codebase_metrics = None
-    if lang and lang.file_finder:
-        files = lang.file_finder(path)
-        total_loc = 0
-        dirs = set()
-        for f in files:
-            try:
-                total_loc += len(Path(f).read_text().splitlines())
-                dirs.add(str(Path(f).parent))
-            except (OSError, UnicodeDecodeError):
-                pass
-        codebase_metrics = {
-            "total_files": len(files),
-            "total_loc": total_loc,
-            "total_directories": len(dirs),
-        }
-
-    # Only store potentials for full scans (not path-scoped)
-    from ..utils import rel, _extra_exclusions, PROJECT_ROOT
-    scan_path_rel = rel(str(path))
-    is_full_scan = (path.resolve() == PROJECT_ROOT.resolve() or
-                    scan_path_rel == lang.default_src if lang else False)
-
-    prev_score = state.get("score", 0)
-    prev_strict = state.get("strict_score", 0)
-    prev_obj = state.get("objective_score")
-    prev_obj_strict = state.get("objective_strict")
-    prev_dim_scores = state.get("dimension_scores", {})
-    diff = merge_scan(state, findings,
-                      lang=lang.name if lang else None,
-                      scan_path=scan_path_rel,
-                      force_resolve=getattr(args, "force_resolve", False),
-                      exclude=_extra_exclusions,
-                      potentials=potentials if is_full_scan else None,
-                      codebase_metrics=codebase_metrics if is_full_scan else None)
-    save_state(state, sp)
-
-    new_score = state["score"]
-    new_strict = state.get("strict_score", 0)
-    stats = state["stats"]
-    print(c("\n  Scan complete", "bold"))
-    print(c("  " + "─" * 50, "dim"))
-
-    # Diff summary
+def _show_diff_summary(diff: dict):
+    """Print the +new / -resolved / reopened one-liner."""
     diff_parts = []
     if diff["new"]:
         diff_parts.append(c(f"+{diff['new']} new", "yellow"))
@@ -88,42 +42,41 @@ def cmd_scan(args):
     if diff.get("suspect_detectors"):
         print(c(f"  ⚠ Skipped auto-resolve for: {', '.join(diff['suspect_detectors'])} (returned 0 — likely transient)", "yellow"))
 
-    # Score — prefer objective score when available
+
+def _format_delta(value: float, prev: float | None) -> tuple[str, str]:
+    """Return (delta_str, color) for a score change."""
+    delta = value - prev if prev is not None else 0
+    delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if delta != 0 else ""
+    color = "green" if delta > 0 else ("red" if delta < 0 else "dim")
+    return delta_str, color
+
+
+def _show_score_delta(state: dict, prev_score: float, prev_strict: float,
+                      prev_obj: float | None, prev_obj_strict: float | None):
+    """Print the score/health line with deltas."""
+    stats = state["stats"]
     new_obj = state.get("objective_score")
     new_obj_strict = state.get("objective_strict")
+
     if new_obj is not None:
-        obj_delta = new_obj - prev_obj if prev_obj is not None else 0
-        obj_delta_str = f" ({'+' if obj_delta > 0 else ''}{obj_delta:.1f})" if obj_delta != 0 else ""
-        obj_color = "green" if obj_delta > 0 else ("red" if obj_delta < 0 else "dim")
-        strict_obj_delta = new_obj_strict - prev_obj_strict if prev_obj_strict is not None else 0
-        strict_obj_delta_str = f" ({'+' if strict_obj_delta > 0 else ''}{strict_obj_delta:.1f})" if strict_obj_delta != 0 else ""
-        strict_obj_color = "green" if strict_obj_delta > 0 else ("red" if strict_obj_delta < 0 else "dim")
+        obj_delta_str, obj_color = _format_delta(new_obj, prev_obj)
+        strict_delta_str, strict_color = _format_delta(new_obj_strict, prev_obj_strict)
         print(f"  Health: {c(f'{new_obj:.1f}/100{obj_delta_str}', obj_color)}" +
-              c(f"  strict: {new_obj_strict:.1f}/100{strict_obj_delta_str}", strict_obj_color) +
+              c(f"  strict: {new_obj_strict:.1f}/100{strict_delta_str}", strict_color) +
               c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
     else:
-        delta = new_score - prev_score
-        delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if delta != 0 else ""
-        color = "green" if delta > 0 else ("red" if delta < 0 else "dim")
-        strict_delta = new_strict - prev_strict
-        strict_delta_str = f" ({'+' if strict_delta > 0 else ''}{strict_delta:.1f})" if strict_delta != 0 else ""
-        strict_color = "green" if strict_delta > 0 else ("red" if strict_delta < 0 else "dim")
+        new_score = state["score"]
+        new_strict = state.get("strict_score", 0)
+        delta_str, color = _format_delta(new_score, prev_score)
+        strict_delta_str, strict_color = _format_delta(new_strict, prev_strict)
         print(f"  Score: {c(f'{new_score:.1f}/100{delta_str}', color)}" +
               c(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
               c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
 
-    # Per-detector progress
-    _show_detector_progress(state)
 
-    # Dimension deltas (show which dimensions moved)
-    new_dim_scores = state.get("dimension_scores", {})
-    if new_dim_scores and prev_dim_scores:
-        _show_dimension_deltas(prev_dim_scores, new_dim_scores)
-
-    # Post-scan analysis
+def _show_post_scan_analysis(diff: dict, stats: dict) -> tuple[list[str], str | None]:
+    """Print warnings and suggested next action. Returns (warnings, next_action)."""
     warnings = []
-    next_action = None
-
     if diff["reopened"] > 5:
         warnings.append(f"{diff['reopened']} findings reopened — was a previous fix reverted? Check: git log --oneline -5")
     if diff["new"] > 10 and diff["auto_resolved"] < 3:
@@ -153,8 +106,71 @@ def cmd_scan(args):
     print(c("  3. Are there quick wins? Check `desloppify status` for tier breakdown.", "dim"))
     print()
 
-    _write_query({"command": "scan", "score": new_score, "strict_score": new_strict,
-                  "prev_score": prev_score, "diff": diff, "stats": stats,
+    return warnings, next_action
+
+
+def cmd_scan(args):
+    """Run all detectors, update persistent state, show diff."""
+    from ..state import load_state, save_state, merge_scan
+    from ..plan import generate_findings
+
+    sp = _state_path(args)
+    state = load_state(sp)
+    path = Path(args.path)
+    include_slow = not getattr(args, "skip_slow", False)
+
+    # Persist --exclude in state so subsequent commands reuse it
+    exclude = getattr(args, "exclude", None)
+    if exclude:
+        state.setdefault("config", {})["exclude"] = list(exclude)
+
+    # Resolve language config
+    from ..cli import _resolve_lang
+    lang = _resolve_lang(args)
+    lang_label = f" ({lang.name})" if lang else ""
+
+    print(c(f"\nDesloppify Scan{lang_label}\n", "bold"))
+    findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang)
+
+    codebase_metrics = _collect_codebase_metrics(lang, path)
+
+    # Only store potentials for full scans (not path-scoped)
+    from ..utils import rel, _extra_exclusions, PROJECT_ROOT
+    scan_path_rel = rel(str(path))
+    is_full_scan = (path.resolve() == PROJECT_ROOT.resolve() or
+                    scan_path_rel == lang.default_src if lang else False)
+
+    prev_score = state.get("score", 0)
+    prev_strict = state.get("strict_score", 0)
+    prev_obj = state.get("objective_score")
+    prev_obj_strict = state.get("objective_strict")
+    prev_dim_scores = state.get("dimension_scores", {})
+    diff = merge_scan(state, findings,
+                      lang=lang.name if lang else None,
+                      scan_path=scan_path_rel,
+                      force_resolve=getattr(args, "force_resolve", False),
+                      exclude=_extra_exclusions,
+                      potentials=potentials if is_full_scan else None,
+                      codebase_metrics=codebase_metrics if is_full_scan else None)
+    save_state(state, sp)
+
+    print(c("\n  Scan complete", "bold"))
+    print(c("  " + "─" * 50, "dim"))
+
+    _show_diff_summary(diff)
+    _show_score_delta(state, prev_score, prev_strict, prev_obj, prev_obj_strict)
+    _show_detector_progress(state)
+
+    # Dimension deltas (show which dimensions moved)
+    new_dim_scores = state.get("dimension_scores", {})
+    if new_dim_scores and prev_dim_scores:
+        _show_dimension_deltas(prev_dim_scores, new_dim_scores)
+
+    warnings, next_action = _show_post_scan_analysis(diff, state["stats"])
+
+    _write_query({"command": "scan", "score": state["score"],
+                  "strict_score": state.get("strict_score", 0),
+                  "prev_score": prev_score, "diff": diff, "stats": state["stats"],
                   "warnings": warnings, "next_action": next_action,
                   "objective_score": state.get("objective_score"),
                   "objective_strict": state.get("objective_strict"),

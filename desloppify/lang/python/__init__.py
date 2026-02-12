@@ -139,7 +139,8 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
 
     single_entries, single_candidates = detect_single_use_abstractions(
         path, graph, barrel_names=lang.barrel_names)
-    results = make_single_use_findings(single_entries, lang.get_area, stderr_fn=log)
+    results = make_single_use_findings(single_entries, lang.get_area,
+                                       skip_dir_names={"commands"}, stderr_fn=log)
 
     cycle_entries, total_edges = detect_cycles(graph)
     results.extend(make_cycle_findings(cycle_entries, log))

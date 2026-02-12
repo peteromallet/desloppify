@@ -261,7 +261,8 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     # Single-use (shared helper)
     single_entries, single_candidates = detect_single_use_abstractions(
         path, graph, barrel_names=lang.barrel_names)
-    results.extend(make_single_use_findings(single_entries, lang.get_area, stderr_fn=log))
+    results.extend(make_single_use_findings(single_entries, lang.get_area,
+                                             skip_dir_names={"commands"}, stderr_fn=log))
     shared_prefix = f"{SRC_PATH}/shared/"
     tools_prefix = f"{SRC_PATH}/tools/"
     coupling_entries, coupling_edges = detect_coupling_violations(

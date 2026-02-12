@@ -8,6 +8,8 @@ Generates an interactive treemap where:
 - Toggle color mode: cruft score, coupling, LOC
 """
 
+D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
+
 import json
 import subprocess
 from collections import defaultdict
@@ -112,7 +114,8 @@ def generate_visualization(path: Path, state: dict | None = None,
                         for f in fs if f.get("status") == "open")
     score = state.get("score", "N/A") if state else "N/A"
 
-    html = _HTML_TEMPLATE.replace("__TREE_DATA__", tree_json)
+    html = _HTML_TEMPLATE.replace("__D3_CDN_URL__", D3_CDN_URL)
+    html = html.replace("__TREE_DATA__", tree_json)
     html = html.replace("__TOTAL_FILES__", str(total_files))
     html = html.replace("__TOTAL_LOC__", f"{total_loc:,}")
     html = html.replace("__TOTAL_FINDINGS__", str(total_findings))
@@ -348,7 +351,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div id="chart"></div>
 <div id="tooltip"></div>
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="__D3_CDN_URL__"></script>
 <script>
 const data = __TREE_DATA__;
 const chartEl = document.getElementById('chart');

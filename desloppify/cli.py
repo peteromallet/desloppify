@@ -34,8 +34,12 @@ def _state_path(args) -> Path | None:
 
 
 def _resolve_lang(args):
-    """Resolve the language config from args. Returns LangConfig or None."""
+    """Resolve the language config from args, with auto-detection fallback."""
     lang_name = getattr(args, "lang", None)
+    if lang_name is None:
+        from .lang import auto_detect_lang
+        from .utils import PROJECT_ROOT
+        lang_name = auto_detect_lang(PROJECT_ROOT)
     if lang_name is None:
         return None
     from .lang import get_lang
