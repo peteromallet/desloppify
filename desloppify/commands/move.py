@@ -581,24 +581,35 @@ def _cmd_move_dir(args, source_abs: str):
     moving_files = {src for src, _ in file_moves}
 
     # Compute all replacements for each file
+    # External: files outside the moved dir that import from it
     all_importer_changes: dict[str, list[tuple[str, str]]] = {}
+    # Intra-package: files inside the moved dir that use absolute imports to siblings
+    intra_pkg_changes: dict[str, list[tuple[str, str]]] = {}
+    # Self: the moved file's own relative imports pointing outside the package
     all_self_changes: dict[str, list[tuple[str, str]]] = {}
 
     for src_file, dst_file in file_moves:
         importer_changes, self_changes = _move_single_file(
             src_file, dst_file, lang_name, graph, dry_run)
 
-        # Only keep importer changes from files OUTSIDE the moved directory.
-        # Files inside the directory that import each other will be handled by
-        # self-import changes, not importer changes.
         for filepath, replacements in importer_changes.items():
             if filepath in moving_files:
-                continue  # skip intra-package importers
-            if filepath in all_importer_changes:
-                existing = set(all_importer_changes[filepath])
-                all_importer_changes[filepath].extend(r for r in replacements if r not in existing)
+                # Intra-package importer — only keep ABSOLUTE import changes.
+                # Relative imports between co-moving files don't need updating.
+                abs_only = [(old, new) for old, new in replacements
+                            if not re.match(r"from\s+\.", old)]
+                if abs_only:
+                    if filepath in intra_pkg_changes:
+                        existing = set(intra_pkg_changes[filepath])
+                        intra_pkg_changes[filepath].extend(r for r in abs_only if r not in existing)
+                    else:
+                        intra_pkg_changes[filepath] = list(abs_only)
             else:
-                all_importer_changes[filepath] = list(replacements)
+                if filepath in all_importer_changes:
+                    existing = set(all_importer_changes[filepath])
+                    all_importer_changes[filepath].extend(r for r in replacements if r not in existing)
+                else:
+                    all_importer_changes[filepath] = list(replacements)
 
         if self_changes:
             # Filter self-changes: only keep imports pointing OUTSIDE the moved dir.
@@ -614,7 +625,7 @@ def _cmd_move_dir(args, source_abs: str):
                         dots, remainder = m.group(1), m.group(2)
                         resolved = _resolve_py_relative(src_dir, dots, remainder)
                         if resolved and resolved in moving_files:
-                            continue  # intra-package import, skip
+                            continue  # intra-package relative import, skip
                     filtered_self.append((old_str, new_str))
             else:
                 filtered_self = self_changes
@@ -626,15 +637,17 @@ def _cmd_move_dir(args, source_abs: str):
     source_prefix = source_abs + os.sep
     external_changes = {k: v for k, v in all_importer_changes.items()
                         if not k.startswith(source_prefix)}
-    total_files_affected = len(external_changes) + len(all_self_changes)
+
+    total_changes = (len(external_changes) + len(intra_pkg_changes) + len(all_self_changes))
     total_replacements = (sum(len(r) for r in external_changes.values()) +
+                          sum(len(r) for r in intra_pkg_changes.values()) +
                           sum(len(r) for r in all_self_changes.values()))
 
     print(c(f"\n  Move directory: {rel(source_abs)}/ → {rel(dest_abs)}/", "bold"))
     print(c(f"  {len(file_moves)} files in package", "dim"))
-    print(c(f"  {total_replacements} import replacements across {total_files_affected} files\n", "dim"))
+    print(c(f"  {total_replacements} import replacements across {total_changes} files\n", "dim"))
 
-    # Show self-import changes grouped by file
+    # Show self-import changes (relative imports pointing outside the package)
     if all_self_changes:
         print(c(f"  Own imports ({sum(len(v) for v in all_self_changes.values())} changes across "
                 f"{len(all_self_changes)} files):", "cyan"))
@@ -644,7 +657,17 @@ def _cmd_move_dir(args, source_abs: str):
                 print(f"      {old}  →  {new}")
         print()
 
-    # Show importer changes (files outside the moved directory that reference it)
+    # Show intra-package absolute import changes
+    if intra_pkg_changes:
+        print(c(f"  Intra-package imports ({sum(len(v) for v in intra_pkg_changes.values())} changes "
+                f"across {len(intra_pkg_changes)} files):", "cyan"))
+        for filepath, replacements in sorted(intra_pkg_changes.items()):
+            print(f"    {rel(filepath)}:")
+            for old, new in replacements:
+                print(f"      {old}  →  {new}")
+        print()
+
+    # Show external importer changes
     if external_changes:
         print(c(f"  External importers ({len(external_changes)} files):", "cyan"))
         for filepath, replacements in sorted(external_changes.items()):
@@ -653,7 +676,7 @@ def _cmd_move_dir(args, source_abs: str):
                 print(f"      {old}  →  {new}")
         print()
 
-    if not external_changes and not all_self_changes:
+    if not external_changes and not intra_pkg_changes and not all_self_changes:
         print(c("  No import references found — only the directory will be moved.", "dim"))
         print()
 
@@ -665,9 +688,15 @@ def _cmd_move_dir(args, source_abs: str):
     Path(dest_abs).parent.mkdir(parents=True, exist_ok=True)
     shutil.move(source_abs, dest_abs)
 
-    # Apply self-import changes to the moved files (now at dest)
+    # Apply self-import and intra-package changes to the moved files (now at dest)
+    # Merge both change sets since they both apply to files inside the moved dir
+    all_internal_changes: dict[str, list[tuple[str, str]]] = {}
     for src_file, changes in all_self_changes.items():
-        # Compute the new location of the file
+        all_internal_changes.setdefault(src_file, []).extend(changes)
+    for src_file, changes in intra_pkg_changes.items():
+        all_internal_changes.setdefault(src_file, []).extend(changes)
+
+    for src_file, changes in all_internal_changes.items():
         rel_in_dir = Path(src_file).relative_to(source_path)
         dest_file = Path(dest_abs) / rel_in_dir
         content = dest_file.read_text()
@@ -675,7 +704,7 @@ def _cmd_move_dir(args, source_abs: str):
             content = content.replace(old_str, new_str)
         dest_file.write_text(content)
 
-    # Apply importer changes to external files only
+    # Apply importer changes to external files
     for filepath, replacements in external_changes.items():
         content = Path(filepath).read_text()
         for old_str, new_str in replacements:
