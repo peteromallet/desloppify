@@ -68,10 +68,8 @@ class LangConfig:
     # Area classification (project-specific grouping)
     get_area: Callable[[str], str] | None = None
 
-    # Detector names (for `detect` raw command)
-    detector_names: list[str] = field(default_factory=list)
-
     # Commands for `detect` subcommand (language-specific overrides)
+    # Keys serve as the valid detector name list.
     detect_commands: dict[str, Callable] = field(default_factory=dict)
 
     # Function extractor (for duplicate detection)
@@ -334,4 +332,30 @@ def make_passthrough_findings(
         ))
     if entries:
         stderr_fn(f"         passthrough: {len(entries)} findings")
+    return results
+
+
+def make_facade_findings(entries: list[dict], stderr_fn) -> list[dict]:
+    """Normalize re-export facade entries into findings."""
+    results = []
+    for e in entries:
+        kind = e["kind"]
+        if kind == "directory":
+            summary = (f"Facade directory ({e['loc']} LOC, {e.get('file_count', '?')} files): "
+                       f"all modules are re-exports ({e['importers']} importers)")
+        else:
+            from_str = ", ".join(e["imports_from"][:3])
+            if len(e["imports_from"]) > 3:
+                from_str += f", +{len(e['imports_from']) - 3}"
+            summary = (f"Re-export facade ({e['loc']} LOC): "
+                       f"imports from {from_str} ({e['importers']} importers)")
+        results.append(make_finding(
+            "facade", e["file"], "",
+            tier=2, confidence="high" if e["importers"] == 0 else "medium",
+            summary=summary,
+            detail={"loc": e["loc"], "importers": e["importers"],
+                    "imports_from": e["imports_from"], "kind": kind},
+        ))
+    if entries:
+        stderr_fn(f"         facades: {len(entries)} re-export facade findings")
     return results

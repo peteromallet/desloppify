@@ -9,7 +9,8 @@ from ..base import (DetectorPhase, LangConfig,
                     add_structural_signal, merge_structural_signals,
                     make_single_use_findings, make_cycle_findings,
                     make_orphaned_findings, make_smell_findings,
-                    make_passthrough_findings, phase_dupes)
+                    make_passthrough_findings, make_facade_findings,
+                    phase_dupes)
 from ...detectors.base import ComplexitySignal, GodRule
 from ...utils import find_py_files, log
 from .detectors.complexity import compute_max_params, compute_nesting_depth, compute_long_functions
@@ -134,6 +135,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     from ...detectors.graph import detect_cycles
     from ...detectors.orphaned import detect_orphaned_files
     from ...detectors.single_use import detect_single_use_abstractions
+    from ...detectors.facade import detect_reexport_facades
 
     graph = build_dep_graph(path)
 
@@ -142,7 +144,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     results = make_single_use_findings(single_entries, lang.get_area,
                                        skip_dir_names={"commands"}, stderr_fn=log)
 
-    cycle_entries, total_edges = detect_cycles(graph)
+    cycle_entries, _ = detect_cycles(graph)
     results.extend(make_cycle_findings(cycle_entries, log))
 
     orphan_entries, total_graph_files = detect_orphaned_files(
@@ -151,11 +153,15 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         extra_barrel_names=lang.barrel_names)
     results.extend(make_orphaned_findings(orphan_entries, log))
 
+    facade_entries, _ = detect_reexport_facades(graph, lang="python")
+    results.extend(make_facade_findings(facade_entries, log))
+
     log(f"         -> {len(results)} coupling/structural findings total")
     potentials = {
         "single_use": single_candidates,
-        "cycles": total_edges,
+        "cycles": total_graph_files,
         "orphaned": total_graph_files,
+        "facade": total_graph_files,
     }
     return results, potentials
 
@@ -186,7 +192,7 @@ def _py_extract_functions(path: Path) -> list:
 @register_lang("python")
 class PythonConfig(LangConfig):
     def __init__(self):
-        from .commands import get_detect_commands, DETECTOR_NAMES
+        from .commands import get_detect_commands
         super().__init__(
             name="python",
             extensions=[".py"],
@@ -204,7 +210,6 @@ class PythonConfig(LangConfig):
             ],
             fixers={},
             get_area=_get_py_area,
-            detector_names=DETECTOR_NAMES,
             detect_commands=get_detect_commands(),
             boundaries=[],
             typecheck_cmd="",

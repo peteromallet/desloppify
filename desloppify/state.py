@@ -230,7 +230,8 @@ def merge_scan(state: dict, current_findings: list[dict], *,
                lang: str | None = None, scan_path: str | None = None,
                force_resolve: bool = False, exclude: tuple[str, ...] = (),
                potentials: dict[str, int] | None = None,
-               codebase_metrics: dict | None = None) -> dict:
+               codebase_metrics: dict | None = None,
+               include_slow: bool = True) -> dict:
     """Merge a fresh scan into existing state. Returns diff summary."""
     from .utils import compute_tool_hash
     now = _now()
@@ -241,6 +242,8 @@ def merge_scan(state: dict, current_findings: list[dict], *,
         state.setdefault("potentials", {})[lang] = potentials
     if codebase_metrics is not None and lang:
         state.setdefault("codebase_metrics", {})[lang] = codebase_metrics
+    if lang:
+        state.setdefault("scan_completeness", {})[lang] = "full" if include_slow else "fast"
 
     existing = state["findings"]
     ignore = state.get("config", {}).get("ignore", [])

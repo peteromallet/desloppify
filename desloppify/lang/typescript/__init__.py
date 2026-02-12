@@ -11,7 +11,7 @@ from ..base import (BoundaryRule, DetectorPhase, FixerConfig, LangConfig,
                     add_structural_signal, merge_structural_signals,
                     make_single_use_findings, make_cycle_findings,
                     make_orphaned_findings, make_smell_findings,
-                    phase_dupes)
+                    make_facade_findings, phase_dupes)
 from ...detectors.base import ComplexitySignal, GodRule
 from ...state import make_finding
 from ...utils import find_ts_files, get_area, log, rel
@@ -295,7 +295,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         log(f"         cross-tool: {len(cross_tool)} imports")
 
     # Cycles + orphaned (shared helpers)
-    cycle_entries, total_edges = detect_cycles(graph)
+    cycle_entries, _ = detect_cycles(graph)
     results.extend(make_cycle_findings(cycle_entries, log))
     orphan_entries, total_graph_files = detect_orphaned_files(
         path, graph, extensions=lang.extensions,
@@ -304,6 +304,11 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         dynamic_import_finder=build_dynamic_import_targets,
         alias_resolver=ts_alias_resolver)
     results.extend(make_orphaned_findings(orphan_entries, log))
+
+    # Re-export facades (shared detector)
+    from ...detectors.facade import detect_reexport_facades
+    facade_entries, _ = detect_reexport_facades(graph, lang="typescript")
+    results.extend(make_facade_findings(facade_entries, log))
 
     # TS-specific: pattern consistency
     pattern_entries, total_areas = detect_pattern_anomalies(path)
@@ -334,10 +339,11 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     potentials = {
         "single_use": single_candidates,
         "coupling": coupling_edges + cross_edges,
-        "cycles": total_edges,
+        "cycles": total_graph_files,
         "orphaned": total_graph_files,
         "patterns": total_areas,
         "naming": total_dirs,
+        "facade": total_graph_files,
     }
     return results, potentials
 
@@ -398,7 +404,7 @@ def _ts_extract_functions(path: Path) -> list:
 @register_lang("typescript")
 class TypeScriptConfig(LangConfig):
     def __init__(self):
-        from .commands import get_detect_commands, DETECTOR_NAMES
+        from .commands import get_detect_commands
         super().__init__(
             name="typescript",
             extensions=[".ts", ".tsx"],
@@ -423,7 +429,6 @@ class TypeScriptConfig(LangConfig):
             ],
             fixers=_get_ts_fixers(),
             get_area=get_area,
-            detector_names=DETECTOR_NAMES,
             detect_commands=get_detect_commands(),
             boundaries=[
                 BoundaryRule("shared/", "tools/", "shared→tools"),

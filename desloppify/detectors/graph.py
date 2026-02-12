@@ -4,7 +4,9 @@ The graph structure is: {resolved_path: {"imports": set, "importers": set, "impo
 Language-specific modules build the graph; this module provides shared algorithms.
 """
 
-from ..utils import rel, resolve_path
+from pathlib import Path
+
+from ..utils import rel, resolve_path, PROJECT_ROOT
 
 
 def finalize_graph(graph: dict) -> dict:
@@ -16,8 +18,18 @@ def finalize_graph(graph: dict) -> dict:
     from ..utils import _extra_exclusions
 
     # Remove excluded nodes and clean up references
+    # Use relative paths for exclusion matching to avoid false positives
+    # when an exclude pattern (e.g. "Wan2GP") matches the project root
+    # directory name (e.g. "Headless-Wan2GP").
     if _extra_exclusions:
-        excluded_keys = {k for k in graph if any(ex in k for ex in _extra_exclusions)}
+        excluded_keys = set()
+        for k in graph:
+            try:
+                rel_k = str(Path(k).relative_to(PROJECT_ROOT))
+            except ValueError:
+                rel_k = k
+            if any(ex in rel_k for ex in _extra_exclusions):
+                excluded_keys.add(k)
         for k in excluded_keys:
             del graph[k]
         # Clean import/importer sets of references to removed nodes
@@ -39,7 +51,7 @@ def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> tuple[list[dict
     When skip_deferred=True (default), deferred imports (inside functions) are
     excluded from cycle detection — they can't cause circular import errors.
 
-    Returns (entries, total_edges). Each entry: {"files": [abs_paths], "length": int}
+    Returns (entries, total_files). Each entry: {"files": [abs_paths], "length": int}
     """
     index_counter = [0]
     stack: list[str] = []
@@ -87,8 +99,7 @@ def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> tuple[list[dict
         if v not in index:
             strongconnect(v)
 
-    total_edges = sum(len(_get_edges(v)) for v in graph)
-    return [{"files": scc, "length": len(scc)} for scc in sorted(sccs, key=lambda s: -len(s))], total_edges
+    return [{"files": scc, "length": len(scc)} for scc in sorted(sccs, key=lambda s: -len(s))], len(graph)
 
 
 def get_coupling_score(filepath: str, graph: dict) -> dict:

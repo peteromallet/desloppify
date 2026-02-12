@@ -151,7 +151,8 @@ def cmd_scan(args):
                       force_resolve=getattr(args, "force_resolve", False),
                       exclude=_extra_exclusions,
                       potentials=potentials if is_full_scan else None,
-                      codebase_metrics=codebase_metrics if is_full_scan else None)
+                      codebase_metrics=codebase_metrics if is_full_scan else None,
+                      include_slow=include_slow)
     save_state(state, sp)
 
     print(c("\n  Scan complete", "bold"))
@@ -159,6 +160,8 @@ def cmd_scan(args):
 
     _show_diff_summary(diff)
     _show_score_delta(state, prev_score, prev_strict, prev_obj, prev_obj_strict)
+    if not include_slow:
+        print(c("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
     _show_detector_progress(state)
 
     # Dimension deltas (show which dimensions moved)
@@ -197,8 +200,8 @@ def _show_detector_progress(state: dict):
             by_det[det]["open"] += 1
 
     DET_ORDER = ["logs", "unused", "exports", "deprecated", "structural", "props",
-                 "single_use", "coupling", "cycles", "orphaned", "patterns", "naming",
-                 "smells", "react", "dupes"]
+                 "single_use", "coupling", "cycles", "orphaned", "facade", "patterns",
+                 "naming", "smells", "react", "dupes"]
     order_map = {d: i for i, d in enumerate(DET_ORDER)}
     sorted_dets = sorted(by_det.items(), key=lambda x: order_map.get(x[0], 99))
 
@@ -230,7 +233,7 @@ def _show_detector_progress(state: dict):
 
 
 def _show_dimension_deltas(prev: dict, current: dict):
-    """Show which dimensions changed between scans."""
+    """Show which dimensions changed between scans (health and strict)."""
     from ..scoring import DIMENSIONS
     moved = []
     for dim in DIMENSIONS:
@@ -240,18 +243,25 @@ def _show_dimension_deltas(prev: dict, current: dict):
             continue
         old_score = p.get("score", 100)
         new_score = n.get("score", 100)
+        old_strict = p.get("strict", old_score)
+        new_strict = n.get("strict", new_score)
         delta = new_score - old_score
-        if abs(delta) >= 0.1:
-            moved.append((dim.name, old_score, new_score, delta))
+        strict_delta = new_strict - old_strict
+        if abs(delta) >= 0.1 or abs(strict_delta) >= 0.1:
+            moved.append((dim.name, old_score, new_score, delta, old_strict, new_strict, strict_delta))
 
     if not moved:
         return
 
     print(c("  Moved:", "dim"))
-    for name, old, new, delta in sorted(moved, key=lambda x: x[3]):
+    for name, old, new, delta, old_s, new_s, s_delta in sorted(moved, key=lambda x: x[3]):
         sign = "+" if delta > 0 else ""
         color = "green" if delta > 0 else "red"
-        print(c(f"    {name:<22} {old:.1f}% → {new:.1f}%  ({sign}{delta:.1f}%)", color))
+        strict_str = ""
+        if abs(s_delta) >= 0.1:
+            s_sign = "+" if s_delta > 0 else ""
+            strict_str = c(f"  strict: {old_s:.1f}→{new_s:.1f}% ({s_sign}{s_delta:.1f}%)", "dim")
+        print(c(f"    {name:<22} {old:.1f}% → {new:.1f}%  ({sign}{delta:.1f}%)", color) + strict_str)
     print()
 
 

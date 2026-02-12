@@ -75,7 +75,9 @@ def cmd_next(args):
             dim = get_dimension_for_detector(det)
             if dim and dim.name in dim_scores:
                 ds = dim_scores[dim.name]
+                strict_val = ds.get('strict', ds['score'])
                 print(c(f"\n  Dimension: {dim.name} — {ds['score']:.1f}% "
+                        f"(strict: {strict_val:.1f}%) "
                         f"({ds['issues']} of {ds['checks']:,} checks failing)", "dim"))
 
     if len(items) == 1:

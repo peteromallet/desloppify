@@ -28,12 +28,28 @@ def _set_exclusions_impl(patterns: tuple[str, ...]):
 
 
 def run_grep(cmd: list[str]) -> str:
-    """Run a grep command, filtering results by active exclusions."""
+    """Run a grep command, filtering results by active exclusions.
+
+    Exclusion matching uses only the file path portion (before ':') converted
+    to a relative path, so patterns like 'Wan2GP' won't falsely match when the
+    project root directory name contains that substring (e.g. 'Headless-Wan2GP').
+    """
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
     if not _extra_exclusions or not result.stdout:
         return result.stdout
     lines = result.stdout.splitlines()
-    filtered = [l for l in lines if not any(ex in l for ex in _extra_exclusions)]
+    filtered = []
+    for line in lines:
+        # Extract just the file path portion for exclusion matching
+        colon_idx = line.find(":")
+        file_part = line[:colon_idx] if colon_idx != -1 else line
+        # Convert to relative path to avoid matching project root directory name
+        try:
+            file_part = str(Path(file_part).relative_to(PROJECT_ROOT))
+        except ValueError:
+            pass  # already relative or outside project root
+        if not any(ex in file_part for ex in _extra_exclusions):
+            filtered.append(line)
     return "\n".join(filtered) + ("\n" if filtered else "")
 
 LOC_COMPACT_THRESHOLD = 10000  # Switch from "1,234" to "1K" format

@@ -116,8 +116,8 @@ def _plan_dimension_table(state: dict) -> list[str]:
     lines = [
         "## Health by Dimension",
         "",
-        "| Dimension | Tier | Checks | Issues | Pass |",
-        "|-----------|------|--------|--------|------|",
+        "| Dimension | Tier | Checks | Issues | Health | Strict |",
+        "|-----------|------|--------|--------|--------|--------|",
     ]
     from .scoring import DIMENSIONS
     for dim in DIMENSIONS:
@@ -127,10 +127,11 @@ def _plan_dimension_table(state: dict) -> list[str]:
         checks = ds.get("checks", 0)
         issues = ds.get("issues", 0)
         score_val = ds.get("score", 100)
+        strict_val = ds.get("strict", score_val)
         bold = "**" if score_val < 93 else ""
         lines.append(
             f"| {bold}{dim.name}{bold} | T{dim.tier} | "
-            f"{checks:,} | {issues} | {score_val:.1f}% |"
+            f"{checks:,} | {issues} | {score_val:.1f}% | {strict_val:.1f}% |"
         )
     lines.append("")
     return lines

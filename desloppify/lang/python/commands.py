@@ -10,11 +10,6 @@ from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_singl
                              make_cmd_passthrough, make_cmd_naming, make_cmd_smells)
 
 
-DETECTOR_NAMES = [
-    "unused", "large", "complexity", "gods", "passthrough", "smells", "dupes",
-    "deps", "cycles", "orphaned", "single-use", "naming",
-]
-
 
 def _build_dep_graph(path):
     from .detectors.deps import build_dep_graph
@@ -125,6 +120,34 @@ def _detect_py_smells(path):
 cmd_smells = make_cmd_smells(_detect_py_smells)
 
 
+def cmd_facade(args):
+    import json
+    from .detectors.deps import build_dep_graph
+    from ...detectors.facade import detect_reexport_facades
+    graph = build_dep_graph(Path(args.path))
+    entries, _ = detect_reexport_facades(graph, lang="python")
+    if getattr(args, "json", False):
+        print(json.dumps({"count": len(entries), "entries": [
+            {**e, "file": rel(e["file"])} for e in entries
+        ]}, indent=2))
+        return
+    if not entries:
+        print(c("\nNo re-export facades found.", "green"))
+        return
+    file_facades = [e for e in entries if e["kind"] == "file"]
+    dir_facades = [e for e in entries if e["kind"] == "directory"]
+    if file_facades:
+        print(c(f"\nRe-export facade files: {len(file_facades)}\n", "bold"))
+        rows = [[rel(e["file"]), str(e["loc"]), str(e["importers"]),
+                 ", ".join(e["imports_from"][:3])] for e in file_facades]
+        print_table(["File", "LOC", "Importers", "Re-exports From"], rows, [50, 5, 9, 40])
+    if dir_facades:
+        print(c(f"\nFacade directories: {len(dir_facades)}\n", "bold"))
+        rows = [[rel(e["file"]), str(e.get("file_count", "?")), str(e["importers"])]
+                for e in dir_facades]
+        print_table(["Directory", "Files", "Importers"], rows, [50, 6, 9])
+
+
 def cmd_dupes(args):
     import json
     from ...detectors.dupes import detect_duplicates
@@ -169,4 +192,5 @@ def get_detect_commands() -> dict[str, callable]:
         "orphaned":    cmd_orphaned,
         "single-use":  cmd_single_use,
         "naming":      cmd_naming,
+        "facade":      cmd_facade,
     }

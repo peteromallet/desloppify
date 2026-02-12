@@ -31,13 +31,17 @@ def _path_to_py_module(filepath: str, root: Path) -> str | None:
 
 
 def _has_exact_module(line: str, module: str) -> bool:
-    """Check if a Python import line references this exact module (not a child)."""
-    return bool(re.search(rf'\b{re.escape(module)}\b', line))
+    """Check if a Python import line references this exact module (not a child).
+
+    Uses lookaround instead of \\b because \\b treats '.' as a word boundary,
+    causing 'source.foo' to falsely match inside 'source.foo.bar'.
+    """
+    return bool(re.search(rf'(?<!\w){re.escape(module)}(?![\w.])', line))
 
 
 def _replace_exact_module(line: str, old_module: str, new_module: str) -> str:
     """Replace an exact module reference in a Python import line."""
-    return re.sub(rf'\b{re.escape(old_module)}\b', new_module, line)
+    return re.sub(rf'(?<!\w){re.escape(old_module)}(?![\w.])', new_module, line)
 
 
 def _resolve_py_relative(source_dir: Path, dots: str, remainder: str) -> str | None:

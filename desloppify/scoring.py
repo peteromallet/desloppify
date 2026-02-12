@@ -24,7 +24,7 @@ DIMENSIONS = [
     Dimension("File health",         3, ["structural"]),
     Dimension("Component design",    3, ["props"]),
     Dimension("Coupling",            3, ["single_use", "coupling"]),
-    Dimension("Organization",        3, ["orphaned", "flat_dirs", "naming"]),
+    Dimension("Organization",        3, ["orphaned", "flat_dirs", "naming", "facade"]),
     Dimension("Code quality",        3, ["smells", "react"]),
     Dimension("Duplication",         3, ["dupes"]),
     Dimension("Pattern consistency", 3, ["patterns"]),
@@ -33,6 +33,14 @@ DIMENSIONS = [
 
 TIER_WEIGHTS = {1: 1, 2: 2, 3: 3, 4: 4}
 CONFIDENCE_WEIGHTS = {"high": 1.0, "medium": 0.7, "low": 0.3}
+
+# Minimum checks for full dimension weight — below this, weight is dampened
+# proportionally. Prevents small-sample dimensions from swinging the overall score.
+MIN_SAMPLE = 200
+
+# Detectors where potential = file count but findings are per-(file, sub-type).
+# Per-file weighted failures are capped at 1.0 to match the file-based denominator.
+_FILE_BASED_DETECTORS = {"smells"}
 
 # Statuses that count as failures
 _LENIENT_FAILURES = {"open"}
@@ -59,20 +67,37 @@ def _detector_pass_rate(
 
     Returns (pass_rate, issue_count, weighted_failures).
     Zero potential -> (1.0, 0, 0.0).
+
+    For file-based detectors (potential = file count, multiple findings per file),
+    per-file weighted failures are capped at 1.0 to prevent unit mismatch.
     """
     if potential <= 0:
         return 1.0, 0, 0.0
 
     failure_set = _STRICT_FAILURES if strict else _LENIENT_FAILURES
-    weighted_failures = 0.0
     issue_count = 0
-    for f in findings.values():
-        if f.get("detector") != detector:
-            continue
-        if f["status"] in failure_set:
-            weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
-            weighted_failures += weight
-            issue_count += 1
+
+    if detector in _FILE_BASED_DETECTORS:
+        # Group by file, cap per-file weight at 1.0
+        by_file: dict[str, float] = {}
+        for f in findings.values():
+            if f.get("detector") != detector:
+                continue
+            if f["status"] in failure_set:
+                weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
+                file_key = f.get("file", "")
+                by_file[file_key] = by_file.get(file_key, 0) + weight
+                issue_count += 1
+        weighted_failures = sum(min(1.0, w) for w in by_file.values())
+    else:
+        weighted_failures = 0.0
+        for f in findings.values():
+            if f.get("detector") != detector:
+                continue
+            if f["status"] in failure_set:
+                weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
+                weighted_failures += weight
+                issue_count += 1
 
     pass_rate = max(0.0, (potential - weighted_failures) / potential)
     return pass_rate, issue_count, weighted_failures
@@ -129,7 +154,11 @@ def compute_dimension_scores(
 
 
 def compute_objective_score(dimension_scores: dict) -> float:
-    """Tier-weighted average of dimension scores."""
+    """Tier-weighted average of dimension scores, dampened by sample size.
+
+    Dimensions with fewer than MIN_SAMPLE checks get proportionally reduced
+    weight, preventing small-sample dimensions from swinging the overall score.
+    """
     if not dimension_scores:
         return 100.0
 
@@ -138,8 +167,11 @@ def compute_objective_score(dimension_scores: dict) -> float:
     for name, data in dimension_scores.items():
         tier = data["tier"]
         w = TIER_WEIGHTS.get(tier, 2)
-        weighted_sum += data["score"] * w
-        weight_total += w
+        # Dampen weight for small-sample dimensions
+        sample_factor = min(1.0, data.get("checks", 0) / MIN_SAMPLE)
+        effective_weight = w * sample_factor
+        weighted_sum += data["score"] * effective_weight
+        weight_total += effective_weight
 
     if weight_total == 0:
         return 100.0

@@ -19,14 +19,9 @@ def cmd_detect(args):
         lang = get_lang("typescript")
 
     # Validate detector name
-    if lang.detector_names and detector not in lang.detector_names:
-        print(c(f"Unknown detector for {lang.name}: {detector}", "red"))
-        print(f"  Available: {', '.join(sorted(lang.detector_names))}")
-        sys.exit(1)
-
-    # Check for language-specific command
     if detector not in lang.detect_commands:
-        print(c(f"No command registered for {lang.name}:{detector}", "red"))
+        print(c(f"Unknown detector for {lang.name}: {detector}", "red"))
+        print(f"  Available: {', '.join(sorted(lang.detect_commands))}")
         sys.exit(1)
 
     # Set default thresholds for detectors that expect them

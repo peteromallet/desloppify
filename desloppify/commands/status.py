@@ -63,6 +63,13 @@ def cmd_status(args):
                 f"Last scan: {state.get('last_scan', 'never')}", "dim"))
     else:
         print(c(f"  Scans: {state.get('scan_count', 0)} | Last: {state.get('last_scan', 'never')}", "dim"))
+
+    # Completeness indicator
+    completeness = state.get("scan_completeness", {})
+    incomplete = [lang for lang, s in completeness.items() if s != "full"]
+    if incomplete:
+        print(c(f"  * Incomplete scan ({', '.join(incomplete)} — slow phases skipped)", "yellow"))
+
     print(c("  " + "─" * 60, "dim"))
 
     # Dimension table (when available)
@@ -112,14 +119,14 @@ def cmd_status(args):
 
 
 def _show_dimension_table(dim_scores: dict):
-    """Show dimension health table with progress bars."""
+    """Show dimension health table with dual scores and progress bars."""
     from ..scoring import DIMENSIONS
 
     print()
     bar_len = 20
     # Header
-    print(c(f"  {'Dimension':<22} {'Checks':>7}  {'Pass':>6}  {'Bar':<{bar_len+2}}  {'Tier'}", "dim"))
-    print(c("  " + "─" * 66, "dim"))
+    print(c(f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len+2}} {'Tier'}", "dim"))
+    print(c("  " + "─" * 76, "dim"))
 
     # Find lowest score for focus arrow
     lowest_name = None
@@ -135,6 +142,7 @@ def _show_dimension_table(dim_scores: dict):
         if not ds:
             continue
         score_val = ds["score"]
+        strict_val = ds.get("strict", score_val)
         checks = ds["checks"]
 
         filled = round(score_val / 100 * bar_len)
@@ -147,7 +155,7 @@ def _show_dimension_table(dim_scores: dict):
 
         focus = c(" ←", "yellow") if dim.name == lowest_name else "  "
         checks_str = f"{checks:>7,}"
-        print(f"  {dim.name:<22} {checks_str}  {score_val:5.1f}%  {bar}  T{dim.tier}{focus}")
+        print(f"  {dim.name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{dim.tier}{focus}")
 
     print()
 

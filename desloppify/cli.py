@@ -173,8 +173,8 @@ def create_parser() -> argparse.ArgumentParser:
                           help="LOC threshold (large) or similarity (dupes)")
     p_detect.add_argument("--file", type=str, default=None, help="Show deps for specific file")
 
-    p_move = sub.add_parser("move", help="Move a file and update all import references")
-    p_move.add_argument("source", type=str, help="File to move (relative to project root)")
+    p_move = sub.add_parser("move", help="Move a file or directory and update all import references")
+    p_move.add_argument("source", type=str, help="File or directory to move (relative to project root)")
     p_move.add_argument("dest", type=str, help="Destination path (file or directory)")
     p_move.add_argument("--dry-run", action="store_true", help="Show changes without modifying files")
 
