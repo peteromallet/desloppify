@@ -147,7 +147,7 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
 
     # --- Title: centered between inner frame top and first rule ---
     rule_y = _s(40)
-    title = "DESLOPPIFY"
+    title = "DESLOPPIFY SCORE"
     tw = draw.textlength(title, font=font_title)
     title_bbox = draw.textbbox((0, 0), title, font=font_title)
     title_h = title_bbox[3] - title_bbox[1]
@@ -181,7 +181,7 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
                    strict_val_bbox[3] - strict_val_bbox[1])
 
     # Total content height: score + gap + strict line
-    content_gap = _s(4)
+    content_gap = _s(8)
     total_content_h = score_h + content_gap + strict_h
     panel_mid = (panel_top + panel_bot) // 2
     content_top = panel_mid - total_content_h // 2
@@ -237,16 +237,26 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     draw.rectangle((col_name, line_y, table_x2 - _s(12), line_y), fill=BORDER)
 
     # --- Dimension rows with alternating tint ---
-    y = line_y + rows_gap
+    # Measure actual row text height for vertical centering within bands
+    sample_bbox = draw.textbbox((0, 0), "Xg", font=font_row)
+    row_text_h = sample_bbox[3] - sample_bbox[1]
+    row_text_offset = sample_bbox[1]  # top bearing
+
+    y_band = line_y + rows_gap
     for i, (name, data) in enumerate(active_dims):
+        band_top = y_band
+        band_bot = y_band + row_h
+        # Alternating background — full band height
         if i % 2 == 1:
-            draw.rectangle((table_x1 + 1, y - _s(1), table_x2 - 1, y + row_h - _s(3)), fill=BG_ROW_ALT)
+            draw.rectangle((table_x1 + 1, band_top, table_x2 - 1, band_bot), fill=BG_ROW_ALT)
+        # Center text vertically within band
+        text_y = band_top + (row_h - row_text_h) // 2 - row_text_offset
         score = data.get("score", 100)
         strict = data.get("strict", score)
-        draw.text((col_name, y), name, fill=TEXT, font=font_row)
-        draw.text((col_health, y), f"{score:.1f}%", fill=_score_color(score), font=font_row)
-        draw.text((col_strict, y), f"{strict:.1f}%", fill=_score_color(strict, muted=True), font=font_row)
-        y += row_h
+        draw.text((col_name, text_y), name, fill=TEXT, font=font_row)
+        draw.text((col_health, text_y), f"{score:.1f}%", fill=_score_color(score), font=font_row)
+        draw.text((col_strict, text_y), f"{strict:.1f}%", fill=_score_color(strict, muted=True), font=font_row)
+        y_band += row_h
 
     # --- Footer: vertically centered between table bottom and inner frame ---
     footer = "github.com/peteromallet/desloppify"
