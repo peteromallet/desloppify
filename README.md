@@ -1,6 +1,6 @@
 # Desloppify - make your codebase 🤌
 
-Codebase health scanner. Detects cruft (dead code, duplication, complexity, smells), tracks findings across scans, auto-fixes mechanical issues, reports a weighted score. TypeScript/React and Python out of the box — [add your own language](#adding-a-language) with one directory.
+Codebase health scanner. Detects cruft (dead code, duplication, complexity, smells), tracks findings across scans, auto-fixes mechanical issues, reports a weighted score. TypeScript/React and Python out of the box, but you can get your agent to add any language.
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo:
 
