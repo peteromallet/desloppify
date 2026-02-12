@@ -2,26 +2,27 @@
 
 import fnmatch
 import json
+import os
+import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .utils import PROJECT_ROOT, rel
+from .utils import PROJECT_ROOT, rel, matches_exclusion
 
 STATE_DIR = PROJECT_ROOT / ".desloppify"
 STATE_FILE = STATE_DIR / "state.json"
+
+CURRENT_VERSION = 1
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def load_state(path: Path | None = None) -> dict:
-    """Load state from disk, or return empty state."""
-    p = path or STATE_FILE
-    if p.exists():
-        return json.loads(p.read_text())
+def _empty_state() -> dict:
     return {
-        "version": 1,
+        "version": CURRENT_VERSION,
         "created": _now(),
         "last_scan": None,
         "scan_count": 0,
@@ -32,12 +33,87 @@ def load_state(path: Path | None = None) -> dict:
     }
 
 
+def load_state(path: Path | None = None) -> dict:
+    """Load state from disk, or return empty state.
+
+    Handles corruption gracefully: tries backup, then starts fresh.
+    """
+    p = path or STATE_FILE
+    if not p.exists():
+        return _empty_state()
+
+    try:
+        data = json.loads(p.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        # Try backup
+        backup = p.with_suffix(".json.bak")
+        if backup.exists():
+            try:
+                data = json.loads(backup.read_text())
+                print(f"  \u26a0 State file corrupted ({e}), loaded from backup.", file=sys.stderr)
+                return data
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+        print(f"  \u26a0 State file corrupted ({e}). Starting fresh.", file=sys.stderr)
+        try:
+            p.rename(p.with_suffix(".json.corrupted"))
+        except OSError:
+            pass
+        return _empty_state()
+
+    # Version check
+    version = data.get("version", 1)
+    if version > CURRENT_VERSION:
+        print(f"  \u26a0 State file version {version} is newer than supported ({CURRENT_VERSION}). "
+              f"Some features may not work correctly.", file=sys.stderr)
+    return data
+
+
+def _json_default(obj):
+    """JSON serializer that handles known types and rejects unknowns."""
+    if isinstance(obj, set):
+        return sorted(obj)
+    if isinstance(obj, Path):
+        return str(obj)
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable: {obj!r}")
+
+
 def save_state(state: dict, path: Path | None = None):
-    """Recompute stats/score and save to disk."""
+    """Recompute stats/score and save to disk atomically."""
     _recompute_stats(state)
     p = path or STATE_FILE
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(state, indent=2, default=str) + "\n")
+
+    content = json.dumps(state, indent=2, default=_json_default) + "\n"
+
+    # Atomic write: temp file + rename
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+        try:
+            os.write(fd, content.encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+        # Keep a backup of the previous state
+        if p.exists():
+            backup = p.with_suffix(".json.bak")
+            try:
+                import shutil
+                shutil.copy2(str(p), str(backup))
+            except OSError:
+                pass
+
+        os.replace(tmp_path, str(p))
+    except OSError:
+        # Fallback to direct write if atomic write fails
+        try:
+            os.unlink(tmp_path)
+        except (OSError, UnboundLocalError):
+            pass
+        p.write_text(content)
 
 
 # Structural issues (T3/T4) weigh more than mechanical fixes (T1/T2)
@@ -152,8 +228,18 @@ def make_finding(detector: str, file: str, name: str, *,
 
 def _find_suspect_detectors(
     existing: dict, current_by_detector: dict[str, int], force_resolve: bool,
+    ran_detectors: set[str] | None = None,
 ) -> set[str]:
-    """Detectors that had >=5 open findings but now returned zero (likely transient failure)."""
+    """Detectors that had open findings but didn't actually run this scan.
+
+    A detector is suspect only if:
+    1. It had open findings before
+    2. It returned 0 findings now
+    3. It's NOT in ran_detectors (i.e., it didn't run — tool missing, skipped, errored)
+
+    If ran_detectors is provided (from potentials), a 0-finding result from a
+    detector that DID run is trusted — the user likely fixed everything.
+    """
     if force_resolve:
         return set()
     prev: dict[str, int] = {}
@@ -161,7 +247,18 @@ def _find_suspect_detectors(
         if f["status"] == "open":
             det = f.get("detector", "unknown")
             prev[det] = prev.get(det, 0) + 1
-    return {d for d, n in prev.items() if n >= 5 and current_by_detector.get(d, 0) == 0}
+
+    suspect = set()
+    for det, n in prev.items():
+        if current_by_detector.get(det, 0) > 0:
+            continue  # Detector produced findings — not suspect
+        if ran_detectors is not None and det in ran_detectors:
+            continue  # Detector ran and found nothing — legitimate
+        # Detector had findings before, returned 0 now, and didn't appear in
+        # potentials. Only flag if it had a meaningful number of findings.
+        if n >= 3:
+            suspect.add(det)
+    return suspect
 
 
 def _auto_resolve_disappeared(
@@ -178,7 +275,7 @@ def _auto_resolve_disappeared(
             skip_lang += 1; continue
         if scan_path and not old["file"].startswith(scan_path.rstrip("/") + "/") and old["file"] != scan_path:
             skip_path += 1; continue
-        if exclude and any(ex in old["file"] for ex in exclude):
+        if exclude and any(matches_exclusion(old["file"], ex) for ex in exclude):
             continue
         if old.get("detector", "unknown") in suspect_detectors:
             continue
@@ -212,6 +309,8 @@ def _upsert_findings(
             old = existing[fid]
             old.update(last_seen=now, tier=f["tier"], confidence=f["confidence"],
                        summary=f["summary"], detail=f.get("detail", {}))
+            if "zone" in f:
+                old["zone"] = f["zone"]
             if lang and not old.get("lang"):
                 old["lang"] = lang
             if old["status"] in ("fixed", "auto_resolved"):
@@ -249,8 +348,10 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     ignore = state.get("config", {}).get("ignore", [])
     current_ids, new_count, reopened_count, current_by_detector = _upsert_findings(
         existing, current_findings, ignore, now, lang=lang)
+    # Detectors that appear in potentials actually ran — trust their 0-finding results
+    ran_detectors = set(potentials.keys()) if potentials else None
     suspect_detectors = _find_suspect_detectors(
-        existing, current_by_detector, force_resolve)
+        existing, current_by_detector, force_resolve, ran_detectors)
     auto_resolved, skipped_lang, skipped_path = _auto_resolve_disappeared(
         existing, current_ids, suspect_detectors, now,
         lang=lang, scan_path=scan_path, exclude=exclude)
@@ -260,6 +361,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     history = state.setdefault("scan_history", [])
     history.append({
         "timestamp": now,
+        "lang": lang,
         "objective_strict": state.get("objective_strict"),
         "objective_score": state.get("objective_score"),
         "open": state["stats"]["open"],

@@ -88,6 +88,10 @@ class LangConfig:
     large_threshold: int = 500
     complexity_threshold: int = 15
 
+    # Zone classification
+    zone_rules: list = field(default_factory=list)
+    _zone_map: object = field(default=None, repr=False)  # FileZoneMap, set at scan time
+
 
 def make_unused_findings(entries: list[dict], stderr_fn) -> list[dict]:
     """Transform raw unused-detector entries into normalized findings.
@@ -108,31 +112,42 @@ def make_unused_findings(entries: list[dict], stderr_fn) -> list[dict]:
 
 
 def make_dupe_findings(entries: list[dict], stderr_fn) -> list[dict]:
-    """Transform raw duplicate-detector entries into normalized findings.
+    """Transform clustered duplicate entries into normalized findings.
 
-    Shared by both Python and TypeScript dupes phases.
+    Each entry represents a cluster of similar functions. One finding per cluster.
     """
     results = []
     for e in entries:
         a, b = e["fn_a"], e["fn_b"]
-        if a["loc"] < 8 and b["loc"] < 8:
+        if a["loc"] < 10 and b["loc"] < 10:
             continue
+        cluster_size = e.get("cluster_size", 2)
         pair = sorted([(a["file"], a["name"]), (b["file"], b["name"])])
         name = f"{pair[0][1]}::{rel(pair[1][0])}::{pair[1][1]}"
         tier = 2 if e["kind"] == "exact" else 3
-        conf = "high" if e["kind"] == "exact" else "medium"
+        conf = "high" if e["kind"] == "exact" else "low"
+        kind_label = "Exact" if e["kind"] == "exact" else "Near"
+        if cluster_size > 2:
+            summary = (f"{kind_label} dupe cluster ({cluster_size} functions, "
+                       f"{e['similarity']:.0%} similar): "
+                       f"{a['name']} ({rel(a['file'])}:{a['line']}), "
+                       f"{b['name']} ({rel(b['file'])}:{b['line']}), ...")
+        else:
+            summary = (f"{kind_label} dupe: "
+                       f"{a['name']} ({rel(a['file'])}:{a['line']}) <-> "
+                       f"{b['name']} ({rel(b['file'])}:{b['line']}) [{e['similarity']:.0%}]")
         results.append(make_finding(
             "dupes", pair[0][0], name,
             tier=tier, confidence=conf,
-            summary=f"{'Exact' if e['kind'] == 'exact' else 'Near'} dupe: "
-                    f"{a['name']} ({rel(a['file'])}:{a['line']}) <-> "
-                    f"{b['name']} ({rel(b['file'])}:{b['line']}) [{e['similarity']:.0%}]",
+            summary=summary,
             detail={"fn_a": a, "fn_b": b,
-                    "similarity": e["similarity"], "kind": e["kind"]},
+                    "similarity": e["similarity"], "kind": e["kind"],
+                    "cluster_size": cluster_size,
+                    "cluster": e.get("cluster", [a, b])},
         ))
     suppressed = sum(1 for e in entries
-                     if e["fn_a"]["loc"] < 8 and e["fn_b"]["loc"] < 8)
-    stderr_fn(f"         {len(entries)} pairs, {suppressed} suppressed (<8 LOC)")
+                     if e["fn_a"]["loc"] < 10 and e["fn_b"]["loc"] < 10)
+    stderr_fn(f"         {len(entries)} clusters, {suppressed} suppressed (<10 LOC)")
     return results
 
 
@@ -304,10 +319,25 @@ def make_smell_findings(entries: list[dict], stderr_fn) -> list[dict]:
 
 
 def phase_dupes(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    """Shared phase runner: detect duplicate functions via lang.extract_functions."""
+    """Shared phase runner: detect duplicate functions via lang.extract_functions.
+
+    When a zone map is available, filters out functions from zone-excluded files
+    before the O(n^2) comparison to avoid test/config/generated false positives.
+    """
     from ..detectors.dupes import detect_duplicates
     from ..utils import log
     functions = lang.extract_functions(path)
+
+    # Filter out functions from zone-excluded files
+    if lang._zone_map is not None:
+        from ..zones import EXCLUDED_ZONES
+        before = len(functions)
+        functions = [f for f in functions
+                     if lang._zone_map.get(getattr(f, "file", "")) not in EXCLUDED_ZONES]
+        excluded = before - len(functions)
+        if excluded:
+            log(f"         zones: {excluded} functions excluded (non-production)")
+
     entries, total_functions = detect_duplicates(functions)
     findings = make_dupe_findings(entries, log)
     return findings, {"dupes": total_functions}

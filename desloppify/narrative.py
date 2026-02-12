@@ -45,8 +45,8 @@ DETECTOR_TOOLS = {
                    "guidance": "align to single pattern across the codebase"},
 }
 
-# Structural sub-detectors that merge under "structural"
-_STRUCTURAL_MERGE = {"large", "complexity", "gods", "concerns"}
+# Structural sub-detectors that merge under "structural" — shared constant
+STRUCTURAL_MERGE = {"large", "complexity", "gods", "concerns"}
 
 
 def _count_open_by_detector(findings: dict) -> dict[str, int]:
@@ -56,7 +56,7 @@ def _count_open_by_detector(findings: dict) -> dict[str, int]:
         if f["status"] != "open":
             continue
         det = f.get("detector", "unknown")
-        if det in _STRUCTURAL_MERGE:
+        if det in STRUCTURAL_MERGE:
             det = "structural"
         by_det[det] = by_det.get(det, 0) + 1
     return by_det
@@ -75,7 +75,11 @@ def compute_narrative(state: dict, *, diff: dict | None = None,
         lang: Language name (e.g. "python", "typescript").
         command: The command that triggered this (e.g. "scan", "fix", "resolve").
     """
-    history = state.get("scan_history", [])
+    raw_history = state.get("scan_history", [])
+    # Filter history to current language to avoid mixing trajectories.
+    # Include entries without a lang field (pre-date this feature) for backward compat.
+    history = ([h for h in raw_history if h.get("lang") in (lang, None)]
+               if lang else raw_history)
     dim_scores = state.get("dimension_scores", {})
     stats = state.get("stats", {})
     obj_strict = state.get("objective_strict")
@@ -232,7 +236,7 @@ def _finding_in_dimension(finding: dict, dim_name: str, dim_scores: dict) -> boo
     """Check if a finding's detector belongs to a dimension."""
     from .scoring import DIMENSIONS
     det = finding.get("detector", "")
-    if det in _STRUCTURAL_MERGE:
+    if det in STRUCTURAL_MERGE:
         det = "structural"
     for dim in DIMENSIONS:
         if dim.name == dim_name and det in dim.detectors:
@@ -533,23 +537,35 @@ def _compute_headline(phase: str, dimensions: dict, debt: dict,
             return f"First scan complete. {open_count} open findings across {dims} dimensions."
         return f"First scan complete. {open_count} findings detected."
 
-    # Regression
+    # Regression — acknowledge that drops after fixes are normal
     if phase == "regression" and len(history) >= 2:
         prev = history[-2].get("objective_strict")
         curr = history[-1].get("objective_strict")
         if prev is not None and curr is not None:
             drop = round(prev - curr, 1)
-            return f"Score dropped {drop} pts — check for cascading effects from recent fixes."
+            return (f"Score shifted {drop} pts — this is normal after structural changes. "
+                    f"Rescan after your next fix to see the real trend.")
 
-    # Stagnation
+    # Stagnation — suggest which dimension to focus on
     if phase == "stagnation":
         if obj_strict is not None:
             stuck_scans = min(len(history), 5)
             wontfix = debt.get("wontfix_count", 0)
+            # Point to the specific dimension dragging things down
+            lowest_dims = dimensions.get("lowest_dimensions", [])
+            if lowest_dims:
+                dim = lowest_dims[0]
+                if wontfix > 0:
+                    return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+                            f"{dim['name']} ({dim['strict']}%) is where the breakthrough is. "
+                            f"{wontfix} wontfix items may also be worth revisiting.")
+                return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+                        f"{dim['name']} ({dim['strict']}%) is where the breakthrough is.")
             if wontfix > 0:
-                return (f"Score stuck at {obj_strict:.1f} for {stuck_scans} scans. "
+                return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
                         f"{wontfix} wontfix items — revisit?")
-            return f"Score stuck at {obj_strict:.1f} for {stuck_scans} scans. Try a different approach."
+            return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+                    f"Try tackling a different dimension.")
 
     # Leverage point (lowest dimension with biggest impact)
     lowest = dimensions.get("lowest_dimensions", [])
@@ -570,17 +586,17 @@ def _compute_headline(phase: str, dimensions: dict, debt: dict,
     if phase == "maintenance":
         return f"Health {obj_strict:.1f}/100 — maintenance mode. Watch for regressions."
 
-    # Middle grind fallback — always give something actionable
+    # Middle grind fallback — point toward next item
     if phase == "middle_grind":
         open_count = stats.get("open", 0)
         if lowest:
             top = lowest[0]
-            return (f"{open_count} findings open. Focus on {top['name']} "
-                    f"({top['strict']}%) — {top['issues']} items to clear.")
+            return (f"{open_count} findings open. {top['name']} ({top['strict']}%) "
+                    f"needs attention — run `desloppify next` to start.")
         if open_count > 0:
             return f"{open_count} findings open. Run `desloppify next` for the highest-priority item."
 
-    # Early momentum fallback
+    # Early momentum fallback — celebrate trajectory
     if phase == "early_momentum" and obj_strict is not None:
         open_count = stats.get("open", 0)
         return f"Score {obj_strict:.1f}/100 with {open_count} findings open. Keep the momentum going."
@@ -620,15 +636,46 @@ def _compute_badge_status() -> dict:
     }
 
 
+# ── FP rate tracking ──────────────────────────────────────
+
+def _compute_fp_rates(findings: dict) -> dict[tuple[str, str], float]:
+    """Compute false_positive rate per (detector, zone) from historical findings.
+
+    Returns rates only for combinations with >= 5 total findings and FP rate > 0.
+    """
+    counts: dict[tuple[str, str], dict[str, int]] = {}
+    for f in findings.values():
+        det = f.get("detector", "unknown")
+        if det in STRUCTURAL_MERGE:
+            det = "structural"
+        zone = f.get("zone", "production")
+        key = (det, zone)
+        if key not in counts:
+            counts[key] = {"total": 0, "fp": 0}
+        counts[key]["total"] += 1
+        if f.get("status") == "false_positive":
+            counts[key]["fp"] += 1
+
+    rates = {}
+    for key, c in counts.items():
+        if c["total"] >= 5 and c["fp"] > 0:
+            rates[key] = c["fp"] / c["total"]
+    return rates
+
+
 # ── Contextual reminders ─────────────────────────────────
+
+_REMINDER_DECAY_THRESHOLD = 3  # Suppress after this many occurrences
+
 
 def _compute_reminders(state: dict, lang: str | None,
                        phase: str, debt: dict, actions: list[dict],
                        dimensions: dict, badge: dict,
                        command: str | None) -> list[dict]:
-    """Compute context-specific reminders that should be surfaced every time."""
+    """Compute context-specific reminders, suppressing those shown too many times."""
     reminders = []
     obj_strict = state.get("objective_strict")
+    reminder_history = state.get("reminder_history", {})
 
     # 1. Auto-fixers available
     if lang != "python":
@@ -669,11 +716,18 @@ def _compute_reminders(state: dict, lang: str | None,
             "command": "desloppify show --status wontfix",
         })
 
-    # 5. Stagnant dimensions
+    # 5. Stagnant dimensions — be specific about what to try
     for dim in dimensions.get("stagnant_dimensions", []):
+        strict = dim.get("strict", 0)
+        if strict >= 99:
+            msg = (f"{dim['name']} has been at {strict}% for {dim['stuck_scans']} scans. "
+                   f"The remaining items may be worth marking as wontfix if they're intentional.")
+        else:
+            msg = (f"{dim['name']} has been stuck at {strict}% for {dim['stuck_scans']} scans. "
+                   f"Try tackling it from a different angle — run `desloppify next` to find the right entry point.")
         reminders.append({
             "type": "stagnant_nudge",
-            "message": f"{dim['name']} has been stuck for {dim['stuck_scans']} scans. Try a different approach.",
+            "message": msg,
             "command": None,
         })
 
@@ -685,4 +739,45 @@ def _compute_reminders(state: dict, lang: str | None,
             "command": None,
         })
 
-    return reminders
+    # 7. Zone classification awareness (reminder decay handles repetition)
+    zone_dist = state.get("zone_distribution")
+    if zone_dist:
+        non_prod = sum(v for k, v in zone_dist.items() if k != "production")
+        if non_prod > 0:
+            total = sum(zone_dist.values())
+            parts = [f"{v} {k}" for k, v in sorted(zone_dist.items())
+                     if k != "production" and v > 0]
+            reminders.append({
+                "type": "zone_classification",
+                "message": (f"{non_prod} of {total} files classified as non-production "
+                            f"({', '.join(parts)}). "
+                            f"Override with `desloppify zone set <file> production` "
+                            f"if any are misclassified."),
+                "command": "desloppify zone show",
+            })
+
+    # 8. Zone-aware FP rate calibration reminders
+    fp_rates = _compute_fp_rates(state.get("findings", {}))
+    for (detector, zone), rate in fp_rates.items():
+        if rate > 0.3:
+            pct = round(rate * 100)
+            reminders.append({
+                "type": f"fp_calibration_{detector}_{zone}",
+                "message": (f"{pct}% of {detector} findings in {zone} zone are false positives. "
+                            f"Consider reviewing detection rules for {zone} files."),
+                "command": None,
+            })
+
+    # Apply decay: suppress reminders shown >= threshold times
+    filtered = []
+    for r in reminders:
+        count = reminder_history.get(r["type"], 0)
+        if count < _REMINDER_DECAY_THRESHOLD:
+            filtered.append(r)
+
+    # Update reminder history in state (counts will persist across commands)
+    for r in filtered:
+        reminder_history[r["type"]] = reminder_history.get(r["type"], 0) + 1
+    state["reminder_history"] = reminder_history
+
+    return filtered
