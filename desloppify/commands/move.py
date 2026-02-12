@@ -51,13 +51,17 @@ def _dedup(replacements: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def _has_exact_module(line: str, module: str) -> bool:
-    """Check if a Python import line references this exact module (not a child)."""
-    return bool(re.search(rf'\b{re.escape(module)}\b', line))
+    """Check if a Python import line references this exact module (not a child).
+
+    Uses lookaround instead of \\b because \\b treats '.' as a word boundary,
+    causing 'source.foo' to falsely match inside 'source.foo.bar'.
+    """
+    return bool(re.search(rf'(?<!\w){re.escape(module)}(?![\w.])', line))
 
 
 def _replace_exact_module(line: str, old_module: str, new_module: str) -> str:
     """Replace an exact module reference in a Python import line."""
-    return re.sub(rf'\b{re.escape(old_module)}\b', new_module, line)
+    return re.sub(rf'(?<!\w){re.escape(old_module)}(?![\w.])', new_module, line)
 
 
 # ── TypeScript import specifier computation ───────────────
@@ -384,45 +388,34 @@ def _compute_py_relative_import(from_file: str, to_file: str) -> str | None:
 # ── Main command ──────────────────────────────────────────
 
 
-def cmd_move(args):
-    """Move a file and update all import references."""
-    source_rel = args.source
-    source_abs = resolve_path(source_rel)
-
-    if not Path(source_abs).is_file():
-        print(c(f"Source not found: {rel(source_abs)}", "red"), file=sys.stderr)
-        sys.exit(1)
-
-    dest_abs = _resolve_dest(source_rel, args.dest)
-
-    if Path(dest_abs).exists():
-        print(c(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
-        sys.exit(1)
-
-    dry_run = getattr(args, "dry_run", False)
-
-    # Detect language from file extension, fall back to --lang
+def _resolve_lang_for_move(source_abs: str, args):
+    """Resolve language for a move operation, from extension or --lang flag."""
     lang_name = _detect_lang_from_ext(source_abs)
     if not lang_name:
         from ..cli import _resolve_lang
         lang = _resolve_lang(args)
         if lang:
             lang_name = lang.name
-    if not lang_name:
-        print(c("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py extension.", "red"),
-              file=sys.stderr)
-        sys.exit(1)
+    return lang_name
 
-    from ..lang import get_lang
-    lang = get_lang(lang_name)
 
-    # Use the language-specific default path for scanning.
-    # args.path may have been pre-resolved for a different language (e.g. src/ for TS
-    # when moving a Python file), so always use the auto-detected lang's default.
-    scan_path = Path(resolve_path(lang.default_src))
-    graph = lang.build_dep_graph(scan_path)
+def _detect_lang_from_dir(source_dir: str) -> str | None:
+    """Detect language from files in a directory."""
+    source_path = Path(source_dir)
+    for f in source_path.rglob("*"):
+        if f.is_file():
+            lang = _detect_lang_from_ext(str(f))
+            if lang:
+                return lang
+    return None
 
-    # Compute replacements based on language
+
+def _move_single_file(source_abs: str, dest_abs: str, lang_name: str, graph: dict,
+                      dry_run: bool) -> tuple[dict, list]:
+    """Compute and optionally apply replacements for a single file move.
+
+    Returns (importer_changes, self_changes).
+    """
     if lang_name == "typescript":
         importer_changes = _find_ts_replacements(source_abs, dest_abs, graph)
         self_changes = _find_ts_self_replacements(source_abs, dest_abs, graph)
@@ -430,14 +423,18 @@ def cmd_move(args):
         importer_changes = _find_py_replacements(source_abs, dest_abs, graph)
         self_changes = _find_py_self_replacements(source_abs, dest_abs, graph)
     else:
-        print(c(f"Move not yet supported for language: {lang_name}", "red"), file=sys.stderr)
-        sys.exit(1)
+        return {}, []
 
-    # Report
+    return importer_changes, self_changes
+
+
+def _report_changes(source_label: str, dest_label: str, importer_changes: dict,
+                    self_changes: list):
+    """Print a summary of move changes."""
     total_files = len(importer_changes) + (1 if self_changes else 0)
     total_replacements = sum(len(r) for r in importer_changes.values()) + len(self_changes)
 
-    print(c(f"\n  Move: {rel(source_abs)} → {rel(dest_abs)}", "bold"))
+    print(c(f"\n  Move: {source_label} → {dest_label}", "bold"))
     print(c(f"  {total_replacements} import replacements across {total_files} files\n", "dim"))
 
     if self_changes:
@@ -458,23 +455,228 @@ def cmd_move(args):
         print(c("  No import references found — only the file will be moved.", "dim"))
         print()
 
-    if dry_run:
-        print(c("  Dry run — no files modified.", "yellow"))
-        return
 
-    # Execute: create dest directory, move file, apply replacements
+def _apply_changes(source_abs: str, dest_abs: str, importer_changes: dict,
+                   self_changes: list):
+    """Apply file move and import replacements."""
     Path(dest_abs).parent.mkdir(parents=True, exist_ok=True)
     shutil.move(source_abs, dest_abs)
 
-    # Apply self-import changes to the moved file (now at dest)
     if self_changes:
         content = Path(dest_abs).read_text()
         for old_str, new_str in self_changes:
             content = content.replace(old_str, new_str)
         Path(dest_abs).write_text(content)
 
-    # Apply importer changes
     for filepath, replacements in importer_changes.items():
+        content = Path(filepath).read_text()
+        for old_str, new_str in replacements:
+            content = content.replace(old_str, new_str)
+        Path(filepath).write_text(content)
+
+
+def cmd_move(args):
+    """Move a file or directory and update all import references."""
+    source_rel = args.source
+    source_abs = resolve_path(source_rel)
+    source_path = Path(source_abs)
+
+    if source_path.is_dir():
+        return _cmd_move_dir(args, source_abs)
+
+    if not source_path.is_file():
+        print(c(f"Source not found: {rel(source_abs)}", "red"), file=sys.stderr)
+        sys.exit(1)
+
+    dest_abs = _resolve_dest(source_rel, args.dest)
+
+    if Path(dest_abs).exists():
+        print(c(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
+        sys.exit(1)
+
+    dry_run = getattr(args, "dry_run", False)
+
+    lang_name = _resolve_lang_for_move(source_abs, args)
+    if not lang_name:
+        print(c("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py extension.", "red"),
+              file=sys.stderr)
+        sys.exit(1)
+
+    from ..lang import get_lang
+    lang = get_lang(lang_name)
+
+    scan_path = Path(resolve_path(lang.default_src))
+    graph = lang.build_dep_graph(scan_path)
+
+    importer_changes, self_changes = _move_single_file(
+        source_abs, dest_abs, lang_name, graph, dry_run)
+
+    _report_changes(rel(source_abs), rel(dest_abs), importer_changes, self_changes)
+
+    if dry_run:
+        print(c("  Dry run — no files modified.", "yellow"))
+        return
+
+    _apply_changes(source_abs, dest_abs, importer_changes, self_changes)
+
+    print(c("  Done.", "green"))
+    if lang_name == "typescript":
+        print(c("  Run `npx tsc --noEmit` to verify.", "dim"))
+    print()
+
+
+def _cmd_move_dir(args, source_abs: str):
+    """Move a directory (package) and update all import references."""
+    source_path = Path(source_abs)
+    dest_raw = args.dest
+    dest_abs = resolve_path(dest_raw)
+    dry_run = getattr(args, "dry_run", False)
+
+    if Path(dest_abs).exists():
+        print(c(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
+        sys.exit(1)
+
+    # Detect language from directory contents or --lang
+    lang_name = _detect_lang_from_dir(source_abs)
+    if not lang_name:
+        from ..cli import _resolve_lang
+        lang = _resolve_lang(args)
+        if lang:
+            lang_name = lang.name
+    if not lang_name:
+        print(c("Cannot detect language from directory contents. Use --lang.", "red"),
+              file=sys.stderr)
+        sys.exit(1)
+
+    from ..lang import get_lang
+    lang = get_lang(lang_name)
+
+    # Determine file extensions for the language
+    ext_map = {"python": [".py"], "typescript": [".ts", ".tsx"]}
+    extensions = ext_map.get(lang_name, [])
+
+    # Find all source files in the directory
+    source_files = []
+    for ext in extensions:
+        source_files.extend(source_path.rglob(f"*{ext}"))
+    source_files = sorted(str(f.resolve()) for f in source_files if f.is_file())
+
+    if not source_files:
+        print(c(f"No {lang_name} files found in {rel(source_abs)}", "yellow"), file=sys.stderr)
+        sys.exit(1)
+
+    # Build the dep graph once for all files
+    scan_path = Path(resolve_path(lang.default_src))
+    graph = lang.build_dep_graph(scan_path)
+
+    # Compute the file mapping: source_file -> dest_file
+    file_moves: list[tuple[str, str]] = []
+    for src_file in source_files:
+        # Compute relative path within the source directory
+        rel_in_dir = Path(src_file).relative_to(source_path)
+        dst_file = str(Path(dest_abs) / rel_in_dir)
+        file_moves.append((src_file, dst_file))
+
+    # Set of files being moved (to detect intra-package imports)
+    moving_files = {src for src, _ in file_moves}
+
+    # Compute all replacements for each file
+    all_importer_changes: dict[str, list[tuple[str, str]]] = {}
+    all_self_changes: dict[str, list[tuple[str, str]]] = {}
+
+    for src_file, dst_file in file_moves:
+        importer_changes, self_changes = _move_single_file(
+            src_file, dst_file, lang_name, graph, dry_run)
+
+        # Only keep importer changes from files OUTSIDE the moved directory.
+        # Files inside the directory that import each other will be handled by
+        # self-import changes, not importer changes.
+        for filepath, replacements in importer_changes.items():
+            if filepath in moving_files:
+                continue  # skip intra-package importers
+            if filepath in all_importer_changes:
+                existing = set(all_importer_changes[filepath])
+                all_importer_changes[filepath].extend(r for r in replacements if r not in existing)
+            else:
+                all_importer_changes[filepath] = list(replacements)
+
+        if self_changes:
+            # Filter self-changes: only keep imports pointing OUTSIDE the moved dir.
+            # Intra-package relative imports (from .foo, from .bar) stay the same
+            # because the files move together preserving their relative positions.
+            filtered_self = []
+            if lang_name == "python":
+                for old_str, new_str in self_changes:
+                    # Resolve what this import pointed to in the old location
+                    src_dir = Path(src_file).parent
+                    m = re.match(r"from\s+(\.+)(\w*(?:\.\w+)*)", old_str)
+                    if m:
+                        dots, remainder = m.group(1), m.group(2)
+                        resolved = _resolve_py_relative(src_dir, dots, remainder)
+                        if resolved and resolved in moving_files:
+                            continue  # intra-package import, skip
+                    filtered_self.append((old_str, new_str))
+            else:
+                filtered_self = self_changes
+
+            if filtered_self:
+                all_self_changes[src_file] = filtered_self
+
+    # Report summary — use trailing sep to avoid matching e.g. source/db_operations for source/db
+    source_prefix = source_abs + os.sep
+    external_changes = {k: v for k, v in all_importer_changes.items()
+                        if not k.startswith(source_prefix)}
+    total_files_affected = len(external_changes) + len(all_self_changes)
+    total_replacements = (sum(len(r) for r in external_changes.values()) +
+                          sum(len(r) for r in all_self_changes.values()))
+
+    print(c(f"\n  Move directory: {rel(source_abs)}/ → {rel(dest_abs)}/", "bold"))
+    print(c(f"  {len(file_moves)} files in package", "dim"))
+    print(c(f"  {total_replacements} import replacements across {total_files_affected} files\n", "dim"))
+
+    # Show self-import changes grouped by file
+    if all_self_changes:
+        print(c(f"  Own imports ({sum(len(v) for v in all_self_changes.values())} changes across "
+                f"{len(all_self_changes)} files):", "cyan"))
+        for src_file, changes in sorted(all_self_changes.items()):
+            print(f"    {rel(src_file)}:")
+            for old, new in changes:
+                print(f"      {old}  →  {new}")
+        print()
+
+    # Show importer changes (files outside the moved directory that reference it)
+    if external_changes:
+        print(c(f"  External importers ({len(external_changes)} files):", "cyan"))
+        for filepath, replacements in sorted(external_changes.items()):
+            print(f"    {rel(filepath)}:")
+            for old, new in replacements:
+                print(f"      {old}  →  {new}")
+        print()
+
+    if not external_changes and not all_self_changes:
+        print(c("  No import references found — only the directory will be moved.", "dim"))
+        print()
+
+    if dry_run:
+        print(c("  Dry run — no files modified.", "yellow"))
+        return
+
+    # Execute: move the entire directory at once
+    Path(dest_abs).parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(source_abs, dest_abs)
+
+    # Apply self-import changes to the moved files (now at dest)
+    for src_file, changes in all_self_changes.items():
+        # Compute the new location of the file
+        rel_in_dir = Path(src_file).relative_to(source_path)
+        dest_file = Path(dest_abs) / rel_in_dir
+        content = dest_file.read_text()
+        for old_str, new_str in changes:
+            content = content.replace(old_str, new_str)
+        dest_file.write_text(content)
+
+    # Apply importer changes to external files only
+    for filepath, replacements in external_changes.items():
         content = Path(filepath).read_text()
         for old_str, new_str in replacements:
             content = content.replace(old_str, new_str)

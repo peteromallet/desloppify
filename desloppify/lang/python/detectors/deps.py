@@ -33,7 +33,8 @@ def build_dep_graph(path: Path) -> dict:
         "imports": set(), "importers": set(), "deferred_imports": set(),
     })
 
-    from_re = re.compile(r"^from\s+(\.+\w*(?:\.\w+)*)\s+import\s+(.+)")
+    # Match both relative (from .foo import bar) and absolute (from foo import bar)
+    from_re = re.compile(r"^from\s+(\.+\w*(?:\.\w+)*|\w+(?:\.\w+)*)\s+import\s+(.+)")
     import_re = re.compile(r"^import\s+(\w+(?:\.\w+)*)")
 
     for line in stdout.splitlines():

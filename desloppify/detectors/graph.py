@@ -4,7 +4,9 @@ The graph structure is: {resolved_path: {"imports": set, "importers": set, "impo
 Language-specific modules build the graph; this module provides shared algorithms.
 """
 
-from ..utils import rel, resolve_path
+from pathlib import Path
+
+from ..utils import rel, resolve_path, PROJECT_ROOT
 
 
 def finalize_graph(graph: dict) -> dict:
@@ -17,7 +19,17 @@ def finalize_graph(graph: dict) -> dict:
 
     # Remove excluded nodes and clean up references
     if _extra_exclusions:
-        excluded_keys = {k for k in graph if any(ex in k for ex in _extra_exclusions)}
+        # Use relative paths for exclusion matching to avoid false positives
+        # when an exclude pattern (e.g. "Wan2GP") matches the project root
+        # directory name (e.g. "Headless-Wan2GP").
+        excluded_keys = set()
+        for k in graph:
+            try:
+                rel_k = str(Path(k).relative_to(PROJECT_ROOT))
+            except ValueError:
+                rel_k = k
+            if any(ex in rel_k for ex in _extra_exclusions):
+                excluded_keys.add(k)
         for k in excluded_keys:
             del graph[k]
         # Clean import/importer sets of references to removed nodes
