@@ -82,6 +82,32 @@ TS_SMELL_CHECKS = [
         "pattern": None,  # multi-line analysis
         "severity": "medium",
     },
+    {
+        "id": "hardcoded_url",
+        "label": "Hardcoded URL in source code",
+        "pattern": r"""(?:['\"])https?://[^\s'\"]+(?:['\"])""",
+        "severity": "medium",
+    },
+    {
+        "id": "todo_fixme",
+        "label": "TODO/FIXME/HACK comments",
+        "pattern": r"//\s*(?:TODO|FIXME|HACK|XXX)",
+        "severity": "low",
+    },
+    {
+        "id": "monster_function",
+        "label": "Monster function (>150 LOC)",
+        # Detected via brace-tracking
+        "pattern": None,
+        "severity": "high",
+    },
+    {
+        "id": "dead_function",
+        "label": "Dead function (body is empty/return-only)",
+        # Detected via brace-tracking
+        "pattern": None,
+        "severity": "medium",
+    },
 ]
 
 
@@ -122,6 +148,8 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
         _detect_empty_if_chains(filepath, lines, smell_counts)
         _detect_dead_useeffects(filepath, lines, smell_counts)
         _detect_swallowed_errors(filepath, content, lines, smell_counts)
+        _detect_monster_functions(filepath, lines, smell_counts)
+        _detect_dead_functions(filepath, lines, smell_counts)
 
     # Build summary entries sorted by severity then count
     severity_order = {"high": 0, "medium": 1, "low": 2}
@@ -421,4 +449,170 @@ def _detect_swallowed_errors(filepath: str, content: str, lines: list[str],
                 "file": filepath,
                 "line": line_no,
                 "content": lines[line_no - 1].strip()[:100] if line_no <= len(lines) else "",
+            })
+
+
+def _track_brace_body(lines: list[str], start_line: int, *, max_scan: int = 2000) -> int | None:
+    """Find the closing brace that matches the first opening brace from start_line.
+
+    Tracks brace depth with string-literal awareness (', ", `).
+    Returns the line index of the closing brace, or None if not found.
+    """
+    depth = 0
+    found_open = False
+    for j in range(start_line, min(start_line + max_scan, len(lines))):
+        in_str = None
+        prev_ch = ""
+        for ch in lines[j]:
+            if in_str:
+                if ch == in_str and prev_ch != "\\":
+                    in_str = None
+                prev_ch = ch
+                continue
+            if ch in "'\"`":
+                in_str = ch
+            elif ch == "{":
+                depth += 1
+                found_open = True
+            elif ch == "}":
+                depth -= 1
+                if found_open and depth == 0:
+                    return j
+            prev_ch = ch
+    return None
+
+
+def _find_function_start(line: str, next_lines: list[str]) -> str | None:
+    """Return the function name if this line starts a named function, else None.
+
+    Matches:
+    - function foo(...)
+    - export function foo(...)
+    - export default function foo(...)
+    - const foo = (...) => {
+    - const foo = async (...) => {
+    - const foo = function(...)
+
+    Skips interfaces, types, enums, classes.
+    """
+    stripped = line.strip()
+    if re.match(r"(?:export\s+)?(?:interface|type|enum|class)\s+", stripped):
+        return None
+
+    # function declaration
+    m = re.match(
+        r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(",
+        stripped,
+    )
+    if m:
+        return m.group(1)
+
+    # const/let/var assignment — need to verify it's actually a function
+    m = re.match(r"(?:export\s+)?(?:const|let|var)\s+(\w+)", stripped)
+    if not m:
+        return None
+    name = m.group(1)
+
+    # Look at what follows the = sign
+    combined = "\n".join([stripped] + [l.strip() for l in next_lines[:2]])
+    eq_pos = combined.find("=", m.end())
+    if eq_pos == -1:
+        return None
+    after_eq = combined[eq_pos + 1:].lstrip()
+
+    # Direct function: must start with (, async, or function keyword.
+    # Skips function calls like useMemo(...), useRef(...), React.memo(...) that
+    # may contain => in their arguments or type annotations.
+    if re.match(r"(?:async|function)\b", after_eq):
+        return name
+    if after_eq.startswith("("):
+        # Check that this ( ... ) is followed by => (arrow function params)
+        # not just a function call like someFunction(...)
+        brace_pos = combined.find("{", eq_pos)
+        segment = combined[eq_pos:brace_pos] if brace_pos != -1 else combined[eq_pos:]
+        if "=>" in segment:
+            return name
+    return None
+
+
+def _detect_monster_functions(filepath: str, lines: list[str],
+                              smell_counts: dict[str, list[dict]]):
+    """Find functions/components exceeding 150 LOC via brace-tracking.
+
+    Matches: function declarations, named arrow functions, and React components.
+    Skips: interfaces, types, enums, and objects/arrays.
+    """
+    for i, line in enumerate(lines):
+        name = _find_function_start(line, lines[i + 1:i + 3])
+        if not name:
+            continue
+
+        # Find opening brace on this or next few lines
+        brace_line = None
+        for k in range(i, min(i + 5, len(lines))):
+            if "{" in lines[k]:
+                brace_line = k
+                break
+        if brace_line is None:
+            continue
+
+        end_line = _track_brace_body(lines, brace_line, max_scan=2000)
+        if end_line is not None:
+            loc = end_line - i + 1
+            if loc > 150:
+                smell_counts["monster_function"].append({
+                    "file": filepath,
+                    "line": i + 1,
+                    "content": f"{name}() — {loc} LOC",
+                })
+
+
+def _detect_dead_functions(filepath: str, lines: list[str],
+                           smell_counts: dict[str, list[dict]]):
+    """Find functions with empty body or only return/return null.
+
+    Matches function declarations and named arrow functions.
+    Skips decorated functions (TS decorators on line above).
+    """
+    for i, line in enumerate(lines):
+        # Skip decorated functions
+        if i > 0 and lines[i - 1].strip().startswith("@"):
+            continue
+
+        name = _find_function_start(line, lines[i + 1:i + 3])
+        if not name:
+            continue
+
+        # Find opening brace
+        brace_line = None
+        for k in range(i, min(i + 5, len(lines))):
+            if "{" in lines[k]:
+                brace_line = k
+                break
+        if brace_line is None:
+            continue
+
+        end_line = _track_brace_body(lines, brace_line, max_scan=30)
+        if end_line is None:
+            continue
+
+        # Extract body between braces
+        body_text = "\n".join(lines[brace_line:end_line + 1])
+        first_brace = body_text.find("{")
+        last_brace = body_text.rfind("}")
+        if first_brace == -1 or last_brace == -1 or first_brace >= last_brace:
+            continue
+
+        body = body_text[first_brace + 1:last_brace]
+        # Strip comments
+        body_clean = re.sub(r"//[^\n]*", "", body)
+        body_clean = re.sub(r"/\*.*?\*/", "", body_clean, flags=re.DOTALL)
+        body_clean = body_clean.strip().rstrip(";")
+
+        if body_clean in ("", "return", "return null", "return undefined"):
+            label = body_clean or "empty"
+            smell_counts["dead_function"].append({
+                "file": filepath,
+                "line": i + 1,
+                "content": f"{name}() — body is {label}",
             })

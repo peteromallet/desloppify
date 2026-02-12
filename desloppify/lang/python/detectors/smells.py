@@ -1,5 +1,6 @@
 """Python code smell detection."""
 
+import ast
 import re
 from pathlib import Path
 
@@ -74,6 +75,40 @@ SMELL_CHECKS = [
         # Detected separately (multi-line)
         "pattern": None,
         "severity": "high",
+    },
+    {
+        "id": "hardcoded_url",
+        "label": "Hardcoded URL in source code",
+        "pattern": r"""(?:['"])https?://[^\s'"]+(?:['"])""",
+        "severity": "medium",
+    },
+    {
+        "id": "monster_function",
+        "label": "Monster function (>150 LOC)",
+        # Detected via AST
+        "pattern": None,
+        "severity": "high",
+    },
+    {
+        "id": "dead_function",
+        "label": "Dead function (body is only pass/return)",
+        # Detected via AST
+        "pattern": None,
+        "severity": "medium",
+    },
+    {
+        "id": "inline_class",
+        "label": "Class defined inside a function",
+        # Detected via AST
+        "pattern": None,
+        "severity": "medium",
+    },
+    {
+        "id": "deferred_import",
+        "label": "Function-level import (possible circular import workaround)",
+        # Detected via AST
+        "pattern": None,
+        "severity": "low",
     },
 ]
 
@@ -169,6 +204,9 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
 
         # Swallowed errors (except that only prints/logs)
         _detect_swallowed_errors(filepath, lines, smell_counts)
+
+        # AST-based detectors
+        _detect_ast_smells(filepath, content, smell_counts)
 
     severity_order = {"high": 0, "medium": 1, "low": 2}
     entries = []
@@ -266,3 +304,101 @@ def _detect_swallowed_errors(filepath: str, lines: list[str], smell_counts: dict
                 "line": i + 1,
                 "content": stripped[:100],
             })
+
+
+def _detect_ast_smells(filepath: str, content: str, smell_counts: dict[str, list]):
+    """Detect AST-based code smells: monster functions, dead functions, inline classes, deferred imports."""
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return
+
+    for node in ast.walk(tree):
+        # Monster function: >150 LOC
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if hasattr(node, "end_lineno") and node.end_lineno:
+                loc = node.end_lineno - node.lineno + 1
+                if loc > 150:
+                    smell_counts["monster_function"].append({
+                        "file": filepath,
+                        "line": node.lineno,
+                        "content": f"{node.name}() — {loc} LOC",
+                    })
+
+            # Dead function: body is only pass, return, or return None
+            body = node.body
+            # Skip if decorated (decorators often wrap functions)
+            if node.decorator_list:
+                pass
+            elif len(body) == 1:
+                stmt = body[0]
+                is_dead = False
+                if isinstance(stmt, ast.Pass):
+                    is_dead = True
+                elif isinstance(stmt, ast.Return):
+                    if stmt.value is None:
+                        is_dead = True
+                    elif isinstance(stmt.value, ast.Constant) and stmt.value.value is None:
+                        is_dead = True
+                elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, (ast.Constant, ast.JoinedStr)):
+                    # Body is just a docstring — also dead
+                    pass  # Not a smell — docstring-only stubs are legitimate
+                if is_dead:
+                    smell_counts["dead_function"].append({
+                        "file": filepath,
+                        "line": node.lineno,
+                        "content": f"{node.name}() — body is only {ast.dump(stmt)[:40]}",
+                    })
+            elif len(body) == 2:
+                # docstring + pass/return
+                first, second = body
+                if isinstance(first, ast.Expr) and isinstance(first.value, (ast.Constant, ast.JoinedStr)):
+                    if isinstance(second, ast.Pass):
+                        smell_counts["dead_function"].append({
+                            "file": filepath,
+                            "line": node.lineno,
+                            "content": f"{node.name}() — docstring + pass",
+                        })
+                    elif isinstance(second, ast.Return) and (
+                        second.value is None or
+                        (isinstance(second.value, ast.Constant) and second.value.value is None)
+                    ):
+                        smell_counts["dead_function"].append({
+                            "file": filepath,
+                            "line": node.lineno,
+                            "content": f"{node.name}() — docstring + return None",
+                        })
+
+            # Deferred imports inside functions
+            for child in ast.walk(node):
+                if isinstance(child, (ast.Import, ast.ImportFrom)):
+                    # Check it's directly inside this function (not a nested function)
+                    if child.lineno > node.lineno:
+                        # Skip TYPE_CHECKING imports and try/except ImportError
+                        module = ""
+                        if isinstance(child, ast.ImportFrom) and child.module:
+                            module = child.module
+                        # Skip typing imports and known-legitimate deferred patterns
+                        if module in ("typing", "typing_extensions", "__future__"):
+                            continue
+                        names = ", ".join(
+                            a.name for a in child.names[:3]
+                        )
+                        if len(child.names) > 3:
+                            names += f", +{len(child.names) - 3}"
+                        smell_counts["deferred_import"].append({
+                            "file": filepath,
+                            "line": child.lineno,
+                            "content": f"import {module or names} inside {node.name}()",
+                        })
+                        break  # Only flag once per function
+
+        # Inline class: ClassDef inside a function
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in node.body:
+                if isinstance(child, ast.ClassDef):
+                    smell_counts["inline_class"].append({
+                        "file": filepath,
+                        "line": child.lineno,
+                        "content": f"class {child.name} defined inside {node.name}()",
+                    })
