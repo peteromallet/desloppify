@@ -142,9 +142,18 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, diff=diff, lang=lang_name, command="scan")
 
-    # Show top action from narrative as the terminal suggestion
+    # Show strategy hint or top action as the terminal suggestion
+    strategy = narrative.get("strategy") or {}
+    hint = strategy.get("hint")
+    fixer_rec = (strategy.get("fixer_leverage") or {}).get("recommendation")
     actions = narrative.get("actions", [])
-    if actions:
+
+    if hint and (strategy.get("can_parallelize") or fixer_rec == "strong"):
+        print(c(f"  Strategy: {hint}", "cyan"))
+        if actions:
+            print(c(f"  Start with: `{actions[0]['command']}`", "dim"))
+        print()
+    elif actions:
         top = actions[0]
         print(c(f"  Suggested next: `{top['command']}` — {top['description']}", "cyan"))
         print()

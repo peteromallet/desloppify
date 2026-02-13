@@ -7,11 +7,16 @@ import pytest
 from desloppify.narrative import (
     STRUCTURAL_MERGE,
     _analyze_debt,
+    _compute_fixer_leverage,
     _compute_headline,
+    _compute_lanes,
     _compute_reminders,
+    _compute_strategy,
+    _compute_strategy_hint,
     _count_open_by_detector,
     _detect_milestone,
     _detect_phase,
+    _open_files_by_detector,
 )
 
 
@@ -998,3 +1003,381 @@ class TestComputeHeadline:
         assert result is not None
         assert "wontfix debt" in result
         assert "Organization" in result
+
+
+# ===================================================================
+# _open_files_by_detector
+# ===================================================================
+
+class TestOpenFilesByDetector:
+    def test_empty_findings(self):
+        assert _open_files_by_detector({}) == {}
+
+    def test_only_open_counted(self):
+        findings = _findings_dict(
+            _finding("unused", status="open", file="a.py"),
+            _finding("unused", status="resolved", file="b.py"),
+            _finding("unused", status="wontfix", file="c.py"),
+        )
+        result = _open_files_by_detector(findings)
+        assert result == {"unused": {"a.py"}}
+
+    def test_multiple_detectors(self):
+        findings = _findings_dict(
+            _finding("unused", file="a.py"),
+            _finding("logs", file="b.py"),
+        )
+        result = _open_files_by_detector(findings)
+        assert result == {"unused": {"a.py"}, "logs": {"b.py"}}
+
+    def test_structural_merge(self):
+        findings = _findings_dict(
+            _finding("large", file="big.py"),
+            _finding("complexity", file="complex.py"),
+        )
+        result = _open_files_by_detector(findings)
+        assert result == {"structural": {"big.py", "complex.py"}}
+
+    def test_dedup_same_file(self):
+        findings = _findings_dict(
+            _finding("unused", file="a.py"),
+            _finding("unused", file="a.py"),
+        )
+        result = _open_files_by_detector(findings)
+        assert result == {"unused": {"a.py"}}
+
+    def test_empty_file_excluded(self):
+        findings = _findings_dict(
+            _finding("unused", file=""),
+            _finding("unused", file="a.py"),
+        )
+        result = _open_files_by_detector(findings)
+        assert result == {"unused": {"a.py"}}
+
+
+# ===================================================================
+# _compute_fixer_leverage
+# ===================================================================
+
+class TestFixerLeverage:
+    def test_python_no_fixers(self):
+        result = _compute_fixer_leverage(
+            {"unused": 10}, [{"type": "auto_fix", "count": 10, "impact": 5.0}],
+            "middle_grind", "python",
+        )
+        assert result["recommendation"] == "none"
+
+    def test_no_auto_fix_findings(self):
+        result = _compute_fixer_leverage(
+            {"structural": 10}, [{"type": "refactor", "count": 10, "impact": 5.0}],
+            "middle_grind", "typescript",
+        )
+        assert result["recommendation"] == "none"
+        assert result["auto_fixable_count"] == 0
+
+    def test_high_coverage_strong(self):
+        result = _compute_fixer_leverage(
+            {"unused": 50, "logs": 10},
+            [{"type": "auto_fix", "count": 50, "impact": 8.0},
+             {"type": "refactor", "count": 10, "impact": 2.0}],
+            "middle_grind", "typescript",
+        )
+        assert result["recommendation"] == "strong"
+        assert result["coverage"] > 0.4
+
+    def test_high_impact_ratio_strong(self):
+        result = _compute_fixer_leverage(
+            {"unused": 5, "structural": 40},
+            [{"type": "auto_fix", "count": 5, "impact": 8.0},
+             {"type": "refactor", "count": 40, "impact": 2.0}],
+            "middle_grind", "typescript",
+        )
+        # impact_ratio = 8/10 = 0.8 > 0.3
+        assert result["recommendation"] == "strong"
+
+    def test_phase_boost_first_scan(self):
+        result = _compute_fixer_leverage(
+            {"unused": 10, "structural": 40},
+            [{"type": "auto_fix", "count": 10, "impact": 1.0},
+             {"type": "refactor", "count": 40, "impact": 5.0}],
+            "first_scan", "typescript",
+        )
+        # coverage = 10/50 = 0.2 > 0.15, phase is first_scan
+        assert result["recommendation"] == "strong"
+
+    def test_phase_boost_stagnation(self):
+        result = _compute_fixer_leverage(
+            {"unused": 10, "structural": 40},
+            [{"type": "auto_fix", "count": 10, "impact": 1.0},
+             {"type": "refactor", "count": 40, "impact": 5.0}],
+            "stagnation", "typescript",
+        )
+        assert result["recommendation"] == "strong"
+
+    def test_moderate_coverage(self):
+        result = _compute_fixer_leverage(
+            {"unused": 8, "structural": 60},
+            [{"type": "auto_fix", "count": 8, "impact": 1.0},
+             {"type": "refactor", "count": 60, "impact": 10.0}],
+            "middle_grind", "typescript",
+        )
+        # coverage = 8/68 ≈ 0.12 > 0.1, impact_ratio = 1/11 ≈ 0.09 < 0.3
+        assert result["recommendation"] == "moderate"
+
+    def test_low_coverage_none(self):
+        result = _compute_fixer_leverage(
+            {"unused": 2, "structural": 60},
+            [{"type": "auto_fix", "count": 2, "impact": 0.5},
+             {"type": "refactor", "count": 60, "impact": 10.0}],
+            "middle_grind", "typescript",
+        )
+        # coverage = 2/62 ≈ 0.03 < 0.1
+        assert result["recommendation"] == "none"
+
+
+# ===================================================================
+# _compute_lanes
+# ===================================================================
+
+class TestComputeLanes:
+    def test_empty_actions(self):
+        assert _compute_lanes([], {}) == {}
+
+    def test_single_auto_fix_cleanup_lane(self):
+        actions = [{"priority": 1, "type": "auto_fix", "detector": "unused",
+                     "count": 5, "impact": 3.0}]
+        files = {"unused": {"a.py", "b.py"}}
+        lanes = _compute_lanes(actions, files)
+        assert "cleanup" in lanes
+        assert lanes["cleanup"]["actions"] == [1]
+        assert lanes["cleanup"]["file_count"] == 2
+        assert lanes["cleanup"]["automation"] == "full"
+
+    def test_single_reorganize_restructure_lane(self):
+        actions = [{"priority": 1, "type": "reorganize", "detector": "orphaned",
+                     "count": 3, "impact": 2.0}]
+        files = {"orphaned": {"x.py"}}
+        lanes = _compute_lanes(actions, files)
+        assert "restructure" in lanes
+        assert lanes["restructure"]["actions"] == [1]
+        assert lanes["restructure"]["automation"] == "manual"
+
+    def test_independent_refactor_lanes(self):
+        actions = [
+            {"priority": 1, "type": "refactor", "detector": "structural",
+             "count": 5, "impact": 3.0},
+            {"priority": 2, "type": "refactor", "detector": "props",
+             "count": 4, "impact": 2.0},
+        ]
+        files = {
+            "structural": {"a.py", "b.py"},
+            "props": {"c.tsx", "d.tsx"},  # disjoint from structural
+        }
+        lanes = _compute_lanes(actions, files)
+        # Should create two separate refactor lanes
+        refactor_lanes = [n for n in lanes if n.startswith("refactor")]
+        assert len(refactor_lanes) == 2
+
+    def test_overlapping_refactors_merged(self):
+        actions = [
+            {"priority": 1, "type": "refactor", "detector": "structural",
+             "count": 5, "impact": 3.0},
+            {"priority": 2, "type": "refactor", "detector": "props",
+             "count": 4, "impact": 2.0},
+        ]
+        files = {
+            "structural": {"a.py", "shared.py"},
+            "props": {"shared.py", "c.tsx"},  # overlap via shared.py
+        }
+        lanes = _compute_lanes(actions, files)
+        refactor_lanes = [n for n in lanes if n.startswith("refactor")]
+        assert len(refactor_lanes) == 1
+        assert sorted(lanes[refactor_lanes[0]]["actions"]) == [1, 2]
+
+    def test_test_coverage_always_separate(self):
+        actions = [
+            {"priority": 1, "type": "refactor", "detector": "structural",
+             "count": 5, "impact": 3.0},
+            {"priority": 2, "type": "refactor", "detector": "test_coverage",
+             "count": 4, "impact": 2.0},
+        ]
+        files = {
+            "structural": {"a.py"},
+            "test_coverage": {"a.py"},  # same file, but test_coverage separated
+        }
+        lanes = _compute_lanes(actions, files)
+        assert "test_coverage" in lanes
+        refactor_lanes = [n for n in lanes if n.startswith("refactor")]
+        assert len(refactor_lanes) == 1
+        assert 2 not in lanes[refactor_lanes[0]]["actions"]
+
+    def test_cascade_ordering_in_cleanup(self):
+        actions = [
+            {"priority": 1, "type": "auto_fix", "detector": "unused",
+             "count": 5, "impact": 3.0},
+            {"priority": 2, "type": "auto_fix", "detector": "logs",
+             "count": 3, "impact": 2.0},
+        ]
+        files = {"unused": {"a.py"}, "logs": {"b.py"}}
+        lanes = _compute_lanes(actions, files)
+        # logs cascades into unused, so logs should come first
+        assert lanes["cleanup"]["actions"] == [2, 1]
+
+    def test_debt_review_lane(self):
+        actions = [{"priority": 1, "type": "debt_review", "detector": None,
+                     "count": 0, "impact": 0.0, "gap": 5.0}]
+        lanes = _compute_lanes(actions, {})
+        assert "debt_review" in lanes
+        assert lanes["debt_review"]["file_count"] == 0
+
+    def test_cleanup_run_first_on_overlap(self):
+        actions = [
+            {"priority": 1, "type": "auto_fix", "detector": "unused",
+             "count": 5, "impact": 3.0},
+            {"priority": 2, "type": "refactor", "detector": "structural",
+             "count": 4, "impact": 2.0},
+        ]
+        files = {
+            "unused": {"a.py", "shared.py"},
+            "structural": {"shared.py", "b.py"},
+        }
+        lanes = _compute_lanes(actions, files)
+        assert lanes["cleanup"]["run_first"] is True
+
+    def test_cleanup_no_run_first_when_disjoint(self):
+        actions = [
+            {"priority": 1, "type": "auto_fix", "detector": "unused",
+             "count": 5, "impact": 3.0},
+            {"priority": 2, "type": "refactor", "detector": "structural",
+             "count": 4, "impact": 2.0},
+        ]
+        files = {
+            "unused": {"a.py"},
+            "structural": {"b.py"},
+        }
+        lanes = _compute_lanes(actions, files)
+        assert lanes["cleanup"]["run_first"] is False
+
+
+# ===================================================================
+# _compute_strategy_hint
+# ===================================================================
+
+class TestComputeStrategyHint:
+    def test_strong_fixer_and_parallel(self):
+        fixer = {"recommendation": "strong", "coverage": 0.5}
+        lanes = {
+            "cleanup": {"run_first": True, "file_count": 10, "total_impact": 5.0},
+            "refactor_0": {"run_first": False, "file_count": 8, "total_impact": 3.0},
+            "refactor_1": {"run_first": False, "file_count": 6, "total_impact": 2.0},
+        }
+        hint = _compute_strategy_hint(fixer, lanes, True, "middle_grind")
+        assert "fixers first" in hint.lower()
+        assert "parallelize" in hint.lower()
+
+    def test_strong_fixer_only(self):
+        fixer = {"recommendation": "strong", "coverage": 0.45}
+        lanes = {"cleanup": {"run_first": False, "file_count": 10, "total_impact": 5.0}}
+        hint = _compute_strategy_hint(fixer, lanes, False, "middle_grind")
+        assert "fixers first" in hint.lower()
+        assert "45%" in hint
+
+    def test_no_fixer_parallel(self):
+        fixer = {"recommendation": "none", "coverage": 0.0}
+        lanes = {
+            "refactor_0": {"run_first": False, "file_count": 8, "total_impact": 3.0},
+            "refactor_1": {"run_first": False, "file_count": 6, "total_impact": 2.0},
+        }
+        hint = _compute_strategy_hint(fixer, lanes, True, "middle_grind")
+        assert "parallelize" in hint.lower()
+
+    def test_maintenance_fallback(self):
+        fixer = {"recommendation": "none", "coverage": 0.0}
+        lanes = {"refactor": {"run_first": False, "file_count": 2, "total_impact": 1.0}}
+        hint = _compute_strategy_hint(fixer, lanes, False, "maintenance")
+        assert "maintenance" in hint.lower()
+
+    def test_stagnation_fallback(self):
+        fixer = {"recommendation": "none", "coverage": 0.0}
+        lanes = {}
+        hint = _compute_strategy_hint(fixer, lanes, False, "stagnation")
+        assert "plateau" in hint.lower()
+
+    def test_default_fallback(self):
+        fixer = {"recommendation": "none", "coverage": 0.0}
+        lanes = {}
+        hint = _compute_strategy_hint(fixer, lanes, False, "middle_grind")
+        assert "priority order" in hint.lower()
+
+
+# ===================================================================
+# _compute_strategy
+# ===================================================================
+
+class TestComputeStrategy:
+    def test_structure_has_expected_keys(self):
+        findings = _findings_dict(
+            _finding("unused", file="a.py"),
+        )
+        by_det = {"unused": 1}
+        actions = [{"priority": 1, "type": "auto_fix", "detector": "unused",
+                     "count": 1, "impact": 1.0}]
+        result = _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
+        assert "fixer_leverage" in result
+        assert "lanes" in result
+        assert "can_parallelize" in result
+        assert "hint" in result
+
+    def test_actions_annotated_with_lane(self):
+        findings = _findings_dict(
+            _finding("unused", file="a.py"),
+            _finding("structural", file="b.py"),
+        )
+        by_det = {"unused": 1, "structural": 1}
+        actions = [
+            {"priority": 1, "type": "auto_fix", "detector": "unused",
+             "count": 1, "impact": 1.0},
+            {"priority": 2, "type": "refactor", "detector": "structural",
+             "count": 1, "impact": 2.0},
+        ]
+        _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
+        assert actions[0].get("lane") == "cleanup"
+        assert actions[1].get("lane") is not None
+        assert actions[1]["lane"].startswith("refactor")
+
+    def test_python_no_cleanup_lane(self):
+        findings = _findings_dict(
+            _finding("unused", file="a.py"),
+        )
+        by_det = {"unused": 1}
+        # Python actions are manual_fix, not auto_fix
+        actions = [{"priority": 1, "type": "manual_fix", "detector": "unused",
+                     "count": 1, "impact": 1.0}]
+        result = _compute_strategy(findings, by_det, actions, "middle_grind", "python")
+        assert "cleanup" not in result["lanes"]
+        assert result["fixer_leverage"]["recommendation"] == "none"
+
+    def test_can_parallelize_true(self):
+        findings = _findings_dict(
+            *[_finding("structural", file=f"file_{i}.py") for i in range(10)],
+            *[_finding("props", file=f"comp_{i}.tsx") for i in range(10)],
+        )
+        by_det = {"structural": 10, "props": 10}
+        actions = [
+            {"priority": 1, "type": "refactor", "detector": "structural",
+             "count": 10, "impact": 5.0},
+            {"priority": 2, "type": "refactor", "detector": "props",
+             "count": 10, "impact": 3.0},
+        ]
+        result = _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
+        assert result["can_parallelize"] is True
+
+    def test_can_parallelize_false_single_lane(self):
+        findings = _findings_dict(
+            _finding("structural", file="a.py"),
+        )
+        by_det = {"structural": 1}
+        actions = [{"priority": 1, "type": "refactor", "detector": "structural",
+                     "count": 1, "impact": 1.0}]
+        result = _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
+        assert result["can_parallelize"] is False
