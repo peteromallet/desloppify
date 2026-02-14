@@ -97,7 +97,7 @@ def _json_default(obj):
     if isinstance(obj, set):
         return sorted(obj)
     if isinstance(obj, Path):
-        return str(obj)
+        return str(obj).replace("\\", "/")
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable: {obj!r}")
