@@ -313,7 +313,9 @@ def cmd_scan(args):
                 readme_path = PROJECT_ROOT / readme_name
                 if readme_path.exists():
                     try:
-                        if rel_path in readme_path.read_text():
+                        if rel_path in readme_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        ):
                             readme_has_badge = True
                     except OSError:
                         pass
@@ -558,5 +560,4 @@ def _show_low_dimension_hints(dim_scores: dict):
     for name, score, hint in low:
         print(colorize(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
     print()
-
 
