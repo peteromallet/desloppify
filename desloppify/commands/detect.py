@@ -14,7 +14,9 @@ def cmd_detect(args):
     lang = _resolve_lang(args)
 
     if not lang:
-        print(colorize("No language specified. Use --lang python or --lang typescript.", "red"))
+        from ..lang import available_langs
+        langs = ", ".join(available_langs()) or "python, typescript, csharp"
+        print(colorize(f"No language specified. Use --lang <name> (available: {langs}).", "red"))
         sys.exit(1)
 
     # Validate detector name

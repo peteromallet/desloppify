@@ -54,7 +54,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     # Global flags
     parser.add_argument("--lang", type=str, default=None,
-                        help="Language to scan (typescript, python). Auto-detected if omitted.")
+                        help="Language to scan (typescript, python, csharp). Auto-detected if omitted.")
     parser.add_argument("--exclude", action="append", default=None, metavar="PATTERN",
                         help="Path substring to exclude (repeatable: --exclude foo --exclude bar)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -118,6 +118,7 @@ def create_parser() -> argparse.ArgumentParser:
                            epilog="fixers (typescript): unused-imports, unused-vars, unused-params, "
                                   "dead-exports, debug-logs, dead-useeffect, empty-if-chain\n"
                                   "fixers (python): none yet\n"
+                                  "fixers (csharp): none yet\n"
                                   "special: review — prepare structured review data")
     p_fix.add_argument("fixer", type=str, help="What to fix")
     p_fix.add_argument("--path", type=str, default=None)

@@ -65,6 +65,12 @@ def auto_detect_lang(project_root: Path) -> str | None:
             or (project_root / "setup.py").exists()
             or (project_root / "setup.cfg").exists()):
         candidates.append("python")
+    if ((project_root / "global.json").exists()
+            or any(project_root.glob("*.sln"))
+            or any(project_root.glob("*.csproj"))
+            or any(project_root.rglob("*.sln"))
+            or any(project_root.rglob("*.csproj"))):
+        candidates.append("csharp")
     if (project_root / "go.mod").exists():
         candidates.append("go")
     if (project_root / "Cargo.toml").exists():

@@ -82,10 +82,11 @@ def test_get_lang_returns_fresh_instances():
 
 
 def test_available_langs_includes_python_and_typescript():
-    """available_langs includes at least python and typescript."""
+    """available_langs includes python, typescript, and csharp."""
     langs = available_langs()
     assert "python" in langs
     assert "typescript" in langs
+    assert "csharp" in langs
 
 
 def test_available_langs_returns_sorted():
@@ -127,6 +128,18 @@ def test_auto_detect_no_config_returns_none(tmp_path):
     """Project with no recognized config files returns None."""
     result = auto_detect_lang(tmp_path)
     assert result is None
+
+
+def test_auto_detect_csharp_project(tmp_path):
+    """Project with .sln and .cs files auto-detects as csharp."""
+    (tmp_path / "Example.sln").write_text("Microsoft Visual Studio Solution File")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "Program.cs").write_text("namespace App; class Program {}")
+
+    with patch("desloppify.utils.PROJECT_ROOT", tmp_path):
+        result = auto_detect_lang(tmp_path)
+    assert result == "csharp"
 
 
 # ── LangConfig basics ───────────────────────────────────────

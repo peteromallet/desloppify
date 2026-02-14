@@ -37,7 +37,7 @@ def detect_test_coverage(
     Args:
         graph: dep graph from lang.build_dep_graph — {filepath: {"imports": set, "importer_count": int, ...}}
         zone_map: FileZoneMap from lang._zone_map
-        lang_name: "python" or "typescript"
+        lang_name: "python", "typescript", or "csharp"
         extra_test_files: test files outside the scanned path (e.g. PROJECT_ROOT/tests/)
         complexity_map: {filepath: complexity_score} from structural phase — files above
             _COMPLEXITY_TIER_UPGRADE threshold get their tier upgraded to 2
@@ -148,6 +148,9 @@ def _has_testable_logic(filepath: str, lang_name: str) -> bool:
         return bool(_PY_DEF_RE.search(content))
     if lang_name == "typescript":
         return _ts_has_testable_logic(content)
+    if lang_name == "csharp":
+        # Skip trivial declaration-only files with no classes or methods.
+        return bool(re.search(r"\b(?:class|record|struct)\b|\b(?:public|private|protected|internal)\b.*\(", content))
     return True
 
 
@@ -353,7 +356,7 @@ def _generate_findings(
                                    "mocks": tq["mocks"], "assertions": tq["assertions"],
                                    "loc_weight": lw},
                     })
-                elif tq["quality"] == "snapshot_heavy" and lang_name != "python":
+                elif tq["quality"] == "snapshot_heavy" and lang_name == "typescript":
                     entries.append({
                         "file": f,
                         "name": f"snapshot_heavy::{os.path.basename(tf)}",

@@ -199,7 +199,7 @@ def find_external_test_files(path: Path, lang_name: str) -> set[str]:
     import os
     extra = set()
     test_dirs = ["tests", "test"]
-    if lang_name != "python":
+    if lang_name in ("typescript", "csharp"):
         test_dirs.append("__tests__")
     for test_dir in test_dirs:
         d = PROJECT_ROOT / test_dir
@@ -210,7 +210,12 @@ def find_external_test_files(path: Path, lang_name: str) -> set[str]:
             continue  # test_dir is inside scanned path, zone_map already has it
         except ValueError:
             pass
-        ext = ".py" if lang_name == "python" else (".ts", ".tsx")
+        if lang_name == "python":
+            ext = ".py"
+        elif lang_name == "csharp":
+            ext = ".cs"
+        else:
+            ext = (".ts", ".tsx")
         for root, _, files in os.walk(d):
             for f in files:
                 if isinstance(ext, tuple):

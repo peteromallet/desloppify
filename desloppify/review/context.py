@@ -145,6 +145,8 @@ def _build_review_context_inner(files: list[str], lang, state: dict,
                                 ctx: ReviewContext) -> ReviewContext:
     """Inner context builder (runs with file cache enabled)."""
     is_ts = lang.name == "typescript"
+    is_py = lang.name == "python"
+    is_csharp = lang.name == "csharp"
 
     # Pre-read all file contents once (cache will store them)
     file_contents: dict[str, str] = {}
@@ -188,11 +190,21 @@ def _build_review_context_inner(files: list[str], lang, state: dict,
                 counter["default_export"] += 1
             if re.search(r"\bexport\s+(?:function|const|class)\b", content):
                 counter["named_export"] += 1
-        else:
+        elif is_py:
             if re.search(r"\bdef\s+\w+", content):
                 counter["functions"] += 1
             if re.search(r"^__all__\s*=", content, re.MULTILINE):
                 counter["explicit_api"] += 1
+        elif is_csharp:
+            if re.search(r"\bnamespace\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", content):
+                counter["namespace"] += 1
+            if re.search(r"\b(?:public|internal)\s+(?:class|record|struct)\s+\w+", content):
+                counter["public_types"] += 1
+            if re.search(r"\bpublic\s+.*\(", content):
+                counter["public_methods"] += 1
+        else:
+            if re.search(r"\bclass\s+\w+", content):
+                counter["class_based"] += 1
         if re.search(r"\bclass\s+\w+", content):
             counter["class_based"] += 1
     ctx.module_patterns = {
@@ -452,6 +464,11 @@ _PATTERN_PAIRS_PY = [
     ("unittest→pytest", re.compile(r"\bunittest\b"), re.compile(r"\bpytest\b")),
     ("print→logging", re.compile(r"\bprint\("), re.compile(r"\blogging\.\w+\(")),
 ]
+_PATTERN_PAIRS_CSHARP = [
+    ("Newtonsoft→System.Text.Json", re.compile(r"\bNewtonsoft\.Json\b"), re.compile(r"\bSystem\.Text\.Json\b")),
+    ("SqlClient→Dapper/EF", re.compile(r"\bSqlConnection\b|\bSqlCommand\b"), re.compile(r"\bDapper\b|\bDbContext\b")),
+    ("sync→async APIs", re.compile(r"\b[A-Za-z_]\w+\s*\([^)]*\)\s*\{"), re.compile(r"\basync\s+Task\b")),
+]
 
 
 def _gather_migration_signals(file_contents: dict[str, str],
@@ -484,7 +501,12 @@ def _gather_migration_signals(file_contents: dict[str, str],
             stems_by_ext.setdefault(stem, set()).add(ext)
 
     # Pattern pair detection
-    pairs = _PATTERN_PAIRS_TS if lang_name == "typescript" else _PATTERN_PAIRS_PY
+    if lang_name == "typescript":
+        pairs = _PATTERN_PAIRS_TS
+    elif lang_name == "python":
+        pairs = _PATTERN_PAIRS_PY
+    else:
+        pairs = _PATTERN_PAIRS_CSHARP
     pattern_results: list[dict] = []
     for name, old_re, new_re in pairs:
         old_count = sum(1 for c in file_contents.values() if old_re.search(c))

@@ -451,6 +451,23 @@ LANG_GUIDANCE = {
         "naming": "TypeScript uses camelCase for functions/variables, PascalCase for types/components. "
                   "Check for inconsistency within modules.",
     },
+    "csharp": {
+        "patterns": [
+            "Check for async methods that never await or block on .Result/.Wait()",
+            "Look for overly large service classes with mixed responsibilities",
+            "Flag static mutable state shared across request or thread boundaries",
+            "Check for duplicate business rules across sibling classes",
+            "Look for expression-bodied methods with hidden side effects and vague names",
+        ],
+        "auth": [
+            "Check controller/action authorization consistency ([Authorize], policy usage)",
+            "Flag data access methods building SQL from string interpolation or concatenation",
+            "Look for token/cookie handling without explicit validation or expiry checks",
+            "Verify admin/service-role operations are isolated and auditable",
+        ],
+        "naming": "C# uses PascalCase for public members/types and camelCase for locals/parameters. "
+                  "Check for inconsistent naming inside the same layer.",
+    },
 }
 
 REVIEW_SYSTEM_PROMPT = """\

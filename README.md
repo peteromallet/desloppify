@@ -1,6 +1,6 @@
 # Desloppify - agent tools to make your codebase 🤌
 
-Codebase health scanner. Detects cruft (dead code, duplication, complexity, smells), tracks findings across scans, auto-fixes mechanical issues, reports a weighted score. It gives you a shortlist of issues to either solve with your agent or mindfully ignore. TypeScript/React and Python out of the box, but you can get your agent to add any language.
+Codebase health scanner. Detects cruft (dead code, duplication, complexity, smells), tracks findings across scans, auto-fixes mechanical issues, reports a weighted score. It gives you a shortlist of issues to either solve with your agent or mindfully ignore. TypeScript/React, Python, and C#/.NET are available out of the box.
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo - the strict score includes the ones you've ignored that haven't been solved:
 
@@ -20,7 +20,7 @@ desloppify status
 desloppify next
 
 --path is the directory to scan (use "." for the whole project, or "src/" etc).
-Language is auto-detected. To override: desloppify --lang python scan --path .
+Language is auto-detected. To override: desloppify --lang csharp scan --path .
 (note: --lang goes BEFORE the subcommand)
 
 Fix what it finds, then "desloppify resolve fixed <id>" and rescan. For false positives:
@@ -64,6 +64,18 @@ Are you a hardcore vibe engineer who wants to build beautiful things? [This may 
 **TypeScript/React**: logs, unused, exports, deprecated, large, complexity, gods, single-use, props, passthrough, concerns, deps, dupes, smells, coupling, patterns, naming, cycles, orphaned, react
 
 **Python**: unused, large, complexity, gods, passthrough, smells, dupes, deps, cycles, orphaned, single-use, naming
+
+**C#/.NET (MVP)**: deps, cycles, orphaned, dupes, large, complexity
+
+#### C#/.NET support (MVP)
+
+- Auto-detects from `.sln` / `.csproj`
+- Scans `.cs` files with structural, coupling, security, and duplicate phases
+- Project-reference-aware dependency graph (`ProjectReference` in `.csproj`)
+- Current limitations:
+- C# auto-fixers are not implemented yet
+- Dependency graph is namespace/using-based (not full Roslyn semantic analysis)
+- Test-coverage quality heuristics are best-effort
 
 #### Tiers & scoring
 

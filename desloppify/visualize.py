@@ -22,8 +22,8 @@ def _collect_file_data(path: Path, lang=None) -> list[dict]:
     if lang and lang.file_finder:
         source_files = lang.file_finder(path)
     else:
-        from .utils import find_ts_files
-        source_files = find_ts_files(path)
+        from .utils import find_source_files
+        source_files = find_source_files(path, [".ts", ".tsx", ".py", ".cs"])
     files = []
     for filepath in source_files:
         try:
@@ -94,12 +94,6 @@ def generate_visualization(path: Path, state: dict | None = None,
     dep_graph = {}
     if lang and lang.build_dep_graph:
         dep_graph = lang.build_dep_graph(path)
-    elif not lang:
-        try:
-            from .lang.typescript.deps import build_dep_graph
-            dep_graph = build_dep_graph(path)
-        except (ImportError, ModuleNotFoundError):
-            pass
 
     # Get findings from state if available
     findings_by_file: dict[str, list] = defaultdict(list)
@@ -249,12 +243,6 @@ def generate_tree_text(path: Path, state: dict | None = None, *,
     dep_graph = {}
     if lang and lang.build_dep_graph:
         dep_graph = lang.build_dep_graph(path)
-    elif not lang:
-        try:
-            from .lang.typescript.deps import build_dep_graph
-            dep_graph = build_dep_graph(path)
-        except (ImportError, ModuleNotFoundError):
-            pass
 
     findings_by_file: dict[str, list] = defaultdict(list)
     if state and state.get("findings"):

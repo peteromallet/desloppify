@@ -208,11 +208,21 @@ def _build_holistic_context_inner(files: list[str], lang, state: dict) -> dict:
     # 8. API surface: export patterns
     api: dict = {}
     is_ts = lang.name == "typescript"
+    is_csharp = lang.name == "csharp"
     if is_ts:
         sync_async_mix = []
         for filepath, content in file_contents.items():
             has_sync = bool(re.search(r"\bexport\s+function\s+\w+", content))
             has_async = bool(re.search(r"\bexport\s+async\s+function\s+\w+", content))
+            if has_sync and has_async:
+                sync_async_mix.append(rel(filepath))
+        if sync_async_mix:
+            api["sync_async_mix"] = sync_async_mix[:20]
+    elif is_csharp:
+        sync_async_mix = []
+        for filepath, content in file_contents.items():
+            has_sync = bool(re.search(r"\bpublic\s+(?:\w+\s+)+\w+\s*\(", content))
+            has_async = bool(re.search(r"\bpublic\s+async\s+Task(?:<[^>]+>)?\s+\w+\s*\(", content))
             if has_sync and has_async:
                 sync_async_mix.append(rel(filepath))
         if sync_async_mix:

@@ -26,6 +26,7 @@ _EXT_TO_LANG = {
     ".ts": "typescript",
     ".tsx": "typescript",
     ".py": "python",
+    ".cs": "csharp",
 }
 
 
@@ -91,6 +92,10 @@ def _compute_replacements(
             find_py_replacements(source_abs, dest_abs, graph),
             find_py_self_replacements(source_abs, dest_abs, graph),
         )
+    elif lang_name == "csharp":
+        # MVP: path move support without import/namespace rewrite.
+        # Future C# move helpers can plug into this dispatch.
+        return ({}, [])
     else:
         print(colorize(f"Move not yet supported for language: {lang_name}", "red"), file=sys.stderr)
         sys.exit(1)
@@ -232,7 +237,7 @@ def cmd_move(args):
     # Detect language from file extension, fall back to --lang
     lang_name = _resolve_lang_for_move(source_abs, args)
     if not lang_name:
-        print(colorize("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py extension.", "red"),
+        print(colorize("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py/.cs extension.", "red"),
               file=sys.stderr)
         sys.exit(1)
 
@@ -263,6 +268,8 @@ def cmd_move(args):
     print(colorize("  Done.", "green"))
     if lang_name == "typescript":
         print(colorize("  Run `npx tsc --noEmit` to verify.", "dim"))
+    elif lang_name == "csharp":
+        print(colorize("  Run `dotnet build` to verify.", "dim"))
     print()
 
 
@@ -292,7 +299,7 @@ def _cmd_move_dir(args, source_abs: str):
     lang = get_lang(lang_name)
 
     # Find all source files in the directory
-    ext_map = {"python": [".py"], "typescript": [".ts", ".tsx"]}
+    ext_map = {"python": [".py"], "typescript": [".ts", ".tsx"], "csharp": [".cs"]}
     extensions = ext_map.get(lang_name, [])
     source_files = []
     for ext in extensions:
@@ -464,4 +471,6 @@ def _cmd_move_dir(args, source_abs: str):
     print(colorize("  Done.", "green"))
     if lang_name == "typescript":
         print(colorize("  Run `npx tsc --noEmit` to verify.", "dim"))
+    elif lang_name == "csharp":
+        print(colorize("  Run `dotnet build` to verify.", "dim"))
     print()

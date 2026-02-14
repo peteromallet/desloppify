@@ -43,9 +43,26 @@ TS_SNAPSHOT_PATTERNS = [
         r"toMatchSnapshot", r"toMatchInlineSnapshot",
     ]
 ]
+CSHARP_ASSERT_PATTERNS = [
+    re.compile(p) for p in [
+        r"\bAssert\.\w+\(",
+        r"\bShould\(\)\.\w+\(",
+        r"\bFluentAssertions\b",
+    ]
+]
+CSHARP_MOCK_PATTERNS = [
+    re.compile(p) for p in [
+        r"\bMock<",
+        r"\bSubstitute\.For<",
+        r"\bFakeItEasy\b",
+    ]
+]
 
 PY_TEST_FUNC = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)\s*\(")
 TS_TEST_FUNC = re.compile(r"""(?:it|test)\s*\(\s*['"]""")
+CSHARP_TEST_FUNC = re.compile(
+    r"(?m)^\s*\[(?:Fact|Theory|Test(?:Method|Case)?)\]"
+)
 
 
 def _import_based_mapping(
@@ -231,6 +248,21 @@ def _map_test_to_source(
             candidates.append(os.path.join(dirname, src))
             if parent:
                 candidates.append(os.path.join(parent, src))
+    elif lang_name == "csharp":
+        # FooTests.cs / FooTest.cs / Foo.Tests.cs -> Foo.cs
+        src = basename
+        src = src.replace(".Tests.", ".").replace(".Test.", ".")
+        if src.endswith("Tests.cs"):
+            src = src[:-8] + ".cs"
+        elif src.endswith("Test.cs"):
+            src = src[:-7] + ".cs"
+        candidates.append(os.path.join(dirname, src))
+        if parent:
+            candidates.append(os.path.join(parent, src))
+        # tests/Foo.cs -> ../Foo.cs
+        dir_basename = os.path.basename(dirname).lower()
+        if dir_basename in ("tests", "test") and parent:
+            candidates.append(os.path.join(parent, basename))
     else:  # typescript
         # X.test.ts → X.ts, X.test.tsx → X.tsx
         for pattern in (".test.", ".spec."):
@@ -295,6 +327,13 @@ def _strip_test_markers(basename: str, lang_name: str) -> str | None:
             return basename[5:]
         if basename.endswith("_test.py"):
             return basename[:-8] + ".py"
+    elif lang_name == "csharp":
+        out = basename.replace(".Tests.", ".").replace(".Test.", ".")
+        if out.endswith("Tests.cs"):
+            return out[:-8] + ".cs"
+        if out.endswith("Test.cs"):
+            return out[:-7] + ".cs"
+        return out
     else:
         for marker in (".test.", ".spec."):
             if marker in basename:
@@ -352,9 +391,18 @@ def _analyze_test_quality(
     Returns {test_path: {"assertions": int, "mocks": int, "test_functions": int,
                           "snapshots": int, "quality": str}}
     """
-    assert_pats = PY_ASSERT_PATTERNS if lang_name == "python" else TS_ASSERT_PATTERNS
-    mock_pats = PY_MOCK_PATTERNS if lang_name == "python" else TS_MOCK_PATTERNS
-    test_func_re = PY_TEST_FUNC if lang_name == "python" else TS_TEST_FUNC
+    if lang_name == "python":
+        assert_pats = PY_ASSERT_PATTERNS
+        mock_pats = PY_MOCK_PATTERNS
+        test_func_re = PY_TEST_FUNC
+    elif lang_name == "csharp":
+        assert_pats = CSHARP_ASSERT_PATTERNS
+        mock_pats = CSHARP_MOCK_PATTERNS
+        test_func_re = CSHARP_TEST_FUNC
+    else:
+        assert_pats = TS_ASSERT_PATTERNS
+        mock_pats = TS_MOCK_PATTERNS
+        test_func_re = TS_TEST_FUNC
 
     quality_map: dict[str, dict] = {}
 
@@ -365,7 +413,7 @@ def _analyze_test_quality(
             continue
 
         # Strip comments before pattern matching
-        if lang_name != "python":
+        if lang_name == "typescript":
             from ..lang.typescript.detectors._smell_helpers import _strip_ts_comments
             stripped = _strip_ts_comments(content)
         else:
@@ -386,7 +434,7 @@ def _analyze_test_quality(
         snapshots = sum(
             1 for line in lines
             if any(pat.search(line) for pat in TS_SNAPSHOT_PATTERNS)
-        ) if lang_name != "python" else 0
+        ) if lang_name == "typescript" else 0
 
         test_functions = len(test_func_re.findall(stripped))
 
