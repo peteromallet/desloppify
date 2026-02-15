@@ -52,7 +52,9 @@ def _compute_badge_status() -> dict:
             readme_path = PROJECT_ROOT / readme_name
             if readme_path.exists():
                 try:
-                    in_readme = "scorecard.png" in readme_path.read_text()
+                    in_readme = "scorecard.png" in readme_path.read_text(
+                        encoding="utf-8", errors="replace"
+                    )
                 except OSError:
                     pass
                 break
