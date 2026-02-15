@@ -111,6 +111,9 @@ Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
 | `DESLOPPIFY_NO_BADGE` | — | Set to `true` to disable badge via env |
 | `DESLOPPIFY_BADGE_PATH` | `scorecard.png` | Badge output path via env |
 
+Project config keys can be set with `desloppify config set`, for example:
+`desloppify config set finding_noise_budget 15` (set `0` for unlimited per-detector show/scan surfacing).
+
 #### Adding a language
 
 Create `desloppify/lang/<name>/` with `__init__.py`, `commands.py`, `extractors.py`, `detectors/`, `fixers/`. Validated at registration. Zero shared code changes. See `lang/python/` for example.

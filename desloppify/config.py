@@ -43,6 +43,8 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         "Override LOC threshold for large file detection (0 = use language default)"),
     "props_threshold": ConfigKey(int, 0,
         "Override prop count threshold for bloated interface detection (0 = default 14)"),
+    "finding_noise_budget": ConfigKey(int, 10,
+        "Max findings surfaced per detector in show/scan summaries (0 = unlimited)"),
 }
 
 

@@ -33,6 +33,7 @@ class TestDefaultConfig:
         assert cfg["holistic_max_age_days"] == 30
         assert cfg["generate_scorecard"] is True
         assert cfg["badge_path"] == "scorecard.png"
+        assert cfg["finding_noise_budget"] == 10
         assert cfg["exclude"] == []
         assert cfg["ignore"] == []
         assert cfg["zone_overrides"] == {}
@@ -84,6 +85,11 @@ class TestSetConfigValue:
         cfg = default_config()
         set_config_value(cfg, "review_max_age_days", "14")
         assert cfg["review_max_age_days"] == 14
+
+    def test_set_noise_budget_int(self):
+        cfg = default_config()
+        set_config_value(cfg, "finding_noise_budget", "25")
+        assert cfg["finding_noise_budget"] == 25
 
     def test_set_never(self):
         cfg = default_config()

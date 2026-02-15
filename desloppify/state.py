@@ -131,6 +131,19 @@ DEFAULT_FINDING_NOISE_BUDGET = 10
 _CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
+def resolve_finding_noise_budget(config: dict | None, *,
+                                 default: int = DEFAULT_FINDING_NOISE_BUDGET) -> int:
+    """Resolve noise budget from config with safe fallback."""
+    if not config:
+        return default
+    raw_budget = config.get("finding_noise_budget", default)
+    try:
+        budget = int(raw_budget)
+    except (TypeError, ValueError):
+        return default
+    return budget if budget >= 0 else 0
+
+
 def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str, int]]]:
     """Tally per-status counters and per-tier breakdowns."""
     counters = dict.fromkeys(_EMPTY_COUNTERS, 0)

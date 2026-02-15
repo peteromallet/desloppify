@@ -12,6 +12,7 @@ from desloppify.state import (
     apply_finding_noise_budget,
     load_state,
     make_finding,
+    resolve_finding_noise_budget,
     save_state,
 )
 
@@ -62,6 +63,24 @@ class TestApplyFindingNoiseBudget:
         surfaced, hidden = apply_finding_noise_budget(findings, budget=2)
         assert len(surfaced) == 3
         assert hidden == {"unused": 1}
+
+
+# ---------------------------------------------------------------------------
+# resolve_finding_noise_budget
+# ---------------------------------------------------------------------------
+
+class TestResolveFindingNoiseBudget:
+    def test_uses_default_when_config_missing(self):
+        assert resolve_finding_noise_budget(None) == 10
+
+    def test_reads_valid_int_from_config(self):
+        assert resolve_finding_noise_budget({"finding_noise_budget": 25}) == 25
+
+    def test_invalid_value_falls_back_to_default(self):
+        assert resolve_finding_noise_budget({"finding_noise_budget": "oops"}) == 10
+
+    def test_negative_value_clamps_to_zero(self):
+        assert resolve_finding_noise_budget({"finding_noise_budget": -5}) == 0
 
 
 # ---------------------------------------------------------------------------

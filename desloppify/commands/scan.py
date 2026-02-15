@@ -315,12 +315,13 @@ def cmd_scan(args):
 
     hidden_by_detector: dict[str, int] = {}
     hidden_total = 0
-    from ..state import DEFAULT_FINDING_NOISE_BUDGET, apply_finding_noise_budget, path_scoped_findings
+    from ..state import apply_finding_noise_budget, path_scoped_findings, resolve_finding_noise_budget
+    noise_budget = resolve_finding_noise_budget(config)
     open_findings = [
         finding for finding in path_scoped_findings(state["findings"], state.get("scan_path")).values()
         if finding.get("status") == "open"
     ]
-    _, hidden_by_detector = apply_finding_noise_budget(open_findings, DEFAULT_FINDING_NOISE_BUDGET)
+    _, hidden_by_detector = apply_finding_noise_budget(open_findings, noise_budget)
     hidden_total = sum(hidden_by_detector.values())
 
     _show_diff_summary(diff)
@@ -328,7 +329,7 @@ def cmd_scan(args):
     if not effective_include_slow:
         print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
     if hidden_total:
-        print(colorize(f"  * Noise budget: {DEFAULT_FINDING_NOISE_BUDGET}/detector "
+        print(colorize(f"  * Noise budget: {noise_budget}/detector "
                        f"({hidden_total} findings hidden in show output: {_format_hidden_by_detector(hidden_by_detector)})", "dim"))
     _show_detector_progress(state)
 
@@ -353,7 +354,7 @@ def cmd_scan(args):
     from ..config import config_for_query
     _write_query({"command": "scan", "score": state["score"],
                   "profile": profile,
-                  "noise_budget": DEFAULT_FINDING_NOISE_BUDGET,
+                  "noise_budget": noise_budget,
                   "hidden_by_detector": hidden_by_detector,
                   "hidden_total": hidden_total,
                   "strict_score": state.get("strict_score", 0),

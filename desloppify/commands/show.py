@@ -57,10 +57,10 @@ def _format_detail(detail: dict) -> list[str]:
 def cmd_show(args):
     """Show all findings for a file, directory, detector, or pattern."""
     from ..state import (
-        DEFAULT_FINDING_NOISE_BUDGET,
         apply_finding_noise_budget,
         load_state,
         match_findings,
+        resolve_finding_noise_budget,
     )
 
     sp = state_path(args)
@@ -103,7 +103,8 @@ def cmd_show(args):
                       "total": 0, "findings": []})
         return
 
-    surfaced_matches, hidden_by_detector = apply_finding_noise_budget(matches, DEFAULT_FINDING_NOISE_BUDGET)
+    noise_budget = resolve_finding_noise_budget(args._config)
+    surfaced_matches, hidden_by_detector = apply_finding_noise_budget(matches, noise_budget)
     hidden_total = sum(hidden_by_detector.values())
 
     # Always write structured query file
@@ -118,7 +119,7 @@ def cmd_show(args):
         status_filter,
         total_matches=len(matches),
         hidden_by_detector=hidden_by_detector,
-        noise_budget=DEFAULT_FINDING_NOISE_BUDGET,
+        noise_budget=noise_budget,
     )
     _write_query({"command": "show", **payload, "narrative": narrative})
 
@@ -144,7 +145,7 @@ def cmd_show(args):
     print(colorize(f"\n  {len(surfaced_matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
     if hidden_total:
         hidden_parts = ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
-        print(colorize(f"  Noise budget: {DEFAULT_FINDING_NOISE_BUDGET}/detector ({hidden_total} hidden: {hidden_parts})\n", "dim"))
+        print(colorize(f"  Noise budget: {noise_budget}/detector ({hidden_total} hidden: {hidden_parts})\n", "dim"))
 
     shown_files = sorted_files[:top]
     remaining_files = sorted_files[top:]
