@@ -15,7 +15,7 @@ from ..base import (
 )
 from ...detectors.base import ComplexitySignal, GodRule
 from ...state import make_finding
-from ...utils import log
+from ...utils import log, rel
 from ...zones import adjust_potential, filter_entries
 
 
@@ -80,6 +80,42 @@ CSHARP_GOD_RULES = [
     GodRule("base_classes", "base classes/interfaces", lambda c: len(c.base_classes), 4),
     GodRule("long_methods", "long methods (>50 LOC)", lambda c: sum(1 for m in c.methods if m.loc > 50), 2),
 ]
+
+
+def _corroboration_signals_for_csharp(entry: dict, lang: LangConfig) -> tuple[list[str], int, int]:
+    """Return corroboration signals plus complexity/import counts for confidence gating."""
+    filepath = entry.get("file", "")
+    loc = entry.get("loc", 0)
+    import_count = entry.get("import_count", 0)
+    complexity_score = lang._complexity_map.get(filepath, 0)
+    if complexity_score == 0 and filepath:
+        complexity_score = lang._complexity_map.get(rel(filepath), 0)
+
+    signals: list[str] = []
+    if loc >= lang.large_threshold:
+        signals.append(f"large ({loc} LOC)")
+    if complexity_score >= lang.complexity_threshold:
+        signals.append(f"complexity ({complexity_score})")
+    if import_count >= 5:
+        signals.append(f"high fan-out ({import_count} imports)")
+    return signals, complexity_score, import_count
+
+
+def _apply_csharp_actionability_gates(findings: list[dict], entries: list[dict], lang: LangConfig) -> None:
+    """Downgrade actionability unless multiple independent signals corroborate."""
+    entries_by_file = {rel(e["file"]): e for e in entries}
+    for finding in findings:
+        entry = entries_by_file.get(finding.get("file", ""))
+        if not entry:
+            continue
+        signals, complexity_score, import_count = _corroboration_signals_for_csharp(entry, lang)
+        corroboration_count = len(signals)
+        finding["confidence"] = "medium" if corroboration_count >= 2 else "low"
+        detail = finding.setdefault("detail", {})
+        detail["corroboration_signals"] = signals
+        detail["corroboration_count"] = corroboration_count
+        detail["complexity_score"] = complexity_score
+        detail["import_count"] = import_count
 
 
 def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
@@ -160,7 +196,9 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         path, graph, barrel_names=lang.barrel_names
     )
     single_entries = filter_entries(zm, single_entries, "single_use")
-    results.extend(make_single_use_findings(single_entries, lang.get_area, stderr_fn=log))
+    single_findings = make_single_use_findings(single_entries, lang.get_area, stderr_fn=log)
+    _apply_csharp_actionability_gates(single_findings, single_entries, lang)
+    results.extend(single_findings)
 
     cycle_entries, _ = detect_cycles(graph)
     cycle_entries = filter_entries(zm, cycle_entries, "cycles", file_key="files")
@@ -174,7 +212,9 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         extra_barrel_names=lang.barrel_names,
     )
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
-    results.extend(make_orphaned_findings(orphan_entries, log))
+    orphan_findings = make_orphaned_findings(orphan_entries, log)
+    _apply_csharp_actionability_gates(orphan_findings, orphan_entries, lang)
+    results.extend(orphan_findings)
 
     log(f"         -> {len(results)} coupling/structural findings total")
     potentials = {

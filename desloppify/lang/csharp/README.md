@@ -105,6 +105,16 @@ Entry patterns used for orphan detection:
 - `/Program.cs`
 - `/Startup.cs`
 - `/Main.cs`
+- `/MauiProgram.cs`
+- `/MainActivity.cs`
+- `/AppDelegate.cs`
+- `/SceneDelegate.cs`
+- `/WinUIApplication.cs`
+- `/App.xaml.cs`
+- `/Platforms/Android/`
+- `/Platforms/iOS/`
+- `/Platforms/MacCatalyst/`
+- `/Platforms/Windows/`
 - `/Properties/`
 - `/Migrations/`
 - `.g.cs`
@@ -135,6 +145,8 @@ Phases in order:
 3. Security
 4. Subjective review
 5. Duplicates (slow phase)
+
+Default C# scan profile is `objective`, which skips subjective review unless you opt in with `--profile full`.
 
 ## Scan flow in plain language
 
@@ -223,6 +235,7 @@ It combines:
 - `using` statements (normal, alias, static)
 - `.csproj` `ProjectReference` relationships
 - Optional `RootNamespace` from `.csproj`
+- Optional Roslyn JSON graph input via `DESLOPPIFY_CSHARP_ROSLYN_CMD`
 
 How it works at a high level:
 
@@ -232,7 +245,23 @@ How it works at a high level:
 4. Build namespace to file index
 5. For each file, map `using` namespaces to possible target files
 6. Restrict cross-project edges using `ProjectReference` relationships
-7. Return graph in shared detector format
+7. Mark detected bootstrap/entrypoint files as graph roots (so they are not treated as orphaned)
+8. Return graph in shared detector format
+
+Bootstrap heuristics include path/name/content signals, for example:
+
+- platform entry files such as `MauiProgram.cs`, `MainActivity.cs`, `AppDelegate.cs`
+- platform folders under `Platforms/*`
+- common bootstrap signatures such as `Main(...)`, `CreateMauiApp(...)`, and delegate inheritance
+
+Roslyn mode:
+
+- If `DESLOPPIFY_CSHARP_ROSLYN_CMD` is set, Desloppify runs that command first.
+- The command can include `{path}` placeholder and must print JSON to stdout.
+- Supported JSON shapes:
+  - `{"files":[{"file":"<abs-or-rel>", "imports":["<abs-or-rel>", ...]}]}`
+  - `{"edges":[{"source":"<abs-or-rel>", "target":"<abs-or-rel>"}]}`
+- If command execution fails or JSON is invalid, Desloppify falls back to heuristic namespace/project graph building.
 
 Graph node shape (same shape expected by shared graph detectors):
 
@@ -258,7 +287,7 @@ It does not resolve:
 - Partial class symbol merges at semantic level
 - Advanced compiler features and generated symbols
 
-For MVP this tradeoff is intentional.
+For MVP this tradeoff is intentional. Optional Roslyn input improves precision when available.
 
 ## C# structural phase
 
@@ -300,6 +329,19 @@ It runs shared detectors against the C# graph:
 - `orphaned`
 
 It then applies zone filtering and converts entries into normalized findings.
+
+Actionability gating for `single_use` and `orphaned`:
+
+- C# now downgrades confidence unless there is corroboration from multiple signals.
+- Corroboration signals currently include:
+  - large file size (LOC over threshold)
+  - complexity score over threshold
+  - high fan-out (`import_count >= 5`)
+- Confidence policy:
+  - `medium` when at least 2 corroboration signals are present
+  - `low` otherwise
+
+This reduces eager cleanup recommendations for weakly-supported coupling findings.
 
 ## C# security phase
 
@@ -452,20 +494,22 @@ Fixtures are in:
 - `tests/fixtures/csharp/simple_app/`
 - `tests/fixtures/csharp/multi_project/`
 - `tests/fixtures/csharp/cyclic/`
+- `tests/fixtures/csharp/signal_rich/`
 
 Fixture intent:
 
 - `simple_app`: baseline single project behavior
 - `multi_project`: project reference edge building
 - `cyclic`: cycle detection path
+- `signal_rich`: intentional detector signals for meaningful scan assertions (security, structural, orphaned, single-use candidate behavior)
 
 ## Current limitations
 
 This list is intentional and expected for MVP:
 
 - No C# auto-fixers yet
-- No Roslyn semantic analysis
-- Dependency graph relies on namespace and project reference heuristics
+- No built-in Roslyn resolver binary ships with Desloppify
+- Dependency graph defaults to namespace/project heuristics, with optional Roslyn JSON command integration
 - Some advanced C# syntax cases may not be parsed perfectly by regex-based extractors
 
 ## Safe extension points
@@ -501,6 +545,7 @@ Common commands:
 
 ```bash
 desloppify --lang csharp scan --path .
+desloppify --lang csharp scan --profile full --path .
 desloppify --lang csharp status
 desloppify --lang csharp next
 desloppify --lang csharp show .

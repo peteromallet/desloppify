@@ -5,7 +5,9 @@ import pytest
 from desloppify.commands.scan import (
     _audit_excluded_dirs,
     _collect_codebase_metrics,
+    _effective_include_slow,
     _format_delta,
+    _resolve_scan_profile,
     _show_diff_summary,
     _show_post_scan_analysis,
     _show_dimension_deltas,
@@ -29,6 +31,25 @@ class TestScanModuleSanity:
         assert callable(_collect_codebase_metrics)
         assert callable(_format_delta)
         assert callable(_show_diff_summary)
+
+
+# ---------------------------------------------------------------------------
+# profile helpers
+# ---------------------------------------------------------------------------
+
+class TestScanProfiles:
+    def test_csharp_defaults_to_objective(self):
+        assert _resolve_scan_profile(None, "csharp") == "objective"
+
+    def test_non_csharp_defaults_to_full(self):
+        assert _resolve_scan_profile(None, "python") == "full"
+
+    def test_explicit_profile_wins(self):
+        assert _resolve_scan_profile("ci", "csharp") == "ci"
+
+    def test_ci_forces_slow_off(self):
+        assert _effective_include_slow(True, "ci") is False
+        assert _effective_include_slow(False, "ci") is False
 
 
 # ---------------------------------------------------------------------------

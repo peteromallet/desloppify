@@ -127,6 +127,8 @@ def save_state(state: dict, path: Path | None = None):
 
 
 _EMPTY_COUNTERS = ("open", "fixed", "auto_resolved", "wontfix", "false_positive")
+DEFAULT_FINDING_NOISE_BUDGET = 10
+_CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
 def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str, int]]]:
@@ -139,6 +141,47 @@ def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str,
         ts = tier_stats.setdefault(tier, dict.fromkeys(_EMPTY_COUNTERS, 0))
         ts[s] = ts.get(s, 0) + 1
     return counters, tier_stats
+
+
+def apply_finding_noise_budget(findings: list[dict], budget: int = DEFAULT_FINDING_NOISE_BUDGET) -> tuple[list[dict], dict[str, int]]:
+    """Cap surfaced findings per detector and return hidden counts.
+
+    Returns (surfaced_findings, hidden_by_detector).
+    Budget <= 0 means unlimited (no truncation).
+    """
+    if budget <= 0:
+        return list(findings), {}
+
+    by_detector: dict[str, list[dict]] = {}
+    for finding in findings:
+        det = finding.get("detector", "unknown")
+        by_detector.setdefault(det, []).append(finding)
+
+    surfaced: list[dict] = []
+    hidden_by_detector: dict[str, int] = {}
+    for detector, detector_findings in by_detector.items():
+        detector_findings.sort(
+            key=lambda f: (
+                f.get("tier", 3),
+                _CONFIDENCE_ORDER.get(f.get("confidence", "low"), 9),
+                f.get("id", ""),
+            )
+        )
+        surfaced.extend(detector_findings[:budget])
+        hidden_count = max(0, len(detector_findings) - budget)
+        if hidden_count:
+            hidden_by_detector[detector] = hidden_count
+
+    surfaced.sort(
+        key=lambda f: (
+            f.get("file", ""),
+            f.get("tier", 3),
+            _CONFIDENCE_ORDER.get(f.get("confidence", "low"), 9),
+            f.get("id", ""),
+        )
+    )
+    hidden_sorted = dict(sorted(hidden_by_detector.items(), key=lambda item: (-item[1], item[0])))
+    return surfaced, hidden_sorted
 
 
 def _weighted_progress(findings: dict) -> tuple[float, float]:

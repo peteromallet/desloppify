@@ -63,6 +63,8 @@ def create_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--path", type=str, default=None)
     p_scan.add_argument("--state", type=str, default=None)
     p_scan.add_argument("--skip-slow", action="store_true", help="Skip slow detectors (dupes)")
+    p_scan.add_argument("--profile", choices=["objective", "full", "ci"], default=None,
+                        help="Scan profile: objective, full, or ci")
     p_scan.add_argument("--force-resolve", action="store_true",
                         help="Bypass suspect-detector protection (use when a detector legitimately went to 0)")
     p_scan.add_argument("--no-badge", action="store_true",

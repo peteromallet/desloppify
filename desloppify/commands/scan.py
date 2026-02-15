@@ -67,6 +67,24 @@ def _collect_codebase_metrics(lang, path: Path) -> dict | None:
     }
 
 
+def _resolve_scan_profile(profile: str | None, lang_name: str | None) -> str:
+    """Resolve effective scan profile from CLI and language defaults."""
+    if profile in {"objective", "full", "ci"}:
+        return profile
+    if lang_name == "csharp":
+        return "objective"
+    return "full"
+
+
+def _effective_include_slow(include_slow: bool, profile: str) -> bool:
+    """Determine whether slow phases should run for this profile."""
+    return include_slow and profile != "ci"
+
+
+def _format_hidden_by_detector(hidden_by_detector: dict[str, int]) -> str:
+    return ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
+
+
 def _show_diff_summary(diff: dict):
     """Print the +new / -resolved / reopened one-liner."""
     diff_parts = []
@@ -220,6 +238,8 @@ def cmd_scan(args):
     from ._helpers import resolve_lang
     lang = resolve_lang(args)
     lang_label = f" ({lang.name})" if lang else ""
+    profile = _resolve_scan_profile(getattr(args, "profile", None), lang.name if lang else None)
+    effective_include_slow = _effective_include_slow(include_slow, profile)
 
     # Load zone overrides from config
     zone_overrides = config.get("zone_overrides") or None
@@ -240,8 +260,8 @@ def cmd_scan(args):
     from ..utils import enable_file_cache, disable_file_cache
     enable_file_cache()
     try:
-        findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang,
-                                                  zone_overrides=zone_overrides)
+        findings, potentials = generate_findings(path, include_slow=effective_include_slow, lang=lang,
+                                                 zone_overrides=zone_overrides, profile=profile)
     finally:
         disable_file_cache()
 
@@ -278,7 +298,7 @@ def cmd_scan(args):
                       exclude=get_exclusions(),
                       potentials=potentials,
                       codebase_metrics=codebase_metrics,
-                      include_slow=include_slow,
+                      include_slow=effective_include_slow,
                       ignore=config.get("ignore", []))
 
     # Expire stale holistic review findings
@@ -293,10 +313,23 @@ def cmd_scan(args):
     print(colorize("  Scan complete", "bold"))
     print(colorize("  " + "─" * 50, "dim"))
 
+    hidden_by_detector: dict[str, int] = {}
+    hidden_total = 0
+    from ..state import DEFAULT_FINDING_NOISE_BUDGET, apply_finding_noise_budget, path_scoped_findings
+    open_findings = [
+        finding for finding in path_scoped_findings(state["findings"], state.get("scan_path")).values()
+        if finding.get("status") == "open"
+    ]
+    _, hidden_by_detector = apply_finding_noise_budget(open_findings, DEFAULT_FINDING_NOISE_BUDGET)
+    hidden_total = sum(hidden_by_detector.values())
+
     _show_diff_summary(diff)
     _show_score_delta(state, prev_score, prev_strict, prev_obj, prev_obj_strict)
-    if not include_slow:
+    if not effective_include_slow:
         print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
+    if hidden_total:
+        print(colorize(f"  * Noise budget: {DEFAULT_FINDING_NOISE_BUDGET}/detector "
+                       f"({hidden_total} findings hidden in show output: {_format_hidden_by_detector(hidden_by_detector)})", "dim"))
     _show_detector_progress(state)
 
     # Dimension deltas and low-dimension hints
@@ -319,6 +352,10 @@ def cmd_scan(args):
 
     from ..config import config_for_query
     _write_query({"command": "scan", "score": state["score"],
+                  "profile": profile,
+                  "noise_budget": DEFAULT_FINDING_NOISE_BUDGET,
+                  "hidden_by_detector": hidden_by_detector,
+                  "hidden_total": hidden_total,
                   "strict_score": state.get("strict_score", 0),
                   "prev_score": prev_score, "diff": diff, "stats": state["stats"],
                   "warnings": warnings,

@@ -31,6 +31,16 @@ def test_config_has_phases():
     assert any(p.label == "Structural analysis" for p in cfg.phases)
 
 
+def test_config_entry_patterns_include_mobile_bootstrap_files():
+    """C# config should treat MAUI/Xamarin bootstrap files as entrypoints."""
+    cfg = CSharpConfig()
+    assert "/MauiProgram.cs" in cfg.entry_patterns
+    assert "/MainActivity.cs" in cfg.entry_patterns
+    assert "/AppDelegate.cs" in cfg.entry_patterns
+    assert "/SceneDelegate.cs" in cfg.entry_patterns
+    assert "/WinUIApplication.cs" in cfg.entry_patterns
+
+
 def test_file_finder_excludes_build_artifacts(tmp_path):
     """C# file discovery skips bin/ and obj/ build output."""
     (tmp_path / "src").mkdir()

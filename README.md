@@ -6,7 +6,7 @@ Every scan generates a scorecard badge you can add to your README — here's the
 
 <img src="scorecard.png" width="100%">
 
-## For your agent's consideration...
+## For your agent's consideration
 
 Copy-paste into any AI coding agent (Cursor, Codex, Copilot, etc.):
 
@@ -79,10 +79,11 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 
 - Auto-detects from `.sln` / `.csproj`
 - Scans `.cs` files with structural, coupling, security, and duplicate phases
+- Default C# scan profile is `objective` (subjective review is opt-in via `--profile full`)
 - Project-reference-aware dependency graph (`ProjectReference` in `.csproj`)
 - Current limitations:
 - C# auto-fixers are not implemented yet
-- Dependency graph is namespace/using-based (not full Roslyn semantic analysis)
+- Roslyn semantic graphing is optional via `DESLOPPIFY_CSHARP_ROSLYN_CMD`; default is namespace/using heuristics with fallback
 - Test-coverage quality heuristics are best-effort
 
 #### Tiers & scoring
@@ -104,6 +105,7 @@ Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
 | `DESLOPPIFY_SRC` | `src` | Source directory (TS alias resolution) |
 | `--lang <name>` | auto-detected | Language selection (each has own state) |
 | `--exclude <dirs>` | none | Directories to skip (e.g. `--exclude migrations tests`) |
+| `--profile <objective\|full\|ci>` | `full` (C#: `objective`) | Scan profile controls phase coverage and speed |
 | `--no-badge` | false | Skip scorecard image generation |
 | `--badge-path <path>` | `scorecard.png` | Output path for scorecard image |
 | `DESLOPPIFY_NO_BADGE` | — | Set to `true` to disable badge via env |

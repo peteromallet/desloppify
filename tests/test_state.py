@@ -9,6 +9,7 @@ from desloppify import state as state_mod
 from desloppify.state import (
     _empty_state,
     _upsert_findings,
+    apply_finding_noise_budget,
     load_state,
     make_finding,
     save_state,
@@ -35,6 +36,32 @@ def _make_raw_finding(fid, *, detector="det", file="a.py", tier=3,
     if zone:
         f["zone"] = zone
     return f
+
+
+# ---------------------------------------------------------------------------
+# apply_finding_noise_budget
+# ---------------------------------------------------------------------------
+
+class TestApplyFindingNoiseBudget:
+    def test_budget_zero_keeps_all(self):
+        findings = [
+            _make_raw_finding("unused::a.py::x", detector="unused"),
+            _make_raw_finding("unused::b.py::y", detector="unused"),
+        ]
+        surfaced, hidden = apply_finding_noise_budget(findings, budget=0)
+        assert len(surfaced) == 2
+        assert hidden == {}
+
+    def test_caps_per_detector_and_reports_hidden(self):
+        findings = [
+            _make_raw_finding("unused::a.py::x", detector="unused"),
+            _make_raw_finding("unused::b.py::y", detector="unused"),
+            _make_raw_finding("unused::c.py::z", detector="unused"),
+            _make_raw_finding("smells::d.py::w", detector="smells"),
+        ]
+        surfaced, hidden = apply_finding_noise_budget(findings, budget=2)
+        assert len(surfaced) == 3
+        assert hidden == {"unused": 1}
 
 
 # ---------------------------------------------------------------------------

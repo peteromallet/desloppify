@@ -45,11 +45,16 @@ class TestCreateParser:
         assert args.command == "scan"
         assert args.path is None
         assert args.skip_slow is False
+        assert args.profile is None
 
     def test_scan_with_path_and_skip_slow(self, parser):
         args = parser.parse_args(["scan", "--path", "/tmp/mycode", "--skip-slow"])
         assert args.path == "/tmp/mycode"
         assert args.skip_slow is True
+
+    def test_scan_with_profile(self, parser):
+        args = parser.parse_args(["scan", "--profile", "ci"])
+        assert args.profile == "ci"
 
     def test_scan_with_lang(self, parser):
         args = parser.parse_args(["--lang", "python", "scan"])

@@ -105,7 +105,7 @@ class TestDetectSingleUseAbstractions:
         assert entries == []
 
     def test_entry_contains_loc_and_sole_importer(self, tmp_path):
-        """Entries should contain loc and sole_importer fields."""
+        """Entries should contain loc/import metadata and sole importer."""
         target = tmp_path / "util.py"
         target.write_text("\n".join(f"line_{i} = {i}" for i in range(50)))
         importer = str(tmp_path / "consumer.py")
@@ -117,6 +117,8 @@ class TestDetectSingleUseAbstractions:
         assert len(entries) == 1
         assert entries[0]["loc"] == 50
         assert "sole_importer" in entries[0]
+        assert "import_count" in entries[0]
+        assert entries[0]["import_count"] == 0
         assert "reason" in entries[0]
 
     def test_sorted_by_loc_descending(self, tmp_path):
