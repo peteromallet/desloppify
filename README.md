@@ -1,6 +1,6 @@
 # Desloppify - agent tools to make your codebase 🤌
 
-Detects subjective (abstraction quality, structure, etc.) and mechanical (complexity, smells, etc.) issues, tracks findings, and works woth your to resolve isuses until your codebase is beautifully structured and free of issues. Currently supports Typescript & Python.
+Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports Typescript & Python.
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo - the strict score includes the ones you've ignored that haven't been solved:
 
