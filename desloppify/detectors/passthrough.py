@@ -25,7 +25,7 @@ def classify_passthrough_tier(
     return None
 
 
-def _classify_params(
+def classify_params(
     params: list[str],
     body: str,
     make_pattern: Callable[[str], str],

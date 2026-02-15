@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..lang.base import FixerConfig, FixResult
 from ..utils import colorize, rel
-from ._helpers import _state_path, _write_query
+from ._helpers import state_path, _write_query
 
 
 def cmd_fix(args):
@@ -51,17 +51,17 @@ def cmd_fix(args):
 
 def _cmd_fix_review(args):
     """Prepare structured review data with dimension templates for AI evaluation."""
-    from ._helpers import _resolve_lang, _state_path
+    from ._helpers import resolve_lang, state_path
     from ..state import load_state
     from ..review import prepare_review, LANG_GUIDANCE
     from .review_cmd import _setup_lang
 
-    lang = _resolve_lang(args)
+    lang = resolve_lang(args)
     if not lang:
         print(colorize("Error: could not detect language. Use --lang.", "red"))
         sys.exit(1)
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
     path = Path(args.path)
 
@@ -118,8 +118,8 @@ _COMMAND_POST_FIX: dict[str, object] = {}  # populated after _cascade_import_cle
 
 def _load_fixer(args, fixer_name: str) -> FixerConfig:
     """Resolve fixer from language plugin registry, or exit."""
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     if not lang:
         print(colorize("Could not detect language. Use --lang to specify.", "red"))
         sys.exit(1)
@@ -166,7 +166,7 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
                       skip_reasons=None):
     """Resolve findings in state, run post-fix hooks, and print retro."""
     from ..state import load_state, save_state
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
     prev_score = state.get("score", 0)
     resolved_ids = _resolve_fixer_results(state, results, fixer.detector, fixer_name)
@@ -185,8 +185,8 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
     if skip_reasons is None:
         skip_reasons = {}
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    fix_lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    fix_lang = resolve_lang(args)
     fix_lang_name = fix_lang.name if fix_lang else None
     narrative = compute_narrative(state, lang=fix_lang_name, command="fix")
     _write_query({"command": "fix", "fixer": fixer_name,
@@ -202,8 +202,8 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
 def _report_dry_run(args, fixer_name, entries, results, total_items):
     """Write dry-run query and print review prompts."""
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    fix_lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    fix_lang = resolve_lang(args)
     fix_lang_name = fix_lang.name if fix_lang else None
     state = getattr(args, "_preloaded_state", {})
     narrative = compute_narrative(state, lang=fix_lang_name, command="fix")

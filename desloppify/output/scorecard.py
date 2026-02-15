@@ -6,7 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from .utils import PROJECT_ROOT
+from ..utils import PROJECT_ROOT
 
 # Render at 2x for retina/high-DPI crispness
 _SCALE = 2

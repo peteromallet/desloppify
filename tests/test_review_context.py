@@ -14,10 +14,10 @@ from desloppify.review.context import (
     _gather_migration_signals,
     _classify_error_strategy,
     build_review_context,
-    build_holistic_context,
     _serialize_context,
     ReviewContext,
 )
+from desloppify.review.context_holistic import build_holistic_context
 from desloppify.state import _empty_state
 
 
@@ -778,7 +778,7 @@ class TestBuildReviewContext:
         # Create a file with high comment ratio
         comment_heavy = "# comment\n" * 8 + "x = 1\n" * 2
 
-        with patch("desloppify.review.context._read_file_text",
+        with patch("desloppify.review.context.read_file_text",
                     return_value=comment_heavy):
             ctx = build_review_context(
                 Path("/project"), mock_lang, empty_state,
@@ -797,7 +797,7 @@ class TestBuildReviewContext:
                 return []
         """)
 
-        with patch("desloppify.review.context._read_file_text",
+        with patch("desloppify.review.context.read_file_text",
                     return_value=route_content):
             ctx = build_review_context(
                 Path("/project"), mock_lang, empty_state,
@@ -817,7 +817,7 @@ class TestBuildReviewContext:
             }
         """)
 
-        with patch("desloppify.review.context._read_file_text",
+        with patch("desloppify.review.context.read_file_text",
                     return_value=throw_content):
             ctx = build_review_context(
                 Path("/project"), mock_lang, empty_state,
@@ -863,7 +863,7 @@ class TestBuildHolisticContext:
                 return []
         """)
 
-        with patch("desloppify.review.context_holistic._read_file_text",
+        with patch("desloppify.review.context_holistic.read_file_text",
                     return_value=content):
             ctx = build_holistic_context(
                 Path("/project"), mock_lang, empty_state,
@@ -876,7 +876,7 @@ class TestBuildHolisticContext:
         """build_holistic_context should include ai_debt_signals when files have signals."""
         comment_heavy = "# comment\n" * 8 + "x = 1\n" * 2
 
-        with patch("desloppify.review.context_holistic._read_file_text",
+        with patch("desloppify.review.context_holistic.read_file_text",
                     return_value=comment_heavy):
             ctx = build_holistic_context(
                 Path("/project"), mock_lang, empty_state,
@@ -889,7 +889,7 @@ class TestBuildHolisticContext:
         """build_holistic_context should include migration_signals when deprecated markers exist."""
         content = "@deprecated\ndef old(): pass\n"
 
-        with patch("desloppify.review.context_holistic._read_file_text",
+        with patch("desloppify.review.context_holistic.read_file_text",
                     return_value=content):
             ctx = build_holistic_context(
                 Path("/project"), mock_lang, empty_state,
@@ -902,7 +902,7 @@ class TestBuildHolisticContext:
         """build_holistic_context should NOT include authorization when no route handlers."""
         content = "def helper():\n    return 42\n"
 
-        with patch("desloppify.review.context_holistic._read_file_text",
+        with patch("desloppify.review.context_holistic.read_file_text",
                     return_value=content):
             ctx = build_holistic_context(
                 Path("/project"), mock_lang, empty_state,
@@ -915,7 +915,7 @@ class TestBuildHolisticContext:
         """build_holistic_context should NOT include ai_debt_signals when no signals."""
         content = "def add(a, b):\n    return a + b\n"
 
-        with patch("desloppify.review.context_holistic._read_file_text",
+        with patch("desloppify.review.context_holistic.read_file_text",
                     return_value=content):
             ctx = build_holistic_context(
                 Path("/project"), mock_lang, empty_state,
@@ -928,7 +928,7 @@ class TestBuildHolisticContext:
         """build_holistic_context should always include codebase_stats."""
         content = "x = 1\n"
 
-        with patch("desloppify.review.context_holistic._read_file_text",
+        with patch("desloppify.review.context_holistic.read_file_text",
                     return_value=content):
             ctx = build_holistic_context(
                 Path("/project"), mock_lang, empty_state,

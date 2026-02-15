@@ -48,7 +48,7 @@ class TestCmdNextOutput:
         def mock_get_next_items(state, tier, count, scan_path=None):
             return []
 
-        # Mock _state_path
+        # Mock state_path
         def mock_state_path(args):
             return "/tmp/fake-state.json"
 
@@ -56,12 +56,12 @@ class TestCmdNextOutput:
         def mock_check_staleness(state):
             return None
 
-        # Mock _write_query
+        # Mock _write_query (still private)
         written = []
         def mock_write_query(payload):
             written.append(payload)
 
-        monkeypatch.setattr(next_mod, "_state_path", mock_state_path)
+        monkeypatch.setattr(next_mod, "state_path", mock_state_path)
         monkeypatch.setattr(next_mod, "_write_query", mock_write_query)
 
         # We need to patch the lazy imports inside cmd_next

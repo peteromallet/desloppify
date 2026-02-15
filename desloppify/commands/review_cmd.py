@@ -10,11 +10,11 @@ from ..utils import colorize
 def cmd_review(args):
     """Prepare or import subjective code review findings."""
     from ..state import load_state
-    from ._helpers import _state_path, _resolve_lang
+    from ._helpers import state_path, resolve_lang
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
-    lang = _resolve_lang(args)
+    lang = resolve_lang(args)
 
     if not lang:
         print(colorize("  Error: could not detect language. Use --lang.", "red"), file=sys.stderr)
@@ -73,12 +73,17 @@ def _do_prepare(args, state, lang, sp, holistic=False):
         max_age_cli = getattr(args, "max_age", None)
         max_age = max_age_cli if max_age_cli is not None else args._config.get("review_max_age_days", 30)
         force_refresh = getattr(args, "refresh", False)
+        config_dims = args._config.get("review_dimensions") or None
+        # Filter empty lists from config
+        if config_dims is not None and not config_dims:
+            config_dims = None
         data = prepare_review(
             path, lang, state,
             max_files=max_files,
             max_age_days=max_age,
             force_refresh=force_refresh,
             dimensions=dimensions,
+            config_dimensions=config_dims,
             files=found_files or None,
         )
         data["narrative"] = narrative

@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from ...detectors.base import ClassInfo, FunctionInfo
-from ...detectors.passthrough import _classify_params, classify_passthrough_tier
+from ...detectors.passthrough import classify_params, classify_passthrough_tier
 from ...utils import PROJECT_ROOT, find_py_files
 
 
@@ -294,7 +294,7 @@ def detect_passthrough_functions(path: Path) -> list[dict]:
             body = rest[:bm.start()] if bm else rest
 
             has_kwargs_spread = bool(re.search(r"\*\*kwargs\b", body))
-            pt, direct = _classify_params(
+            pt, direct = classify_params(
                 params, body, py_passthrough_pattern, occurrences_per_match=2)
 
             if len(pt) < 4 and not has_kwargs_spread:

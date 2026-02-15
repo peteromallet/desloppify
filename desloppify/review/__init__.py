@@ -20,7 +20,6 @@ from .context import (
     ReviewContext,
     build_review_context,
     _serialize_context,
-    build_holistic_context,
     _file_excerpt,
     _extract_imported_names,
     _abs,
@@ -31,15 +30,16 @@ from .context import (
     _gather_migration_signals,
     _classify_error_strategy,
 )
+from .context_holistic import build_holistic_context
 from .selection import (
     select_files_for_review,
-    _hash_file,
+    hash_file,
     _compute_review_priority,
     _get_file_findings,
     _count_fresh,
     _count_stale,
-    _LOW_VALUE_NAMES,
-    _MIN_REVIEW_LOC,
+    LOW_VALUE_NAMES,
+    MIN_REVIEW_LOC,
 )
 from .prepare import (
     prepare_review,
@@ -73,9 +73,9 @@ __all__ = [
     "_gather_ai_debt_signals", "_gather_auth_context",
     "_gather_migration_signals", "_classify_error_strategy",
     # selection
-    "select_files_for_review", "_hash_file", "_compute_review_priority",
+    "select_files_for_review", "hash_file", "_compute_review_priority",
     "_get_file_findings", "_count_fresh", "_count_stale",
-    "_LOW_VALUE_NAMES", "_MIN_REVIEW_LOC",
+    "LOW_VALUE_NAMES", "MIN_REVIEW_LOC",
     # prepare
     "prepare_review", "prepare_holistic_review", "_build_investigation_batches",
     "_build_file_requests", "_HOLISTIC_WORKFLOW", "_rel_list",

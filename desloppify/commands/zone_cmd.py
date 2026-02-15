@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from ..utils import colorize, rel
-from ._helpers import _state_path
+from ._helpers import state_path
 from ..zones import Zone
 
 
@@ -23,11 +23,11 @@ def cmd_zone(args):
 def _zone_show(args):
     """Show zone classifications for all scanned files."""
     from ..state import load_state
-    from ._helpers import _resolve_lang
+    from ._helpers import resolve_lang
 
-    sp = _state_path(args)
+    sp = state_path(args)
     load_state(sp)  # validate state file exists/loads
-    lang = _resolve_lang(args)
+    lang = resolve_lang(args)
     if not lang or not lang.file_finder:
         print(colorize("No language detected — run a scan first.", "red"))
         return

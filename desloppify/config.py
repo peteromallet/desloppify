@@ -37,6 +37,12 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         "Finding patterns to suppress"),
     "zone_overrides": ConfigKey(dict, {},
         "Manual zone overrides {rel_path: zone_name}"),
+    "review_dimensions": ConfigKey(list, [],
+        "Override default per-file review dimensions (empty = built-in defaults)"),
+    "large_files_threshold": ConfigKey(int, 0,
+        "Override LOC threshold for large file detection (0 = use language default)"),
+    "props_threshold": ConfigKey(int, 0,
+        "Override prop count threshold for bloated interface detection (0 = default 14)"),
 }
 
 

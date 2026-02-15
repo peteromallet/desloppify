@@ -1,7 +1,7 @@
 """plan command: generate prioritized markdown plan from state."""
 
 from ..utils import colorize
-from ._helpers import _state_path
+from ._helpers import state_path
 
 
 def cmd_plan_output(args):
@@ -9,7 +9,7 @@ def cmd_plan_output(args):
     from ..state import load_state
     from ..plan import generate_plan_md
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
 
     if not state.get("last_scan"):

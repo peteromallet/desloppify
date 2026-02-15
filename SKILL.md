@@ -13,7 +13,7 @@ allowed-tools: Bash(desloppify *)
 
 ## 1. Your Job
 
-**Get strict scores as high as possible.** After every scan, show the user ALL scores:
+**Improve code quality by fixing findings.** The score reflects progress but is not the goal. Never suppress findings to improve the score. After every scan, show the user ALL scores:
 
 | What | How |
 |------|-----|
@@ -56,7 +56,7 @@ desloppify review --import file.json       # import review results
 
 ## 4. Subjective Reviews (biggest score lever)
 
-Score = 50% mechanical + 50% subjective. Subjective starts at 0% until reviewed.
+Score = 75% mechanical + 25% subjective. Subjective starts at 0% until reviewed.
 
 1. `desloppify review --prepare` — writes review data to `query.json`
 2. Launch a subagent to read `query.json`, review files, write assessments:

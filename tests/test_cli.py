@@ -14,7 +14,7 @@ from desloppify.commands._helpers import _write_query
 from desloppify.cli import (
     DETECTOR_NAMES,
     _apply_persisted_exclusions,
-    _state_path,
+    state_path,
     create_parser,
 )
 
@@ -210,39 +210,39 @@ class TestDetectorNames:
 
 
 # ===========================================================================
-# _state_path
+# state_path
 # ===========================================================================
 
 class TestStatePath:
     def test_auto_detects_lang_when_no_state_or_lang(self):
-        """_state_path auto-detects language and returns lang-specific path."""
+        """state_path auto-detects language and returns lang-specific path."""
         from unittest.mock import patch
         args = SimpleNamespace()
-        # When auto_detect_lang finds a language, _state_path returns lang-specific path
+        # When auto_detect_lang finds a language, state_path returns lang-specific path
         with patch("desloppify.lang.auto_detect_lang", return_value="python"):
-            result = _state_path(args)
+            result = state_path(args)
             assert result is not None
             assert "state-python.json" in str(result)
-        # When auto_detect_lang finds nothing, _state_path returns None
+        # When auto_detect_lang finds nothing, state_path returns None
         with patch("desloppify.lang.auto_detect_lang", return_value=None):
-            result = _state_path(args)
+            result = state_path(args)
             assert result is None
 
     def test_returns_explicit_state_path(self):
         args = SimpleNamespace(state="/tmp/custom.json")
-        result = _state_path(args)
+        result = state_path(args)
         assert result == Path("/tmp/custom.json")
 
     def test_returns_lang_based_path_when_lang_set(self):
         args = SimpleNamespace(lang="python")
-        result = _state_path(args)
+        result = state_path(args)
         assert result is not None
         assert "state-python.json" in str(result)
         assert ".desloppify" in str(result)
 
     def test_explicit_state_takes_precedence_over_lang(self):
         args = SimpleNamespace(state="/tmp/override.json", lang="python")
-        result = _state_path(args)
+        result = state_path(args)
         assert result == Path("/tmp/override.json")
 
 

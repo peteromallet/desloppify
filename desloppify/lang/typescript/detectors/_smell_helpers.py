@@ -9,7 +9,7 @@ in _smell_detectors.py.
 import re
 
 
-def _scan_code(text: str, start: int = 0, end: int | None = None):
+def scan_code(text: str, start: int = 0, end: int | None = None):
     """Yield (index, char, in_string) tuples, handling escapes correctly.
 
     Skips escaped characters (\\x) by advancing +2 instead of +1.
@@ -41,43 +41,12 @@ def _scan_code(text: str, start: int = 0, end: int | None = None):
 
 
 def _strip_ts_comments(text: str) -> str:
-    """Strip // and /* */ comments while preserving strings."""
-    result: list[str] = []
-    i = 0
-    in_str = None
-    while i < len(text):
-        ch = text[i]
-        if in_str:
-            if ch == '\\' and i + 1 < len(text):
-                result.append(text[i:i + 2])
-                i += 2
-                continue
-            if ch == in_str:
-                in_str = None
-            result.append(ch)
-            i += 1
-        elif ch in ('"', "'", '`'):
-            in_str = ch
-            result.append(ch)
-            i += 1
-        elif ch == '/' and i + 1 < len(text):
-            if text[i + 1] == '/':
-                nl = text.find('\n', i)
-                if nl == -1:
-                    break
-                i = nl
-            elif text[i + 1] == '*':
-                end = text.find('*/', i + 2)
-                if end == -1:
-                    break
-                i = end + 2
-            else:
-                result.append(ch)
-                i += 1
-        else:
-            result.append(ch)
-            i += 1
-    return ''.join(result)
+    """Strip // and /* */ comments while preserving strings.
+
+    Delegates to the shared implementation in utils.py.
+    """
+    from ....utils import strip_c_style_comments
+    return strip_c_style_comments(text)
 
 
 def _ts_match_is_in_string(line: str, match_start: int) -> bool:
@@ -139,7 +108,7 @@ def _detect_async_no_await(filepath: str, content: str, lines: list[str],
         for j in range(i, min(i + 200, len(lines))):
             body_line = lines[j]
             prev_code_ch = ""
-            for _, ch, in_s in _scan_code(body_line):
+            for _, ch, in_s in scan_code(body_line):
                 if in_s:
                     continue
                 if ch == '/' and prev_code_ch == '/':
@@ -271,7 +240,7 @@ def _detect_dead_useeffects(filepath: str, lines: list[str],
         brace_depth = 0
         end = None
         for j in range(i, min(i + 30, len(lines))):
-            for _, ch, in_s in _scan_code(lines[j]):
+            for _, ch, in_s in scan_code(lines[j]):
                 if in_s:
                     continue
                 if ch == "(":
@@ -301,7 +270,7 @@ def _detect_dead_useeffects(filepath: str, lines: list[str],
 
         depth = 0
         body_end = None
-        for ci, ch, in_s in _scan_code(text, brace_pos):
+        for ci, ch, in_s in scan_code(text, brace_pos):
             if in_s:
                 continue
             if ch == "{":
@@ -339,7 +308,7 @@ def _detect_swallowed_errors(filepath: str, content: str, lines: list[str],
         brace_start = m.end() - 1
         depth = 0
         body_end = None
-        for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + 500, len(content))):
+        for ci, ch, in_s in scan_code(content, brace_start, min(brace_start + 500, len(content))):
             if in_s:
                 continue
             if ch == "{":
@@ -385,7 +354,7 @@ def _track_brace_body(lines: list[str], start_line: int, *, max_scan: int = 2000
     depth = 0
     found_open = False
     for j in range(start_line, min(start_line + max_scan, len(lines))):
-        for _, ch, in_s in _scan_code(lines[j]):
+        for _, ch, in_s in scan_code(lines[j]):
             if in_s:
                 continue
             if ch == "{":

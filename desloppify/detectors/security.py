@@ -101,8 +101,8 @@ _SENSITIVE_IN_LOG = re.compile(
 )
 
 
-def _is_comment_or_string_context(line: str, match_start: int) -> bool:
-    """Quick check if a match position is likely in a comment."""
+def _is_comment_line(line: str) -> bool:
+    """Quick check if a line is likely a comment."""
     stripped = line.lstrip()
     if stripped.startswith("//") or stripped.startswith("#"):
         return True
@@ -157,7 +157,7 @@ def detect_security_issues(
         is_test = zone_map is not None and zone_map.get(filepath) == Zone.TEST
 
         for line_num, line in enumerate(lines, 1):
-            if _is_comment_or_string_context(line, 0) and not any(
+            if _is_comment_line(line) and not any(
                 pat.search(line) for _, pat, _, _ in _SECRET_FORMAT_PATTERNS
             ):
                 continue
@@ -166,7 +166,7 @@ def detect_security_issues(
             for label, pattern, severity, remediation in _SECRET_FORMAT_PATTERNS:
                 m = pattern.search(line)
                 if m:
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "hardcoded_secret_value",
                         f"Hardcoded {label} detected",
                         severity, "medium" if is_test else "high",
@@ -183,7 +183,7 @@ def detect_security_issues(
                     continue
                 if _is_placeholder(value):
                     continue
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, line_num, "hardcoded_secret_name",
                     f"Hardcoded secret in variable '{var_name}'",
                     "high", "medium" if is_test else "high",
@@ -195,7 +195,7 @@ def detect_security_issues(
                 # Only flag if the random value is ASSIGNED to a security-named variable
                 # (same line only — avoids matching UI session IDs near "session" in context)
                 if _SECURITY_CONTEXT_WORDS.search(line):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "insecure_random",
                         "Insecure random used in security context",
                         "medium", "medium",
@@ -205,7 +205,7 @@ def detect_security_issues(
             # Check 4: Weak crypto / TLS
             for pattern, label, severity, remediation in _WEAK_CRYPTO_PATTERNS:
                 if pattern.search(line):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "weak_crypto_tls",
                         label, severity, "high",
                         line, remediation,
@@ -213,7 +213,7 @@ def detect_security_issues(
 
             # Check 5: Sensitive data in logs
             if _LOG_CALLS.search(line) and _SENSITIVE_IN_LOG.search(line):
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, line_num, "log_sensitive",
                     "Sensitive data may be logged",
                     "medium", "medium",
@@ -223,7 +223,7 @@ def detect_security_issues(
     return entries, scanned
 
 
-def _make_entry(
+def make_security_entry(
     filepath: str, line: int, check_id: str,
     summary: str, severity: str, confidence: str,
     content: str, remediation: str,

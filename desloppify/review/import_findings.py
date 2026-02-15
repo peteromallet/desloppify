@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
-from ..state import make_finding, merge_scan, _now
+from ..state import make_finding, merge_scan, utc_now
 from ..utils import PROJECT_ROOT
 from .dimensions import DIMENSION_PROMPTS, HOLISTIC_DIMENSION_PROMPTS
 
@@ -21,7 +21,7 @@ def _store_assessments(state: dict, assessments: dict, source: str):
     Per-file assessments don't overwrite holistic.
     """
     store = state.setdefault("subjective_assessments", {})
-    now = _now()
+    now = utc_now()
 
     for dim_name, value in assessments.items():
         score = value if isinstance(value, (int, float)) else value.get("score", 0)
@@ -120,9 +120,13 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
     pots = state.setdefault("potentials", {}).setdefault(lang_name, {})
     pots["review"] = len(reviewed_files)
 
+    # Pass only review potential so merge_scan knows only 'review' ran —
+    # protects other detectors' findings from being auto-resolved.
+    # (pots is a reference to state["potentials"][lang] which has ALL detectors)
     diff = merge_scan(
         state, review_findings,
         lang=lang_name,
+        potentials={"review": pots.get("review", 0)},
     )
 
     # Auto-resolve per-file review findings for re-reviewed files that no longer
@@ -136,7 +140,7 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
                 and f.get("file", "") in reviewed_files
                 and fid not in new_ids):
             f["status"] = "auto_resolved"
-            f["resolved_at"] = _now()
+            f["resolved_at"] = utc_now()
             f["note"] = "not reported in latest per-file re-import"
             diff["auto_resolved"] = diff.get("auto_resolved", 0) + 1
 
@@ -153,17 +157,17 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
 
 def _update_review_cache(state: dict, findings_data: list[dict]):
     """Update per-file review cache with timestamps and content hashes."""
-    from .selection import _hash_file
+    from .selection import hash_file
 
     rc = state.setdefault("review_cache", {})
     file_cache = rc.setdefault("files", {})
-    now = _now()
+    now = utc_now()
 
     reviewed_files = set(f["file"] for f in findings_data
                          if "file" in f)
     for filepath in reviewed_files:
         abs_path = PROJECT_ROOT / filepath
-        content_hash = _hash_file(str(abs_path)) if abs_path.exists() else ""
+        content_hash = hash_file(str(abs_path)) if abs_path.exists() else ""
         file_findings = [f for f in findings_data if f.get("file") == filepath]
         file_cache[filepath] = {
             "content_hash": content_hash,
@@ -242,9 +246,12 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
     # HOLISTIC_POTENTIAL increment (don't grow on repeated holistic imports).
     pots["review"] = max(existing_review, HOLISTIC_POTENTIAL)
 
+    # Pass only review potential so merge_scan knows only 'review' ran —
+    # protects other detectors' findings from being auto-resolved.
     diff = merge_scan(
         state, review_findings,
         lang=lang_name,
+        potentials={"review": pots.get("review", 0)},
     )
 
     # Auto-resolve old holistic findings not in the new import
@@ -254,7 +261,7 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
                 and f.get("detail", {}).get("holistic")
                 and fid not in new_ids):
             f["status"] = "auto_resolved"
-            f["resolved_at"] = _now()
+            f["resolved_at"] = utc_now()
             f["note"] = "not reported in latest holistic re-import"
             diff["auto_resolved"] = diff.get("auto_resolved", 0) + 1
 
@@ -271,7 +278,7 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
 def _update_holistic_review_cache(state: dict, findings_data: list[dict]):
     """Store holistic review metadata in review_cache."""
     rc = state.setdefault("review_cache", {})
-    now = _now()
+    now = utc_now()
 
     # Count valid findings
     valid = [f for f in findings_data

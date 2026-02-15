@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 
-def _finding_weight(finding: dict) -> tuple[float, float, str]:
+def finding_weight(finding: dict) -> tuple[float, float, str]:
     """Compute (weight, impact_pts, finding_id) for a finding.
 
     Returns the scoring weight, estimated score impact in points,
@@ -31,7 +31,7 @@ def _finding_weight(finding: dict) -> tuple[float, float, str]:
     return weight, weight, finding.get("id", "")
 
 
-def _impact_label(weight: float) -> str:
+def impact_label(weight: float) -> str:
     """Convert weight to a human-readable impact label."""
     if weight >= 8:
         return "+++"
@@ -47,7 +47,10 @@ def list_open_review_findings(state: dict) -> list[dict]:
         f for f in findings.values()
         if f.get("status") == "open" and f.get("detector") == "review"
     ]
-    review.sort(key=lambda f: (-_finding_weight(f)[0], _finding_weight(f)[2]))
+    def _sort_key(f):
+        w, _, fid = finding_weight(f)
+        return (-w, fid)
+    review.sort(key=_sort_key)
     return review
 
 
@@ -97,7 +100,7 @@ def expire_stale_holistic(state: dict, max_age_days: int = 30) -> list[str]:
     return expired
 
 
-def _render_issue_detail(finding: dict, lang_name: str,
+def render_issue_detail(finding: dict, lang_name: str,
                          number: int | None = None,
                          subjective_assessments: dict | None = None) -> str:
     """Render one finding as a markdown work order from state."""
@@ -109,15 +112,13 @@ def _render_issue_detail(finding: dict, lang_name: str,
 
     # Identifier from finding ID
     parts = fid.split("::")
-    if len(parts) >= 4:
-        identifier = parts[-2]
-    elif len(parts) >= 3:
+    if len(parts) >= 3:
         identifier = parts[-2]
     else:
         identifier = finding.get("file", "unknown")
 
-    weight, impact_pts, _fid = _finding_weight(finding)
-    label = _impact_label(weight)
+    weight, impact_pts, _fid = finding_weight(finding)
+    label = impact_label(weight)
 
     lines: list[str] = []
     _w = lines.append

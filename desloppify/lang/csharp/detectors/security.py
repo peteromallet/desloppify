@@ -34,7 +34,7 @@ def detect_csharp_security(
     zone_map: FileZoneMap | None,
 ) -> tuple[list[dict], int]:
     """Detect C#-specific security issues. Returns (entries, files_scanned)."""
-    from ....detectors.security import _make_entry
+    from ....detectors.security import make_security_entry
 
     entries: list[dict] = []
     scanned = 0
@@ -61,7 +61,7 @@ def detect_csharp_security(
 
             if _SQL_INTERPOLATION_RE.search(line) or _SQL_CONCAT_RE.search(line):
                 entries.append(
-                    _make_entry(
+                    make_security_entry(
                         filepath,
                         line_num,
                         "sql_injection",
@@ -75,7 +75,7 @@ def detect_csharp_security(
 
             if _RNG_IN_SECURITY_CONTEXT_RE.search(line):
                 entries.append(
-                    _make_entry(
+                    make_security_entry(
                         filepath,
                         line_num,
                         "insecure_random",
@@ -89,7 +89,7 @@ def detect_csharp_security(
 
             if _DISABLED_TLS_VERIFY_RE.search(line):
                 entries.append(
-                    _make_entry(
+                    make_security_entry(
                         filepath,
                         line_num,
                         "weak_crypto_tls",
@@ -103,7 +103,7 @@ def detect_csharp_security(
 
             if _BINARY_FORMATTER_RE.search(line):
                 entries.append(
-                    _make_entry(
+                    make_security_entry(
                         filepath,
                         line_num,
                         "unsafe_deserialization",

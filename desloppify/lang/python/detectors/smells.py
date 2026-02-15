@@ -65,6 +65,11 @@ SMELL_CHECKS = [
     _smell("noop_function", "Non-trivial function whose body does nothing", "high"),
     _smell("stderr_traceback", "traceback.print_exc() bypasses structured logging", "high",
            r"traceback\.print_exc\s*\("),
+    # AST-based: sys.exit in library code, silent except
+    _smell("sys_exit_in_library", "sys.exit() outside CLI entry point — use exceptions", "high"),
+    _smell("silent_except", "Except handler silently suppresses error (pass/continue, no log)", "high"),
+    _smell("optional_param_sprawl", "Too many optional params — consider a config object", "medium"),
+    _smell("annotation_quality", "Loose type annotation — use specific types", "medium"),
 ]
 
 

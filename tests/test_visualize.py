@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from desloppify.visualize import (
+from desloppify.output.visualize import (
     D3_CDN_URL,
     _aggregate,
     _build_tree,

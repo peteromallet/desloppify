@@ -5,11 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from .. import utils as _utils_mod
-from ..utils import rel, enable_file_cache, disable_file_cache, _read_file_text
+from ..utils import rel, enable_file_cache, disable_file_cache, read_file_text
 from .context import (
-    build_review_context, build_holistic_context, _serialize_context,
+    build_review_context, _serialize_context,
     _abs, _dep_graph_lookup, _importer_count,
 )
+from .context_holistic import build_holistic_context
 from .selection import (
     select_files_for_review, _get_file_findings, _count_fresh, _count_stale,
 )
@@ -32,6 +33,7 @@ def prepare_review(path: Path, lang, state: dict, *,
                    max_files: int = 50, max_age_days: int = 30,
                    force_refresh: bool = False,
                    dimensions: list[str] | None = None,
+                   config_dimensions: list[str] | None = None,
                    files: list[str] | None = None) -> dict:
     """Prepare review data for agent consumption. Returns structured dict.
 
@@ -59,7 +61,7 @@ def prepare_review(path: Path, lang, state: dict, *,
         if not already_cached:
             disable_file_cache()
 
-    dims = dimensions or DEFAULT_DIMENSIONS
+    dims = dimensions or config_dimensions or DEFAULT_DIMENSIONS
     lang_guide = LANG_GUIDANCE.get(lang.name, {})
 
     return {
@@ -84,7 +86,7 @@ def _build_file_requests(files: list[str], lang, state: dict) -> list[dict]:
     """Build per-file review request dicts."""
     file_requests = []
     for filepath in files:
-        content = _read_file_text(_abs(filepath))
+        content = read_file_text(_abs(filepath))
         if content is None:
             continue
 
@@ -169,126 +171,156 @@ def prepare_holistic_review(path: Path, lang, state: dict, *,
     }
 
 
-def _build_investigation_batches(holistic_ctx: dict, lang) -> list[dict]:
-    """Derive up to 6 independent, parallelizable investigation batches from context.
+def _collect_unique_files(sources: list[list[dict]], key: str = "file") -> list[str]:
+    """Collect unique file paths from multiple source lists (max 15)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for src in sources:
+        for item in src:
+            f = item.get(key, "")
+            if f and f not in seen:
+                seen.add(f)
+                out.append(f)
+    return out[:15]
 
-    Each batch groups related dimensions and the files an agent should read.
-    Max 15 files per batch, deduplicated. Batches 5-6 only appear when
-    authorization/migration context data is non-empty.
-    """
-    def _collect(sources: list[list[dict]], key: str = "file") -> list[str]:
-        """Collect unique file paths from multiple source lists."""
-        seen: set[str] = set()
-        out: list[str] = []
-        for src in sources:
-            for item in src:
-                f = item.get(key, "")
-                if f and f not in seen:
-                    seen.add(f)
-                    out.append(f)
-        return out[:15]
 
-    arch = holistic_ctx.get("architecture", {})
-    coupling = holistic_ctx.get("coupling", {})
-    conventions = holistic_ctx.get("conventions", {})
-    abstractions = holistic_ctx.get("abstractions", {})
-    deps = holistic_ctx.get("dependencies", {})
-    testing = holistic_ctx.get("testing", {})
-    api = holistic_ctx.get("api_surface", {})
+def _batch_arch_coupling(ctx: dict) -> dict:
+    """Batch 1: Architecture & Coupling — god modules, import-time side effects."""
+    arch = ctx.get("architecture", {})
+    coupling = ctx.get("coupling", {})
+    files = _collect_unique_files([arch.get("god_modules", []),
+                                   coupling.get("module_level_io", [])])
+    return {"name": "Architecture & Coupling",
+            "dimensions": ["cross_module_architecture"],
+            "files_to_read": files,
+            "why": "god modules, import-time side effects"}
 
-    # Batch 1: Architecture & Coupling
-    god_modules = arch.get("god_modules", [])
-    module_io = coupling.get("module_level_io", [])
-    batch1_files = _collect([god_modules, module_io])
-    batch1 = {
-        "name": "Architecture & Coupling",
-        "dimensions": ["cross_module_architecture"],
-        "files_to_read": batch1_files,
-        "why": "god modules, import-time side effects",
-    }
 
-    # Batch 2: Conventions & Errors — sibling behavior outliers
-    sibling = conventions.get("sibling_behavior", {})
-    outlier_files = []
-    for dir_info in sibling.values():
-        for o in dir_info.get("outliers", []):
-            outlier_files.append({"file": o["file"]})
-    # Also include dirs with mixed error strategies (top 5 by count)
-    errors = holistic_ctx.get("errors", {})
-    error_dirs = errors.get("strategy_by_directory", {})
-    mixed_error_files: list[dict] = []
-    for dir_name, strategies in error_dirs.items():
-        if len(strategies) >= 3:  # Multiple strategies = potential inconsistency
-            mixed_error_files.append({"file": dir_name})
-    batch2_files = _collect([outlier_files, mixed_error_files])
-    batch2 = {
-        "name": "Conventions & Errors",
-        "dimensions": ["error_consistency"],
-        "files_to_read": batch2_files,
-        "why": "naming drift, behavioral outliers, mixed error strategies",
-    }
+def _batch_conventions_errors(ctx: dict) -> dict:
+    """Batch 2: Conventions & Errors — sibling behavior outliers, mixed strategies."""
+    sibling = ctx.get("conventions", {}).get("sibling_behavior", {})
+    outlier_files = [{"file": o["file"]}
+                     for di in sibling.values() for o in di.get("outliers", [])]
+    error_dirs = ctx.get("errors", {}).get("strategy_by_directory", {})
+    mixed = [{"file": d} for d, s in error_dirs.items() if len(s) >= 3]
+    files = _collect_unique_files([outlier_files, mixed])
+    return {"name": "Conventions & Errors",
+            "dimensions": ["error_consistency"],
+            "files_to_read": files,
+            "why": "naming drift, behavioral outliers, mixed error strategies"}
 
-    # Batch 3: Abstractions & Dependencies
-    util_files = abstractions.get("util_files", [])
-    # Files involved in cycles (from dependency summaries)
+
+def _batch_abstractions_deps(ctx: dict) -> dict:
+    """Batch 3: Abstractions & Dependencies — util files, dep cycles."""
+    util_files = ctx.get("abstractions", {}).get("util_files", [])
     cycle_files: list[dict] = []
-    for summary in deps.get("cycle_summaries", []):
+    for summary in ctx.get("dependencies", {}).get("cycle_summaries", []):
         for token in summary.split():
             if "/" in token and "." in token:
                 cycle_files.append({"file": token.strip(",'\"")})
-    batch3_files = _collect([util_files, cycle_files])
-    batch3 = {
-        "name": "Abstractions & Dependencies",
-        "dimensions": ["abstraction_fitness", "dependency_health"],
-        "files_to_read": batch3_files,
-        "why": "util dumping grounds, dep cycles",
-    }
+    files = _collect_unique_files([util_files, cycle_files])
+    return {"name": "Abstractions & Dependencies",
+            "dimensions": ["abstraction_fitness", "dependency_health"],
+            "files_to_read": files,
+            "why": "util dumping grounds, dep cycles"}
 
-    # Batch 4: Testing & API
-    critical_untested = testing.get("critical_untested", [])
-    sync_async = [{"file": f} for f in api.get("sync_async_mix", [])]
-    batch4_files = _collect([critical_untested, sync_async])
-    batch4 = {
-        "name": "Testing & API",
-        "dimensions": ["test_strategy", "api_surface_coherence"],
-        "files_to_read": batch4_files,
-        "why": "critical untested paths, API inconsistency",
-    }
 
-    # Batch 5: Authorization (only when auth context exists)
-    auth_ctx = holistic_ctx.get("authorization", {})
+def _batch_testing_api(ctx: dict) -> dict:
+    """Batch 4: Testing & API — critical untested paths, sync/async mix."""
+    critical = ctx.get("testing", {}).get("critical_untested", [])
+    sync_async = [{"file": f} for f in ctx.get("api_surface", {}).get("sync_async_mix", [])]
+    files = _collect_unique_files([critical, sync_async])
+    return {"name": "Testing & API",
+            "dimensions": ["test_strategy", "api_surface_coherence"],
+            "files_to_read": files,
+            "why": "critical untested paths, API inconsistency"}
+
+
+def _batch_authorization(ctx: dict) -> dict:
+    """Batch 5: Authorization — auth gaps, service role usage."""
+    auth_ctx = ctx.get("authorization", {})
     auth_files: list[dict] = []
-    # Route files with auth gaps
     for rpath, info in auth_ctx.get("route_auth_coverage", {}).items():
         if info.get("without_auth", 0) > 0:
             auth_files.append({"file": rpath})
-    # Service role files
     for rpath in auth_ctx.get("service_role_usage", []):
         auth_files.append({"file": rpath})
-    batch5_files = _collect([auth_files])
-    batch5 = {
-        "name": "Authorization",
-        "dimensions": ["authorization_consistency"],
-        "files_to_read": batch5_files,
-        "why": "auth gaps, service role usage, RLS coverage",
-    }
+    files = _collect_unique_files([auth_files])
+    return {"name": "Authorization",
+            "dimensions": ["authorization_consistency"],
+            "files_to_read": files,
+            "why": "auth gaps, service role usage, RLS coverage"}
 
-    # Batch 6: AI Debt & Migrations (only when signals exist)
-    ai_debt = holistic_ctx.get("ai_debt_signals", {})
-    migration = holistic_ctx.get("migration_signals", {})
+
+def _batch_ai_debt_migrations(ctx: dict) -> dict:
+    """Batch 6: AI Debt & Migrations — deprecated markers, migration TODOs."""
+    ai_debt = ctx.get("ai_debt_signals", {})
+    migration = ctx.get("migration_signals", {})
     debt_files: list[dict] = []
     for rpath in ai_debt.get("file_signals", {}):
         debt_files.append({"file": rpath})
-    for entry in migration.get("deprecated_markers", {}).get("files", {}).keys() if isinstance(migration.get("deprecated_markers", {}).get("files"), dict) else []:
-        debt_files.append({"file": entry})
+    dep_files = migration.get("deprecated_markers", {}).get("files")
+    if isinstance(dep_files, dict):
+        for entry in dep_files:
+            debt_files.append({"file": entry})
     for entry in migration.get("migration_todos", []):
         debt_files.append({"file": entry.get("file", "")})
-    batch6_files = _collect([debt_files])
-    batch6 = {
-        "name": "AI Debt & Migrations",
-        "dimensions": ["ai_generated_debt", "incomplete_migration"],
-        "files_to_read": batch6_files,
-        "why": "AI-generated patterns, deprecated markers, migration TODOs",
-    }
+    files = _collect_unique_files([debt_files])
+    return {"name": "AI Debt & Migrations",
+            "dimensions": ["ai_generated_debt", "incomplete_migration"],
+            "files_to_read": files,
+            "why": "AI-generated patterns, deprecated markers, migration TODOs"}
 
-    return [b for b in [batch1, batch2, batch3, batch4, batch5, batch6] if b["files_to_read"]]
+
+def _batch_package_organization(ctx: dict) -> dict:
+    """Batch 7: Package Organization — file placement, directory boundaries."""
+    structure = ctx.get("structure", {})
+    struct_files: list[dict] = []
+    for rf in structure.get("root_files", []):
+        if rf.get("role") == "peripheral":
+            struct_files.append({"file": rf["file"]})
+    dir_profiles = structure.get("directory_profiles", {})
+    largest_dirs = sorted(dir_profiles.items(), key=lambda x: -x[1].get("file_count", 0))[:3]
+    for dir_key, profile in largest_dirs:
+        for fname in profile.get("files", [])[:3]:
+            dir_path = dir_key.rstrip("/")
+            rpath = f"{dir_path}/{fname}" if dir_path != "." else fname
+            struct_files.append({"file": rpath})
+    coupling_matrix = structure.get("coupling_matrix", {})
+    seen_edges: set[str] = set()
+    for edge in coupling_matrix:
+        if " \u2192 " in edge:
+            a, b = edge.split(" \u2192 ", 1)
+            reverse = f"{b} \u2192 {a}"
+            if reverse in coupling_matrix and edge not in seen_edges:
+                seen_edges.add(edge)
+                seen_edges.add(reverse)
+                for d in (a, b):
+                    for fname in dir_profiles.get(d, {}).get("files", [])[:2]:
+                        dir_path = d.rstrip("/")
+                        rpath = f"{dir_path}/{fname}" if dir_path != "." else fname
+                        struct_files.append({"file": rpath})
+    files = _collect_unique_files([struct_files])
+    return {"name": "Package Organization",
+            "dimensions": ["package_organization"],
+            "files_to_read": files,
+            "why": "file placement, directory boundaries, architectural layering"}
+
+
+def _build_investigation_batches(holistic_ctx: dict, lang) -> list[dict]:
+    """Derive up to 7 independent, parallelizable investigation batches from context.
+
+    Each batch groups related dimensions and the files an agent should read.
+    Max 15 files per batch, deduplicated. Batches 5-7 only appear when
+    their respective context data is non-empty.
+    """
+    batches = [
+        _batch_arch_coupling(holistic_ctx),
+        _batch_conventions_errors(holistic_ctx),
+        _batch_abstractions_deps(holistic_ctx),
+        _batch_testing_api(holistic_ctx),
+        _batch_authorization(holistic_ctx),
+        _batch_ai_debt_migrations(holistic_ctx),
+        _batch_package_organization(holistic_ctx),
+    ]
+    return [b for b in batches if b["files_to_read"]]

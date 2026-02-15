@@ -31,6 +31,10 @@ def _detect_ast_smells(filepath: str, content: str, smell_counts: dict[str, list
     _detect_hardcoded_path_sep(filepath, tree, smell_counts)
     _detect_lost_exception_context(filepath, tree, smell_counts)
     _detect_noop_function(filepath, tree, smell_counts)
+    _detect_sys_exit_in_library(filepath, tree, smell_counts)
+    _detect_silent_except(filepath, tree, smell_counts)
+    _detect_optional_param_sprawl(filepath, tree, smell_counts)
+    _detect_annotation_quality(filepath, tree, smell_counts)
 
 
 def _detect_monster_functions(filepath: str, node: ast.AST, smell_counts: dict[str, list]):
@@ -868,3 +872,228 @@ def _detect_noop_function(filepath: str, tree: ast.Module,
                 "line": node.lineno,
                 "content": f"{node.name}() — {len(body)} statements, all trivial (pass/return/log)",
             })
+
+
+# ── sys.exit in library code (#75) ───────────────────────
+
+_CLI_FILENAMES = {"cli.py", "__main__.py", "manage.py", "setup.py"}
+_CLI_DIR_PATTERNS = {"/commands/", "/management/"}
+
+
+def _detect_sys_exit_in_library(filepath: str, tree: ast.Module,
+                                 smell_counts: dict[str, list]):
+    """Flag sys.exit() calls outside CLI entry points.
+
+    Library code should raise exceptions, not terminate the process.
+    CLI entry points (cli.py, __main__.py, commands/) are excluded.
+    """
+    basename = Path(filepath).name
+    if basename in _CLI_FILENAMES:
+        return
+    # Skip command modules (they're CLI entry points)
+    if any(pat in filepath for pat in _CLI_DIR_PATTERNS):
+        return
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # sys.exit(...)
+        if (isinstance(func, ast.Attribute) and func.attr == "exit"
+                and isinstance(func.value, ast.Name) and func.value.id == "sys"):
+            smell_counts["sys_exit_in_library"].append({
+                "file": filepath, "line": node.lineno,
+                "content": "sys.exit() in library code — raise an exception instead",
+            })
+        # exit(...) or quit(...)
+        elif isinstance(func, ast.Name) and func.id in ("exit", "quit"):
+            smell_counts["sys_exit_in_library"].append({
+                "file": filepath, "line": node.lineno,
+                "content": f"{func.id}() in library code — raise an exception instead",
+            })
+
+
+# ── Silent except handler (#75) ──────────────────────────
+
+
+def _detect_silent_except(filepath: str, tree: ast.Module,
+                           smell_counts: dict[str, list]):
+    """Flag except handlers whose body is only pass or continue with no logging.
+
+    Silent error suppression hides bugs. The handler should at minimum log
+    the error or add a comment explaining why it's safe to ignore.
+    """
+    _LOG_NAMES = {"print", "log", "logger", "logging", "warn", "warning"}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler):
+            continue
+        body = node.body
+        if not body:
+            continue
+
+        # Check if the body is ONLY pass/continue statements (no logging, no raise)
+        all_silent = True
+        for stmt in body:
+            if isinstance(stmt, (ast.Pass, ast.Continue)):
+                continue
+            # Allow if there's any expression (could be a log call)
+            all_silent = False
+            break
+
+        if not all_silent or not body:
+            continue
+
+        # Build description from the except clause
+        if node.type is None:
+            clause = "except:"
+        elif isinstance(node.type, ast.Name):
+            clause = f"except {node.type.id}:"
+        elif isinstance(node.type, ast.Tuple):
+            names = [n.id for n in node.type.elts if isinstance(n, ast.Name)]
+            clause = f"except ({', '.join(names)}):"
+        else:
+            clause = "except ...:"
+
+        body_text = "pass" if isinstance(body[0], ast.Pass) else "continue"
+        smell_counts["silent_except"].append({
+            "file": filepath, "line": node.lineno,
+            "content": f"{clause} {body_text} — error silently suppressed",
+        })
+
+
+# ── Optional parameter sprawl (#71) ─────────────────────
+
+
+def _detect_optional_param_sprawl(filepath: str, tree: ast.Module,
+                                    smell_counts: dict[str, list]):
+    """Flag functions with too many optional parameters.
+
+    Triggers when: optional >= 4 AND optional > required AND total >= 5.
+    Excludes __init__ on dataclass-decorated classes and test functions.
+    """
+    # Collect dataclass class names to exclude their __init__
+    dataclass_classes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for dec in node.decorator_list:
+                if (isinstance(dec, ast.Name) and dec.id == "dataclass") or (
+                    isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name)
+                    and dec.func.id == "dataclass"
+                ):
+                    dataclass_classes.add(node.name)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        # Skip test functions
+        if node.name.startswith("test_"):
+            continue
+
+        # Skip dataclass __init__
+        if node.name == "__init__":
+            # Check if this is inside a dataclass
+            parent_is_dataclass = False
+            for parent in ast.walk(tree):
+                if isinstance(parent, ast.ClassDef) and parent.name in dataclass_classes:
+                    if node in ast.walk(parent):
+                        parent_is_dataclass = True
+                        break
+            if parent_is_dataclass:
+                continue
+
+        args = node.args
+        # Count required vs optional positional args
+        n_defaults = len(args.defaults)
+        n_positional = len(args.args)
+        # Skip 'self'/'cls'
+        if n_positional > 0 and args.args[0].arg in ("self", "cls"):
+            n_positional -= 1
+
+        required = n_positional - n_defaults
+        # kw_defaults can have None entries for kw-only args without defaults
+        kw_with_default = sum(1 for d in args.kw_defaults if d is not None)
+        optional = n_defaults + kw_with_default
+        required = n_positional - n_defaults + (len(args.kwonlyargs) - kw_with_default)
+        total = required + optional
+
+        if optional >= 4 and optional > required and total >= 5:
+            smell_counts["optional_param_sprawl"].append({
+                "file": filepath, "line": node.lineno,
+                "content": (f"{node.name}() — {total} params ({required} required, "
+                            f"{optional} optional) — consider a config object"),
+            })
+
+
+# ── Annotation quality (#67) ────────────────────────────
+
+# Type names that are "bare" (too generic without subscript)
+_BARE_TYPES = {"dict", "list", "set", "tuple", "Dict", "List", "Set", "Tuple"}
+_BARE_CALLABLE = {"Callable", "Callable"}
+
+
+def _detect_annotation_quality(filepath: str, tree: ast.Module,
+                                smell_counts: dict[str, list]):
+    """Flag loose type annotations: bare dict/list returns, untyped Callable.
+
+    Catches:
+    - Return type is bare `dict`, `list`, `set`, `tuple` (not subscripted)
+    - Parameter type is bare `Callable` (not `Callable[[...], ...]`)
+    - Missing return annotation on public functions with 5+ lines
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        # Skip private, dunder, and test functions
+        if node.name.startswith("_") and not node.name.startswith("__"):
+            continue
+        if node.name.startswith("test_"):
+            continue
+
+        # Check return annotation
+        ret = node.returns
+        if ret is not None:
+            if isinstance(ret, ast.Name) and ret.id in _BARE_TYPES:
+                smell_counts["annotation_quality"].append({
+                    "file": filepath, "line": node.lineno,
+                    "content": (f"{node.name}() -> {ret.id} — use "
+                                f"{ret.id}[...] for specific types"),
+                })
+            elif isinstance(ret, ast.Attribute) and ret.attr in _BARE_TYPES:
+                smell_counts["annotation_quality"].append({
+                    "file": filepath, "line": node.lineno,
+                    "content": (f"{node.name}() -> {ret.attr} — use "
+                                f"{ret.attr}[...] for specific types"),
+                })
+        elif not node.name.startswith("__"):
+            # Missing return annotation on non-trivial public functions
+            if hasattr(node, "end_lineno") and node.end_lineno:
+                loc = node.end_lineno - node.lineno + 1
+                if loc >= 10:
+                    smell_counts["annotation_quality"].append({
+                        "file": filepath, "line": node.lineno,
+                        "content": f"{node.name}() — public function ({loc} LOC) missing return type",
+                    })
+
+        # Check parameter annotations for bare Callable
+        all_args = node.args.args + node.args.kwonlyargs
+        for arg in all_args:
+            if arg.arg in ("self", "cls"):
+                continue
+            ann = arg.annotation
+            if ann is None:
+                continue
+            if isinstance(ann, ast.Name) and ann.id == "Callable":
+                smell_counts["annotation_quality"].append({
+                    "file": filepath, "line": node.lineno,
+                    "content": (f"{node.name}({arg.arg}: Callable) — "
+                                f"specify Callable[[params], return_type]"),
+                })
+            elif isinstance(ann, ast.Attribute) and ann.attr == "Callable":
+                smell_counts["annotation_quality"].append({
+                    "file": filepath, "line": node.lineno,
+                    "content": (f"{node.name}({arg.arg}: Callable) — "
+                                f"specify Callable[[params], return_type]"),
+                })

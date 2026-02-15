@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..state import _now
+from ..state import utc_now
 
 
 def generate_remediation_plan(state: dict, lang_name: str, *,
@@ -69,7 +69,7 @@ def generate_remediation_plan(state: dict, lang_name: str, *,
     _w = lines.append
 
     _w("# Holistic Review: Remediation Plan\n")
-    _w(f"**Generated**: {_now()[:10]}  ")
+    _w(f"**Generated**: {utc_now()[:10]}  ")
     _w(f"**Current score**: {obj_score:.1f}/100 (strict: {obj_strict:.1f}/100)  ")
     _w(f"**Open holistic findings**: {len(entries)}  ")
     _w(f"**Estimated improvement**: ~{total_impact:.1f} pts if all addressed\n")

@@ -35,7 +35,7 @@ class TestCmdPlanOutput:
         from desloppify.commands import plan_cmd
         import desloppify.state as state_mod
 
-        monkeypatch.setattr(plan_cmd, "_state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(plan_cmd, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(state_mod, "load_state", lambda sp: {
             "findings": {}, "score": 0, "last_scan": None,
         })
@@ -55,7 +55,7 @@ class TestCmdPlanOutput:
         import desloppify.state as state_mod
         import desloppify.plan as plan_mod
 
-        monkeypatch.setattr(plan_cmd, "_state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(plan_cmd, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(state_mod, "load_state", lambda sp: {
             "findings": {}, "score": 80, "last_scan": "2025-01-01",
         })
@@ -80,7 +80,7 @@ class TestCmdPlanOutput:
         import desloppify.state as state_mod
         import desloppify.plan as plan_mod
 
-        monkeypatch.setattr(plan_cmd, "_state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(plan_cmd, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(state_mod, "load_state", lambda sp: {
             "findings": {}, "score": 80, "last_scan": "2025-01-01",
         })

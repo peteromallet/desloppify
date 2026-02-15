@@ -9,36 +9,6 @@ from pathlib import Path
 from ....utils import PROJECT_ROOT, find_py_files
 
 
-def detect_global_mutable_config(path: Path) -> tuple[list[dict], int]:
-    """Detect module-level mutable state that gets modified from functions.
-
-    Finds module-level assignments to None, {}, [], set(), or annotated Optional
-    that are later reassigned or mutated from functions within the same module.
-    Skips UPPER_CASE names that are genuinely constant (only flag names initialized
-    to mutable values).
-
-    Returns (entries, total_files_checked).
-    """
-    files = find_py_files(path)
-    entries: list[dict] = []
-
-    for filepath in files:
-        try:
-            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
-            content = p.read_text()
-        except (OSError, UnicodeDecodeError):
-            continue
-
-        try:
-            tree = ast.parse(content)
-        except SyntaxError:
-            continue
-
-        _detect_in_module(filepath, tree, entries)
-
-    return entries, len(files)
-
-
 # Mutable initializer values
 _MUTABLE_INIT = (ast.List, ast.Dict, ast.Set)
 _MUTABLE_CALL_NAMES = {"set", "list", "dict", "defaultdict", "OrderedDict", "Counter"}
@@ -183,3 +153,117 @@ def _detect_in_module(filepath: str, tree: ast.Module, entries: list[dict]):
             "summary": (f"Module-level mutable '{name}' (line {defn_line}) "
                         f"modified from {len(mutation_lines)} site(s)"),
         })
+
+
+# ── Import-binding footgun detection ─────────────────────
+
+
+def _detect_stale_imports(
+    path: Path,
+    mutated_names: dict[str, set[str]],
+    entries: list[dict],
+):
+    """Detect `from X import mutable_name` that creates a stale binding.
+
+    When a module-level mutable is reassigned (via `global`), other modules
+    that import the name directly get a stale copy. They should import the
+    module and access the attribute at call time instead.
+
+    Args:
+        mutated_names: {module_dotted_path: {name, ...}} of mutated globals
+    """
+    files = find_py_files(path)
+
+    for filepath in files:
+        try:
+            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
+            content = p.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        try:
+            tree = ast.parse(content)
+        except SyntaxError:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            module = node.module or ""
+            # Check if any imported name is a mutated global in the source module
+            for source_module, names in mutated_names.items():
+                # Match by suffix (e.g., "desloppify.utils" matches "from .utils import")
+                if not (module == source_module or module.endswith(f".{source_module}")
+                        or source_module.endswith(f".{module}")):
+                    continue
+                for alias in node.names:
+                    if alias.name in names:
+                        entries.append({
+                            "file": filepath,
+                            "name": alias.name,
+                            "line": node.lineno,
+                            "mutation_lines": [],
+                            "mutation_count": 0,
+                            "confidence": "high",
+                            "summary": (
+                                f"'from {module} import {alias.name}' creates stale binding — "
+                                f"'{alias.name}' is reassigned at runtime. Import the module instead."
+                            ),
+                        })
+
+
+def detect_global_mutable_config(path: Path) -> tuple[list[dict], int]:
+    """Detect module-level mutable state that gets modified from functions.
+
+    Also detects stale import bindings: other modules that `from X import name`
+    a mutable that gets reassigned, which creates a stale copy.
+
+    Returns (entries, total_files_checked).
+    """
+    files = find_py_files(path)
+    entries: list[dict] = []
+
+    # Phase 1: collect mutated globals per module
+    mutated_names: dict[str, set[str]] = {}  # {module_path: {name, ...}}
+
+    for filepath in files:
+        try:
+            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
+            content = p.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        try:
+            tree = ast.parse(content)
+        except SyntaxError:
+            continue
+
+        _detect_in_module(filepath, tree, entries)
+
+        # Track which modules have reassigned globals (need `global` keyword)
+        mutables = _collect_module_level_mutables(tree)
+        if mutables:
+            # Only track names that are reassigned (not just mutated via methods)
+            reassigned = set()
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                global_names: set[str] = set()
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Global):
+                        global_names.update(child.names)
+                for name in global_names:
+                    if name in mutables:
+                        reassigned.add(name)
+            if reassigned:
+                # Convert filepath to dotted module path
+                module_path = filepath.replace("/", ".").replace("\\", ".")
+                if module_path.endswith(".py"):
+                    module_path = module_path[:-3]
+                mutated_names[module_path] = reassigned
+
+    # Phase 2: detect stale import bindings
+    if mutated_names:
+        _detect_stale_imports(path, mutated_names, entries)
+
+    return entries, len(files)

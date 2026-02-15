@@ -85,7 +85,7 @@ def safe_write_text(filepath: str | Path, content: str) -> None:
 # ── Cross-platform grep replacements ────────────────────────
 
 
-def _read_file_text(filepath: str) -> str | None:
+def read_file_text(filepath: str) -> str | None:
     """Read a file as text, with optional caching."""
     if _cache_enabled:
         if filepath in _file_cache:
@@ -109,7 +109,7 @@ def grep_files(pattern: str, file_list: list[str], *,
     results: list[tuple[str, int, str]] = []
     for filepath in file_list:
         abs_path = filepath if os.path.isabs(filepath) else str(PROJECT_ROOT / filepath)
-        content = _read_file_text(abs_path)
+        content = read_file_text(abs_path)
         if content is None:
             continue
         for lineno, line in enumerate(content.splitlines(), 1):
@@ -137,7 +137,7 @@ def grep_files_containing(names: set[str], file_list: list[str], *,
     name_to_files: dict[str, set[str]] = {}
     for filepath in file_list:
         abs_path = filepath if os.path.isabs(filepath) else str(PROJECT_ROOT / filepath)
-        content = _read_file_text(abs_path)
+        content = read_file_text(abs_path)
         if content is None:
             continue
         found = set(combined.findall(content))
@@ -156,7 +156,7 @@ def grep_count_files(name: str, file_list: list[str], *,
     matching: list[str] = []
     for filepath in file_list:
         abs_path = filepath if os.path.isabs(filepath) else str(PROJECT_ROOT / filepath)
-        content = _read_file_text(abs_path)
+        content = read_file_text(abs_path)
         if content is None:
             continue
         if pat.search(content):
@@ -403,3 +403,47 @@ def get_area(filepath: str) -> str:
     """Derive an area name from a file path (generic: first 2 path components)."""
     parts = filepath.split("/")
     return "/".join(parts[:2]) if len(parts) > 1 else parts[0]
+
+
+def strip_c_style_comments(text: str) -> str:
+    """Strip // and /* */ comments while preserving string literals.
+
+    Works for any language with C-style comments (JS, TS, Java, Go, etc.).
+    Handles single-quoted, double-quoted, and template literal strings.
+    """
+    result: list[str] = []
+    i = 0
+    in_str = None
+    while i < len(text):
+        ch = text[i]
+        if in_str:
+            if ch == '\\' and i + 1 < len(text):
+                result.append(text[i:i + 2])
+                i += 2
+                continue
+            if ch == in_str:
+                in_str = None
+            result.append(ch)
+            i += 1
+        elif ch in ('"', "'", '`'):
+            in_str = ch
+            result.append(ch)
+            i += 1
+        elif ch == '/' and i + 1 < len(text):
+            if text[i + 1] == '/':
+                nl = text.find('\n', i)
+                if nl == -1:
+                    break
+                i = nl
+            elif text[i + 1] == '*':
+                end = text.find('*/', i + 2)
+                if end == -1:
+                    break
+                i = end + 2
+            else:
+                result.append(ch)
+                i += 1
+        else:
+            result.append(ch)
+            i += 1
+    return ''.join(result)

@@ -87,57 +87,57 @@ def _state_with(*findings):
 
 
 # ---------------------------------------------------------------------------
-# _finding_weight
+# finding_weight
 # ---------------------------------------------------------------------------
 
 class TestFindingWeight:
     def test_holistic_high_confidence(self):
-        from desloppify.issues import _finding_weight
+        from desloppify.issues import finding_weight
         f = _finding(confidence="high")
-        weight, pts, fid = _finding_weight(f)
+        weight, pts, fid = finding_weight(f)
         assert weight == 10.0  # 1.0 * HOLISTIC_MULTIPLIER (10)
 
     def test_holistic_low_confidence(self):
-        from desloppify.issues import _finding_weight
+        from desloppify.issues import finding_weight
         f = _finding(confidence="low")
-        weight, pts, fid = _finding_weight(f)
+        weight, pts, fid = finding_weight(f)
         assert weight == 3.0  # 0.3 * 10
 
     def test_per_file_high_confidence(self):
-        from desloppify.issues import _finding_weight
+        from desloppify.issues import finding_weight
         f = _per_file_finding(confidence="high")
-        weight, pts, fid = _finding_weight(f)
+        weight, pts, fid = finding_weight(f)
         assert weight == 1.0
 
     def test_per_file_medium_confidence(self):
-        from desloppify.issues import _finding_weight
+        from desloppify.issues import finding_weight
         f = _per_file_finding(confidence="medium")
-        weight, pts, fid = _finding_weight(f)
+        weight, pts, fid = finding_weight(f)
         assert weight == 0.7
 
     def test_returns_finding_id_as_tiebreaker(self):
-        from desloppify.issues import _finding_weight
+        from desloppify.issues import finding_weight
         f = _finding(confidence="high")
-        _, _, fid = _finding_weight(f)
+        _, _, fid = finding_weight(f)
         assert fid == f["id"]
 
 
 # ---------------------------------------------------------------------------
-# _impact_label
+# impact_label
 # ---------------------------------------------------------------------------
 
 class TestImpactLabel:
     def test_high_impact(self):
-        from desloppify.issues import _impact_label
-        assert _impact_label(10.0) == "+++"
+        from desloppify.issues import impact_label
+        assert impact_label(10.0) == "+++"
 
     def test_medium_impact(self):
-        from desloppify.issues import _impact_label
-        assert _impact_label(5.0) == "++"
+        from desloppify.issues import impact_label
+        assert impact_label(5.0) == "++"
 
     def test_low_impact(self):
-        from desloppify.issues import _impact_label
-        assert _impact_label(1.0) == "+"
+        from desloppify.issues import impact_label
+        assert impact_label(1.0) == "+"
 
 
 # ---------------------------------------------------------------------------
@@ -299,14 +299,14 @@ class TestExpireStaleHolistic:
 
 
 # ---------------------------------------------------------------------------
-# _render_issue_detail
+# render_issue_detail
 # ---------------------------------------------------------------------------
 
 class TestRenderIssueDetail:
     def test_holistic_doc_has_all_sections(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _finding()
-        doc = _render_issue_detail(f, "python")
+        doc = render_issue_detail(f, "python")
         assert "# abstraction fitness:" in doc
         assert "**Finding**:" in doc
         assert f["id"] in doc
@@ -319,9 +319,9 @@ class TestRenderIssueDetail:
         assert "issues update" in doc
 
     def test_per_file_doc_shows_why_when_reasoning_present(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _per_file_finding()
-        doc = _render_issue_detail(f, "typescript")
+        doc = render_issue_detail(f, "typescript")
         assert "## Problem" in doc
         assert "## Status: Needs Investigation" in doc
         # Per-file findings now show "Why This Matters" when reasoning is present
@@ -329,39 +329,39 @@ class TestRenderIssueDetail:
         assert "--lang typescript" in doc
 
     def test_per_file_doc_no_why_without_reasoning(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _per_file_finding()
         f["detail"]["reasoning"] = ""
-        doc = _render_issue_detail(f, "typescript")
+        doc = render_issue_detail(f, "typescript")
         assert "## Why This Matters" not in doc
 
     def test_per_file_doc_shows_file(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _per_file_finding(file="src/components/Button.tsx")
-        doc = _render_issue_detail(f, "typescript")
+        doc = render_issue_detail(f, "typescript")
         assert "`src/components/Button.tsx`" in doc
 
     def test_holistic_doc_shows_related_files(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _finding(related_files=["src/a.py", "src/b.py", "src/c.py"])
-        doc = _render_issue_detail(f, "python")
+        doc = render_issue_detail(f, "python")
         assert "`src/a.py`" in doc
         assert "`src/b.py`" in doc
         assert "`src/c.py`" in doc
 
     def test_evidence_lines_in_per_file(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _per_file_finding(evidence_lines=["line 5: bad = True", "line 10: worse = True"])
-        doc = _render_issue_detail(f, "typescript")
+        doc = render_issue_detail(f, "typescript")
         assert "line 5: bad = True" in doc
         assert "line 10: worse = True" in doc
 
     def test_investigated_shows_investigation_section(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _finding()
         f["detail"]["investigation"] = "Detailed analysis here."
         f["detail"]["investigated_at"] = "2026-02-14T12:00:00+00:00"
-        doc = _render_issue_detail(f, "python")
+        doc = render_issue_detail(f, "python")
         assert "## Investigation (2026-02-14)" in doc
         assert "Detailed analysis here." in doc
         assert "## Ready to Fix" in doc
@@ -369,9 +369,9 @@ class TestRenderIssueDetail:
         assert "## Status: Needs Investigation" not in doc
 
     def test_uninvestigated_shows_needs_investigation(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _finding()
-        doc = _render_issue_detail(f, "python", number=3)
+        doc = render_issue_detail(f, "python", number=3)
         assert "## Status: Needs Investigation" in doc
         assert "resolve fixed" in doc
         assert "--note" in doc
@@ -379,9 +379,9 @@ class TestRenderIssueDetail:
         assert "## Ready to Fix" not in doc
 
     def test_uninvestigated_without_number(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _finding()
-        doc = _render_issue_detail(f, "python")
+        doc = render_issue_detail(f, "python")
         assert "issues update <number>" in doc
         assert "resolve fixed" in doc
 
@@ -436,7 +436,7 @@ class TestCmdIssues:
         state = _state_with(f)
         args = self._make_args(state, number=1)
         with patch("desloppify.commands.issues_cmd._write_query"), \
-             patch("desloppify.commands._helpers._resolve_lang") as mock_lang:
+             patch("desloppify.commands._helpers.resolve_lang") as mock_lang:
             mock_lang.return_value = type("L", (), {"name": "python"})()
             _show_issue(args)
         out = capsys.readouterr().out
@@ -465,7 +465,7 @@ class TestCmdIssues:
                                file=str(analysis_file))
 
         with patch("desloppify.state.save_state"), \
-             patch("desloppify.commands._helpers._resolve_lang") as mock_lang:
+             patch("desloppify.commands._helpers.resolve_lang") as mock_lang:
             mock_lang.return_value = type("L", (), {"name": "python"})()
             _update_issue(args)
 
@@ -492,18 +492,18 @@ class TestCodeReferencesHeader:
     """evidence_lines should render as '## Code References', not '## Evidence'."""
 
     def test_evidence_lines_header(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _per_file_finding(
             evidence_lines=["line 10: x = 1", "line 20: y = 2"],
         )
-        output = _render_issue_detail(f, "typescript")
+        output = render_issue_detail(f, "typescript")
         assert "## Code References" in output
         # evidence field uses ## Evidence
         assert output.count("## Evidence") == 1
         assert output.count("## Code References") == 1
 
     def test_no_evidence_lines_no_code_references(self):
-        from desloppify.issues import _render_issue_detail
+        from desloppify.issues import render_issue_detail
         f = _finding()  # holistic, no evidence_lines
-        output = _render_issue_detail(f, "python")
+        output = render_issue_detail(f, "python")
         assert "## Code References" not in output

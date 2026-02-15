@@ -15,7 +15,7 @@ from desloppify.detectors.review_coverage import detect_review_coverage
 from desloppify.utils import rel
 from desloppify.review import (
     DEFAULT_DIMENSIONS, DIMENSION_PROMPTS,
-    import_review_findings, _MIN_REVIEW_LOC,
+    import_review_findings, MIN_REVIEW_LOC,
 )
 from desloppify.state import _find_suspect_detectors, make_finding, _empty_state, merge_scan
 from desloppify.scoring import DIMENSIONS, _FILE_BASED_DETECTORS
@@ -43,7 +43,7 @@ class FakeZoneMap:
 
 
 def _make_file(tmpdir, name, lines=30):
-    """Create a file with enough lines to pass _MIN_REVIEW_LOC."""
+    """Create a file with enough lines to pass MIN_REVIEW_LOC."""
     p = os.path.join(tmpdir, name)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w") as f:

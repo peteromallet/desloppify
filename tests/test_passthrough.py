@@ -2,7 +2,7 @@
 
 import re
 
-from desloppify.detectors.passthrough import classify_passthrough_tier, _classify_params
+from desloppify.detectors.passthrough import classify_passthrough_tier, classify_params
 
 
 # ── classify_passthrough_tier ────────────────────────────────
@@ -79,7 +79,7 @@ class TestClassifyPassthroughTier:
         assert result is None
 
 
-# ── _classify_params ─────────────────────────────────────────
+# ── classify_params ─────────────────────────────────────────
 
 
 def _simple_passthrough_pattern(name):
@@ -88,12 +88,12 @@ def _simple_passthrough_pattern(name):
 
 
 class TestClassifyParams:
-    """Tests for _classify_params."""
+    """Tests for classify_params."""
 
     def test_all_passthrough(self):
         """All params used only in passthrough contexts."""
         body = "return doSomething(alpha)\nreturn doOther(beta)"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["alpha", "beta"], body, _simple_passthrough_pattern,
         )
         assert pt == ["alpha", "beta"]
@@ -102,7 +102,7 @@ class TestClassifyParams:
     def test_all_direct(self):
         """Params used in non-passthrough contexts are classified as direct."""
         body = "x = alpha + 1\ny = beta * 2"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["alpha", "beta"], body, _simple_passthrough_pattern,
         )
         assert pt == []
@@ -111,7 +111,7 @@ class TestClassifyParams:
     def test_mixed_params(self):
         """Mix of passthrough and direct-use params."""
         body = "return doSomething(alpha)\nx = beta + 1"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["alpha", "beta"], body, _simple_passthrough_pattern,
         )
         assert pt == ["alpha"]
@@ -120,7 +120,7 @@ class TestClassifyParams:
     def test_unused_param_counted_as_direct(self):
         """Unused params (zero occurrences) are classified as direct."""
         body = "return 42"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["unused_param"], body, _simple_passthrough_pattern,
         )
         assert pt == []
@@ -128,7 +128,7 @@ class TestClassifyParams:
 
     def test_empty_params(self):
         """Empty param list returns empty results."""
-        pt, direct = _classify_params([], "some body", _simple_passthrough_pattern)
+        pt, direct = classify_params([], "some body", _simple_passthrough_pattern)
         assert pt == []
         assert direct == []
 
@@ -137,7 +137,7 @@ class TestClassifyParams:
         # "fn(x)" contains 1 passthrough match and 1 total \bx\b occurrence
         # With occurrences_per_match=2, 1*2 >= 1, so it's passthrough
         body = "fn(x)"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["x"], body, lambda name: rf"\b\w+\({re.escape(name)}\)",
             occurrences_per_match=2,
         )
@@ -148,7 +148,7 @@ class TestClassifyParams:
         # "fn(x) + x" has 2 total \bx\b but only 1 passthrough match
         # 1*1 = 1 < 2, so direct
         body = "fn(x) + x"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["x"], body, lambda name: rf"\b\w+\({re.escape(name)}\)",
             occurrences_per_match=1,
         )
@@ -160,7 +160,7 @@ class TestClassifyParams:
         # "fn(data)" gives 1 passthrough match * 2 = 2 occurrences
         # but "data" appears 3 times total (fn(data), data + 1, data * 2)
         body = "fn(data)\nresult = data + 1\nother = data * 2"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["data"], body, lambda name: rf"\b\w+\({re.escape(name)}\)",
             occurrences_per_match=2,
         )
@@ -171,7 +171,7 @@ class TestClassifyParams:
         """Params are matched with word boundaries, not substrings."""
         # "x" should not match inside "extra" or "max"
         body = "extra = max(something)\nreturn fn(x)"
-        pt, direct = _classify_params(
+        pt, direct = classify_params(
             ["x"], body, lambda name: rf"\b\w+\({re.escape(name)}\)",
         )
         # "x" total occurrences = only the standalone \bx\b matches

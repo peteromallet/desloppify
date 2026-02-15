@@ -1,6 +1,16 @@
 # Desloppify — Technical Internals
 
-Multi-language codebase health scanner. See README.md for usage.
+## Philosophy
+
+Desloppify gives AI coding agents a structured process for bringing codebases to a very high standard — with the human always in the loop. It works with any language via a plugin system.
+
+Code quality breaks into two layers. **Mechanical** issues — dead code, duplication, complexity, smells — can be detected deterministically and often fixed automatically. **Subjective** issues — architecture fitness, convention drift, error strategy consistency — require judgment that only a human can provide.
+
+Desloppify handles the mechanical layer aggressively: scan, track, coach the agent through cleanup. Findings persist across scans. A narrative system recognizes momentum, stagnation, and regression, and adjusts its guidance accordingly. Prioritization is opinionated — security and structural health outweigh style nits.
+
+But the tool is deliberately non-prescriptive about *what* to fix. It gives the agent a shortlist and trusts the human to either solve each issue or mindfully dismiss it with a reason. The goal isn't a perfect score — it's making technical debt visible, tractable, and progressively smaller.
+
+See README.md for usage.
 
 ## Directory Layout
 
@@ -23,7 +33,7 @@ desloppify/
 │   ├── single_use.py   # detect_single_use_abstractions(path, graph, barrel_names)
 │   ├── coupling.py     # detect_coupling_violations(graph, shared_prefix, tools_prefix)
 │   ├── naming.py       # detect_naming_inconsistencies(path, file_finder, skip_names)
-│   └── passthrough.py  # _classify_params(params, body, pattern_fn) — shared core
+│   └── passthrough.py  # classify_params(params, body, pattern_fn) — shared core
 │
 ├── lang/               # Layer 2 + 3: Language plugins (auto-discovered)
 │   ├── __init__.py     # Registry: @register_lang, get_lang, auto-detect, structural validation

@@ -19,7 +19,7 @@ def cmd_issues(args):
 
 def _list_issues(args):
     """Print numbered table of open review findings."""
-    from ..issues import list_open_review_findings, _finding_weight, _impact_label
+    from ..issues import list_open_review_findings, finding_weight, impact_label
 
     state = args._preloaded_state
     items = list_open_review_findings(state)
@@ -46,8 +46,8 @@ def _list_issues(args):
         if assessment:
             score_str = f"{assessment['score']}/100"
         else:
-            weight, _, _ = _finding_weight(f)
-            score_str = _impact_label(weight)
+            weight, _, _ = finding_weight(f)
+            score_str = impact_label(weight)
         summary = f.get("summary", "")[:50]
         investigated = "yes" if detail.get("investigation") else "no"
         print(f"  {i:<4} {score_str:<8} {dim:<28} {summary:<50} {investigated}")
@@ -71,8 +71,8 @@ def _list_issues(args):
 
 def _show_issue(args):
     """Show full details for a single issue by number."""
-    from ..issues import list_open_review_findings, _render_issue_detail
-    from ._helpers import _resolve_lang
+    from ..issues import list_open_review_findings, render_issue_detail
+    from ._helpers import resolve_lang
 
     state = args._preloaded_state
     items = list_open_review_findings(state)
@@ -88,11 +88,11 @@ def _show_issue(args):
         return
 
     finding = items[number - 1]
-    lang = _resolve_lang(args)
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else finding.get("lang", "typescript")
 
     assessments = state.get("subjective_assessments") or state.get("review_assessments") or {}
-    doc = _render_issue_detail(finding, lang_name, number=number,
+    doc = render_issue_detail(finding, lang_name, number=number,
                                 subjective_assessments=assessments)
     print()
     print(doc)
@@ -109,7 +109,7 @@ def _update_issue(args):
     """Add investigation notes to an issue."""
     from ..issues import list_open_review_findings, update_investigation
     from ..state import save_state
-    from ._helpers import _resolve_lang
+    from ._helpers import resolve_lang
     from pathlib import Path
 
     state = args._preloaded_state
@@ -144,7 +144,7 @@ def _update_issue(args):
         return
 
     save_state(state, sp)
-    lang = _resolve_lang(args)
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else finding.get("lang", "typescript")
     print(colorize(f"\n  Investigation saved for issue #{number}.", "green"))
     print(colorize(f"  Fix the issue, then: desloppify --lang {lang_name} resolve fixed \"{finding['id']}\"", "dim"))

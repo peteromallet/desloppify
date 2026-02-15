@@ -4,7 +4,7 @@ import json
 from collections import defaultdict
 
 from ..utils import colorize
-from ._helpers import _state_path, _write_query
+from ._helpers import state_path, _write_query
 
 
 # Detail keys to display, in order. Each entry is (key, label, formatter).
@@ -58,7 +58,7 @@ def cmd_show(args):
     """Show all findings for a file, directory, detector, or pattern."""
     from ..state import load_state, match_findings
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
 
     if not state.get("last_scan"):
@@ -100,8 +100,8 @@ def cmd_show(args):
 
     # Always write structured query file
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="show")
     payload = _build_show_payload(matches, pattern, status_filter)

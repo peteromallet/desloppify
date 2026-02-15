@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from ..state import _json_default
+from ..state import json_default
 from ..utils import PROJECT_ROOT
 
 
@@ -25,13 +25,13 @@ def _write_query(data: dict):
             pass  # Non-fatal — config is a convenience, not required
     try:
         from ..utils import safe_write_text
-        safe_write_text(QUERY_FILE, json.dumps(data, indent=2, default=_json_default) + "\n")
+        safe_write_text(QUERY_FILE, json.dumps(data, indent=2, default=json_default) + "\n")
         print(f"  \u2192 query.json updated", file=sys.stderr)
     except OSError as e:
         print(f"  \u26a0 Could not write query.json: {e}", file=sys.stderr)
 
 
-def _state_path(args) -> Path | None:
+def state_path(args) -> Path | None:
     """Get state file path from args, or None for default."""
     p = getattr(args, "state", None)
     if p:
@@ -46,12 +46,11 @@ def _state_path(args) -> Path | None:
     return None
 
 
-def _resolve_lang(args):
+def resolve_lang(args):
     """Resolve the language config from args, with auto-detection fallback."""
     lang_name = getattr(args, "lang", None)
     if lang_name is None:
         from ..lang import auto_detect_lang
-        from ..utils import PROJECT_ROOT
         lang_name = auto_detect_lang(PROJECT_ROOT)
     if lang_name is None:
         return None

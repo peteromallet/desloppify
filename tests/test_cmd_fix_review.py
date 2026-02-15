@@ -49,8 +49,8 @@ def _make_prepare_result(total_candidates=3, dims=None):
 
 
 # Patch targets: lazy imports inside _cmd_fix_review resolve at source modules
-_P_LANG = "desloppify.commands._helpers._resolve_lang"
-_P_SP = "desloppify.commands._helpers._state_path"
+_P_LANG = "desloppify.commands._helpers.resolve_lang"
+_P_SP = "desloppify.commands._helpers.state_path"
 _P_LOAD = "desloppify.state.load_state"
 _P_PREP = "desloppify.review.prepare_review"
 _P_SETUP = "desloppify.commands.review_cmd._setup_lang"

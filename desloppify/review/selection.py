@@ -7,22 +7,22 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..utils import rel, _read_file_text
+from ..utils import rel, read_file_text
 from .context import _abs, _dep_graph_lookup, _importer_count
 
 
 # Files with these name patterns have low subjective review value —
 # they're mostly declarations (types, constants, enums) not logic.
-_LOW_VALUE_NAMES = re.compile(
+LOW_VALUE_NAMES = re.compile(
     r"(?:^|/)(?:types|constants|enums|index)\.[a-z]+$"
     r"|\.d\.ts$"
 )
 
 # Minimum LOC to be worth a review slot
-_MIN_REVIEW_LOC = 20
+MIN_REVIEW_LOC = 20
 
 
-def _hash_file(filepath: str) -> str:
+def hash_file(filepath: str) -> str:
     """Compute a content hash for a file."""
     try:
         content = Path(filepath).read_bytes()
@@ -60,7 +60,7 @@ def select_files_for_review(
         if not force_refresh:
             entry = cache.get(rpath)
             if entry:
-                current_hash = _hash_file(_abs(filepath))
+                current_hash = hash_file(_abs(filepath))
                 if current_hash and current_hash == entry.get("content_hash"):
                     reviewed_at = entry.get("reviewed_at", "")
                     if reviewed_at:
@@ -89,15 +89,15 @@ def _compute_review_priority(filepath: str, lang, state: dict) -> int:
     score = 0
     rpath = rel(filepath)
 
-    content = _read_file_text(_abs(filepath))
+    content = read_file_text(_abs(filepath))
     loc = len(content.splitlines()) if content is not None else 0
 
     # Skip tiny files — not enough to review
-    if loc < _MIN_REVIEW_LOC:
+    if loc < MIN_REVIEW_LOC:
         return -1
 
     # Low-value files: types, constants, enums, index files, .d.ts
-    is_low_value = bool(_LOW_VALUE_NAMES.search(rpath))
+    is_low_value = bool(LOW_VALUE_NAMES.search(rpath))
 
     # High blast radius (many importers)
     if lang._dep_graph:
@@ -113,6 +113,21 @@ def _compute_review_priority(filepath: str, lang, state: dict) -> int:
     n_findings = sum(1 for f in findings.values()
                      if f.get("file") == rpath and f["status"] == "open")
     score += n_findings * 5
+
+    # High-complexity files with wontfixed structural findings
+    # (mechanical detector says "complex" but can't say why — subjective review can)
+    n_wontfix_structural = sum(
+        1 for f in findings.values()
+        if f.get("file") == rpath and f["status"] == "wontfix"
+        and f.get("detector") in ("structural", "smells")
+    )
+    if n_wontfix_structural:
+        score += n_wontfix_structural * 15  # Strong boost — these need human insight
+
+    # Complexity score from mechanical detectors (if available)
+    complexity_map = getattr(lang, "_complexity_map", None)
+    if isinstance(complexity_map, dict) and complexity_map.get(rpath, 0) > 100:
+        score += 20  # Very complex files need subjective review most
 
     # Larger files have more to review
     score += loc // 50

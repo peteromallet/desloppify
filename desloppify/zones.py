@@ -180,6 +180,15 @@ class ZonePolicy:
     exclude_from_score: bool = False
 
 
+# Skip almost all detectors for generated/vendor code
+_SKIP_ALL_DETECTORS = frozenset({
+    "unused", "logs", "exports", "deprecated", "structural",
+    "props", "smells", "react", "dupes", "single_use",
+    "orphaned", "coupling", "facade", "naming", "patterns",
+    "cycles", "flat_dirs", "dict_keys", "test_coverage",
+    "security",
+})
+
 ZONE_POLICIES: dict[Zone, ZonePolicy] = {
     Zone.PRODUCTION: ZonePolicy(),
     Zone.TEST: ZonePolicy(
@@ -195,19 +204,11 @@ ZONE_POLICIES: dict[Zone, ZonePolicy] = {
         exclude_from_score=True,
     ),
     Zone.GENERATED: ZonePolicy(
-        skip_detectors={"unused", "logs", "exports", "deprecated", "structural",
-                        "props", "smells", "react", "dupes", "single_use",
-                        "orphaned", "coupling", "facade", "naming", "patterns",
-                        "cycles", "flat_dirs", "dict_keys", "test_coverage",
-                        "security"},
+        skip_detectors=_SKIP_ALL_DETECTORS,
         exclude_from_score=True,
     ),
     Zone.VENDOR: ZonePolicy(
-        skip_detectors={"unused", "logs", "exports", "deprecated", "structural",
-                        "props", "smells", "react", "dupes", "single_use",
-                        "orphaned", "coupling", "facade", "naming", "patterns",
-                        "cycles", "flat_dirs", "dict_keys", "test_coverage",
-                        "security"},
+        skip_detectors=_SKIP_ALL_DETECTORS,
         exclude_from_score=True,
     ),
     Zone.SCRIPT: ZonePolicy(

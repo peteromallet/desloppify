@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from desloppify.detectors.security import detect_security_issues, _make_entry
+from desloppify.detectors.security import detect_security_issues, make_security_entry
 from desloppify.lang.python.detectors.security import detect_python_security
 from desloppify.lang.typescript.detectors.security import detect_ts_security
 from desloppify.scoring import (

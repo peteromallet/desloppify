@@ -79,6 +79,38 @@ def _compute_reminders(state: dict, lang: str | None,
             "command": "desloppify show --status wontfix",
         })
 
+    # 4b. Stale wontfix decay — resurface items wontfixed long ago
+    scan_count = len(state.get("scan_history", []))
+    _WONTFIX_DECAY_SCANS = 20  # resurface after this many scans
+    if scan_count >= _WONTFIX_DECAY_SCANS and command == "scan":
+        from datetime import datetime as _dt, timezone as _tz
+        findings = state.get("findings", {})
+        stale_wontfix = []
+        for f in findings.values():
+            if f.get("status") != "wontfix":
+                continue
+            resolved_at = f.get("resolved_at")
+            if not resolved_at:
+                continue
+            # Check scan_count at time of wontfix vs now
+            # We can't track the exact scan count at wontfix time,
+            # so use time-based staleness: >60 days old
+            try:
+                resolved_dt = _dt.fromisoformat(resolved_at)
+                age_days = (_dt.now(_tz.utc) - resolved_dt).days
+                if age_days > 60:
+                    stale_wontfix.append(f)
+            except (ValueError, TypeError):
+                continue
+        if stale_wontfix:
+            reminders.append({
+                "type": "wontfix_stale",
+                "message": (f"{len(stale_wontfix)} wontfix item(s) are >60 days old. "
+                            f"Has anything changed? Review with: "
+                            f"`desloppify show \"*\" --status wontfix`"),
+                "command": "desloppify show \"*\" --status wontfix",
+            })
+
     # 5. Stagnant dimensions — be specific about what to try
     for dim in dimensions.get("stagnant_dimensions", []):
         strict = dim.get("strict", 0)

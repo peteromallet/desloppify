@@ -258,12 +258,12 @@ class TestSelectFilesForReview:
         assert len(files) <= 5
 
     def test_cache_skip_fresh_files(self, mock_lang, empty_state, tmp_path):
-        from desloppify.review import select_files_for_review, _hash_file
+        from desloppify.review import select_files_for_review, hash_file
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         # Create a real file for hashing
         real_file = tmp_path / "cached.ts"
         real_file.write_text("cached content")
-        content_hash = _hash_file(str(real_file))
+        content_hash = hash_file(str(real_file))
 
         mock_lang.file_finder = MagicMock(return_value=[str(real_file)])
         state = dict(empty_state)
@@ -283,11 +283,11 @@ class TestSelectFilesForReview:
         assert len(files) == 0
 
     def test_cache_refresh_stale_files(self, mock_lang, empty_state, tmp_path):
-        from desloppify.review import select_files_for_review, _hash_file
+        from desloppify.review import select_files_for_review, hash_file
         old_time = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat(timespec="seconds")
         real_file = tmp_path / "stale.ts"
-        real_file.write_text("stale content\n" * 25)  # >= _MIN_REVIEW_LOC
-        content_hash = _hash_file(str(real_file))
+        real_file.write_text("stale content\n" * 25)  # >= MIN_REVIEW_LOC
+        content_hash = hash_file(str(real_file))
 
         mock_lang.file_finder = MagicMock(return_value=[str(real_file)])
         state = dict(empty_state)
@@ -308,7 +308,7 @@ class TestSelectFilesForReview:
         from desloppify.review import select_files_for_review
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         real_file = tmp_path / "changed.ts"
-        real_file.write_text("new content\n" * 25)  # >= _MIN_REVIEW_LOC
+        real_file.write_text("new content\n" * 25)  # >= MIN_REVIEW_LOC
 
         mock_lang.file_finder = MagicMock(return_value=[str(real_file)])
         state = dict(empty_state)
@@ -326,11 +326,11 @@ class TestSelectFilesForReview:
         assert len(files) == 1
 
     def test_force_refresh_ignores_cache(self, mock_lang, empty_state, tmp_path):
-        from desloppify.review import select_files_for_review, _hash_file
+        from desloppify.review import select_files_for_review, hash_file
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         real_file = tmp_path / "cached.ts"
-        real_file.write_text("cached content\n" * 25)  # >= _MIN_REVIEW_LOC
-        content_hash = _hash_file(str(real_file))
+        real_file.write_text("cached content\n" * 25)  # >= MIN_REVIEW_LOC
+        content_hash = hash_file(str(real_file))
 
         mock_lang.file_finder = MagicMock(return_value=[str(real_file)])
         state = dict(empty_state)
@@ -350,7 +350,7 @@ class TestSelectFilesForReview:
 
     def test_priority_ordering_by_importers(self, mock_lang, empty_state, tmp_path):
         from desloppify.review import select_files_for_review
-        # Create real files so _read_file_text works (need >= _MIN_REVIEW_LOC)
+        # Create real files so read_file_text works (need >= MIN_REVIEW_LOC)
         src = tmp_path / "src"
         src.mkdir()
         (src / "popular.ts").write_text("export function foo() {}\n" * 30)
@@ -382,6 +382,7 @@ class TestPrepareReview:
             "naming_quality", "error_consistency",
             "abstraction_fitness", "logic_clarity",
             "ai_generated_debt",
+            "type_safety", "contract_coherence",
         ]
         assert "system_prompt" in data
         assert len(data["files"]) == 1
@@ -970,26 +971,26 @@ class TestDimensionPrompts:
 
 class TestHashFile:
     def test_hash_consistency(self, tmp_path):
-        from desloppify.review import _hash_file
+        from desloppify.review import hash_file
         f = tmp_path / "test.txt"
         f.write_text("hello world")
-        h1 = _hash_file(str(f))
-        h2 = _hash_file(str(f))
+        h1 = hash_file(str(f))
+        h2 = hash_file(str(f))
         assert h1 == h2
         assert len(h1) == 16
 
     def test_hash_changes_with_content(self, tmp_path):
-        from desloppify.review import _hash_file
+        from desloppify.review import hash_file
         f = tmp_path / "test.txt"
         f.write_text("hello")
-        h1 = _hash_file(str(f))
+        h1 = hash_file(str(f))
         f.write_text("world")
-        h2 = _hash_file(str(f))
+        h2 = hash_file(str(f))
         assert h1 != h2
 
     def test_hash_missing_file(self):
-        from desloppify.review import _hash_file
-        assert _hash_file("/nonexistent/file.txt") == ""
+        from desloppify.review import hash_file
+        assert hash_file("/nonexistent/file.txt") == ""
 
 
 # ── CLI tests ─────────────────────────────────────────────────────

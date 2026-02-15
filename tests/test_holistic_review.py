@@ -67,8 +67,8 @@ def _mock_lang(files=None):
 
 
 class TestHolisticConstants:
-    def test_eleven_dimensions(self):
-        assert len(HOLISTIC_DIMENSIONS) == 11
+    def test_twelve_dimensions(self):
+        assert len(HOLISTIC_DIMENSIONS) == 12
 
     def test_all_dimensions_have_prompts(self):
         for dim in HOLISTIC_DIMENSIONS:
@@ -108,6 +108,7 @@ class TestBuildHolisticContext:
         assert "dependencies" in ctx
         assert "testing" in ctx
         assert "api_surface" in ctx
+        assert "structure" in ctx
         assert "codebase_stats" in ctx
 
     def test_codebase_stats(self, tmp_path):
@@ -156,7 +157,7 @@ class TestPrepareHolisticReview:
 
         assert data["mode"] == "holistic"
         assert data["command"] == "review"
-        assert len(data["dimensions"]) == 11
+        assert len(data["dimensions"]) == 12
         assert "holistic_context" in data
         assert "system_prompt" in data
 
@@ -1212,8 +1213,8 @@ class TestNewInvestigationBatches:
         names = [b["name"] for b in batches]
         assert "AI Debt & Migrations" not in names
 
-    def test_up_to_six_batches_possible(self):
-        """With full context, up to 6 batches can be generated."""
+    def test_up_to_seven_batches_possible(self):
+        """With full context, up to 7 batches can be generated."""
         ctx = {
             "architecture": {
                 "god_modules": [{"file": "core.py", "importers": 10, "excerpt": ""}],
@@ -1245,12 +1246,21 @@ class TestNewInvestigationBatches:
             "migration_signals": {
                 "deprecated_markers": {"total": 1, "files": {"old.py": 1}},
             },
+            "structure": {
+                "root_files": [
+                    {"file": "viz.py", "loc": 200, "fan_in": 1, "fan_out": 3, "role": "peripheral"},
+                ],
+                "directory_profiles": {
+                    "commands/": {"file_count": 8, "files": ["scan.py", "show.py", "next.py"],
+                                  "total_loc": 1500, "avg_fan_in": 2.0, "avg_fan_out": 5.0},
+                },
+            },
         }
         lang = _mock_lang()
 
         batches = _build_investigation_batches(ctx, lang)
 
-        assert len(batches) == 6
+        assert len(batches) == 7
         names = [b["name"] for b in batches]
         assert "Architecture & Coupling" in names
         assert "Conventions & Errors" in names
@@ -1258,3 +1268,157 @@ class TestNewInvestigationBatches:
         assert "Testing & API" in names
         assert "Authorization" in names
         assert "AI Debt & Migrations" in names
+        assert "Package Organization" in names
+
+
+# ===================================================================
+# Structure context (section 12) — directory profiles, root files
+# ===================================================================
+
+
+class TestStructureContext:
+    def test_structure_section_present(self, tmp_path):
+        f1 = _make_file(str(tmp_path), "src/module_a.py", lines=50)
+        f2 = _make_file(str(tmp_path), "src/module_b.py", lines=50)
+        lang = _mock_lang([f1, f2])
+        state = _empty_state()
+
+        ctx = build_holistic_context(tmp_path, lang, state, files=[f1, f2])
+
+        assert "structure" in ctx
+        structure = ctx["structure"]
+        assert "directory_profiles" in structure
+
+    def test_directory_profiles_computed(self, tmp_path):
+        f1 = _make_file(str(tmp_path), "commands/scan.py", lines=100)
+        f2 = _make_file(str(tmp_path), "commands/show.py", lines=80)
+        f3 = _make_file(str(tmp_path), "commands/next.py", lines=60)
+        files = [f1, f2, f3]
+        lang = _mock_lang(files)
+        state = _empty_state()
+
+        ctx = build_holistic_context(tmp_path, lang, state, files=files)
+
+        profiles = ctx["structure"]["directory_profiles"]
+        # Should have a profile for the commands directory
+        matching = [k for k in profiles if "commands" in k]
+        assert len(matching) >= 1
+        profile = profiles[matching[0]]
+        assert profile["file_count"] == 3
+        assert profile["total_loc"] == 240  # 100+80+60
+
+    def test_root_files_classified(self, tmp_path, monkeypatch):
+        """Root-level files are classified as core (fan_in>=5) or peripheral."""
+        from desloppify import utils as _u
+        monkeypatch.setattr(_u, "PROJECT_ROOT", tmp_path)
+
+        f1 = _make_file(str(tmp_path), "utils.py", lines=200)
+        f2 = _make_file(str(tmp_path), "scorecard.py", lines=100)
+        files = [f1, f2]
+        lang = _mock_lang(files)
+        # Make utils.py a god module, scorecard.py peripheral
+        lang._dep_graph = {
+            f1: {"importers": {f"mod_{i}" for i in range(10)}, "imports": set()},
+            f2: {"importers": {"scan.py"}, "imports": set()},
+        }
+        state = _empty_state()
+
+        ctx = build_holistic_context(tmp_path, lang, state, files=files)
+
+        root_files = ctx["structure"].get("root_files", [])
+        assert len(root_files) == 2
+        # utils.py should be core (10 importers), scorecard.py peripheral (1 importer)
+        utils_entry = [rf for rf in root_files if "utils" in rf["file"]]
+        scorecard_entry = [rf for rf in root_files if "scorecard" in rf["file"]]
+        assert utils_entry[0]["role"] == "core"
+        assert scorecard_entry[0]["role"] == "peripheral"
+
+    def test_empty_files_returns_empty_structure(self, tmp_path):
+        lang = _mock_lang([])
+        state = _empty_state()
+
+        ctx = build_holistic_context(tmp_path, lang, state, files=[])
+
+        assert ctx["structure"]["directory_profiles"] == {}
+
+
+# ===================================================================
+# Package Organization dimension
+# ===================================================================
+
+
+class TestPackageOrganizationDimension:
+    def test_dimension_in_holistic_list(self):
+        assert "package_organization" in HOLISTIC_DIMENSIONS
+
+    def test_dimension_has_prompt(self):
+        assert "package_organization" in HOLISTIC_DIMENSION_PROMPTS
+        prompt = HOLISTIC_DIMENSION_PROMPTS["package_organization"]
+        assert "description" in prompt
+        assert "look_for" in prompt
+        assert "skip" in prompt
+        assert len(prompt["look_for"]) >= 4
+
+    def test_import_accepts_package_organization(self):
+        state = _empty_state()
+        data = [{
+            "dimension": "package_organization",
+            "identifier": "straggler_files",
+            "summary": "3 viz files at root should be in output/ subpackage",
+            "confidence": "high",
+            "related_files": ["visualize.py", "scorecard.py", "_scorecard_draw.py"],
+        }]
+        diff = import_holistic_findings(data, state, "python")
+        assert diff["new"] == 1
+
+    def test_investigation_batch_generated(self):
+        """Batch 7 (Package Organization) appears when structure context has peripheral files."""
+        ctx = {
+            "architecture": {},
+            "coupling": {},
+            "conventions": {},
+            "errors": {"strategy_by_directory": {}},
+            "abstractions": {"util_files": []},
+            "dependencies": {},
+            "testing": {},
+            "api_surface": {},
+            "structure": {
+                "root_files": [
+                    {"file": "visualize.py", "loc": 300, "fan_in": 1, "fan_out": 3, "role": "peripheral"},
+                    {"file": "scorecard.py", "loc": 200, "fan_in": 1, "fan_out": 2, "role": "peripheral"},
+                ],
+                "directory_profiles": {
+                    "commands/": {"file_count": 8, "files": ["scan.py", "show.py", "next.py"],
+                                  "total_loc": 1500, "avg_fan_in": 2.0, "avg_fan_out": 5.0},
+                },
+            },
+        }
+        lang = _mock_lang()
+
+        batches = _build_investigation_batches(ctx, lang)
+
+        names = [b["name"] for b in batches]
+        assert "Package Organization" in names
+        pkg_batch = next(b for b in batches if b["name"] == "Package Organization")
+        assert "visualize.py" in pkg_batch["files_to_read"]
+        assert "scorecard.py" in pkg_batch["files_to_read"]
+        assert "package_organization" in pkg_batch["dimensions"]
+
+    def test_no_batch_when_no_structure(self):
+        """No Package Organization batch when structure context is empty."""
+        ctx = {
+            "architecture": {},
+            "coupling": {},
+            "conventions": {},
+            "errors": {"strategy_by_directory": {}},
+            "abstractions": {"util_files": []},
+            "dependencies": {},
+            "testing": {},
+            "api_surface": {},
+        }
+        lang = _mock_lang()
+
+        batches = _build_investigation_batches(ctx, lang)
+
+        names = [b["name"] for b in batches]
+        assert "Package Organization" not in names

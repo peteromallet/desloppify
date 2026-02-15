@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from desloppify.scorecard import (
+from desloppify.output.scorecard import (
     _SCALE,
     _s,
     _score_color,
@@ -217,7 +217,7 @@ class TestGetBadgeConfig:
 
 class TestGetProjectName:
     def test_gh_cli_success(self, monkeypatch):
-        from desloppify import scorecard
+        from desloppify.output import scorecard
         monkeypatch.setattr(
             "subprocess.check_output",
             lambda cmd, **kw: "owner/repo\n" if "gh" in cmd else (_ for _ in ()).throw(FileNotFoundError),
@@ -226,7 +226,7 @@ class TestGetProjectName:
         assert result == "owner/repo"
 
     def test_falls_back_to_git_remote_ssh(self, monkeypatch):
-        from desloppify import scorecard
+        from desloppify.output import scorecard
 
         def mock_check_output(cmd, **kw):
             if "gh" in cmd:
@@ -238,7 +238,7 @@ class TestGetProjectName:
         assert result == "myuser/myrepo"
 
     def test_falls_back_to_git_remote_https(self, monkeypatch):
-        from desloppify import scorecard
+        from desloppify.output import scorecard
 
         def mock_check_output(cmd, **kw):
             if "gh" in cmd:
@@ -250,7 +250,7 @@ class TestGetProjectName:
         assert result == "owner/repo"
 
     def test_falls_back_to_directory_name(self, monkeypatch):
-        from desloppify import scorecard
+        from desloppify.output import scorecard
 
         def mock_check_output(cmd, **kw):
             raise FileNotFoundError
@@ -262,7 +262,7 @@ class TestGetProjectName:
         assert len(result) > 0
 
     def test_https_with_token_stripped(self, monkeypatch):
-        from desloppify import scorecard
+        from desloppify.output import scorecard
 
         def mock_check_output(cmd, **kw):
             if "gh" in cmd:

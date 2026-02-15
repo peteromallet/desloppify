@@ -44,13 +44,13 @@ class TestReviewImports:
             _classify_error_strategy,
             # selection
             select_files_for_review,
-            _hash_file,
+            hash_file,
             _compute_review_priority,
             _get_file_findings,
             _count_fresh,
             _count_stale,
-            _LOW_VALUE_NAMES,
-            _MIN_REVIEW_LOC,
+            LOW_VALUE_NAMES,
+            MIN_REVIEW_LOC,
             # prepare
             prepare_review,
             prepare_holistic_review,

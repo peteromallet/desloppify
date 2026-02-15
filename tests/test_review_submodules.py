@@ -36,17 +36,17 @@ def mock_lang():
 
 class TestHashFile:
     def test_hash_existing_file(self, tmp_path):
-        from desloppify.review.selection import _hash_file
+        from desloppify.review.selection import hash_file
         f = tmp_path / "test.txt"
         f.write_text("hello")
-        h = _hash_file(str(f))
+        h = hash_file(str(f))
         assert len(h) == 16
         expected = hashlib.sha256(b"hello").hexdigest()[:16]
         assert h == expected
 
     def test_hash_missing_file(self):
-        from desloppify.review.selection import _hash_file
-        assert _hash_file("/nonexistent/file.txt") == ""
+        from desloppify.review.selection import hash_file
+        assert hash_file("/nonexistent/file.txt") == ""
 
 
 class TestCountFreshStale:
@@ -106,14 +106,14 @@ class TestComputeReviewPriority:
     def test_tiny_file_filtered(self, mock_lang, empty_state):
         from desloppify.review.selection import _compute_review_priority
         with patch("desloppify.review.selection.rel", return_value="tiny.ts"), \
-             patch("desloppify.review.selection._read_file_text", return_value="x\n" * 5):
+             patch("desloppify.review.selection.read_file_text", return_value="x\n" * 5):
             assert _compute_review_priority("tiny.ts", mock_lang, empty_state) == -1
 
     def test_normal_file_gets_score(self, mock_lang, empty_state):
         from desloppify.review.selection import _compute_review_priority
         content = "line\n" * 100
         with patch("desloppify.review.selection.rel", return_value="src/app.ts"), \
-             patch("desloppify.review.selection._read_file_text", return_value=content):
+             patch("desloppify.review.selection.read_file_text", return_value=content):
             score = _compute_review_priority("src/app.ts", mock_lang, empty_state)
             assert score >= 0
 
@@ -121,7 +121,7 @@ class TestComputeReviewPriority:
         from desloppify.review.selection import _compute_review_priority
         content = "line\n" * 100
         with patch("desloppify.review.selection.rel") as mock_rel, \
-             patch("desloppify.review.selection._read_file_text", return_value=content):
+             patch("desloppify.review.selection.read_file_text", return_value=content):
             mock_rel.return_value = "src/types.ts"
             low_score = _compute_review_priority("src/types.ts", mock_lang, empty_state)
             mock_rel.return_value = "src/app.ts"
@@ -148,7 +148,7 @@ class TestSelectFilesForReview:
             }
         }
         with patch("desloppify.review.selection.rel", return_value="src/a.ts"), \
-             patch("desloppify.review.selection._hash_file", return_value=content_hash), \
+             patch("desloppify.review.selection.hash_file", return_value=content_hash), \
              patch("desloppify.review.selection._compute_review_priority", return_value=10):
             result = select_files_for_review(mock_lang, Path("."), empty_state,
                                               files=["src/a.ts"])
@@ -157,16 +157,16 @@ class TestSelectFilesForReview:
 
 class TestLowValueNames:
     def test_types_file(self):
-        from desloppify.review.selection import _LOW_VALUE_NAMES
-        assert _LOW_VALUE_NAMES.search("src/types.ts")
+        from desloppify.review.selection import LOW_VALUE_NAMES
+        assert LOW_VALUE_NAMES.search("src/types.ts")
 
     def test_dts_file(self):
-        from desloppify.review.selection import _LOW_VALUE_NAMES
-        assert _LOW_VALUE_NAMES.search("src/foo.d.ts")
+        from desloppify.review.selection import LOW_VALUE_NAMES
+        assert LOW_VALUE_NAMES.search("src/foo.d.ts")
 
     def test_normal_file(self):
-        from desloppify.review.selection import _LOW_VALUE_NAMES
-        assert not _LOW_VALUE_NAMES.search("src/app.ts")
+        from desloppify.review.selection import LOW_VALUE_NAMES
+        assert not LOW_VALUE_NAMES.search("src/app.ts")
 
 
 # ── prepare.py tests ────────────────────────────────────────────
@@ -189,7 +189,7 @@ class TestRelList:
 class TestBuildFileRequests:
     def test_basic(self, mock_lang, empty_state):
         from desloppify.review.prepare import _build_file_requests
-        with patch("desloppify.review.prepare._read_file_text", return_value="line1\nline2"), \
+        with patch("desloppify.review.prepare.read_file_text", return_value="line1\nline2"), \
              patch("desloppify.review.prepare.rel", return_value="src/a.ts"), \
              patch("desloppify.review.prepare._abs", side_effect=lambda x: x):
             result = _build_file_requests(["src/a.ts"], mock_lang, empty_state)
@@ -199,7 +199,7 @@ class TestBuildFileRequests:
 
     def test_skips_unreadable(self, mock_lang, empty_state):
         from desloppify.review.prepare import _build_file_requests
-        with patch("desloppify.review.prepare._read_file_text", return_value=None), \
+        with patch("desloppify.review.prepare.read_file_text", return_value=None), \
              patch("desloppify.review.prepare._abs", side_effect=lambda x: x):
             result = _build_file_requests(["missing.ts"], mock_lang, empty_state)
         assert result == []
@@ -421,7 +421,7 @@ class TestUpdateReviewCache:
     def test_updates_cache(self, empty_state):
         from desloppify.review.import_findings import _update_review_cache
         with patch("desloppify.review.import_findings.PROJECT_ROOT", Path("/fake")), \
-             patch("desloppify.review.import_findings._now", return_value="2026-01-01T00:00:00+00:00"):
+             patch("desloppify.review.import_findings.utc_now", return_value="2026-01-01T00:00:00+00:00"):
             with patch.object(Path, "exists", return_value=False):
                 _update_review_cache(empty_state, [{"file": "src/a.ts"}])
         cache = empty_state.get("review_cache", {}).get("files", {})
@@ -432,7 +432,7 @@ class TestUpdateReviewCache:
 class TestUpdateHolisticReviewCache:
     def test_updates_holistic_cache(self, empty_state):
         from desloppify.review.import_findings import _update_holistic_review_cache
-        with patch("desloppify.review.import_findings._now", return_value="2026-02-01"):
+        with patch("desloppify.review.import_findings.utc_now", return_value="2026-02-01"):
             _update_holistic_review_cache(empty_state, [])
         rc = empty_state.get("review_cache", {})
         assert "holistic" in rc

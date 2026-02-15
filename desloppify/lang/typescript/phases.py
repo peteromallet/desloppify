@@ -184,13 +184,22 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
         log(f"         flat dirs: {len(flat_entries)} directories with 20+ files")
 
     # TS-specific: props bloat
-    prop_entries, prop_count = detect_prop_interface_bloat(path)
+    props_thresh = lang._props_threshold if lang._props_threshold > 0 else 14
+    prop_entries, prop_count = detect_prop_interface_bloat(path, threshold=props_thresh)
     for e in prop_entries:
+        pc = e["prop_count"]
+        # Tiered severity: 15-29=low, 30-49=medium, 50+=high
+        if pc >= 50:
+            conf, tier = "high", 4
+        elif pc >= 30:
+            conf, tier = "medium", 3
+        else:
+            conf, tier = "low", 3
         results.append(make_finding(
             "props", e["file"], e["interface"],
-            tier=3, confidence="medium",
-            summary=f"Bloated {e.get('kind', 'props')}: {e['interface']} ({e['prop_count']} fields)",
-            detail={"prop_count": e["prop_count"], "line": e["line"],
+            tier=tier, confidence=conf,
+            summary=f"Bloated {e.get('kind', 'props')}: {e['interface']} ({pc} fields)",
+            detail={"prop_count": pc, "line": e["line"],
                     "kind": e.get("kind", "props")},
         ))
 

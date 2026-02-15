@@ -83,13 +83,11 @@ def _get_str_key(node: ast.expr) -> str | None:
     return None
 
 
-from .dict_keys_visitor import DictKeyVisitor  # noqa: F401
-
-
 # ── Pass 1: Single-scope dict key analysis ────────────────
 
 def detect_dict_key_flow(path: Path) -> tuple[list[dict], int]:
     """Walk all .py files, run DictKeyVisitor. Returns (entries, files_checked)."""
+    from .dict_keys_visitor import DictKeyVisitor
     files = find_py_files(path)
     all_findings: list[dict] = []
     all_literals: list[dict] = []

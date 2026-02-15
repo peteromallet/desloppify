@@ -26,8 +26,8 @@ class _SecurityVisitor(ast.NodeVisitor):
              severity: str, confidence: str, remediation: str):
         line_num = getattr(node, "lineno", 0)
         content = self.lines[line_num - 1] if 0 < line_num <= len(self.lines) else ""
-        from ....detectors.security import _make_entry
-        self.entries.append(_make_entry(
+        from ....detectors.security import make_security_entry
+        self.entries.append(make_security_entry(
             self.filepath, line_num, check_id,
             summary, severity, confidence,
             content, remediation,
@@ -218,7 +218,7 @@ def detect_python_security(
 
     Returns (entries, files_scanned).
     """
-    from ....detectors.security import _make_entry
+    from ....detectors.security import make_security_entry
 
     entries: list[dict] = []
     scanned = 0
@@ -261,7 +261,7 @@ def detect_python_security(
             if not is_pattern_line:
                 for pattern, label in _DEBUG_MODE_PATTERNS:
                     if pattern.search(line):
-                        entries.append(_make_entry(
+                        entries.append(make_security_entry(
                             filepath, line_num, "debug_mode",
                             f"Debug mode enabled: {label}",
                             "medium", "medium", line,
@@ -272,7 +272,7 @@ def detect_python_security(
             if not is_pattern_line:
                 for pattern, remediation in _XXE_PATTERNS:
                     if pattern.search(line):
-                        entries.append(_make_entry(
+                        entries.append(make_security_entry(
                             filepath, line_num, "xxe_vuln",
                             "Potential XXE vulnerability: using stdlib XML parser",
                             "high", "medium", line, remediation,
@@ -282,7 +282,7 @@ def detect_python_security(
             if _WEAK_HASH_RE.search(line):
                 context = "\n".join(lines[max(0, line_num - 3):min(len(lines), line_num + 2)])
                 if _PASSWORD_CONTEXT_RE.search(context):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "weak_password_hash",
                         "Weak hash near password context: MD5/SHA1 is unsuitable for passwords",
                         "medium", "medium", line,
@@ -294,7 +294,7 @@ def detect_python_security(
                 # Check a few lines around for secure=True
                 context = "\n".join(lines[max(0, line_num - 1):min(len(lines), line_num + 3)])
                 if not _SECURE_COOKIE_RE.search(context):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "insecure_cookie",
                         "Cookie set without secure=True",
                         "low", "low", line,

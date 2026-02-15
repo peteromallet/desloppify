@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from ..utils import colorize
-from ._helpers import _state_path, _write_query
+from ._helpers import state_path, _write_query
 
 
 def _audit_excluded_dirs(exclusions: tuple[str, ...], scanned_files: list[str],
@@ -99,12 +99,20 @@ def _show_score_delta(state: dict, prev_score: float, prev_strict: float,
     new_obj = state.get("objective_score")
     new_obj_strict = state.get("objective_strict")
 
+    wontfix = stats.get("wontfix", 0)
+    wontfix_str = f" · {wontfix} wontfix" if wontfix else ""
+
     if new_obj is not None:
         obj_delta_str, obj_color = _format_delta(new_obj, prev_obj)
         strict_delta_str, strict_color = _format_delta(new_obj_strict, prev_obj_strict)
         print(f"  Health: {colorize(f'{new_obj:.1f}/100{obj_delta_str}', obj_color)}" +
               colorize(f"  strict: {new_obj_strict:.1f}/100{strict_delta_str}", strict_color) +
-              colorize(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
+              colorize(f"  |  {stats['open']} open{wontfix_str} / {stats['total']} total", "dim"))
+        # Surface wontfix debt gap prominently when significant
+        gap = (new_obj or 0) - (new_obj_strict or 0)
+        if gap >= 5 and wontfix >= 10:
+            print(colorize(f"  ⚠ {gap:.1f}-point gap between health and strict — "
+                           f"{wontfix} wontfix items represent hidden debt", "yellow"))
     else:
         new_score = state["score"]
         new_strict = state.get("strict_score", 0)
@@ -112,7 +120,7 @@ def _show_score_delta(state: dict, prev_score: float, prev_strict: float,
         strict_delta_str, strict_color = _format_delta(new_strict, prev_strict)
         print(f"  Score: {colorize(f'{new_score:.1f}/100{delta_str}', color)}" +
               colorize(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
-              colorize(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
+              colorize(f"  |  {stats['open']} open{wontfix_str} / {stats['total']} total", "dim"))
         print(colorize("  ⚠ Dimension-based scoring unavailable (potentials missing). "
                 "This score uses legacy weighted-progress and is unreliable. "
                 "Run a full scan to fix: desloppify scan --path <source-root>", "yellow"))
@@ -173,6 +181,20 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
         print(colorize(f"  Review: {len(open_review)} finding{s} pending \u2014 `desloppify issues`", "cyan"))
         print()
 
+    # Auto-queue: nudge subjective review for high-complexity unreviewed files
+    review_cache = state.get("review_cache", {}).get("files", {})
+    scoped = path_scoped_findings(state.get("findings", {}), state.get("scan_path"))
+    complex_unreviewed = set()
+    for f in scoped.values():
+        if (f.get("detector") in ("structural", "smells")
+                and f.get("status") == "wontfix"
+                and f.get("file") not in review_cache):
+            complex_unreviewed.add(f.get("file"))
+    if len(complex_unreviewed) >= 3:
+        print(colorize(f"  {len(complex_unreviewed)} complex files have never been reviewed — "
+                        f"`desloppify review --prepare` would provide actionable refactoring guidance", "dim"))
+        print()
+
     return warnings, narrative
 
 
@@ -181,7 +203,7 @@ def cmd_scan(args):
     from ..state import load_state, save_state, merge_scan
     from ..plan import generate_findings
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
     path = Path(args.path)
     include_slow = not getattr(args, "skip_slow", False)
@@ -195,8 +217,8 @@ def cmd_scan(args):
         save_config(config)
 
     # Resolve language config
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     lang_label = f" ({lang.name})" if lang else ""
 
     # Load zone overrides from config
@@ -206,6 +228,13 @@ def cmd_scan(args):
     if lang:
         lang._review_cache = state.get("review_cache", {}).get("files", {})
         lang._review_max_age_days = config.get("review_max_age_days", 30)
+        # Apply config-level threshold overrides
+        override_threshold = config.get("large_files_threshold", 0)
+        if override_threshold > 0:
+            lang.large_threshold = override_threshold
+        props_threshold = config.get("props_threshold", 0)
+        if props_threshold > 0:
+            lang._props_threshold = props_threshold
 
     print(colorize(f"\nDesloppify Scan{lang_label}\n", "bold"))
     from ..utils import enable_file_cache, disable_file_cache
@@ -277,6 +306,8 @@ def cmd_scan(args):
     if new_dim_scores:
         _show_low_dimension_hints(new_dim_scores)
 
+    _show_score_integrity(state, diff)
+
     zone_distribution = state.get("zone_distribution")
 
     warnings, narrative = _show_post_scan_analysis(diff, state, lang)
@@ -302,7 +333,7 @@ def cmd_scan(args):
     # Generate scorecard badge
     badge_path = None
     try:
-        from ..scorecard import generate_scorecard, get_badge_config
+        from ..output.scorecard import generate_scorecard, get_badge_config
         badge_path, disabled = get_badge_config(args, config)
         if not disabled and badge_path:
             generate_scorecard(state, badge_path)
@@ -313,7 +344,9 @@ def cmd_scan(args):
                 readme_path = PROJECT_ROOT / readme_name
                 if readme_path.exists():
                     try:
-                        if rel_path in readme_path.read_text():
+                        if rel_path in readme_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        ):
                             readme_has_badge = True
                     except OSError:
                         pass
@@ -330,11 +363,76 @@ def cmd_scan(args):
     except (ImportError, OSError):
         badge_path = None  # Pillow not installed or write failed — skip silently
 
-    _print_llm_summary(state, badge_path, narrative)
+    _print_llm_summary(state, badge_path, narrative, diff)
+
+
+def _show_score_integrity(state: dict, diff: dict):
+    """Show Score Integrity section — surfaces wontfix debt and ignored findings."""
+    stats = state.get("stats", {})
+    wontfix = stats.get("wontfix", 0)
+    ignored = diff.get("ignored", 0)
+    ignore_patterns = diff.get("ignore_patterns", 0)
+
+    if wontfix <= 5 and ignored <= 0:
+        return
+
+    obj = state.get("objective_score")
+    obj_strict = state.get("objective_strict")
+    strict_gap = round(obj - obj_strict, 1) if obj is not None and obj_strict is not None else 0
+
+    # Wontfix % of actionable findings (open + wontfix + fixed + auto_resolved + false_positive)
+    actionable = stats.get("open", 0) + wontfix + stats.get("fixed", 0) + stats.get("auto_resolved", 0) + stats.get("false_positive", 0)
+    wontfix_pct = round(wontfix / actionable * 100) if actionable else 0
+
+    print(colorize("  " + "\u2504" * 2 + " Score Integrity " + "\u2504" * 37, "dim"))
+
+    if wontfix > 5:
+        if wontfix_pct > 50:
+            style = "red"
+            msg = f"  \u274c {wontfix} wontfix ({wontfix_pct}%) \u2014 over half of findings swept under rug. Strict gap: {strict_gap} pts"
+        elif wontfix_pct > 25:
+            style = "yellow"
+            msg = f"  \u26a0 {wontfix} wontfix ({wontfix_pct}%) \u2014 review whether past wontfix decisions still hold"
+        elif wontfix_pct > 10:
+            style = "yellow"
+            msg = f"  \u26a0 {wontfix} wontfix findings ({wontfix_pct}%) \u2014 strict {strict_gap} pts below lenient"
+        else:
+            style = "dim"
+            msg = f"  {wontfix} wontfix \u2014 strict gap: {strict_gap} pts"
+        print(colorize(msg, style))
+
+        # Show top 2 dimensions with biggest strict gap
+        dim_scores = state.get("dimension_scores", {})
+        if dim_scores:
+            gaps = []
+            for name, data in dim_scores.items():
+                score = data.get("score", 100)
+                strict = data.get("strict", score)
+                gap = round(score - strict, 1)
+                if gap > 0:
+                    gaps.append((name, gap))
+            gaps.sort(key=lambda x: -x[1])
+            if gaps:
+                top = gaps[:2]
+                gap_str = ", ".join(f"{n} (\u2212{g} pts)" for n, g in top)
+                print(colorize(f"    Biggest gaps: {gap_str}", "dim"))
+
+    if ignored > 0:
+        if ignore_patterns > 5 or ignored > 100:
+            style = "red"
+        else:
+            style = "yellow"
+        print(colorize(f"  \u26a0 {ignore_patterns} ignore pattern{'s' if ignore_patterns != 1 else ''} "
+                        f"suppressed {ignored} finding{'s' if ignored != 1 else ''} this scan", style))
+        print(colorize(f"    Ignored findings are invisible to scoring", "dim"))
+
+    print(colorize("  " + "\u2504" * 55, "dim"))
+    print()
 
 
 def _print_llm_summary(state: dict, badge_path: Path | None,
-                        narrative: dict | None = None):
+                        narrative: dict | None = None,
+                        diff: dict | None = None):
     """Print a structured summary for LLM consumption.
 
     The LLM reads terminal output after running scans. This gives it
@@ -394,9 +492,17 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
 
     stats = state.get("stats", {})
     if stats:
+        wontfix = stats.get("wontfix", 0)
+        ignored = diff.get("ignored", 0) if diff else 0
+        ignore_pats = diff.get("ignore_patterns", 0) if diff else 0
+        strict_gap = round((obj_score or 0) - (obj_strict or 0), 1) if obj_score and obj_strict else 0
         print(f"Total findings: {stats.get('total', 0)} | "
               f"Open: {stats.get('open', 0)} | "
-              f"Fixed: {stats.get('fixed', 0)}")
+              f"Fixed: {stats.get('fixed', 0)} | "
+              f"Wontfix: {wontfix}")
+        if wontfix or ignored:
+            print(f"Ignored: {ignored} (by {ignore_pats} patterns) | Strict gap: {strict_gap} pts")
+            print("Focus on strict score \u2014 wontfix and ignore inflate the lenient score.")
         print()
 
     # Workflow guide — teach agents the full cycle
@@ -558,5 +664,4 @@ def _show_low_dimension_hints(dim_scores: dict):
     for name, score, hint in low:
         print(colorize(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
     print()
-
 

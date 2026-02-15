@@ -4,14 +4,14 @@ import json
 from collections import defaultdict
 
 from ..utils import LOC_COMPACT_THRESHOLD, colorize, get_area, print_table
-from ._helpers import _state_path, _write_query
+from ._helpers import state_path, _write_query
 
 
 def cmd_status(args):
     """Show score dashboard."""
     from ..state import load_state
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
     stats = state.get("stats", {})
 
@@ -106,8 +106,8 @@ def cmd_status(args):
 
     # Computed narrative headline
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="status")
     if narrative.get("headline"):

@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from .commands._helpers import _state_path, _resolve_lang
+from .commands._helpers import state_path, resolve_lang
 from .utils import DEFAULT_PATH, PROJECT_ROOT
 
 
@@ -233,7 +233,7 @@ def main():
 
     # Resolve default path from language config if not explicitly provided
     if getattr(args, "path", None) is None:
-        lang = _resolve_lang(args)
+        lang = resolve_lang(args)
         if lang:
             args.path = str(PROJECT_ROOT / lang.default_src)
         else:
@@ -244,7 +244,7 @@ def main():
     config = load_config()
     args._config = config
 
-    sp = _state_path(args)
+    sp = state_path(args)
     from .state import load_state
     state = load_state(sp)
     _apply_persisted_exclusions(args, config)
@@ -262,8 +262,8 @@ def main():
         "fix": (".commands.fix_cmd", "cmd_fix"),
         "plan": (".commands.plan_cmd", "cmd_plan_output"),
         "detect": (".commands.detect", "cmd_detect"),
-        "tree": (".visualize", "cmd_tree"),
-        "viz": (".visualize", "cmd_viz"),
+        "tree": (".output.visualize", "cmd_tree"),
+        "viz": (".output.visualize", "cmd_viz"),
         "move": (".commands.move", "cmd_move"),
         "zone": (".commands.zone_cmd", "cmd_zone"),
         "review": (".commands.review_cmd", "cmd_review"),

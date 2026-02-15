@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from .. import utils as _utils_mod
-from ..utils import rel, resolve_path, _read_file_text, enable_file_cache, disable_file_cache
+from ..utils import rel, resolve_path, read_file_text, enable_file_cache, disable_file_cache
 from .context import (
     _file_excerpt,
     _importer_count,
@@ -51,7 +51,7 @@ def _build_holistic_context_inner(files: list[str], lang, state: dict) -> dict:
     # Pre-read file contents
     file_contents: dict[str, str] = {}
     for filepath in files:
-        content = _read_file_text(_abs(filepath))
+        content = read_file_text(_abs(filepath))
         if content is not None:
             file_contents[filepath] = content
 
@@ -244,6 +244,9 @@ def _build_holistic_context_inner(files: list[str], lang, state: dict) -> dict:
     if migration:
         ctx["migration_signals"] = migration
 
+    # 12. Structure: directory profiles, root-level analysis, coupling matrix
+    ctx["structure"] = _compute_structure_context(file_contents, lang)
+
     # Codebase stats
     total_loc = sum(len(c.splitlines()) for c in file_contents.values())
     ctx["codebase_stats"] = {
@@ -252,3 +255,109 @@ def _build_holistic_context_inner(files: list[str], lang, state: dict) -> dict:
     }
 
     return ctx
+
+
+def _compute_structure_context(file_contents: dict[str, str], lang) -> dict:
+    """Compute directory profiles, root-level file analysis, and coupling matrix.
+
+    Returns a dict with keys: directory_profiles, root_files, coupling_matrix, tree.
+    """
+    graph = lang._dep_graph or {}
+    structure: dict = {}
+
+    # Build per-file LOC + fan-in/fan-out
+    file_info: dict[str, dict] = {}
+    for filepath, content in file_contents.items():
+        rpath = rel(filepath)
+        loc = len(content.splitlines())
+        entry = graph.get(resolve_path(filepath), {})
+        fan_in = _importer_count(entry)
+        imports_raw = entry.get("imports", set())
+        fan_out = len(imports_raw) if isinstance(imports_raw, set) else entry.get("import_count", 0)
+        file_info[rpath] = {"loc": loc, "fan_in": fan_in, "fan_out": fan_out}
+
+    # Classify files by directory
+    dir_files: dict[str, list[str]] = {}
+    for rpath in file_info:
+        parts = Path(rpath).parts
+        if len(parts) == 1:
+            dir_key = "."
+        else:
+            dir_key = str(Path(*parts[:-1])) + "/"
+        dir_files.setdefault(dir_key, []).append(rpath)
+
+    # Directory profiles
+    dir_profiles: dict[str, dict] = {}
+    for dir_key, files_in_dir in dir_files.items():
+        if len(files_in_dir) < 2:
+            continue
+        total_loc = sum(file_info[f]["loc"] for f in files_in_dir)
+        avg_fan_in = sum(file_info[f]["fan_in"] for f in files_in_dir) / len(files_in_dir)
+        avg_fan_out = sum(file_info[f]["fan_out"] for f in files_in_dir) / len(files_in_dir)
+
+        # Cross-directory import edges
+        imports_from: Counter = Counter()
+        imported_by: Counter = Counter()
+        for f in files_in_dir:
+            abs_f = resolve_path(f)
+            entry = graph.get(abs_f, {})
+            for imp in entry.get("imports", set()):
+                imp_rel = rel(imp)
+                imp_parts = Path(imp_rel).parts
+                imp_dir = str(Path(*imp_parts[:-1])) + "/" if len(imp_parts) > 1 else "."
+                if imp_dir != dir_key:
+                    imports_from[imp_dir] += 1
+            for imp in entry.get("importers", set()):
+                imp_rel = rel(imp)
+                imp_parts = Path(imp_rel).parts
+                imp_dir = str(Path(*imp_parts[:-1])) + "/" if len(imp_parts) > 1 else "."
+                if imp_dir != dir_key:
+                    imported_by[imp_dir] += 1
+
+        # Zone distribution within directory
+        zone_counts: Counter = Counter()
+        if lang._zone_map is not None:
+            for f in files_in_dir:
+                zone_counts[lang._zone_map.get(f).value] += 1
+
+        dir_profiles[dir_key] = {
+            "file_count": len(files_in_dir),
+            "files": [Path(f).name for f in sorted(files_in_dir)],
+            "total_loc": total_loc,
+            "avg_fan_in": round(avg_fan_in, 1),
+            "avg_fan_out": round(avg_fan_out, 1),
+        }
+        if zone_counts:
+            dir_profiles[dir_key]["zones"] = dict(zone_counts)
+        if imports_from:
+            dir_profiles[dir_key]["imports_from_dirs"] = dict(imports_from.most_common(10))
+        if imported_by:
+            dir_profiles[dir_key]["imported_by_dirs"] = dict(imported_by.most_common(10))
+
+    structure["directory_profiles"] = dir_profiles
+
+    # Root-level file analysis (files not in subdirectories)
+    root_files = []
+    for rpath in dir_files.get(".", []):
+        info = file_info[rpath]
+        role = "core" if info["fan_in"] >= 5 else "peripheral"
+        root_files.append({
+            "file": rpath,
+            "loc": info["loc"],
+            "fan_in": info["fan_in"],
+            "fan_out": info["fan_out"],
+            "role": role,
+        })
+    if root_files:
+        root_files.sort(key=lambda x: -x["fan_in"])
+        structure["root_files"] = root_files
+
+    # Directory coupling matrix — top 20 cross-directory edges
+    edge_counts: Counter = Counter()
+    for dir_key, profile in dir_profiles.items():
+        for target, count in profile.get("imports_from_dirs", {}).items():
+            edge_counts[f"{dir_key} \u2192 {target}"] += count
+    if edge_counts:
+        structure["coupling_matrix"] = dict(edge_counts.most_common(20))
+
+    return structure

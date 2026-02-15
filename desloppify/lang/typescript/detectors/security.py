@@ -52,7 +52,7 @@ def detect_ts_security(
 
     Returns (entries, files_scanned).
     """
-    from ....detectors.security import _make_entry
+    from ....detectors.security import make_security_entry
 
     entries: list[dict] = []
     scanned = 0
@@ -82,7 +82,7 @@ def detect_ts_security(
                 # Check surrounding lines for SERVICE_ROLE
                 context = "\n".join(lines[max(0, line_num - 3):min(len(lines), line_num + 3)])
                 if _SERVICE_ROLE_KEY_RE.search(context):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "service_role_on_client",
                         "Supabase service role key used in client code",
                         "critical", "high", line,
@@ -91,7 +91,7 @@ def detect_ts_security(
 
             # Check 2: eval() / new Function()
             if _EVAL_PATTERNS.search(line):
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, line_num, "eval_injection",
                     "eval() or new Function() — potential code injection",
                     "critical", "high", line,
@@ -100,7 +100,7 @@ def detect_ts_security(
 
             # Check 3: dangerouslySetInnerHTML
             if _DANGEROUS_HTML_RE.search(line):
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, line_num, "dangerously_set_inner_html",
                     "dangerouslySetInnerHTML — XSS risk if data is untrusted",
                     "high", "medium", line,
@@ -109,7 +109,7 @@ def detect_ts_security(
 
             # Check 4: .innerHTML assignment
             if _INNER_HTML_RE.search(line):
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, line_num, "innerHTML_assignment",
                     "Direct .innerHTML assignment — XSS risk",
                     "high", "medium", line,
@@ -122,7 +122,7 @@ def detect_ts_security(
                 is_dev_file = "/dev/" in filepath or "dev." in Path(filepath).name
                 has_dev_guard = "__IS_DEV_ENV__" in content or "isDev" in content
                 if not (is_dev_file and has_dev_guard):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "dev_credentials_env",
                         "Sensitive credential exposed via VITE_ environment variable",
                         "medium", "medium", line,
@@ -131,7 +131,7 @@ def detect_ts_security(
 
             # Check 6: Open redirect
             if _OPEN_REDIRECT_RE.search(line):
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, line_num, "open_redirect",
                     "Potential open redirect: user-controlled data assigned to window.location",
                     "medium", "medium", line,
@@ -142,7 +142,7 @@ def detect_ts_security(
             if _ATOB_JWT_RE.search(line):
                 context = "\n".join(lines[max(0, line_num - 3):min(len(lines), line_num + 3)])
                 if _JWT_PAYLOAD_RE.search(context):
-                    entries.append(_make_entry(
+                    entries.append(make_security_entry(
                         filepath, line_num, "unverified_jwt_decode",
                         "JWT decoded with atob() without signature verification",
                         "critical", "high", line,
@@ -155,7 +155,7 @@ def detect_ts_security(
         basename = Path(filepath).name
         if basename == "index.ts" and "/functions/" in filepath:
             if _SERVE_ASYNC_RE.search(content) and not _AUTH_CHECK_RE.search(content):
-                entries.append(_make_entry(
+                entries.append(make_security_entry(
                     filepath, 1, "edge_function_missing_auth",
                     "Edge function serves requests without authentication check",
                     "high", "medium", content.splitlines()[0] if lines else "",
@@ -195,7 +195,7 @@ def _check_json_parse_unguarded(
     filepath: str, lines: list[str], entries: list[dict]
 ) -> None:
     """Check for JSON.parse not inside a try block."""
-    from ....detectors.security import _make_entry
+    from ....detectors.security import make_security_entry
 
     for line_num, line in enumerate(lines, 1):
         if not _JSON_PARSE_RE.search(line):
@@ -208,7 +208,7 @@ def _check_json_parse_unguarded(
             continue
         if _is_in_try_scope(lines, line_num):
             continue
-        entries.append(_make_entry(
+        entries.append(make_security_entry(
             filepath, line_num, "json_parse_unguarded",
             "JSON.parse() without try/catch — may throw on malformed input",
             "low", "low", line,
@@ -220,7 +220,7 @@ def _check_rls_bypass(
     filepath: str, lines: list[str], entries: list[dict]
 ) -> None:
     """Check for CREATE VIEW without security_invoker in SQL files."""
-    from ....detectors.security import _make_entry
+    from ....detectors.security import make_security_entry
 
     content = "\n".join(lines)
     for m in _CREATE_VIEW_RE.finditer(content):
@@ -229,7 +229,7 @@ def _check_rls_bypass(
         # Check if security_invoker is set in the view definition (next ~20 lines)
         view_block = content[m.start():m.start() + 500]
         if not _SECURITY_INVOKER_RE.search(view_block):
-            entries.append(_make_entry(
+            entries.append(make_security_entry(
                 filepath, line_num, "rls_bypass_views",
                 "SQL VIEW without security_invoker=true may bypass RLS",
                 "high", "medium",

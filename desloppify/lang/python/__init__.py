@@ -11,7 +11,7 @@ from ..base import (DetectorPhase, LangConfig,
                     make_orphaned_findings, make_smell_findings,
                     make_passthrough_findings, make_facade_findings,
                     phase_dupes, phase_test_coverage, phase_security,
-                    phase_subjective_review)
+                    phase_private_imports, phase_subjective_review)
 from ...detectors.base import ComplexitySignal, GodRule
 from ...utils import find_py_files, log
 from ...zones import ZoneRule, Zone, COMMON_ZONE_RULES, adjust_potential, filter_entries
@@ -240,6 +240,24 @@ def _phase_mutable_state(path: Path, lang: LangConfig) -> tuple[list[dict], dict
     }
 
 
+def _phase_layer_violation(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+    from ...detectors.layer_violation import detect_layer_violations
+    from ...state import make_finding
+    entries, total_files = detect_layer_violations(path, lang.file_finder)
+    results = []
+    for e in entries:
+        results.append(make_finding(
+            "layer_violation", e["file"], f"{e['source_pkg']}::{e['target_pkg']}",
+            tier=2, confidence=e["confidence"],
+            summary=e["summary"],
+            detail={"source_pkg": e["source_pkg"], "target_pkg": e["target_pkg"],
+                    "line": e["line"], "description": e["description"]},
+        ))
+    if results:
+        log(f"         layer violations: {len(results)} findings")
+    return results, {"layer_violation": total_files}
+
+
 def _phase_dict_keys(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.dict_keys import detect_dict_key_flow, detect_schema_drift
     from ...state import make_finding
@@ -322,6 +340,8 @@ class PythonConfig(LangConfig):
                 DetectorPhase("Code smells", _phase_smells),
                 DetectorPhase("Mutable state", _phase_mutable_state),
                 DetectorPhase("Security", phase_security),
+                DetectorPhase("Private imports", phase_private_imports),
+                DetectorPhase("Layer violations", _phase_layer_violation),
                 DetectorPhase("Subjective review", phase_subjective_review),
                 DetectorPhase("Dict key flow", _phase_dict_keys),
                 DetectorPhase("Duplicates", phase_dupes, slow=True),

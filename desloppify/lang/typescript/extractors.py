@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from ...detectors.base import ClassInfo, FunctionInfo
-from ...detectors.passthrough import _classify_params, classify_passthrough_tier
+from ...detectors.passthrough import classify_params, classify_passthrough_tier
 from ...utils import PROJECT_ROOT, find_tsx_files
 
 
@@ -321,7 +321,7 @@ def detect_passthrough_components(path: Path) -> list[dict]:
                 body_start = m.end()
                 body = content[body_start:]
 
-                pt, direct = _classify_params(props, body, tsx_passthrough_pattern)
+                pt, direct = classify_params(props, body, tsx_passthrough_pattern)
 
                 if len(pt) < 4:
                     continue

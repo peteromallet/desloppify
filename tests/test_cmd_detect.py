@@ -34,7 +34,7 @@ class TestCmdDetect:
     def test_no_lang_exits(self, monkeypatch):
         """When no language is specified, cmd_detect should exit."""
         import desloppify.commands._helpers as cli_mod
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: None)
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: None)
 
         class FakeArgs:
             detector = "unused"
@@ -55,7 +55,7 @@ class TestCmdDetect:
             detect_commands = {"unused": lambda a: None, "smells": lambda a: None}
             large_threshold = 300
 
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: FakeLang())
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
 
         class FakeArgs:
             detector = "nonexistent_detector"
@@ -78,7 +78,7 @@ class TestCmdDetect:
             detect_commands = {"unused": lambda a: calls.append("unused")}
             large_threshold = 300
 
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: FakeLang())
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
 
         class FakeArgs:
             detector = "unused"
@@ -100,7 +100,7 @@ class TestCmdDetect:
             detect_commands = {"large": lambda a: captured_args.append(a)}
             large_threshold = 500
 
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: FakeLang())
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
 
         class FakeArgs:
             detector = "large"
@@ -123,7 +123,7 @@ class TestCmdDetect:
             detect_commands = {"dupes": lambda a: captured_args.append(a)}
             large_threshold = 300
 
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: FakeLang())
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
 
         class FakeArgs:
             detector = "dupes"
@@ -146,7 +146,7 @@ class TestCmdDetect:
             detect_commands = {"large": lambda a: captured_args.append(a)}
             large_threshold = 500
 
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: FakeLang())
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
 
         class FakeArgs:
             detector = "large"

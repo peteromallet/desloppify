@@ -7,8 +7,8 @@ from pathlib import Path
 from ....utils import PROJECT_ROOT, c, find_ts_files, print_table, rel
 
 
-def detect_prop_interface_bloat(path: Path) -> tuple[list[dict], int]:
-    """Find interfaces/types with >10 properties — signals need for composition or context.
+def detect_prop_interface_bloat(path: Path, *, threshold: int = 14) -> tuple[list[dict], int]:
+    """Find interfaces/types with >threshold properties — signals need for composition or context.
 
     Returns (entries, total_interfaces_checked).
     """
@@ -50,7 +50,7 @@ def detect_prop_interface_bloat(path: Path) -> tuple[list[dict], int]:
                             prop_count += 1
                     pos += 1
 
-                if prop_count > 14:
+                if prop_count > threshold:
                     kind = ("context" if "Context" in name
                             else "state" if "State" in name
                             else "props")

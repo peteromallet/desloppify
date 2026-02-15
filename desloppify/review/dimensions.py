@@ -10,6 +10,7 @@ HOLISTIC_DIMENSIONS = [
     "convention_outlier", "error_consistency", "abstraction_fitness",
     "dependency_health", "test_strategy", "api_surface_coherence",
     "authorization_consistency", "ai_generated_debt", "incomplete_migration",
+    "package_organization",
 ]
 
 HOLISTIC_DIMENSION_PROMPTS = {
@@ -21,6 +22,10 @@ HOLISTIC_DIMENSION_PROMPTS = {
             "Layer violations: UI importing from data layer, utils reaching into business logic",
             "Hidden coupling through shared mutable state (module-level dicts, globals)",
             "sys.path manipulation at runtime to enable imports",
+            "Cross-plugin logic duplication: parallel implementations in sibling plugins "
+            "that should be extracted to a shared base module",
+            "Import direction violations: lower layers importing from higher layers "
+            "(e.g. detectors importing from lang-specific code)",
         ],
         "skip": [
             "Intentional facade modules that re-export for API convenience",
@@ -51,6 +56,9 @@ HOLISTIC_DIMENSION_PROMPTS = {
             "Inconsistent directory structure: some features flat, others deeply nested",
             "Sibling modules in the same directory following different behavioral protocols "
             "(e.g. most call a shared function but one doesn't)",
+            "Inconsistent plugin organization: sibling plugins structured differently "
+            "(e.g. one uses phases.py, another puts phases in __init__.py)",
+            "Large __init__.py re-export surfaces that obscure internal module structure",
         ],
         "skip": [
             "Intentional variation for different module types (config vs logic)",
@@ -176,6 +184,34 @@ HOLISTIC_DIMENSION_PROMPTS = {
             "Gradual rollouts behind feature flags with clear ownership",
         ],
     },
+    "package_organization": {
+        "description": "Directory structure, file placement, package boundaries, architectural layering",
+        "look_for": [
+            "Straggler files: root-level files with low fan-in (<5 importers) that share a theme "
+            "with other root files — should be grouped into a subpackage "
+            "(e.g. 3 visualization files loose at root → output/ subpackage)",
+            "Import affinity mismatch: files whose imports come >60% from one sibling directory "
+            "— the file likely belongs in that directory, not its current location",
+            "Layer violations in the coupling matrix: downstream directories importing from upstream "
+            "(e.g. a utility module importing from a command module), or bidirectional coupling "
+            "between directories that should have a clear dependency direction",
+            "Flat directories with >10 files where files serve different concerns "
+            "— suggest splitting by theme (the flat_dirs detector catches count, "
+            "but not whether the flatness is justified)",
+            "Inconsistent depth: sibling directories at the same level with wildly different "
+            "nesting depth, suggesting uneven structural investment",
+            "Directory names that don't match contents "
+            "(e.g. utils/ full of domain logic, helpers/ with core business rules)",
+        ],
+        "skip": [
+            "Root-level files that ARE genuinely core — high fan-in (≥5 importers), "
+            "imported across multiple subdirectories (cli.py, state.py, utils.py, config.py)",
+            "Small projects (<20 files) where flat structure is appropriate",
+            "Framework-imposed directory layouts (src/, lib/, dist/, __pycache__/)",
+            "Test directories mirroring production structure",
+            "Single-purpose packages where flatness is intentional",
+        ],
+    },
 }
 
 HOLISTIC_REVIEW_SYSTEM_PROMPT = """\
@@ -257,6 +293,7 @@ DEFAULT_DIMENSIONS = [
     "naming_quality", "error_consistency",
     "abstraction_fitness", "logic_clarity",
     "ai_generated_debt",
+    "type_safety", "contract_coherence",
 ]
 
 DIMENSION_PROMPTS = {

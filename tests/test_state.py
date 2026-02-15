@@ -212,7 +212,7 @@ class TestUpsertFindings:
     def test_new_finding_gets_added(self):
         existing = {}
         f = _make_raw_finding("det::a.py::fn", detector="det", file="a.py")
-        ids, new, reopened, by_det = self._call(existing, [f])
+        ids, new, reopened, by_det, _ign = self._call(existing, [f])
         assert "det::a.py::fn" in existing
         assert new == 1
         assert reopened == 0
@@ -227,7 +227,7 @@ class TestUpsertFindings:
 
         current = _make_raw_finding("det::a.py::fn", detector="det", file="a.py",
                                      summary="updated summary")
-        ids, new, reopened, _ = self._call(existing, [current])
+        ids, new, reopened, _, _ign = self._call(existing, [current])
         assert new == 0
         assert reopened == 0
         assert existing["det::a.py::fn"]["last_seen"] == "2025-06-01T00:00:00+00:00"
@@ -242,7 +242,7 @@ class TestUpsertFindings:
         existing = {"det::a.py::fn": old}
 
         current = _make_raw_finding("det::a.py::fn", detector="det", file="a.py")
-        ids, new, reopened, _ = self._call(existing, [current])
+        ids, new, reopened, _, _ign = self._call(existing, [current])
         assert reopened == 1
         assert new == 0
         assert existing["det::a.py::fn"]["status"] == "open"
@@ -257,7 +257,7 @@ class TestUpsertFindings:
         existing = {"det::a.py::fn": old}
 
         current = _make_raw_finding("det::a.py::fn", detector="det", file="a.py")
-        ids, new, reopened, _ = self._call(existing, [current])
+        ids, new, reopened, _, _ign = self._call(existing, [current])
         assert reopened == 1
         assert existing["det::a.py::fn"]["status"] == "open"
         assert "was fixed" in existing["det::a.py::fn"]["note"]
@@ -280,7 +280,7 @@ class TestUpsertFindings:
         existing = {"det::a.py::fn": old}
 
         current = _make_raw_finding("det::a.py::fn", detector="det", file="a.py")
-        _, new, reopened, _ = self._call(existing, [current])
+        _, new, reopened, _, _ign = self._call(existing, [current])
         assert reopened == 0
         assert existing["det::a.py::fn"]["status"] == "wontfix"
 
@@ -300,9 +300,10 @@ class TestUpsertFindings:
     def test_ignored_finding_not_added(self):
         existing = {}
         f = _make_raw_finding("det::a.py::fn", detector="det", file="a.py")
-        ids, new, _, _ = self._call(existing, [f], ignore=["det::*"])
+        ids, new, _, _, ignored = self._call(existing, [f], ignore=["det::*"])
         assert new == 0
         assert len(existing) == 0
+        assert ignored == 1
 
     # -- lang tagging --
 
@@ -318,7 +319,7 @@ class TestUpsertFindings:
         f1 = _make_raw_finding("det_a::a.py::x", detector="det_a", file="a.py")
         f2 = _make_raw_finding("det_a::b.py::y", detector="det_a", file="b.py")
         f3 = _make_raw_finding("det_b::c.py::z", detector="det_b", file="c.py")
-        _, _, _, by_det = self._call({}, [f1, f2, f3])
+        _, _, _, by_det, _ign = self._call({}, [f1, f2, f3])
         assert by_det == {"det_a": 2, "det_b": 1}
 
 

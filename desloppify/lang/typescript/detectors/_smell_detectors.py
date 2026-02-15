@@ -2,7 +2,7 @@
 
 import re
 
-from ._smell_helpers import _scan_code, _strip_ts_comments, _ts_match_is_in_string, _track_brace_body
+from ._smell_helpers import scan_code, _strip_ts_comments, _ts_match_is_in_string, _track_brace_body
 
 _MAX_CATCH_BODY = 1000  # max characters to scan for catch block body
 
@@ -187,7 +187,7 @@ def _detect_catch_return_default(filepath: str, content: str,
         brace_start = m.end() - 1
         depth = 0
         body_end = None
-        for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + _MAX_CATCH_BODY, len(content))):
+        for ci, ch, in_s in scan_code(content, brace_start, min(brace_start + _MAX_CATCH_BODY, len(content))):
             if in_s:
                 continue
             if ch == "{":
@@ -211,7 +211,7 @@ def _detect_catch_return_default(filepath: str, content: str,
         obj_start = body.find("{", return_obj.start())
         obj_depth = 0
         obj_end = None
-        for ci, ch, in_s in _scan_code(body, obj_start):
+        for ci, ch, in_s in scan_code(body, obj_start):
             if in_s:
                 continue
             if ch == "{":
@@ -253,7 +253,7 @@ def _detect_switch_no_default(filepath: str, content: str,
         brace_start = m.end() - 1
         depth = 0
         body_end = None
-        for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + 5000, len(content))):
+        for ci, ch, in_s in scan_code(content, brace_start, min(brace_start + 5000, len(content))):
             if in_s:
                 continue
             if ch == "{":

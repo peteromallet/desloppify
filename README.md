@@ -1,6 +1,6 @@
 # Desloppify - agent tools to make your codebase 🤌
 
-Codebase health scanner. Detects cruft (dead code, duplication, complexity, smells), tracks findings across scans, auto-fixes mechanical issues, reports a weighted score. It gives you a shortlist of issues to either solve with your agent or mindfully ignore. TypeScript/React, Python, and C#/.NET are available out of the box.
+Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. TypeScript/React, Python, and C#/.NET (MVP) are currently supported.
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo - the strict score includes the ones you've ignored that haven't been solved:
 
@@ -33,9 +33,17 @@ If you're Claude Code, also run:
 mkdir -p .claude/skills/desloppify && curl -sL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md -o .claude/skills/desloppify/SKILL.md
 ```
 
-## Vibe Engineer?
+## From Vibe Coding to Vibe Engineering
 
-Are you a hardcore vibe engineer who wants to build beautiful things? [This may grow to become the place for you.](https://discord.gg/aZdzbZrHaY)
+Vibe coding gets things built fast. But the codebase accumulates debt - dead code, duplication, tangled dependencies - and eventually progress slows, bugs get harder to fix, and new features become a pain.
+
+Thankfully, both subjective and objective engineering best practices exist - and, with a little help from agents, they can be tracked. Desloppify is for people who want to keep the speed of agent-driven development while pushing themselves to a standard that rivals traditional engineering teams.
+
+It handles the mechanical layer automatically: scan, detect, auto-fix what it can. For the rest - architectural fitness, convention drift, things that need taste - it gives your agent a prioritized shortlist. You decide what to fix and what to mindfully ignore. The goal is to capture all of this in a single score that combines both objective and subjective metrics - a real measure of the health of your codebase.
+
+If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
+
+<img src="desloppify/engineering.png" width="100%">
 
 ---
 

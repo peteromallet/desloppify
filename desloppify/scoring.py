@@ -26,7 +26,8 @@ DIMENSIONS = [
         "unused", "logs", "exports", "deprecated", "props",
         "smells", "react", "dict_keys", "global_mutable_config",
         "orphaned", "flat_dirs", "naming", "facade", "stale_exclude",
-        "patterns", "single_use", "coupling",
+        "patterns", "single_use", "coupling", "private_imports",
+        "layer_violation",
     ]),
     Dimension("Duplication",  3, ["dupes"]),
     Dimension("Test health",  4, ["test_coverage", "subjective_review"]),
@@ -44,8 +45,6 @@ MIN_SAMPLE = 200
 # Per-file weighted failures are capped at 1.0 to match the file-based denominator.
 _FILE_BASED_DETECTORS = {"smells", "dict_keys", "test_coverage", "security", "review", "subjective_review"}
 
-# Zones excluded from scoring (imported from zones.py canonical source)
-_EXCLUDED_ZONES = EXCLUDED_ZONE_VALUES
 
 # Security findings are only excluded in generated/vendor zones (secrets in tests are real risks)
 _SECURITY_EXCLUDED_ZONES = {"generated", "vendor"}
@@ -83,6 +82,62 @@ def merge_potentials(potentials_by_lang: dict) -> dict[str, int]:
     return merged
 
 
+def _iter_failed_findings(
+    detector: str, findings: dict, failure_set: set, excluded_zones: set,
+):
+    """Yield findings that are failed and in-scope for a detector."""
+    for f in findings.values():
+        if f.get("detector") != detector:
+            continue
+        if f.get("zone", "production") in excluded_zones:
+            continue
+        if f["status"] in failure_set:
+            yield f
+
+
+def _finding_weight(f: dict, use_loc_weight: bool) -> float:
+    """Compute the scoring weight for a single finding."""
+    if use_loc_weight:
+        return f.get("detail", {}).get("loc_weight", 1.0)
+    return CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
+
+
+def _file_based_failures(
+    detector: str, findings: dict, failure_set: set, excluded_zones: set,
+) -> tuple[int, float]:
+    """Accumulate weighted failures for file-based detectors.
+
+    Groups by file and caps per-file weight at 1.0 (or loc_weight for
+    test_coverage). Holistic findings bypass caps with a 10x multiplier.
+    Returns (issue_count, weighted_failures).
+    """
+    use_loc_weight = (detector == "test_coverage")
+    by_file: dict[str, float] = {}
+    file_cap: dict[str, float] = {}
+    holistic_sum = 0.0
+    issue_count = 0
+
+    for f in _iter_failed_findings(detector, findings, failure_set, excluded_zones):
+        # Holistic findings: no per-file cap, 10x multiplier
+        if f.get("file") == "." and f.get("detail", {}).get("holistic"):
+            holistic_sum += _finding_weight(f, False) * HOLISTIC_MULTIPLIER
+            issue_count += 1
+            continue
+
+        weight = _finding_weight(f, use_loc_weight)
+        file_key = f.get("file", "")
+        by_file[file_key] = by_file.get(file_key, 0) + weight
+        if use_loc_weight and file_key not in file_cap:
+            file_cap[file_key] = weight
+        issue_count += 1
+
+    if use_loc_weight:
+        weighted = sum(min(w, file_cap.get(fk, w)) for fk, w in by_file.items())
+    else:
+        weighted = sum(min(1.0, w) for w in by_file.values())
+    return issue_count, weighted + holistic_sum
+
+
 def _detector_pass_rate(
     detector: str,
     findings: dict,
@@ -94,70 +149,22 @@ def _detector_pass_rate(
 
     Returns (pass_rate, issue_count, weighted_failures).
     Zero potential -> (1.0, 0, 0.0).
-
-    For file-based detectors (potential = file count, multiple findings per file),
-    per-file weighted failures are capped at 1.0 to prevent unit mismatch.
     """
     if potential <= 0:
         return 1.0, 0, 0.0
 
     failure_set = _STRICT_FAILURES if strict else _LENIENT_FAILURES
-    issue_count = 0
-    excluded_zones = _SECURITY_EXCLUDED_ZONES if detector == "security" else _EXCLUDED_ZONES
+    excluded_zones = _SECURITY_EXCLUDED_ZONES if detector == "security" else EXCLUDED_ZONE_VALUES
 
     if detector in _FILE_BASED_DETECTORS:
-        # Group by file, cap per-file weight at 1.0
-        # For test_coverage: use loc_weight from finding detail instead of confidence
-        # so large untested files impact the score more than small ones.
-        # Holistic findings (file="." + detail.holistic=True) bypass per-file caps
-        # and get HOLISTIC_MULTIPLIER weight.
-        use_loc_weight = (detector == "test_coverage")
-        by_file: dict[str, float] = {}
-        file_cap: dict[str, float] = {}  # per-file cap for loc_weight mode
-        holistic_sum = 0.0
-        for f in findings.values():
-            if f.get("detector") != detector:
-                continue
-            if f.get("zone", "production") in excluded_zones:
-                continue
-            if f["status"] in failure_set:
-                # Holistic findings: no per-file cap, 10x multiplier
-                if f.get("file") == "." and f.get("detail", {}).get("holistic"):
-                    weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
-                    holistic_sum += weight * HOLISTIC_MULTIPLIER
-                    issue_count += 1
-                    continue
-                if use_loc_weight:
-                    weight = f.get("detail", {}).get("loc_weight", 1.0)
-                else:
-                    weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
-                file_key = f.get("file", "")
-                by_file[file_key] = by_file.get(file_key, 0) + weight
-                # Track the single-finding weight as the per-file cap
-                # (all findings for the same file have the same loc_weight)
-                if use_loc_weight and file_key not in file_cap:
-                    file_cap[file_key] = weight
-                issue_count += 1
-        if use_loc_weight:
-            # Cap per-file at the file's loc_weight contribution to potential.
-            # A file can have multiple findings (e.g. tested by 3 files with issues)
-            # but should never contribute more than its potential share.
-            weighted_failures = sum(
-                min(w, file_cap.get(fk, w)) for fk, w in by_file.items())
-        else:
-            weighted_failures = sum(min(1.0, w) for w in by_file.values())
-        weighted_failures += holistic_sum
+        issue_count, weighted_failures = _file_based_failures(
+            detector, findings, failure_set, excluded_zones)
     else:
         weighted_failures = 0.0
-        for f in findings.values():
-            if f.get("detector") != detector:
-                continue
-            if f.get("zone", "production") in excluded_zones:
-                continue
-            if f["status"] in failure_set:
-                weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
-                weighted_failures += weight
-                issue_count += 1
+        issue_count = 0
+        for f in _iter_failed_findings(detector, findings, failure_set, excluded_zones):
+            weighted_failures += CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
+            issue_count += 1
 
     pass_rate = max(0.0, (potential - weighted_failures) / potential)
     return pass_rate, issue_count, weighted_failures
@@ -222,18 +229,26 @@ def compute_dimension_scores(
             "detectors": detector_detail,
         }
 
-    # Append subjective dimensions — each one a first-class scoring dimension.
-    # Unassessed dimensions default to 0% (same as test coverage when no tests exist).
+    _append_subjective_dimensions(results, findings, subjective_assessments, failure_set)
+    return results
+
+
+_SHORT_NAMES: dict[str, str] = {
+    "abstraction_fitness": "Abstraction Fit",
+    "ai_generated_debt": "AI Generated Debt",
+    "package_organization": "Package Org",
+}
+
+
+def _append_subjective_dimensions(
+    results: dict, findings: dict,
+    assessments: dict | None, failure_set: set,
+) -> None:
+    """Append subjective review dimensions to results dict (mutates results)."""
     from .review import DEFAULT_DIMENSIONS
-    assessed = subjective_assessments or {}
+    assessed = assessments or {}
     existing_lower = {k.lower() for k in results}
 
-    _SHORT_NAMES: dict[str, str] = {
-        "abstraction_fitness": "Abstraction Fit",
-        "ai_generated_debt": "AI Generated Debt",
-    }
-
-    # Merge DEFAULT_DIMENSIONS with any extra assessed dimensions
     all_dims = list(DEFAULT_DIMENSIONS)
     for dim_name in assessed:
         if dim_name not in DEFAULT_DIMENSIONS:
@@ -242,8 +257,6 @@ def compute_dimension_scores(
     for dim_name in all_dims:
         is_default = dim_name in DEFAULT_DIMENSIONS
         assessment = assessed.get(dim_name)
-
-        # Skip extra (non-default) unassessed dimensions with no open findings
         if not is_default and not assessment:
             continue
 
@@ -273,8 +286,6 @@ def compute_dimension_scores(
                 "weighted_failures": round(SUBJECTIVE_CHECKS * (1 - pass_rate), 4),
             }},
         }
-
-    return results
 
 
 def compute_objective_score(dimension_scores: dict) -> float:

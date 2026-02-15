@@ -14,7 +14,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from .utils import PROJECT_ROOT, colorize, rel
+from ..utils import PROJECT_ROOT, colorize, rel
 
 
 def _collect_file_data(path: Path, lang=None) -> list[dict]:
@@ -22,7 +22,7 @@ def _collect_file_data(path: Path, lang=None) -> list[dict]:
     if lang and lang.file_finder:
         source_files = lang.file_finder(path)
     else:
-        from .utils import find_source_files
+        from ..utils import find_source_files
         source_files = find_source_files(path, [".ts", ".tsx", ".py", ".cs"])
     files = []
     for filepath in source_files:
@@ -86,44 +86,57 @@ def _build_tree(files: list[dict], dep_graph: dict, findings_by_file: dict) -> d
     return root
 
 
+def _build_dep_graph_for_path(path: Path, lang) -> dict:
+    """Build dependency graph using lang plugin or fallback to TS."""
+    if lang and lang.build_dep_graph:
+        return lang.build_dep_graph(path)
+    if not lang:
+        try:
+            from ..lang.typescript.deps import build_dep_graph
+            return build_dep_graph(path)
+        except (ImportError, ModuleNotFoundError):
+            pass
+    return {}
+
+
+def _findings_by_file(state: dict | None) -> dict[str, list]:
+    """Group findings from state by file path."""
+    result: dict[str, list] = defaultdict(list)
+    if state and state.get("findings"):
+        for f in state["findings"].values():
+            result[f["file"]].append(f)
+    return result
+
+
 def generate_visualization(path: Path, state: dict | None = None,
                            output: Path | None = None, lang=None) -> str:
     """Generate an HTML treemap visualization."""
-    # Collect data
     files = _collect_file_data(path, lang)
-    dep_graph = {}
-    if lang and lang.build_dep_graph:
-        dep_graph = lang.build_dep_graph(path)
-
-    # Get findings from state if available
-    findings_by_file: dict[str, list] = defaultdict(list)
-    if state and state.get("findings"):
-        for f in state["findings"].values():
-            findings_by_file[f["file"]].append(f)
-
-    tree = _build_tree(files, dep_graph, findings_by_file)
+    dep_graph = _build_dep_graph_for_path(path, lang)
+    fbf = _findings_by_file(state)
+    tree = _build_tree(files, dep_graph, fbf)
     # Escape </ to prevent </script> in filenames from breaking HTML
     tree_json = json.dumps(tree).replace("</", r"<\/")
 
     # Stats for header
     total_files = len(files)
     total_loc = sum(f["loc"] for f in files)
-    total_findings = sum(len(v) for v in findings_by_file.values())
-    open_findings = sum(1 for fs in findings_by_file.values()
+    total_findings = sum(len(v) for v in fbf.values())
+    open_findings = sum(1 for fs in fbf.values()
                         for f in fs if f.get("status") == "open")
     score = state.get("score", "N/A") if state else "N/A"
 
-    html = _get_html_template().replace("__D3_CDN_URL__", D3_CDN_URL)
-    html = html.replace("__TREE_DATA__", tree_json)
-    html = html.replace("__TOTAL_FILES__", str(total_files))
-    html = html.replace("__TOTAL_LOC__", f"{total_loc:,}")
-    html = html.replace("__TOTAL_FINDINGS__", str(total_findings))
-    html = html.replace("__OPEN_FINDINGS__", str(open_findings))
-    html = html.replace("__SCORE__", str(score))
+    replacements = {"__D3_CDN_URL__": D3_CDN_URL, "__TREE_DATA__": tree_json,
+                     "__TOTAL_FILES__": str(total_files), "__TOTAL_LOC__": f"{total_loc:,}",
+                     "__TOTAL_FINDINGS__": str(total_findings),
+                     "__OPEN_FINDINGS__": str(open_findings), "__SCORE__": str(score)}
+    html = _get_html_template()
+    for placeholder, value in replacements.items():
+        html = html.replace(placeholder, value)
 
     if output:
         try:
-            from .utils import safe_write_text
+            from ..utils import safe_write_text
             safe_write_text(output, html)
         except OSError as e:
             import sys
@@ -132,20 +145,22 @@ def generate_visualization(path: Path, state: dict | None = None,
     return html
 
 
-def cmd_viz(args):
-    """Generate HTML treemap visualization."""
-    from .state import load_state
-    from .commands._helpers import _resolve_lang
-
-    path = Path(args.path)
-    lang = _resolve_lang(args)
+def _load_cmd_context(args):
+    """Load lang config and state from CLI args."""
+    from ..state import load_state
+    from ..commands._helpers import resolve_lang
+    lang = resolve_lang(args)
     state = None
-    state_path = getattr(args, "state", None)
     try:
-        state = load_state(Path(state_path) if state_path else None)
+        state = load_state(Path(args.state) if getattr(args, "state", None) else None)
     except (OSError, json.JSONDecodeError):
         pass
+    return Path(args.path), lang, state
 
+
+def cmd_viz(args):
+    """Generate HTML treemap visualization."""
+    path, lang, state = _load_cmd_context(args)
     output = Path(getattr(args, "output", None) or ".desloppify/treemap.html")
     print(colorize("Collecting file data and building dependency graph...", "dim"))
     generate_visualization(path, state, output, lang=lang)
@@ -240,16 +255,8 @@ def generate_tree_text(path: Path, state: dict | None = None, *,
         lang: Language config for file discovery and dep graph.
     """
     files = _collect_file_data(path, lang)
-    dep_graph = {}
-    if lang and lang.build_dep_graph:
-        dep_graph = lang.build_dep_graph(path)
-
-    findings_by_file: dict[str, list] = defaultdict(list)
-    if state and state.get("findings"):
-        for f in state["findings"].values():
-            findings_by_file[f["file"]].append(f)
-
-    tree = _build_tree(files, dep_graph, findings_by_file)
+    dep_graph = _build_dep_graph_for_path(path, lang)
+    tree = _build_tree(files, dep_graph, _findings_by_file(state))
 
     # Navigate to focus if specified
     root = tree
@@ -275,25 +282,12 @@ def generate_tree_text(path: Path, state: dict | None = None, *,
 
 def cmd_tree(args):
     """Print annotated codebase tree to terminal."""
-    from .state import load_state
-    from .commands._helpers import _resolve_lang
-
-    path = Path(args.path)
-    lang = _resolve_lang(args)
-    state = None
-    try:
-        state = load_state(Path(args.state) if getattr(args, "state", None) else None)
-    except (OSError, json.JSONDecodeError):
-        pass
-
-    max_depth = getattr(args, "depth", 2)
-    focus = getattr(args, "focus", None)
-    min_loc = getattr(args, "min_loc", 0)
-    sort_by = getattr(args, "sort", "loc")
-    detail = getattr(args, "detail", False)
-
-    print(generate_tree_text(path, state, max_depth=max_depth, focus=focus,
-                             min_loc=min_loc, sort_by=sort_by, detail=detail, lang=lang))
+    path, lang, state = _load_cmd_context(args)
+    print(generate_tree_text(
+        path, state, max_depth=getattr(args, "depth", 2),
+        focus=getattr(args, "focus", None), min_loc=getattr(args, "min_loc", 0),
+        sort_by=getattr(args, "sort", "loc"), detail=getattr(args, "detail", False),
+        lang=lang))
 
 
 def _get_html_template() -> str:

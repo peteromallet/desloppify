@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
-from ._smell_helpers import _scan_code, _strip_ts_comments
+from ._smell_helpers import scan_code, _strip_ts_comments
 
 MAX_EFFECT_BODY = 1000  # max characters to scan for brace-matching a useEffect callback
 MAX_FUNC_SCAN = 2000    # max lines to scan for function body extent
@@ -48,7 +48,7 @@ def detect_state_sync(path: Path) -> tuple[list[dict], int]:
             brace_start = m.end() - 1  # the {
             depth = 0
             body_end = None
-            for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + MAX_EFFECT_BODY, len(content))):
+            for ci, ch, in_s in scan_code(content, brace_start, min(brace_start + MAX_EFFECT_BODY, len(content))):
                 if in_s:
                     continue
                 if ch == "{":
@@ -190,7 +190,7 @@ def detect_hook_return_bloat(path: Path) -> tuple[list[dict], int]:
             found_open = False
             func_end = None
             for j in range(brace_line, min(brace_line + MAX_FUNC_SCAN, len(lines))):
-                for _, ch, in_s in _scan_code(lines[j]):
+                for _, ch, in_s in scan_code(lines[j]):
                     if in_s:
                         continue
                     if ch == "{":
@@ -236,7 +236,7 @@ def _count_return_fields(func_body: str) -> int | None:
     for i, line in enumerate(lines):
         # Check depth BEFORE processing braces on this line
         pre_depth = depth
-        for _, ch, in_s in _scan_code(line):
+        for _, ch, in_s in scan_code(line):
             if in_s:
                 continue
             if ch == "{":
@@ -265,7 +265,7 @@ def _count_return_fields(func_body: str) -> int | None:
     field_count = 0
     started = False
 
-    for _, ch, in_s in _scan_code(ret_text, brace_start):
+    for _, ch, in_s in scan_code(ret_text, brace_start):
         if in_s:
             continue
         if ch == "{":

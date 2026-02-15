@@ -3,7 +3,7 @@
 import json
 
 from ..utils import colorize
-from ._helpers import _state_path, _write_query
+from ._helpers import state_path, _write_query
 
 
 def _serialize_item(f: dict) -> dict:
@@ -17,7 +17,7 @@ def cmd_next(args):
     from ..state import load_state
     from ..plan import get_next_items
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
 
     from ..utils import check_tool_staleness
@@ -35,8 +35,8 @@ def cmd_next(args):
         return
 
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="next")
 

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ..review import _MIN_REVIEW_LOC, _LOW_VALUE_NAMES, _hash_file
-from ..utils import rel, _read_file_text, resolve_path
+from ..review import MIN_REVIEW_LOC, LOW_VALUE_NAMES, hash_file
+from ..utils import rel, read_file_text, resolve_path
 
 
 def detect_review_coverage(
@@ -45,16 +45,16 @@ def detect_review_coverage(
                 continue
 
         # Skip low-value files (types, constants, enums, index, .d.ts)
-        if _LOW_VALUE_NAMES.search(rpath):
+        if LOW_VALUE_NAMES.search(rpath):
             continue
 
         # Skip files below minimum LOC
         abs_path = resolve_path(filepath)
-        content = _read_file_text(abs_path)
+        content = read_file_text(abs_path)
         if content is None:
             continue
         loc = len(content.splitlines())
-        if loc < _MIN_REVIEW_LOC:
+        if loc < MIN_REVIEW_LOC:
             continue
 
         potential += 1
@@ -73,7 +73,7 @@ def detect_review_coverage(
             continue
 
         # Check if content changed since review
-        current_hash = _hash_file(abs_path)
+        current_hash = hash_file(abs_path)
         if current_hash and current_hash != cached.get("content_hash", ""):
             entries.append({
                 "file": abs_path,

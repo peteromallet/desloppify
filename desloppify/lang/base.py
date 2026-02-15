@@ -101,6 +101,7 @@ class LangConfig:
     _dep_graph: object = field(default=None, repr=False)  # dep graph, set at scan time
     _review_cache: dict = field(default_factory=dict, repr=False)  # review cache, set before scan
     _review_max_age_days: int = field(default=30, repr=False)  # from config, set before scan
+    _props_threshold: int = field(default=0, repr=False)  # from config, 0 = use default (14)
     _complexity_map: dict = field(default_factory=dict, repr=False)  # file→score, set at scan time
 
 
@@ -292,6 +293,33 @@ def phase_test_coverage(path: Path, lang: LangConfig) -> tuple[list[Finding], di
         log(f"         test coverage: clean ({potential} production files)")
 
     return results, {"test_coverage": potential}
+
+
+def phase_private_imports(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:
+    """Shared phase: detect cross-module private imports."""
+    from ..detectors.private_imports import detect_private_imports
+    from ..zones import filter_entries
+
+    zm = lang._zone_map
+    graph = lang._dep_graph or lang.build_dep_graph(path)
+
+    entries, potential = detect_private_imports(graph, zm)
+    entries = filter_entries(zm, entries, "private_imports")
+
+    results = []
+    for e in entries:
+        results.append(make_finding(
+            "private_imports", e["file"], e["name"],
+            tier=e["tier"], confidence=e["confidence"],
+            summary=e["summary"], detail=e.get("detail", {}),
+        ))
+
+    if results:
+        log(f"         private imports: {len(results)} findings ({potential} files scanned)")
+    else:
+        log(f"         private imports: clean ({potential} files scanned)")
+
+    return results, {"private_imports": potential}
 
 
 def phase_subjective_review(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:

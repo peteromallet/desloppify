@@ -98,6 +98,12 @@ DETECTORS: dict[str, DetectorMeta] = {
     "global_mutable_config": DetectorMeta(
         "global_mutable_config", "global mutable config", "Code quality", "manual_fix",
         "refactor module-level mutable state — use explicit init functions or dependency injection"),
+    "private_imports": DetectorMeta(
+        "private_imports", "private imports", "Code quality", "manual_fix",
+        "stop importing private symbols across module boundaries"),
+    "layer_violation": DetectorMeta(
+        "layer_violation", "layer violation", "Code quality", "manual_fix",
+        "fix architectural layer violations — move shared code to the correct layer"),
     # ── Manual fix ────────────────────────────────────────
     "deprecated": DetectorMeta(
         "deprecated", "deprecated", "Code quality", "manual_fix",
@@ -124,6 +130,7 @@ _DISPLAY_ORDER = [
     "single_use", "coupling", "cycles", "orphaned", "facade", "patterns",
     "naming", "smells", "react", "dupes", "stale_exclude",
     "dict_keys", "flat_dirs", "signature", "global_mutable_config",
+    "private_imports", "layer_violation",
     "test_coverage", "security", "review", "subjective_review",
 ]
 

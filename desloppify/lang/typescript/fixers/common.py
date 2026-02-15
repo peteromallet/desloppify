@@ -6,7 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, c, rel
-from ..detectors._smell_helpers import _scan_code
+from ..detectors._smell_helpers import scan_code
 
 
 def find_balanced_end(lines: list[str], start: int, *, track: str = "parens",
@@ -30,7 +30,7 @@ def find_balanced_end(lines: list[str], start: int, *, track: str = "parens",
     bracket_depth = 0
 
     for idx in range(start, min(start + max_lines, len(lines))):
-        for _, ch, in_s in _scan_code(lines[idx]):
+        for _, ch, in_s in scan_code(lines[idx]):
             if in_s:
                 continue
             if ch == "(":
@@ -74,7 +74,7 @@ def extract_body_between_braces(text: str, search_after: str = "") -> str | None
         return None
 
     depth = 0
-    for i, ch, in_s in _scan_code(text, brace_pos):
+    for i, ch, in_s in scan_code(text, brace_pos):
         if in_s:
             continue
         if ch == "{":

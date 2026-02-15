@@ -3,7 +3,7 @@
 import sys
 
 from ..utils import colorize
-from ._helpers import _state_path, _write_query
+from ._helpers import state_path, _write_query
 
 
 def cmd_resolve(args):
@@ -14,7 +14,7 @@ def cmd_resolve(args):
         print(colorize("Wontfix items become technical debt. Add --note to record your reasoning for future review.", "yellow"))
         sys.exit(1)
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
     prev_score = state.get("score", 0)
     prev_obj = state.get("objective_score")
@@ -35,6 +35,15 @@ def cmd_resolve(args):
         print(f"  {fid}")
     if len(all_resolved) > 20:
         print(f"  ... and {len(all_resolved) - 20} more")
+
+    # Warn when batch wontfixing creates significant debt
+    if args.status == "wontfix" and len(all_resolved) > 10:
+        wontfix_count = sum(1 for f in state["findings"].values() if f["status"] == "wontfix")
+        actionable = sum(1 for f in state["findings"].values()
+                         if f["status"] in ("open", "wontfix", "fixed", "auto_resolved", "false_positive"))
+        wontfix_pct = round(wontfix_count / actionable * 100) if actionable else 0
+        print(colorize(f"\n  \u26a0 Wontfix debt is now {wontfix_count} findings ({wontfix_pct}% of actionable).", "yellow"))
+        print(colorize(f"    The strict score reflects this. Run `desloppify show \"*\" --status wontfix` to review.", "dim"))
 
     new_obj = state.get("objective_score")
     new_obj_strict = state.get("objective_strict")
@@ -58,8 +67,8 @@ def cmd_resolve(args):
 
     # Computed narrative: milestone + context for LLM
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="resolve")
     if narrative.get("milestone"):
@@ -86,7 +95,7 @@ def cmd_ignore_pattern(args):
     from ..config import add_ignore_pattern, save_config
     from ..state import load_state, save_state, remove_ignored_findings
 
-    sp = _state_path(args)
+    sp = state_path(args)
     state = load_state(sp)
 
     config = args._config
@@ -104,8 +113,8 @@ def cmd_ignore_pattern(args):
     print()
 
     from ..narrative import compute_narrative
-    from ._helpers import _resolve_lang
-    lang = _resolve_lang(args)
+    from ._helpers import resolve_lang
+    lang = resolve_lang(args)
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="ignore")
     _write_query({"command": "ignore", "pattern": args.pattern,

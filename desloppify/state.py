@@ -39,14 +39,14 @@ STATE_FILE = STATE_DIR / "state.json"
 CURRENT_VERSION = 1
 
 
-def _now() -> str:
+def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _empty_state() -> dict:
     return {
         "version": CURRENT_VERSION,
-        "created": _now(),
+        "created": utc_now(),
         "last_scan": None,
         "scan_count": 0,
         "score": 0,
@@ -92,7 +92,7 @@ def load_state(path: Path | None = None) -> dict:
     return data
 
 
-def _json_default(obj):
+def json_default(obj):
     """JSON serializer that handles known types and rejects unknowns."""
     if isinstance(obj, set):
         return sorted(obj)
@@ -109,7 +109,7 @@ def save_state(state: dict, path: Path | None = None):
     p = path or STATE_FILE
     p.parent.mkdir(parents=True, exist_ok=True)
 
-    content = json.dumps(state, indent=2, default=_json_default) + "\n"
+    content = json.dumps(state, indent=2, default=json_default) + "\n"
 
     # Keep a backup of the previous state
     if p.exists():
@@ -250,7 +250,7 @@ def make_finding(detector: str, file: str, name: str, *,
     """Create a normalized finding dict with a stable ID."""
     rfile = rel(file)
     fid = f"{detector}::{rfile}::{name}" if name else f"{detector}::{rfile}"
-    now = _now()
+    now = utc_now()
     return {"id": fid, "detector": detector, "file": rfile, "tier": tier,
             "confidence": confidence, "summary": summary, "detail": detail or {},
             "status": "open", "note": None, "first_seen": now, "last_seen": now,
@@ -286,14 +286,14 @@ def _find_suspect_detectors(
     for det, n in prev.items():
         if det in _IMPORT_ONLY_DETECTORS:
             suspect.add(det)
-            continue
-        if current_by_detector.get(det, 0) > 0:
-            continue  # Detector produced findings — not suspect
-        if ran_detectors is not None and det in ran_detectors:
-            continue  # Detector ran and found nothing — legitimate
-        # Detector had findings before, returned 0 now, and didn't appear in
-        # potentials. Only flag if it had a meaningful number of findings.
-        if n >= 3:
+        elif current_by_detector.get(det, 0) > 0:
+            pass  # Detector produced findings — not suspect
+        elif ran_detectors is not None:
+            # We know what ran: trust detectors that ran, protect those that didn't
+            if det not in ran_detectors:
+                suspect.add(det)
+        elif n >= 3:
+            # ran_detectors unknown — heuristic: protect if meaningful count
             suspect.add(det)
     return suspect
 
@@ -311,9 +311,12 @@ def _auto_resolve_disappeared(
         if lang and old.get("lang") and old["lang"] != lang:
             skip_lang += 1
             continue
-        if scan_path and scan_path != "." and not old["file"].startswith(scan_path.rstrip("/") + "/") and old["file"] != scan_path:
-            skip_path += 1
-            continue
+        # Skip findings outside the scanned path (when scanning a subdirectory)
+        if scan_path and scan_path != ".":
+            prefix = scan_path.rstrip("/") + "/"
+            if not old["file"].startswith(prefix) and old["file"] != scan_path:
+                skip_path += 1
+                continue
         if exclude and any(matches_exclusion(old["file"], ex) for ex in exclude):
             continue
         if old.get("detector", "unknown") in suspect_detectors:
@@ -330,14 +333,15 @@ def _auto_resolve_disappeared(
 def _upsert_findings(
     existing: dict, current_findings: list[dict], ignore: list[str],
     now: str, *, lang: str | None,
-) -> tuple[set[str], int, int, dict[str, int]]:
-    """Insert new findings and update existing ones. Returns (ids, new, reopened, by_detector)."""
+) -> tuple[set[str], int, int, dict[str, int], int]:
+    """Insert new findings and update existing ones. Returns (ids, new, reopened, by_detector, ignored)."""
     current_ids: set[str] = set()
-    new_count = reopened = 0
+    new_count = reopened = ignored_count = 0
     by_detector: dict[str, int] = {}
     for f in current_findings:
         fid = f["id"]
         if is_ignored(fid, f["file"], ignore):
+            ignored_count += 1
             continue
         current_ids.add(fid)
         det = f.get("detector", "unknown")
@@ -361,7 +365,7 @@ def _upsert_findings(
         else:
             existing[fid] = f
             new_count += 1
-    return current_ids, new_count, reopened, by_detector
+    return current_ids, new_count, reopened, by_detector, ignored_count
 
 
 def merge_scan(state: dict, current_findings: list[dict], *,
@@ -373,7 +377,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
                ignore: list[str] | None = None) -> dict:
     """Merge a fresh scan into existing state. Returns diff summary."""
     from .utils import compute_tool_hash
-    now = _now()
+    now = utc_now()
     state["last_scan"] = now
     state["scan_count"] = state.get("scan_count", 0) + 1
     state["tool_hash"] = compute_tool_hash()
@@ -387,7 +391,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     state["scan_path"] = scan_path
     existing = state["findings"]
     ignore = ignore if ignore is not None else state.get("config", {}).get("ignore", [])
-    current_ids, new_count, reopened_count, current_by_detector = _upsert_findings(
+    current_ids, new_count, reopened_count, current_by_detector, ignored_count = _upsert_findings(
         existing, current_findings, ignore, now, lang=lang)
     # Detectors that appear in potentials actually ran — trust their 0-finding results.
     # Use `is not None` (not truthiness) so an empty dict {} still means "potentials
@@ -428,6 +432,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
         "suspect_detectors": sorted(suspect_detectors) if suspect_detectors else [],
         "chronic_reopeners": chronic,
         "skipped_other_lang": skipped_lang, "skipped_out_of_scope": skipped_path,
+        "ignored": ignored_count, "ignore_patterns": len(ignore),
     }
 
 
@@ -452,7 +457,7 @@ def match_findings(state: dict, pattern: str, status_filter: str = "open") -> li
 def resolve_findings(state: dict, pattern: str, status: str,
                      note: str | None = None) -> list[str]:
     """Resolve findings matching pattern. Returns list of resolved IDs."""
-    now = _now()
+    now = utc_now()
     resolved = []
     for f in match_findings(state, pattern, status_filter="open"):
         f.update(status=status, note=note, resolved_at=now)

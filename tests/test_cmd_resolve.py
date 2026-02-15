@@ -42,7 +42,7 @@ class TestCmdResolve:
         """Wontfix without --note should exit with error."""
         from desloppify.commands import resolve as resolve_mod
 
-        monkeypatch.setattr(resolve_mod, "_state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")
 
         class FakeArgs:
             status = "wontfix"
@@ -60,7 +60,7 @@ class TestCmdResolve:
         from desloppify.commands import resolve as resolve_mod
         import desloppify.state as state_mod
 
-        monkeypatch.setattr(resolve_mod, "_state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")
 
         fake_state = {
             "findings": {}, "score": 50, "strict_score": 40,
@@ -88,7 +88,7 @@ class TestCmdResolve:
         import desloppify.narrative as narrative_mod
         import desloppify.cli as cli_mod
 
-        monkeypatch.setattr(resolve_mod, "_state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(resolve_mod, "_write_query", lambda payload: None)
 
         fake_state = {
@@ -104,7 +104,7 @@ class TestCmdResolve:
                             lambda state, **kw: {"headline": "test", "milestone": None})
 
         # Mock _resolve_lang
-        monkeypatch.setattr(cli_mod, "_resolve_lang", lambda args: None)
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: None)
 
         class FakeArgs:
             status = "fixed"

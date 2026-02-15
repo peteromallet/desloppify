@@ -816,14 +816,15 @@ class TestSubjectiveScoring:
 
     def test_assessment_in_objective_score(self):
         """Subjective dimensions feed into compute_objective_score correctly."""
-        # All 5 subjective dimensions appear; naming_quality assessed at 50%, rest at 0%
-        # No mechanical dims → pure subjective avg: (50*4 + 0*4*4) / (4*5) = 10.0
+        # All 7 subjective dimensions appear; naming_quality assessed at 50%, rest at 0%
+        # No mechanical dims → pure subjective avg: (50*4 + 0*4*6) / (4*7)
         assessments = {"naming_quality": {"score": 50}}
         result = compute_dimension_scores({}, {}, subjective_assessments=assessments)
         score = compute_objective_score(result)
-        # Pure subjective (no mechanical): tier-weighted avg = (50*4)/(5*4) = 10.0
+        # Pure subjective (no mechanical): tier-weighted avg = (50*4)/(7*4)
         # But budget blend sees mech_weight=0 → returns pure subj_avg
-        subj_avg = (50 * 4 + 0 * 4 * 4) / (5 * 4)  # = 10.0
+        n_dims = 7  # DEFAULT_DIMENSIONS count
+        subj_avg = (50 * 4 + 0 * 4 * (n_dims - 1)) / (n_dims * 4)
         assert score == pytest.approx(subj_avg, abs=0.2)
 
     def test_assessment_budget_blend(self):
@@ -842,7 +843,7 @@ class TestSubjectiveScoring:
         result = compute_dimension_scores({}, potentials, subjective_assessments=assessments)
 
         # Mechanical pool: Code quality at 100% (only mechanical dim)
-        # Subjective pool: all 5 dims at 0% → subj_avg = 0.0
+        # Subjective pool: all dims at 0% → subj_avg = 0.0
         # Budget blend: 100.0 * (1 - frac) + 0.0 * frac
         score = compute_objective_score(result)
         expected = 100.0 * (1 - SUBJECTIVE_WEIGHT_FRACTION) + 0.0 * SUBJECTIVE_WEIGHT_FRACTION

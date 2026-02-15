@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import utils as _utils_mod
-from ..utils import rel, resolve_path, _read_file_text, \
+from ..utils import rel, resolve_path, read_file_text, \
     enable_file_cache, disable_file_cache
 
 
@@ -39,7 +39,7 @@ def _abs(filepath: str) -> str:
 
 def _file_excerpt(filepath: str, max_lines: int = 30) -> str | None:
     """Read first *max_lines* of a file, returning the text or None."""
-    content = _read_file_text(_abs(filepath))
+    content = read_file_text(_abs(filepath))
     if content is None:
         return None
     lines = content.splitlines(keepends=True)
@@ -151,7 +151,7 @@ def _build_review_context_inner(files: list[str], lang, state: dict,
     # Pre-read all file contents once (cache will store them)
     file_contents: dict[str, str] = {}
     for filepath in files:
-        content = _read_file_text(_abs(filepath))
+        content = read_file_text(_abs(filepath))
         if content is not None:
             file_contents[filepath] = content
 
@@ -554,13 +554,8 @@ def _classify_error_strategy(content: str) -> str | None:
     return dominant
 
 
-# ── Holistic context builder (delegated to context_holistic.py) ──
-
-from .context_holistic import build_holistic_context  # noqa: E402
-
 __all__ = [
     "ReviewContext", "build_review_context", "_serialize_context",
-    "build_holistic_context",
     "_file_excerpt", "_dep_graph_lookup", "_importer_count", "_abs",
     "_FUNC_NAME_RE", "_CLASS_NAME_RE", "_ERROR_PATTERNS",
     "_NAME_PREFIX_RE", "_FROM_IMPORT_RE",

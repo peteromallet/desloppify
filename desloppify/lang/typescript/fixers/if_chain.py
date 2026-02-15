@@ -1,6 +1,6 @@
 """Empty if-chain fixer: deletes if/else chains where all branches are empty."""
 
-from ..detectors._smell_helpers import _scan_code
+from ..detectors._smell_helpers import scan_code
 from .common import apply_fixer, collapse_blank_lines
 
 
@@ -42,7 +42,7 @@ def _find_if_chain_end(lines: list[str], start: int) -> int:
 
     for i in range(start, min(start + 100, len(lines))):
         line = lines[i]
-        for ci, ch, in_s in _scan_code(line):
+        for ci, ch, in_s in scan_code(line):
             if in_s:
                 continue
             if ch == "{":
