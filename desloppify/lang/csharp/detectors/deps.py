@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -51,6 +52,9 @@ _ENTRY_PATH_HINTS = (
 )
 
 _PROJECT_EXCLUSIONS = set(CSHARP_FILE_EXCLUSIONS) | {".git"}
+_DEFAULT_ROSLYN_TIMEOUT_SECONDS = 20
+_DEFAULT_ROSLYN_MAX_OUTPUT_BYTES = 5 * 1024 * 1024
+_DEFAULT_ROSLYN_MAX_EDGES = 200000
 
 
 def _is_excluded_path(path: Path) -> bool:
@@ -113,7 +117,8 @@ def _is_entrypoint_file(filepath: Path, content: str) -> bool:
     rel_path = rel(str(filepath)).replace("\\", "/")
     if filepath.name in _ENTRY_FILE_HINTS:
         return True
-    if any(hint in rel_path for hint in _ENTRY_PATH_HINTS):
+    is_platform_path = any(hint in rel_path for hint in _ENTRY_PATH_HINTS)
+    if is_platform_path and (_PLATFORM_BASE_RE.search(content) or _PLATFORM_REGISTER_RE.search(content)):
         return True
     if _MAIN_METHOD_RE.search(content):
         return True
@@ -174,9 +179,23 @@ def _build_graph_from_edge_map(edge_map: dict[str, set[str]]) -> dict[str, dict]
     return finalize_graph(dict(graph))
 
 
+def _resolve_env_int(name: str, default: int, *, min_value: int = 1) -> int:
+    """Read an integer env var with lower-bound clamping."""
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, parsed)
+
+
 def _parse_roslyn_graph_payload(payload: dict) -> dict[str, dict] | None:
     """Parse Roslyn JSON payload into the shared graph format."""
     edge_map: dict[str, set[str]] = defaultdict(set)
+    max_edges = _resolve_env_int("DESLOPPIFY_CSHARP_ROSLYN_MAX_EDGES", _DEFAULT_ROSLYN_MAX_EDGES)
+    edge_count = 0
 
     files = payload.get("files")
     if isinstance(files, list):
@@ -184,15 +203,23 @@ def _parse_roslyn_graph_payload(payload: dict) -> dict[str, dict] | None:
             if not isinstance(entry, dict):
                 continue
             source = entry.get("file")
-            if not source:
+            if not isinstance(source, str) or not source.strip():
                 continue
-            source_resolved = _safe_resolve_graph_path(str(source))
+            source_resolved = _safe_resolve_graph_path(source)
+            edge_map[source_resolved]
             imports = entry.get("imports", [])
             if not isinstance(imports, list):
                 imports = []
             for target in imports:
-                edge_map[source_resolved].add(_safe_resolve_graph_path(str(target)))
-        return _build_graph_from_edge_map(edge_map)
+                if not isinstance(target, str) or not target.strip():
+                    continue
+                edge_map[source_resolved].add(_safe_resolve_graph_path(target))
+                edge_count += 1
+                if edge_count > max_edges:
+                    return None
+        if edge_map:
+            return _build_graph_from_edge_map(edge_map)
+        return None
 
     edges = payload.get("edges")
     if isinstance(edges, list):
@@ -201,12 +228,33 @@ def _parse_roslyn_graph_payload(payload: dict) -> dict[str, dict] | None:
                 continue
             source = edge.get("source") or edge.get("from")
             target = edge.get("target") or edge.get("to")
-            if not source or not target:
+            if not isinstance(source, str) or not source.strip():
                 continue
-            edge_map[_safe_resolve_graph_path(str(source))].add(_safe_resolve_graph_path(str(target)))
-        return _build_graph_from_edge_map(edge_map)
+            if not isinstance(target, str) or not target.strip():
+                continue
+            edge_map[_safe_resolve_graph_path(source)].add(_safe_resolve_graph_path(target))
+            edge_count += 1
+            if edge_count > max_edges:
+                return None
+        if edge_map:
+            return _build_graph_from_edge_map(edge_map)
 
     return None
+
+
+def _build_roslyn_command(roslyn_cmd: str, path: Path) -> list[str] | None:
+    """Convert command template to argv safely without shell execution."""
+    split_posix = os.name != "nt"
+    try:
+        if "{path}" in roslyn_cmd:
+            expanded = roslyn_cmd.replace("{path}", str(path))
+            argv = shlex.split(expanded, posix=split_posix)
+        else:
+            argv = shlex.split(roslyn_cmd, posix=split_posix)
+            argv.append(str(path))
+    except ValueError:
+        return None
+    return argv or None
 
 
 def _build_dep_graph_roslyn(path: Path) -> dict[str, dict] | None:
@@ -215,21 +263,38 @@ def _build_dep_graph_roslyn(path: Path) -> dict[str, dict] | None:
     if not roslyn_cmd:
         return None
 
-    cmd = roslyn_cmd.replace("{path}", str(path)) if "{path}" in roslyn_cmd else f'{roslyn_cmd} "{path}"'
+    cmd = _build_roslyn_command(roslyn_cmd, path)
+    if not cmd:
+        return None
+    timeout_seconds = _resolve_env_int(
+        "DESLOPPIFY_CSHARP_ROSLYN_TIMEOUT_SECONDS",
+        _DEFAULT_ROSLYN_TIMEOUT_SECONDS,
+    )
+    max_output_bytes = _resolve_env_int(
+        "DESLOPPIFY_CSHARP_ROSLYN_MAX_OUTPUT_BYTES",
+        _DEFAULT_ROSLYN_MAX_OUTPUT_BYTES,
+    )
     try:
         proc = subprocess.run(
             cmd,
-            shell=True,
+            shell=False,
             check=False,
             capture_output=True,
-            text=True,
+            text=False,
+            timeout=timeout_seconds,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     if proc.returncode != 0:
         return None
+    stdout_bytes = proc.stdout or b""
+    if len(stdout_bytes) > max_output_bytes:
+        return None
+    payload_text = stdout_bytes.decode("utf-8", errors="replace").strip()
+    if not payload_text:
+        return None
     try:
-        payload = json.loads(proc.stdout or "{}")
+        payload = json.loads(payload_text)
     except json.JSONDecodeError:
         return None
     if not isinstance(payload, dict):

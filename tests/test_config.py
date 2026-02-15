@@ -34,6 +34,9 @@ class TestDefaultConfig:
         assert cfg["generate_scorecard"] is True
         assert cfg["badge_path"] == "scorecard.png"
         assert cfg["finding_noise_budget"] == 10
+        assert cfg["finding_noise_global_budget"] == 0
+        assert cfg["csharp_corroboration_min_signals"] == 2
+        assert cfg["csharp_high_fanout_threshold"] == 5
         assert cfg["exclude"] == []
         assert cfg["ignore"] == []
         assert cfg["zone_overrides"] == {}
@@ -90,6 +93,11 @@ class TestSetConfigValue:
         cfg = default_config()
         set_config_value(cfg, "finding_noise_budget", "25")
         assert cfg["finding_noise_budget"] == 25
+
+    def test_set_noise_global_budget_int(self):
+        cfg = default_config()
+        set_config_value(cfg, "finding_noise_global_budget", "50")
+        assert cfg["finding_noise_global_budget"] == 50
 
     def test_set_never(self):
         cfg = default_config()

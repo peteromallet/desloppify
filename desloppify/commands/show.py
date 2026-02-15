@@ -60,7 +60,7 @@ def cmd_show(args):
         apply_finding_noise_budget,
         load_state,
         match_findings,
-        resolve_finding_noise_budget,
+        resolve_finding_noise_settings,
     )
 
     sp = state_path(args)
@@ -103,8 +103,12 @@ def cmd_show(args):
                       "total": 0, "findings": []})
         return
 
-    noise_budget = resolve_finding_noise_budget(args._config)
-    surfaced_matches, hidden_by_detector = apply_finding_noise_budget(matches, noise_budget)
+    noise_budget, global_noise_budget, budget_warning = resolve_finding_noise_settings(args._config)
+    surfaced_matches, hidden_by_detector = apply_finding_noise_budget(
+        matches,
+        budget=noise_budget,
+        global_budget=global_noise_budget,
+    )
     hidden_total = sum(hidden_by_detector.values())
 
     # Always write structured query file
@@ -120,6 +124,7 @@ def cmd_show(args):
         total_matches=len(matches),
         hidden_by_detector=hidden_by_detector,
         noise_budget=noise_budget,
+        global_noise_budget=global_noise_budget,
     )
     _write_query({"command": "show", **payload, "narrative": narrative})
 
@@ -143,9 +148,12 @@ def cmd_show(args):
     top = getattr(args, "top", 20) or 20
 
     print(colorize(f"\n  {len(surfaced_matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
+    if budget_warning:
+        print(colorize(f"  {budget_warning}\n", "yellow"))
     if hidden_total:
+        global_label = f", {global_noise_budget} global" if global_noise_budget > 0 else ""
         hidden_parts = ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
-        print(colorize(f"  Noise budget: {noise_budget}/detector ({hidden_total} hidden: {hidden_parts})\n", "dim"))
+        print(colorize(f"  Noise budget: {noise_budget}/detector{global_label} ({hidden_total} hidden: {hidden_parts})\n", "dim"))
 
     shown_files = sorted_files[:top]
     remaining_files = sorted_files[top:]
@@ -203,7 +211,8 @@ def cmd_show(args):
 def _build_show_payload(matches: list[dict], pattern: str, status_filter: str, *,
                         total_matches: int | None = None,
                         hidden_by_detector: dict[str, int] | None = None,
-                        noise_budget: int | None = None) -> dict:
+                        noise_budget: int | None = None,
+                        global_noise_budget: int | None = None) -> dict:
     """Build the structured JSON payload shared by query file and --output."""
     by_file: dict[str, list] = defaultdict(list)
     by_detector: dict[str, int] = defaultdict(int)
@@ -238,4 +247,6 @@ def _build_show_payload(matches: list[dict], pattern: str, status_filter: str, *
         }
     if noise_budget is not None:
         payload["noise_budget"] = noise_budget
+    if global_noise_budget is not None:
+        payload["noise_global_budget"] = global_noise_budget
     return payload

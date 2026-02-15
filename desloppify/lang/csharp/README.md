@@ -111,10 +111,6 @@ Entry patterns used for orphan detection:
 - `/SceneDelegate.cs`
 - `/WinUIApplication.cs`
 - `/App.xaml.cs`
-- `/Platforms/Android/`
-- `/Platforms/iOS/`
-- `/Platforms/MacCatalyst/`
-- `/Platforms/Windows/`
 - `/Properties/`
 - `/Migrations/`
 - `.g.cs`
@@ -251,13 +247,18 @@ How it works at a high level:
 Bootstrap heuristics include path/name/content signals, for example:
 
 - platform entry files such as `MauiProgram.cs`, `MainActivity.cs`, `AppDelegate.cs`
-- platform folders under `Platforms/*`
+- platform folders under `Platforms/*` only count when delegate/bootstrap signatures are present
 - common bootstrap signatures such as `Main(...)`, `CreateMauiApp(...)`, and delegate inheritance
 
 Roslyn mode:
 
 - If `DESLOPPIFY_CSHARP_ROSLYN_CMD` is set, Desloppify runs that command first.
 - The command can include `{path}` placeholder and must print JSON to stdout.
+- The command is executed without shell interpolation (`shell=False`) for safer invocation.
+- Guardrails:
+  - `DESLOPPIFY_CSHARP_ROSLYN_TIMEOUT_SECONDS` (default `20`)
+  - `DESLOPPIFY_CSHARP_ROSLYN_MAX_OUTPUT_BYTES` (default `5242880`)
+  - `DESLOPPIFY_CSHARP_ROSLYN_MAX_EDGES` (default `200000`)
 - Supported JSON shapes:
   - `{"files":[{"file":"<abs-or-rel>", "imports":["<abs-or-rel>", ...]}]}`
   - `{"edges":[{"source":"<abs-or-rel>", "target":"<abs-or-rel>"}]}`
@@ -336,9 +337,9 @@ Actionability gating for `single_use` and `orphaned`:
 - Corroboration signals currently include:
   - large file size (LOC over threshold)
   - complexity score over threshold
-  - high fan-out (`import_count >= 5`)
+  - high fan-out (`import_count >= csharp_high_fanout_threshold`, default `5`)
 - Confidence policy:
-  - `medium` when at least 2 corroboration signals are present
+  - `medium` when corroboration count is at least `csharp_corroboration_min_signals` (default `2`)
   - `low` otherwise
 
 This reduces eager cleanup recommendations for weakly-supported coupling findings.

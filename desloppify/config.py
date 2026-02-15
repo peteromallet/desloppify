@@ -45,6 +45,12 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         "Override prop count threshold for bloated interface detection (0 = default 14)"),
     "finding_noise_budget": ConfigKey(int, 10,
         "Max findings surfaced per detector in show/scan summaries (0 = unlimited)"),
+    "finding_noise_global_budget": ConfigKey(int, 0,
+        "Global cap for surfaced findings after per-detector budget (0 = unlimited)"),
+    "csharp_corroboration_min_signals": ConfigKey(int, 2,
+        "Minimum corroboration signals required for medium confidence in C# orphaned/single_use"),
+    "csharp_high_fanout_threshold": ConfigKey(int, 5,
+        "Import-count threshold treated as high fan-out corroboration for C# confidence gating"),
 }
 
 

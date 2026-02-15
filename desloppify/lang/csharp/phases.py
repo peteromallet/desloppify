@@ -87,6 +87,7 @@ def _corroboration_signals_for_csharp(entry: dict, lang: LangConfig) -> tuple[li
     filepath = entry.get("file", "")
     loc = entry.get("loc", 0)
     import_count = entry.get("import_count", 0)
+    fanout_threshold = max(1, int(getattr(lang, "_csharp_high_fanout_threshold", 5)))
     complexity_score = lang._complexity_map.get(filepath, 0)
     if complexity_score == 0 and filepath:
         complexity_score = lang._complexity_map.get(rel(filepath), 0)
@@ -96,13 +97,14 @@ def _corroboration_signals_for_csharp(entry: dict, lang: LangConfig) -> tuple[li
         signals.append(f"large ({loc} LOC)")
     if complexity_score >= lang.complexity_threshold:
         signals.append(f"complexity ({complexity_score})")
-    if import_count >= 5:
+    if import_count >= fanout_threshold:
         signals.append(f"high fan-out ({import_count} imports)")
     return signals, complexity_score, import_count
 
 
 def _apply_csharp_actionability_gates(findings: list[dict], entries: list[dict], lang: LangConfig) -> None:
     """Downgrade actionability unless multiple independent signals corroborate."""
+    min_signals = max(1, int(getattr(lang, "_csharp_corroboration_min_signals", 2)))
     entries_by_file = {rel(e["file"]): e for e in entries}
     for finding in findings:
         entry = entries_by_file.get(finding.get("file", ""))
@@ -110,10 +112,11 @@ def _apply_csharp_actionability_gates(findings: list[dict], entries: list[dict],
             continue
         signals, complexity_score, import_count = _corroboration_signals_for_csharp(entry, lang)
         corroboration_count = len(signals)
-        finding["confidence"] = "medium" if corroboration_count >= 2 else "low"
+        finding["confidence"] = "medium" if corroboration_count >= min_signals else "low"
         detail = finding.setdefault("detail", {})
         detail["corroboration_signals"] = signals
         detail["corroboration_count"] = corroboration_count
+        detail["corroboration_min_required"] = min_signals
         detail["complexity_score"] = complexity_score
         detail["import_count"] = import_count
 

@@ -255,6 +255,17 @@ def cmd_scan(args):
         props_threshold = config.get("props_threshold", 0)
         if props_threshold > 0:
             lang._props_threshold = props_threshold
+        if lang.name == "csharp":
+            try:
+                min_signals = int(config.get("csharp_corroboration_min_signals", 2))
+            except (TypeError, ValueError):
+                min_signals = 2
+            try:
+                fanout_threshold = int(config.get("csharp_high_fanout_threshold", 5))
+            except (TypeError, ValueError):
+                fanout_threshold = 5
+            lang._csharp_corroboration_min_signals = max(1, min_signals)
+            lang._csharp_high_fanout_threshold = max(1, fanout_threshold)
 
     print(colorize(f"\nDesloppify Scan{lang_label}\n", "bold"))
     from ..utils import enable_file_cache, disable_file_cache
@@ -315,21 +326,28 @@ def cmd_scan(args):
 
     hidden_by_detector: dict[str, int] = {}
     hidden_total = 0
-    from ..state import apply_finding_noise_budget, path_scoped_findings, resolve_finding_noise_budget
-    noise_budget = resolve_finding_noise_budget(config)
+    from ..state import apply_finding_noise_budget, path_scoped_findings, resolve_finding_noise_settings
+    noise_budget, global_noise_budget, budget_warning = resolve_finding_noise_settings(config)
     open_findings = [
         finding for finding in path_scoped_findings(state["findings"], state.get("scan_path")).values()
         if finding.get("status") == "open"
     ]
-    _, hidden_by_detector = apply_finding_noise_budget(open_findings, noise_budget)
+    _, hidden_by_detector = apply_finding_noise_budget(
+        open_findings,
+        budget=noise_budget,
+        global_budget=global_noise_budget,
+    )
     hidden_total = sum(hidden_by_detector.values())
 
     _show_diff_summary(diff)
     _show_score_delta(state, prev_score, prev_strict, prev_obj, prev_obj_strict)
     if not effective_include_slow:
         print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
+    if budget_warning:
+        print(colorize(f"  * {budget_warning}", "yellow"))
     if hidden_total:
-        print(colorize(f"  * Noise budget: {noise_budget}/detector "
+        global_label = f", {global_noise_budget} global" if global_noise_budget > 0 else ""
+        print(colorize(f"  * Noise budget: {noise_budget}/detector{global_label} "
                        f"({hidden_total} findings hidden in show output: {_format_hidden_by_detector(hidden_by_detector)})", "dim"))
     _show_detector_progress(state)
 
@@ -355,6 +373,7 @@ def cmd_scan(args):
     _write_query({"command": "scan", "score": state["score"],
                   "profile": profile,
                   "noise_budget": noise_budget,
+                  "noise_global_budget": global_noise_budget,
                   "hidden_by_detector": hidden_by_detector,
                   "hidden_total": hidden_total,
                   "strict_score": state.get("strict_score", 0),

@@ -83,7 +83,7 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 - Project-reference-aware dependency graph (`ProjectReference` in `.csproj`)
 - Current limitations:
 - C# auto-fixers are not implemented yet
-- Roslyn semantic graphing is optional via `DESLOPPIFY_CSHARP_ROSLYN_CMD`; default is namespace/using heuristics with fallback
+- Roslyn semantic graphing is optional via `DESLOPPIFY_CSHARP_ROSLYN_CMD`; it runs with timeout/output guards and falls back to namespace/using heuristics on any failure
 - Test-coverage quality heuristics are best-effort
 
 #### Tiers & scoring
@@ -113,6 +113,11 @@ Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
 
 Project config keys can be set with `desloppify config set`, for example:
 `desloppify config set finding_noise_budget 15` (set `0` for unlimited per-detector show/scan surfacing).
+Useful hardening knobs:
+
+- `finding_noise_global_budget` (set `0` for unlimited): optional global cap after per-detector caps
+- `csharp_corroboration_min_signals` (default `2`): confidence gate strictness for C# `single_use`/`orphaned`
+- `csharp_high_fanout_threshold` (default `5`): fan-out threshold used as corroboration signal
 
 #### Adding a language
 

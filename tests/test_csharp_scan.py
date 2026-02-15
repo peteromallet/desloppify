@@ -2,17 +2,12 @@
 
 from collections import Counter
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 from desloppify.lang.csharp import CSharpConfig
 from desloppify.lang.csharp.phases import _apply_csharp_actionability_gates
 from desloppify.plan import generate_findings
-from desloppify.utils import rel
-
-
-def _production_zone_overrides(path: Path, config: CSharpConfig) -> dict[str, str]:
-    """Treat fixture files as production so detectors are not zone-suppressed."""
-    return {rel(filepath): "production" for filepath in config.file_finder(path)}
 
 
 def _signal_rich_area(filepath: str) -> str:
@@ -45,17 +40,17 @@ def test_csharp_full_profile_keeps_subjective_review():
     assert "subjective_review" in potentials
 
 
-def test_csharp_signal_rich_fixture_emits_meaningful_findings():
-    path = (Path("tests") / "fixtures" / "csharp" / "signal_rich").resolve()
+def test_csharp_signal_rich_fixture_emits_meaningful_findings(tmp_path):
+    fixture = (Path("tests") / "fixtures" / "csharp" / "signal_rich").resolve()
+    path = (tmp_path / "signal_rich").resolve()
+    shutil.copytree(fixture, path)
     config = CSharpConfig()
     config.get_area = _signal_rich_area
-    zone_overrides = _production_zone_overrides(path, config)
     findings, _potentials = generate_findings(
         path,
         include_slow=False,
         lang=config,
         profile="objective",
-        zone_overrides=zone_overrides,
     )
 
     by_detector = Counter(f["detector"] for f in findings)
@@ -110,3 +105,26 @@ def test_csharp_actionability_gate_keeps_medium_with_multiple_signals():
 
     assert findings[0]["confidence"] == "medium"
     assert findings[0]["detail"]["corroboration_count"] == 3
+
+
+def test_csharp_actionability_gate_respects_configurable_signal_minimum():
+    lang = SimpleNamespace(
+        _complexity_map={"src/Foo.cs": 25},
+        large_threshold=500,
+        complexity_threshold=20,
+        _csharp_high_fanout_threshold=7,
+        _csharp_corroboration_min_signals=3,
+    )
+    findings = [{
+        "detector": "single_use",
+        "file": "src/Foo.cs",
+        "confidence": "medium",
+        "detail": {"loc": 650},
+    }]
+    entries = [{"file": "src/Foo.cs", "loc": 650, "import_count": 6}]
+
+    _apply_csharp_actionability_gates(findings, entries, lang)
+
+    assert findings[0]["detail"]["corroboration_count"] == 2
+    assert findings[0]["detail"]["corroboration_min_required"] == 3
+    assert findings[0]["confidence"] == "low"

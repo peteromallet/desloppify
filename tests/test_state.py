@@ -13,6 +13,8 @@ from desloppify.state import (
     load_state,
     make_finding,
     resolve_finding_noise_budget,
+    resolve_finding_noise_global_budget,
+    resolve_finding_noise_settings,
     save_state,
 )
 
@@ -64,6 +66,20 @@ class TestApplyFindingNoiseBudget:
         assert len(surfaced) == 3
         assert hidden == {"unused": 1}
 
+    def test_global_budget_round_robins_across_detectors(self):
+        findings = [
+            _make_raw_finding("unused::a.py::x1", detector="unused", tier=1, confidence="high"),
+            _make_raw_finding("unused::a.py::x2", detector="unused", tier=1, confidence="high"),
+            _make_raw_finding("unused::a.py::x3", detector="unused", tier=1, confidence="high"),
+            _make_raw_finding("smells::b.py::y1", detector="smells", tier=2, confidence="medium"),
+            _make_raw_finding("smells::b.py::y2", detector="smells", tier=2, confidence="medium"),
+        ]
+        surfaced, hidden = apply_finding_noise_budget(findings, budget=0, global_budget=3)
+        detectors = [f["detector"] for f in surfaced]
+        assert detectors.count("unused") == 2
+        assert detectors.count("smells") == 1
+        assert hidden == {"smells": 1, "unused": 1}
+
 
 # ---------------------------------------------------------------------------
 # resolve_finding_noise_budget
@@ -81,6 +97,33 @@ class TestResolveFindingNoiseBudget:
 
     def test_negative_value_clamps_to_zero(self):
         assert resolve_finding_noise_budget({"finding_noise_budget": -5}) == 0
+
+
+class TestResolveFindingNoiseGlobalBudget:
+    def test_uses_default_when_config_missing(self):
+        assert resolve_finding_noise_global_budget(None) == 0
+
+    def test_reads_valid_int_from_config(self):
+        assert resolve_finding_noise_global_budget({"finding_noise_global_budget": 25}) == 25
+
+    def test_invalid_value_falls_back_to_default(self):
+        assert resolve_finding_noise_global_budget({"finding_noise_global_budget": "oops"}) == 0
+
+    def test_negative_value_clamps_to_zero(self):
+        assert resolve_finding_noise_global_budget({"finding_noise_global_budget": -5}) == 0
+
+
+class TestResolveFindingNoiseSettings:
+    def test_returns_warning_for_invalid_values(self):
+        per, global_budget, warning = resolve_finding_noise_settings({
+            "finding_noise_budget": "oops",
+            "finding_noise_global_budget": -2,
+        })
+        assert per == 10
+        assert global_budget == 0
+        assert warning is not None
+        assert "finding_noise_budget" in warning
+        assert "finding_noise_global_budget" in warning
 
 
 # ---------------------------------------------------------------------------

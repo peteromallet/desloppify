@@ -173,12 +173,14 @@ class TestBuildShowPayload:
             total_matches=4,
             hidden_by_detector={"alpha": 3},
             noise_budget=1,
+            global_noise_budget=2,
         )
         assert result["total"] == 1
         assert result["total_matching"] == 4
         assert result["hidden"]["total"] == 3
         assert result["hidden"]["by_detector"] == {"alpha": 3}
         assert result["noise_budget"] == 1
+        assert result["noise_global_budget"] == 2
 
 
 # ---------------------------------------------------------------------------
