@@ -68,6 +68,9 @@ class TestDetectLangFromExt:
     def test_python_py(self):
         assert _detect_lang_from_ext("foo.py") == "python"
 
+    def test_csharp_cs(self):
+        assert _detect_lang_from_ext("foo.cs") == "csharp"
+
     def test_unknown_ext(self):
         assert _detect_lang_from_ext("foo.rb") is None
 
@@ -92,6 +95,10 @@ class TestDetectLangFromDir:
     def test_typescript_dir(self, tmp_path):
         (tmp_path / "bar.ts").write_text("")
         assert _detect_lang_from_dir(str(tmp_path)) == "typescript"
+
+    def test_csharp_dir(self, tmp_path):
+        (tmp_path / "Service.cs").write_text("")
+        assert _detect_lang_from_dir(str(tmp_path)) == "csharp"
 
     def test_empty_dir(self, tmp_path):
         assert _detect_lang_from_dir(str(tmp_path)) is None

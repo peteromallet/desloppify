@@ -82,10 +82,11 @@ def test_get_lang_returns_fresh_instances():
 
 
 def test_available_langs_includes_python_and_typescript():
-    """available_langs includes at least python and typescript."""
+    """available_langs includes python, typescript, and csharp."""
     langs = available_langs()
     assert "python" in langs
     assert "typescript" in langs
+    assert "csharp" in langs
 
 
 def test_available_langs_returns_sorted():
@@ -129,6 +130,18 @@ def test_auto_detect_no_config_returns_none(tmp_path):
     assert result is None
 
 
+def test_auto_detect_csharp_project(tmp_path):
+    """Project with .sln and .cs files auto-detects as csharp."""
+    (tmp_path / "Example.sln").write_text("Microsoft Visual Studio Solution File")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "Program.cs").write_text("namespace App; class Program {}")
+
+    with patch("desloppify.utils.PROJECT_ROOT", tmp_path):
+        result = auto_detect_lang(tmp_path)
+    assert result == "csharp"
+
+
 # ── LangConfig basics ───────────────────────────────────────
 
 
@@ -163,6 +176,41 @@ def test_typescript_config_has_file_finder():
     cfg = get_lang("typescript")
     assert cfg.file_finder is not None
     assert callable(cfg.file_finder)
+
+
+def test_all_languages_have_valid_default_scan_profile():
+    """Each language plugin declares a valid default scan profile."""
+    for lang_name in available_langs():
+        cfg = get_lang(lang_name)
+        assert cfg.default_scan_profile in {"objective", "full", "ci"}
+
+
+def test_csharp_config_includes_test_coverage_phase():
+    """C# plugin should include shared test coverage phase like other first-party languages."""
+    cfg = get_lang("csharp")
+    labels = [phase.label for phase in cfg.phases]
+    assert any("Test coverage" in label for label in labels)
+
+
+def test_all_languages_have_shared_core_phase_shape():
+    """Every language keeps shared review/security phases canonical and ordered."""
+    for lang_name in available_langs():
+        cfg = get_lang(lang_name)
+        labels = [phase.label for phase in cfg.phases]
+        assert labels.count("Test coverage") == 1
+        assert labels.count("Security") == 1
+        assert labels.count("Subjective review") == 1
+        assert labels.count("Duplicates") == 1
+        assert labels[-1] == "Duplicates"
+        assert cfg.phases[-1].slow is True
+
+
+def test_legacy_setting_keys_target_declared_settings():
+    """Legacy setting aliases must point to setting_specs keys in the same plugin."""
+    for lang_name in available_langs():
+        cfg = get_lang(lang_name)
+        for _, setting_key in cfg.legacy_setting_keys.items():
+            assert setting_key in cfg.setting_specs
 
 
 # ── structural validation ────────────────────────────────────
@@ -294,6 +342,35 @@ def test_get_lang_rejects_non_snake_case_detect_command_key():
             get_lang("_bad_key")
     finally:
         _registry.pop("_bad_key", None)
+
+
+def test_get_lang_rejects_non_dict_legacy_setting_keys():
+    class BadLegacySettingKeysConfig(LangConfig):
+        def __init__(self):
+            super().__init__(
+                name="_bad_legacy_keys",
+                extensions=[".bad"],
+                exclusions=[],
+                default_src=".",
+                build_dep_graph=lambda _p: {},
+                entry_patterns=[],
+                barrel_names=set(),
+                phases=[DetectorPhase("phase", lambda _p, _l: ([], {}))],
+                fixers={},
+                detect_commands={"deps": lambda _a: None},
+                extract_functions=lambda _p: [],
+                file_finder=lambda _p: [],
+                detect_markers=["bad.toml"],
+                zone_rules=[object()],
+                legacy_setting_keys="not-a-dict",
+            )
+
+    _registry["_bad_legacy_keys"] = BadLegacySettingKeysConfig
+    try:
+        with pytest.raises(ValueError, match="legacy_setting_keys must be a dict"):
+            get_lang("_bad_legacy_keys")
+    finally:
+        _registry.pop("_bad_legacy_keys", None)
 
 
 def test_load_all_surfaces_import_failures(monkeypatch):

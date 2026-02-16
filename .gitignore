@@ -4,3 +4,9 @@ __pycache__/
 .desloppify/
 review_output.json
 holistic_findings.json
+.pytest*
+.tmp*
+bin/
+obj/
+TestResults/
+todos/

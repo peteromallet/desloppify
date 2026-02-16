@@ -341,7 +341,7 @@ class TestDetectOrphanedFiles:
         assert entries[0]["file"] == str(f1)
 
     def test_entry_has_file_and_loc_keys(self, tmp_path):
-        """Each entry dict has exactly 'file' and 'loc' keys."""
+        """Each entry includes file/loc plus corroboration metadata."""
         f1 = _write_file(tmp_path / "orphan.py", lines=25)
 
         graph = {
@@ -352,5 +352,6 @@ class TestDetectOrphanedFiles:
             entries, total = detect_orphaned_files(tmp_path, graph, [".py"])
 
         assert len(entries) == 1
-        assert set(entries[0].keys()) == {"file", "loc"}
+        assert set(entries[0].keys()) == {"file", "loc", "import_count"}
         assert entries[0]["loc"] == 25
+        assert entries[0]["import_count"] == 0

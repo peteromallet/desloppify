@@ -46,14 +46,17 @@ def cmd_detect(args: argparse.Namespace) -> None:
     detector_input = args.detector
 
     # Resolve language (from --lang flag or auto-detection)
-    from ._helpers import resolve_lang
+    from ._helpers import (
+        resolve_lang,
+        resolve_lang_runtime_options,
+        resolve_lang_settings,
+    )
     from ..lang import available_langs
     lang = resolve_lang(args)
 
     if not lang:
-        langs = ", ".join(available_langs())
-        hint = f" Use --lang <one of: {langs}>." if langs else " Use --lang <language>."
-        print(colorize(f"No language specified.{hint}", "red"))
+        langs = ", ".join(available_langs()) or "registered language plugins"
+        print(colorize(f"No language specified. Use --lang <name> (available: {langs}).", "red"))
         sys.exit(1)
 
     # Validate detector name
@@ -70,4 +73,23 @@ def cmd_detect(args: argparse.Namespace) -> None:
         elif detector == "dupes":
             args.threshold = 0.8
 
-    lang.detect_commands[detector](args)
+    supports_runtime_context = (
+        hasattr(lang, "set_runtime_context")
+        and hasattr(lang, "clear_runtime_context")
+        and hasattr(lang, "normalize_settings")
+        and hasattr(lang, "normalize_runtime_options")
+    )
+    if not supports_runtime_context:
+        lang.detect_commands[detector](args)
+        return
+
+    config = getattr(args, "_config", {})
+    lang_settings = resolve_lang_settings(config, lang)
+    lang_options = resolve_lang_runtime_options(args, lang)
+    lang.set_runtime_context(settings=lang_settings, options=lang_options)
+    args._lang_config = lang
+    try:
+        lang.detect_commands[detector](args)
+    finally:
+        args._lang_config = None
+        lang.clear_runtime_context()

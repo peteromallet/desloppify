@@ -130,7 +130,7 @@ def json_default(obj):
     if isinstance(obj, set):
         return sorted(obj)
     if isinstance(obj, Path):
-        return str(obj)
+        return str(obj).replace("\\", "/")
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable: {obj!r}")
@@ -160,6 +160,81 @@ def save_state(state: dict, path: Path | None = None):
 
 
 _EMPTY_COUNTERS = ("open", "fixed", "auto_resolved", "wontfix", "false_positive")
+DEFAULT_FINDING_NOISE_BUDGET = 10
+DEFAULT_FINDING_NOISE_GLOBAL_BUDGET = 0
+_CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _resolve_non_negative_int(raw_value, default: int) -> tuple[int, bool]:
+    """Parse a non-negative integer with fallback. Returns (value, was_valid)."""
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return default, False
+    if value < 0:
+        return 0, False
+    return value, True
+
+
+def resolve_finding_noise_budget(config: dict | None, *,
+                                 default: int = DEFAULT_FINDING_NOISE_BUDGET) -> int:
+    """Resolve noise budget from config with safe fallback."""
+    if not config:
+        return default
+    budget, _valid = _resolve_non_negative_int(config.get("finding_noise_budget", default), default)
+    return budget
+
+
+def resolve_finding_noise_global_budget(config: dict | None, *,
+                                        default: int = DEFAULT_FINDING_NOISE_GLOBAL_BUDGET) -> int:
+    """Resolve global noise budget from config with safe fallback."""
+    if not config:
+        return default
+    budget, _valid = _resolve_non_negative_int(config.get("finding_noise_global_budget", default), default)
+    return budget
+
+
+def resolve_finding_noise_settings(config: dict | None, *,
+                                   per_default: int = DEFAULT_FINDING_NOISE_BUDGET,
+                                   global_default: int = DEFAULT_FINDING_NOISE_GLOBAL_BUDGET) -> tuple[int, int, str | None]:
+    """Resolve per-detector/global budgets and return an optional warning."""
+    if not config:
+        return per_default, global_default, None
+
+    per_value = config.get("finding_noise_budget", per_default)
+    global_value = config.get("finding_noise_global_budget", global_default)
+    per_budget, per_valid = _resolve_non_negative_int(per_value, per_default)
+    global_budget, global_valid = _resolve_non_negative_int(global_value, global_default)
+
+    warning_parts: list[str] = []
+    if not per_valid:
+        warning_parts.append(
+            f"Invalid config `finding_noise_budget={per_value!r}`; using {per_budget}"
+        )
+    if not global_valid:
+        warning_parts.append(
+            f"Invalid config `finding_noise_global_budget={global_value!r}`; using {global_budget}"
+        )
+    warning = " | ".join(warning_parts) if warning_parts else None
+    return per_budget, global_budget, warning
+
+
+def _finding_priority_key(finding: dict) -> tuple[int, int, str]:
+    """Sort by actionable priority (tier/confidence/id)."""
+    return (
+        finding.get("tier", 3),
+        _CONFIDENCE_ORDER.get(finding.get("confidence", "low"), 9),
+        finding.get("id", ""),
+    )
+
+
+def _finding_display_key(finding: dict) -> tuple[str, int, int, str]:
+    return (
+        finding.get("file", ""),
+        finding.get("tier", 3),
+        _CONFIDENCE_ORDER.get(finding.get("confidence", "low"), 9),
+        finding.get("id", ""),
+    )
 
 
 def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str, int]]]:
@@ -172,6 +247,83 @@ def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str,
         ts = tier_stats.setdefault(tier, dict.fromkeys(_EMPTY_COUNTERS, 0))
         ts[s] = ts.get(s, 0) + 1
     return counters, tier_stats
+
+
+def apply_finding_noise_budget(findings: list[dict], budget: int = DEFAULT_FINDING_NOISE_BUDGET,
+                               global_budget: int = DEFAULT_FINDING_NOISE_GLOBAL_BUDGET) -> tuple[list[dict], dict[str, int]]:
+    """Cap surfaced findings per detector and return hidden counts.
+
+    Returns (surfaced_findings, hidden_by_detector).
+    Budget <= 0 means unlimited per detector.
+    Global budget <= 0 means unlimited after per-detector caps.
+    """
+    if budget <= 0 and global_budget <= 0:
+        return list(findings), {}
+
+    by_detector: dict[str, list[dict]] = {}
+    for finding in findings:
+        det = finding.get("detector", "unknown")
+        by_detector.setdefault(det, []).append(finding)
+
+    capped_by_detector: dict[str, list[dict]] = {}
+    hidden_by_detector: dict[str, int] = {}
+    for detector, detector_findings in by_detector.items():
+        detector_findings.sort(key=_finding_priority_key)
+        capped = detector_findings if budget <= 0 else detector_findings[:budget]
+        capped_by_detector[detector] = list(capped)
+        hidden_count = max(0, len(detector_findings) - len(capped))
+        if hidden_count:
+            hidden_by_detector[detector] = hidden_count
+
+    surfaced: list[dict] = []
+    if global_budget > 0:
+        detector_order = sorted(
+            capped_by_detector.keys(),
+            key=lambda d: (_finding_priority_key(capped_by_detector[d][0]) if capped_by_detector[d] else (9, 9, ""), d),
+        )
+        consumed: dict[str, int] = {d: 0 for d in detector_order}
+
+        while len(surfaced) < global_budget:
+            progressed = False
+            for detector in detector_order:
+                idx = consumed[detector]
+                detector_items = capped_by_detector[detector]
+                if idx >= len(detector_items):
+                    continue
+                surfaced.append(detector_items[idx])
+                consumed[detector] = idx + 1
+                progressed = True
+                if len(surfaced) >= global_budget:
+                    break
+            if not progressed:
+                break
+
+        for detector, detector_items in capped_by_detector.items():
+            dropped = len(detector_items) - consumed.get(detector, 0)
+            if dropped > 0:
+                hidden_by_detector[detector] = hidden_by_detector.get(detector, 0) + dropped
+    else:
+        for detector_items in capped_by_detector.values():
+            surfaced.extend(detector_items)
+
+    surfaced.sort(key=_finding_display_key)
+    hidden_sorted = dict(sorted(hidden_by_detector.items(), key=lambda item: (-item[1], item[0])))
+    return surfaced, hidden_sorted
+
+
+def _weighted_progress(findings: dict) -> tuple[float, float]:
+    """Compute weighted addressed% and strict-fixed%. Returns (score, strict_score)."""
+    total_w = addressed_w = fixed_w = 0
+    for f in findings.values():
+        w = TIER_WEIGHTS.get(f.get("tier", 3), 2)
+        total_w += w
+        if f["status"] != "open":
+            addressed_w += w
+        if f["status"] in ("fixed", "auto_resolved", "false_positive"):
+            fixed_w += w
+    if total_w == 0:
+        return 100.0, 100.0
+    return round((addressed_w / total_w) * 100, 1), round((fixed_w / total_w) * 100, 1)
 
 
 def _is_subjective_dimension(data: dict) -> bool:

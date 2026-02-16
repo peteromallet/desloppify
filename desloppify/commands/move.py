@@ -22,7 +22,6 @@ def _dedup(replacements: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 # ── Language detection ────────────────────────────────────
 
-
 def _build_ext_to_lang_map() -> dict[str, str]:
     """Build extension→language map from registered language configs."""
     from ..lang import available_langs, get_lang

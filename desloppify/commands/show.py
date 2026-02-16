@@ -56,7 +56,12 @@ def _format_detail(detail: dict) -> list[str]:
 
 def cmd_show(args) -> None:
     """Show all findings for a file, directory, detector, or pattern."""
-    from ..state import load_state, match_findings
+    from ..state import (
+        apply_finding_noise_budget,
+        load_state,
+        match_findings,
+        resolve_finding_noise_settings,
+    )
 
     sp = state_path(args)
     state = load_state(sp)
@@ -98,13 +103,29 @@ def cmd_show(args) -> None:
                       "total": 0, "findings": []})
         return
 
+    noise_budget, global_noise_budget, budget_warning = resolve_finding_noise_settings(args._config)
+    surfaced_matches, hidden_by_detector = apply_finding_noise_budget(
+        matches,
+        budget=noise_budget,
+        global_budget=global_noise_budget,
+    )
+    hidden_total = sum(hidden_by_detector.values())
+
     # Always write structured query file
     from ..narrative import compute_narrative
     from ._helpers import resolve_lang
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="show")
-    payload = _build_show_payload(matches, pattern, status_filter)
+    payload = _build_show_payload(
+        surfaced_matches,
+        pattern,
+        status_filter,
+        total_matches=len(matches),
+        hidden_by_detector=hidden_by_detector,
+        noise_budget=noise_budget,
+        global_noise_budget=global_noise_budget,
+    )
     _write_query({"command": "show", **payload, "narrative": narrative})
 
     # Optional: also write to a custom output file
@@ -113,20 +134,26 @@ def cmd_show(args) -> None:
         try:
             from ..utils import safe_write_text
             safe_write_text(output_file, json.dumps(payload, indent=2) + "\n")
-            print(colorize(f"Wrote {len(matches)} findings to {output_file}", "green"))
+            print(colorize(f"Wrote {len(surfaced_matches)} findings to {output_file}", "green"))
         except OSError as e:
             print(colorize(f"Could not write to {output_file}: {e}", "red"))
         return
 
     by_file: dict[str, list] = defaultdict(list)
-    for f in matches:
+    for f in surfaced_matches:
         by_file[f["file"]].append(f)
 
     from ..plan import CONFIDENCE_ORDER
     sorted_files = sorted(by_file.items(), key=lambda x: -len(x[1]))
     top = getattr(args, "top", 20) or 20
 
-    print(colorize(f"\n  {len(matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
+    print(colorize(f"\n  {len(surfaced_matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
+    if budget_warning:
+        print(colorize(f"  {budget_warning}\n", "yellow"))
+    if hidden_total:
+        global_label = f", {global_noise_budget} global" if global_noise_budget > 0 else ""
+        hidden_parts = ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
+        print(colorize(f"  Noise budget: {noise_budget}/detector{global_label} ({hidden_total} hidden: {hidden_parts})\n", "dim"))
 
     shown_files = sorted_files[:top]
     remaining_files = sorted_files[top:]
@@ -169,17 +196,23 @@ def cmd_show(args) -> None:
 
     by_detector: dict[str, int] = defaultdict(int)
     by_tier: dict[int, int] = defaultdict(int)
-    for f in matches:
+    for f in surfaced_matches:
         by_detector[f["detector"]] += 1
         by_tier[f["tier"]] += 1
 
     print(colorize("  Summary:", "bold"))
     print(colorize(f"    By tier:     {', '.join(f'T{t}:{n}' for t, n in sorted(by_tier.items()))}", "dim"))
     print(colorize(f"    By detector: {', '.join(f'{d}:{n}' for d, n in sorted(by_detector.items(), key=lambda x: -x[1]))}", "dim"))
+    if hidden_total:
+        print(colorize(f"    Hidden:      {', '.join(f'{d}:+{n}' for d, n in hidden_by_detector.items())}", "dim"))
     print()
 
 
-def _build_show_payload(matches: list[dict], pattern: str, status_filter: str) -> dict:
+def _build_show_payload(matches: list[dict], pattern: str, status_filter: str, *,
+                        total_matches: int | None = None,
+                        hidden_by_detector: dict[str, int] | None = None,
+                        noise_budget: int | None = None,
+                        global_noise_budget: int | None = None) -> dict:
     """Build the structured JSON payload shared by query file and --output."""
     by_file: dict[str, list] = defaultdict(list)
     by_detector: dict[str, int] = defaultdict(int)
@@ -189,7 +222,7 @@ def _build_show_payload(matches: list[dict], pattern: str, status_filter: str) -
         by_detector[f["detector"]] += 1
         by_tier[f["tier"]] += 1
 
-    return {
+    payload = {
         "query": pattern,
         "status_filter": status_filter,
         "total": len(matches),
@@ -205,3 +238,15 @@ def _build_show_payload(matches: list[dict], pattern: str, status_filter: str) -
             for fp, fs in sorted(by_file.items(), key=lambda x: -len(x[1]))
         },
     }
+    if total_matches is not None:
+        payload["total_matching"] = total_matches
+    if hidden_by_detector:
+        payload["hidden"] = {
+            "by_detector": hidden_by_detector,
+            "total": sum(hidden_by_detector.values()),
+        }
+    if noise_budget is not None:
+        payload["noise_budget"] = noise_budget
+    if global_noise_budget is not None:
+        payload["noise_global_budget"] = global_noise_budget
+    return payload

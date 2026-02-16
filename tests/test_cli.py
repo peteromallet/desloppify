@@ -10,7 +10,12 @@ from unittest.mock import patch
 
 import pytest
 
-from desloppify.commands._helpers import _write_query, resolve_lang
+from desloppify.commands._helpers import (
+    _write_query,
+    resolve_lang,
+    resolve_lang_runtime_options,
+    resolve_lang_settings,
+)
 from desloppify.cli import (
     DETECTOR_NAMES,
     _apply_persisted_exclusions,
@@ -45,11 +50,24 @@ class TestCreateParser:
         assert args.command == "scan"
         assert args.path is None
         assert args.skip_slow is False
+        assert args.profile is None
 
     def test_scan_with_path_and_skip_slow(self, parser):
         args = parser.parse_args(["scan", "--path", "/tmp/mycode", "--skip-slow"])
         assert args.path == "/tmp/mycode"
         assert args.skip_slow is True
+
+    def test_scan_with_profile(self, parser):
+        args = parser.parse_args(["scan", "--profile", "ci"])
+        assert args.profile == "ci"
+
+    def test_scan_with_lang_opt(self, parser):
+        args = parser.parse_args(["scan", "--lang-opt", "foo=bar", "--lang-opt", "x=1"])
+        assert args.lang_opt == ["foo=bar", "x=1"]
+
+    def test_scan_rejects_language_specific_legacy_flag(self, parser):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["scan", "--roslyn-cmd", "legacy"])
 
     def test_scan_with_lang(self, parser):
         args = parser.parse_args(["--lang", "python", "scan"])
@@ -153,6 +171,38 @@ class TestCreateParser:
     def test_detect_with_threshold(self, parser):
         args = parser.parse_args(["detect", "dupes", "--threshold", "0.85"])
         assert args.threshold == pytest.approx(0.85)
+
+    def test_detect_with_lang_opt(self, parser):
+        args = parser.parse_args(["detect", "deps", "--lang-opt", "foo=bar"])
+        assert args.lang_opt == ["foo=bar"]
+
+    def test_detect_rejects_language_specific_legacy_flag(self, parser):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["detect", "deps", "--roslyn-cmd", "legacy"])
+
+    def test_lang_opt_parsed_for_csharp(self):
+        from types import SimpleNamespace
+        from desloppify.lang.csharp import CSharpConfig
+
+        args = SimpleNamespace(lang_opt=["roslyn_cmd=fake-roslyn --json"])
+        options = resolve_lang_runtime_options(args, CSharpConfig())
+        assert options["roslyn_cmd"] == "fake-roslyn --json"
+
+    def test_language_settings_loaded_from_config_namespace(self):
+        from desloppify.lang.csharp import CSharpConfig
+
+        lang = CSharpConfig()
+        config = {
+            "languages": {
+                "csharp": {
+                    "corroboration_min_signals": 3,
+                    "high_fanout_threshold": 8,
+                }
+            }
+        }
+        settings = resolve_lang_settings(config, lang)
+        assert settings["corroboration_min_signals"] == 3
+        assert settings["high_fanout_threshold"] == 8
 
     def test_move_command(self, parser):
         args = parser.parse_args(["move", "src/foo.py", "src/bar/foo.py", "--dry-run"])

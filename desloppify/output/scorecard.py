@@ -303,6 +303,9 @@ def get_badge_config(args, config: dict | None = None) -> tuple[Path | None, boo
                 or cfg.get("badge_path")
                 or os.environ.get("DESLOPPIFY_BADGE_PATH", "scorecard.png"))
     path = Path(path_str)
-    if not path.is_absolute():
+    # On Windows, "/tmp/foo.png" is root-anchored but drive-relative.
+    # Treat any rooted path as user-intended absolute-like input.
+    is_root_anchored = bool(path.root)
+    if not path.is_absolute() and not is_root_anchored:
         path = PROJECT_ROOT / path
     return path, False

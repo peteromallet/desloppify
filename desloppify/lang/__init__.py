@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
-from .base import DetectorPhase, FixerConfig, LangConfig
+from .base import DetectorPhase, FixerConfig, LangConfig, LangValueSpec
 
 _registry: dict[str, type] = {}
 _load_attempted = False
@@ -62,6 +62,8 @@ def _validate_lang_contract(name: str, cfg: LangConfig) -> None:
             errors.append("file_finder must be callable")
         if not callable(cfg.extract_functions):
             errors.append("extract_functions must be callable")
+        if cfg.default_scan_profile not in {"objective", "full", "ci"}:
+            errors.append("default_scan_profile must be one of: objective, full, ci")
         if not cfg.phases:
             errors.append("phases must be non-empty")
         else:
@@ -95,6 +97,38 @@ def _validate_lang_contract(name: str, cfg: LangConfig) -> None:
             for key, fixer in cfg.fixers.items():
                 if not isinstance(fixer, FixerConfig):
                     errors.append(f"fixer '{key}' is not FixerConfig")
+        if not isinstance(cfg.setting_specs, dict):
+            errors.append("setting_specs must be a dict")
+        else:
+            for key, spec in cfg.setting_specs.items():
+                if not isinstance(key, str) or not key.strip():
+                    errors.append("setting_specs has empty/non-string key")
+                if not isinstance(spec, LangValueSpec):
+                    errors.append(f"setting_specs['{key}'] is not LangValueSpec")
+        if not isinstance(cfg.legacy_setting_keys, dict):
+            errors.append("legacy_setting_keys must be a dict")
+        else:
+            for old_key, setting_key in cfg.legacy_setting_keys.items():
+                if not isinstance(old_key, str) or not old_key.strip():
+                    errors.append("legacy_setting_keys has empty/non-string legacy key")
+                if not isinstance(setting_key, str) or not setting_key.strip():
+                    errors.append("legacy_setting_keys has empty/non-string setting key")
+        if not isinstance(cfg.runtime_option_specs, dict):
+            errors.append("runtime_option_specs must be a dict")
+        else:
+            for key, spec in cfg.runtime_option_specs.items():
+                if not isinstance(key, str) or not key.strip():
+                    errors.append("runtime_option_specs has empty/non-string key")
+                if not isinstance(spec, LangValueSpec):
+                    errors.append(f"runtime_option_specs['{key}'] is not LangValueSpec")
+        if not isinstance(cfg.runtime_option_aliases, dict):
+            errors.append("runtime_option_aliases must be a dict")
+        else:
+            for alias, key in cfg.runtime_option_aliases.items():
+                if not isinstance(alias, str) or not alias.strip():
+                    errors.append("runtime_option_aliases has empty/non-string alias")
+                if not isinstance(key, str) or not key.strip():
+                    errors.append("runtime_option_aliases has empty/non-string target key")
         if not cfg.zone_rules:
             errors.append("zone_rules must be non-empty")
 

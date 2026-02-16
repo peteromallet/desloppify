@@ -68,12 +68,21 @@ def create_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--path", type=str, default=None)
     p_scan.add_argument("--state", type=str, default=None)
     p_scan.add_argument("--skip-slow", action="store_true", help="Skip slow detectors (dupes)")
+    p_scan.add_argument("--profile", choices=["objective", "full", "ci"], default=None,
+                        help="Scan profile: objective, full, or ci")
     p_scan.add_argument("--force-resolve", action="store_true",
                         help="Bypass suspect-detector protection (use when a detector legitimately went to 0)")
     p_scan.add_argument("--no-badge", action="store_true",
                         help="Skip scorecard image generation (also: DESLOPPIFY_NO_BADGE=true)")
     p_scan.add_argument("--badge-path", type=str, default=None, metavar="PATH",
                         help="Output path for scorecard image (default: scorecard.png)")
+    p_scan.add_argument(
+        "--lang-opt",
+        action="append",
+        default=None,
+        metavar="KEY=VALUE",
+        help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
+    )
 
     p_status = sub.add_parser("status", help="Score dashboard with per-tier progress")
     p_status.add_argument("--state", type=str, default=None)
@@ -160,6 +169,13 @@ def create_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--threshold", type=float, default=None,
                           help="LOC threshold (large) or similarity (dupes)")
     p_detect.add_argument("--file", type=str, default=None, help="Show deps for specific file")
+    p_detect.add_argument(
+        "--lang-opt",
+        action="append",
+        default=None,
+        metavar="KEY=VALUE",
+        help="Language runtime option override (repeatable)",
+    )
 
     p_move = sub.add_parser("move", help="Move a file or directory and update all import references")
     p_move.add_argument("source", type=str, help="File or directory to move (relative to project root)")

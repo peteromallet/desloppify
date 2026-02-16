@@ -2,6 +2,7 @@
 
 import os
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -28,7 +29,7 @@ def test_rel_absolute_under_project_root(monkeypatch):
     """Absolute path under PROJECT_ROOT is converted to relative."""
     root = utils_mod.PROJECT_ROOT
     abs_path = str(root / "foo" / "bar.py")
-    assert rel(abs_path) == os.path.join("foo", "bar.py")
+    assert rel(abs_path) == "foo/bar.py"
 
 
 def test_rel_path_outside_project_root(tmp_path, monkeypatch):
@@ -37,7 +38,11 @@ def test_rel_path_outside_project_root(tmp_path, monkeypatch):
     outside = str(tmp_path / "unrelated" / "file.py")
     result = rel(outside)
     # Path outside PROJECT_ROOT should be normalized to a relative path
-    expected = os.path.relpath(outside).replace("\\", "/")
+    try:
+        expected = os.path.relpath(outside, str(utils_mod.PROJECT_ROOT)).replace("\\", "/")
+    except ValueError:
+        # Windows cross-drive fallback: rel() should return absolute normalized path.
+        expected = str(Path(outside).resolve()).replace("\\", "/")
     assert result == expected
 
 

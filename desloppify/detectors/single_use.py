@@ -39,6 +39,7 @@ def detect_single_use_abstractions(
                 "file": filepath, "loc": loc,
                 "sole_importer": rel(importer),
                 "reason": f"Only imported by {rel(importer)} — consider inlining",
+                "import_count": entry.get("import_count", 0),
             })
         except (OSError, UnicodeDecodeError):
             continue

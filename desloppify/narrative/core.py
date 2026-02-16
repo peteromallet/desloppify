@@ -57,6 +57,9 @@ def _compute_badge_status() -> dict:
                     )
                 except OSError:
                     pass
+                except UnicodeDecodeError:
+                    # Non-UTF8 README should not crash narrative generation.
+                    pass
                 break
 
     recommendation = None
@@ -82,7 +85,7 @@ def compute_narrative(state: dict, *, diff: dict | None = None,
     Args:
         state: Current state dict.
         diff: Scan diff (only present after a scan).
-        lang: Language name (e.g. "python", "typescript").
+        lang: Language plugin name.
         command: The command that triggered this (e.g. "scan", "fix", "resolve").
         config: Project config dict (optional; loaded from disk if not provided).
     """
