@@ -249,7 +249,7 @@ def _phase_mutable_state(path: Path, lang: LangConfig) -> tuple[list[dict], dict
 
 
 def _phase_layer_violation(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    from ...detectors.layer_violation import detect_layer_violations
+    from .detectors.layer_violation import detect_layer_violations
     from ...state import make_finding
     entries, total_files = detect_layer_violations(path, lang.file_finder)
     results = []

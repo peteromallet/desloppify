@@ -46,8 +46,8 @@ MIN_SAMPLE = 200
 _FILE_BASED_DETECTORS = {"smells", "dict_keys", "test_coverage", "security", "review", "subjective_review"}
 
 
-# Security findings are only excluded in generated/vendor zones (secrets in tests are real risks)
-_SECURITY_EXCLUDED_ZONES = {"generated", "vendor"}
+# Security findings are excluded in non-production zones.
+_SECURITY_EXCLUDED_ZONES = {"test", "config", "generated", "vendor"}
 
 # Holistic review scoring: findings with file="." and detail.holistic=True
 # bypass per-file caps and get a 10x weight multiplier.

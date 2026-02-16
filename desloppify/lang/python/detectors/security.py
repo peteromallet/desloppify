@@ -228,7 +228,7 @@ def detect_python_security(
             continue
         if zone_map is not None:
             zone = zone_map.get(filepath)
-            if zone in (Zone.GENERATED, Zone.VENDOR):
+            if zone in (Zone.TEST, Zone.CONFIG, Zone.GENERATED, Zone.VENDOR):
                 continue
 
         try:

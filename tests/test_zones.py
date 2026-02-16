@@ -420,7 +420,7 @@ class TestZonePolicies:
         """TEST zone skips expected detectors."""
         policy = ZONE_POLICIES[Zone.TEST]
         expected_skips = {"dupes", "single_use", "orphaned", "coupling",
-                          "facade", "dict_keys", "test_coverage"}
+                          "facade", "dict_keys", "test_coverage", "security"}
         assert policy.skip_detectors == expected_skips
 
     def test_test_zone_downgrades(self):
@@ -437,7 +437,7 @@ class TestZonePolicies:
         policy = ZONE_POLICIES[Zone.CONFIG]
         expected_skips = {"smells", "structural", "dupes", "naming",
                           "single_use", "orphaned", "coupling", "facade",
-                          "dict_keys", "test_coverage"}
+                          "dict_keys", "test_coverage", "security"}
         assert policy.skip_detectors == expected_skips
 
     def test_config_zone_excluded_from_score(self):
@@ -563,6 +563,7 @@ class TestShouldSkipFinding:
         assert should_skip_finding(zone_map, "tests/test_app.py", "dupes") is True
         assert should_skip_finding(zone_map, "tests/test_app.py", "coupling") is True
         assert should_skip_finding(zone_map, "tests/test_app.py", "test_coverage") is True
+        assert should_skip_finding(zone_map, "tests/test_app.py", "security") is True
 
     def test_allow_in_test_zone(self, zone_map):
         """Detectors NOT in TEST skip_detectors are allowed for test files."""

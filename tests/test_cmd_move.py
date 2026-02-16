@@ -21,21 +21,21 @@ from desloppify.commands.move import (
 # ---------------------------------------------------------------------------
 
 class TestMoveModuleSanity:
-    """Verify all three move modules import cleanly."""
+    """Verify move modules import cleanly."""
 
     def test_move_module_imports(self):
         import desloppify.commands.move
         assert callable(desloppify.commands.move.cmd_move)
 
     def test_move_py_module_imports(self):
-        import desloppify.commands._move_py
-        assert callable(desloppify.commands._move_py.find_py_replacements)
-        assert callable(desloppify.commands._move_py.find_py_self_replacements)
+        import desloppify.lang.python.move
+        assert callable(desloppify.lang.python.move.find_py_replacements)
+        assert callable(desloppify.lang.python.move.find_py_self_replacements)
 
     def test_move_ts_module_imports(self):
-        import desloppify.commands._move_ts
-        assert callable(desloppify.commands._move_ts.find_ts_replacements)
-        assert callable(desloppify.commands._move_ts.find_ts_self_replacements)
+        import desloppify.lang.typescript.move
+        assert callable(desloppify.lang.typescript.move.find_ts_replacements)
+        assert callable(desloppify.lang.typescript.move.find_ts_self_replacements)
 
 
 # ---------------------------------------------------------------------------
@@ -184,67 +184,67 @@ class TestSafeWrite:
 
 
 # ---------------------------------------------------------------------------
-# _move_py helpers
+# Python move helpers
 # ---------------------------------------------------------------------------
 
 class TestMovePyHelpers:
     """Test Python-specific move helpers."""
 
     def test_path_to_py_module(self):
-        from desloppify.commands._move_py import _path_to_py_module
+        from desloppify.lang.python.move import _path_to_py_module
         root = Path("/project")
         assert _path_to_py_module("/project/foo/bar.py", root) == "foo.bar"
         assert _path_to_py_module("/project/foo/__init__.py", root) == "foo"
         assert _path_to_py_module("/project/foo/baz/qux.py", root) == "foo.baz.qux"
 
     def test_path_to_py_module_outside_root(self):
-        from desloppify.commands._move_py import _path_to_py_module
+        from desloppify.lang.python.move import _path_to_py_module
         root = Path("/project")
         assert _path_to_py_module("/other/foo.py", root) is None
 
     def test_has_exact_module(self):
-        from desloppify.commands._move_py import _has_exact_module
+        from desloppify.lang.python.move import _has_exact_module
         assert _has_exact_module("from foo.bar import baz", "foo.bar")
         assert not _has_exact_module("from foo.bar.child import baz", "foo.bar")
         assert _has_exact_module("import foo.bar", "foo.bar")
         assert not _has_exact_module("import foo.barx", "foo.bar")
 
     def test_replace_exact_module(self):
-        from desloppify.commands._move_py import _replace_exact_module
+        from desloppify.lang.python.move import _replace_exact_module
         line = "from foo.bar import baz"
         result = _replace_exact_module(line, "foo.bar", "qux.quux")
         assert result == "from qux.quux import baz"
 
     def test_replace_exact_module_no_child(self):
-        from desloppify.commands._move_py import _replace_exact_module
+        from desloppify.lang.python.move import _replace_exact_module
         line = "from foo.bar.child import baz"
         result = _replace_exact_module(line, "foo.bar", "qux.quux")
         # Should not replace because foo.bar.child is not an exact match for foo.bar
         assert result == "from foo.bar.child import baz"
 
     def test_compute_py_relative_import(self):
-        from desloppify.commands._move_py import _compute_py_relative_import
+        from desloppify.lang.python.move import _compute_py_relative_import
         result = _compute_py_relative_import(
             "/project/pkg/a.py", "/project/pkg/b.py"
         )
         assert result == ".b"
 
     def test_compute_py_relative_import_parent(self):
-        from desloppify.commands._move_py import _compute_py_relative_import
+        from desloppify.lang.python.move import _compute_py_relative_import
         result = _compute_py_relative_import(
             "/project/pkg/sub/a.py", "/project/pkg/b.py"
         )
         assert result == "..b"
 
     def test_resolve_py_relative_file(self, tmp_path):
-        from desloppify.commands._move_py import _resolve_py_relative
+        from desloppify.lang.python.move import _resolve_py_relative
         (tmp_path / "foo.py").write_text("")
         result = _resolve_py_relative(tmp_path, ".", "foo")
         assert result is not None
         assert result.endswith("foo.py")
 
     def test_resolve_py_relative_package(self, tmp_path):
-        from desloppify.commands._move_py import _resolve_py_relative
+        from desloppify.lang.python.move import _resolve_py_relative
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "__init__.py").write_text("")
@@ -253,20 +253,20 @@ class TestMovePyHelpers:
         assert result.endswith("__init__.py")
 
     def test_resolve_py_relative_not_found(self, tmp_path):
-        from desloppify.commands._move_py import _resolve_py_relative
+        from desloppify.lang.python.move import _resolve_py_relative
         result = _resolve_py_relative(tmp_path, ".", "nonexistent")
         assert result is None
 
 
 # ---------------------------------------------------------------------------
-# _move_ts helpers
+# TypeScript move helpers
 # ---------------------------------------------------------------------------
 
 class TestMoveTsHelpers:
     """Test TypeScript-specific move helpers."""
 
     def test_strip_ts_ext(self):
-        from desloppify.commands._move_ts import _strip_ts_ext
+        from desloppify.lang.typescript.move import _strip_ts_ext
         assert _strip_ts_ext("foo.ts") == "foo"
         assert _strip_ts_ext("foo.tsx") == "foo"
         assert _strip_ts_ext("foo.js") == "foo"
@@ -275,7 +275,7 @@ class TestMoveTsHelpers:
         assert _strip_ts_ext("foo.css") == "foo.css"
 
     def test_compute_ts_specifiers_relative(self):
-        from desloppify.commands._move_ts import _compute_ts_specifiers
+        from desloppify.lang.typescript.move import _compute_ts_specifiers
         # Same directory
         alias, relative = _compute_ts_specifiers(
             "/project/src/a.ts", "/project/src/b.ts"
@@ -283,14 +283,14 @@ class TestMoveTsHelpers:
         assert relative == "./b"
 
     def test_compute_ts_specifiers_parent(self):
-        from desloppify.commands._move_ts import _compute_ts_specifiers
+        from desloppify.lang.typescript.move import _compute_ts_specifiers
         alias, relative = _compute_ts_specifiers(
             "/project/src/sub/a.ts", "/project/src/b.ts"
         )
         assert relative == "../b"
 
     def test_strip_index_from_relative(self):
-        from desloppify.commands._move_ts import _compute_ts_specifiers
+        from desloppify.lang.typescript.move import _compute_ts_specifiers
         alias, relative = _compute_ts_specifiers(
             "/project/src/a.ts", "/project/src/utils/index.ts"
         )

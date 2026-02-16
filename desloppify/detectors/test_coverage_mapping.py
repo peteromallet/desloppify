@@ -8,11 +8,7 @@ import re
 from collections import deque
 from pathlib import Path
 
-from ..utils import PROJECT_ROOT, SRC_PATH  # Backward compat: tests patch this symbol.
-
-_REEXPORT_RE = re.compile(
-    r"""^export\s+(?:\{[^}]*\}|\*)\s+from\s+['\"]([^'\"]+)['\"]""", re.MULTILINE
-)
+from ..utils import PROJECT_ROOT
 
 
 def _load_lang_test_coverage_module(lang_name: str):
@@ -113,42 +109,17 @@ def _resolve_import(
     return None
 
 
-def _resolve_ts_import(
-    spec: str,
-    test_path: str,
-    production_files: set[str],
-) -> str | None:
-    """Backward-compatible TypeScript import resolver wrapper."""
-    try:
-        from ..lang.typescript import test_coverage as ts_cov
-        original_src = ts_cov.SRC_PATH
-        ts_cov.SRC_PATH = SRC_PATH
-        try:
-            return ts_cov.resolve_import_spec(spec, test_path, production_files)
-        finally:
-            ts_cov.SRC_PATH = original_src
-    except Exception:
-        return _resolve_import(spec, test_path, production_files, "typescript")
-
-
 def _resolve_barrel_reexports(
     filepath: str,
     production_files: set[str],
     lang_name: str = "typescript",
 ) -> set[str]:
-    """Resolve one-hop re-exports from a language barrel file."""
-    try:
-        content = Path(filepath).read_text()
-    except (OSError, UnicodeDecodeError):
-        return set()
-
-    results = set()
-    for m in _REEXPORT_RE.finditer(content):
-        spec = m.group(1)
-        resolved = _resolve_import(spec, filepath, production_files, lang_name)
-        if resolved:
-            results.add(resolved)
-    return results
+    """Resolve one-hop re-exports using language-specific helpers."""
+    mod = _load_lang_test_coverage_module(lang_name)
+    resolver = getattr(mod, "resolve_barrel_reexports", None)
+    if callable(resolver):
+        return resolver(filepath, production_files)
+    return set()
 
 
 def _parse_test_imports(

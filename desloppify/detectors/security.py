@@ -142,10 +142,10 @@ def detect_security_issues(
     scanned = 0
 
     for filepath in files:
-        # Skip generated/vendor zones
+        # Skip zones excluded from security scanning.
         if zone_map is not None:
             zone = zone_map.get(filepath)
-            if zone in (Zone.GENERATED, Zone.VENDOR):
+            if zone in (Zone.TEST, Zone.CONFIG, Zone.GENERATED, Zone.VENDOR):
                 continue
 
         try:

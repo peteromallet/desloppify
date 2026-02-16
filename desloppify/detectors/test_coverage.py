@@ -144,15 +144,6 @@ def _has_testable_logic(filepath: str, lang_name: str) -> bool:
     return True
 
 
-def _ts_has_testable_logic(content: str) -> bool:
-    """Backward-compatible wrapper for TypeScript testable-logic checks."""
-    mod = _load_lang_test_coverage_module("typescript")
-    has_logic = getattr(mod, "has_testable_logic", None)
-    if not callable(has_logic):
-        return True
-    return bool(has_logic("unknown.ts", content))
-
-
 def _load_lang_test_coverage_module(lang_name: str):
     """Load language-specific test coverage helpers from ``lang/<name>/test_coverage.py``."""
     try:
