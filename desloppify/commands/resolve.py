@@ -11,7 +11,14 @@ from ._helpers import state_path, _write_query
 
 def cmd_resolve(args: argparse.Namespace) -> None:
     """Resolve finding(s) matching one or more patterns."""
-    from ..state import load_state, save_state, resolve_findings
+    from ..state import (
+        load_state,
+        save_state,
+        resolve_findings,
+        get_overall_score,
+        get_objective_score,
+        get_strict_score,
+    )
 
     if args.status == "wontfix" and not args.note:
         print(colorize("Wontfix items become technical debt. Add --note to record your reasoning for future review.", "yellow"))
@@ -19,8 +26,9 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 
     sp = state_path(args)
     state = load_state(sp)
-    prev_score = state.get("score", 0)
-    prev_obj = state.get("objective_score")
+    prev_overall = get_overall_score(state)
+    prev_objective = get_objective_score(state)
+    prev_strict = get_strict_score(state)
 
     all_resolved = []
     for pattern in args.patterns:
@@ -48,18 +56,32 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         print(colorize(f"\n  \u26a0 Wontfix debt is now {wontfix_count} findings ({wontfix_pct}% of actionable).", "yellow"))
         print(colorize(f"    The strict score reflects this. Run `desloppify show \"*\" --status wontfix` to review.", "dim"))
 
-    new_obj = state.get("objective_score")
-    new_obj_strict = state.get("objective_strict")
-    if new_obj is not None:
-        delta = new_obj - (prev_obj or 0)
-        delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if abs(delta) >= 0.05 else ""
-        print(f"\n  Health: {new_obj:.1f}/100{delta_str}" +
-              colorize(f"  (strict: {new_obj_strict:.1f}/100)", "dim"))
+    new_overall = get_overall_score(state)
+    new_objective = get_objective_score(state)
+    new_strict = get_strict_score(state)
+    if new_overall is not None and new_objective is not None and new_strict is not None:
+        overall_delta = new_overall - (prev_overall or 0)
+        objective_delta = new_objective - (prev_objective or 0)
+        strict_delta = new_strict - (prev_strict or 0)
+        overall_delta_str = (
+            f" ({'+' if overall_delta > 0 else ''}{overall_delta:.1f})"
+            if abs(overall_delta) >= 0.05 else ""
+        )
+        objective_delta_str = (
+            f" ({'+' if objective_delta > 0 else ''}{objective_delta:.1f})"
+            if abs(objective_delta) >= 0.05 else ""
+        )
+        strict_delta_str = (
+            f" ({'+' if strict_delta > 0 else ''}{strict_delta:.1f})"
+            if abs(strict_delta) >= 0.05 else ""
+        )
+        print(
+            f"\n  Scores: overall {new_overall:.1f}/100{overall_delta_str}"
+            + colorize(f"  objective {new_objective:.1f}/100{objective_delta_str}", "dim")
+            + colorize(f"  strict {new_strict:.1f}/100{strict_delta_str}", "dim")
+        )
     else:
-        delta = state["score"] - prev_score
-        delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if abs(delta) >= 0.05 else ""
-        print(f"\n  Score: {state['score']:.1f}/100{delta_str}" +
-              colorize(f"  (strict: {state.get('strict_score', 0):.1f}/100)", "dim"))
+        print(colorize("\n  Scores unavailable — run `desloppify scan`.", "yellow"))
 
     # When resolving review findings with active assessments, the score
     # is driven by assessments, not finding status — nudge re-review.
@@ -86,17 +108,26 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 
     _write_query({"command": "resolve", "patterns": args.patterns, "status": args.status,
                   "resolved": all_resolved, "count": len(all_resolved),
-                  "score": state["score"], "strict_score": state.get("strict_score", 0),
-                  "objective_score": state.get("objective_score"),
-                  "objective_strict": state.get("objective_strict"),
-                  "prev_score": prev_score, "prev_objective": prev_obj,
+                  "overall_score": get_overall_score(state),
+                  "objective_score": get_objective_score(state),
+                  "strict_score": get_strict_score(state),
+                  "prev_overall_score": prev_overall,
+                  "prev_objective_score": prev_objective,
+                  "prev_strict_score": prev_strict,
                   "narrative": narrative})
 
 
 def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     """Add a pattern to the ignore list."""
     from ..config import add_ignore_pattern, save_config
-    from ..state import load_state, save_state, remove_ignored_findings
+    from ..state import (
+        load_state,
+        save_state,
+        remove_ignored_findings,
+        get_overall_score,
+        get_objective_score,
+        get_strict_score,
+    )
 
     sp = state_path(args)
     state = load_state(sp)
@@ -111,8 +142,15 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     print(colorize(f"Added ignore pattern: {args.pattern}", "green"))
     if removed:
         print(f"  Removed {removed} matching findings from state.")
-    print(f"  Score: {state['score']}/100" +
-          colorize(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
+    overall = get_overall_score(state)
+    objective = get_objective_score(state)
+    strict = get_strict_score(state)
+    if overall is not None and objective is not None and strict is not None:
+        print(
+            f"  Scores: overall {overall:.1f}/100"
+            + colorize(f"  objective: {objective:.1f}/100", "dim")
+            + colorize(f"  strict: {strict:.1f}/100", "dim")
+        )
     print()
 
     from ..narrative import compute_narrative
@@ -121,6 +159,8 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="ignore")
     _write_query({"command": "ignore", "pattern": args.pattern,
-                  "removed": removed, "score": state["score"],
-                  "strict_score": state.get("strict_score", 0),
+                  "removed": removed,
+                  "overall_score": overall,
+                  "objective_score": objective,
+                  "strict_score": strict,
                   "narrative": narrative})

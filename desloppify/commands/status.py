@@ -12,7 +12,13 @@ from ._helpers import state_path, _write_query
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Show score dashboard."""
-    from ..state import load_state, suppression_metrics
+    from ..state import (
+        load_state,
+        suppression_metrics,
+        get_overall_score,
+        get_objective_score,
+        get_strict_score,
+    )
 
     sp = state_path(args)
     state = load_state(sp)
@@ -20,10 +26,9 @@ def cmd_status(args: argparse.Namespace) -> None:
     suppression = suppression_metrics(state)
 
     if getattr(args, "json", False):
-        print(json.dumps({"score": state.get("score", 0),
-                          "strict_score": state.get("strict_score", 0),
-                          "objective_score": state.get("objective_score"),
-                          "objective_strict": state.get("objective_strict"),
+        print(json.dumps({"overall_score": get_overall_score(state),
+                          "objective_score": get_objective_score(state),
+                          "strict_score": get_strict_score(state),
                           "dimension_scores": state.get("dimension_scores"),
                           "potentials": state.get("potentials"),
                           "codebase_metrics": state.get("codebase_metrics"),
@@ -42,22 +47,22 @@ def cmd_status(args: argparse.Namespace) -> None:
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
 
-    score = state.get("score", 0)
-    strict_score = state.get("strict_score", 0)
-    obj_score = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
+    overall_score = get_overall_score(state)
+    objective_score = get_objective_score(state)
+    strict_score = get_strict_score(state)
     dim_scores = state.get("dimension_scores", {})
     by_tier = stats.get("by_tier", {})
 
-    # Header: prefer objective score when available
-    if obj_score is not None:
-        print(colorize(f"\n  Desloppify Health: {obj_score:.1f}/100", "bold") +
-              colorize(f"  (strict: {obj_strict:.1f})", "dim"))
+    if overall_score is not None and objective_score is not None and strict_score is not None:
+        print(colorize(
+            f"\n  Scores: overall {overall_score:.1f}/100 · "
+            f"objective {objective_score:.1f}/100 · "
+            f"strict {strict_score:.1f}/100",
+            "bold",
+        ))
     else:
-        print(colorize(f"\n  Desloppify Score: {score}/100", "bold") +
-              colorize(f"  (strict: {strict_score}/100)", "dim"))
-        print(colorize("  ⚠ Dimension-based scoring unavailable (potentials missing). "
-                "Run a full scan to fix: desloppify scan --path <source-root>", "yellow"))
+        print(colorize("\n  Scores unavailable", "bold"))
+        print(colorize("  Run a full scan to compute overall/objective/strict scores.", "yellow"))
 
     # Codebase metrics
     metrics = state.get("codebase_metrics", {})
@@ -129,8 +134,10 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(colorize(f"  Review staleness: {label}", "dim"))
     print()
 
-    _write_query({"command": "status", "score": score, "strict_score": strict_score,
-                  "objective_score": obj_score, "objective_strict": obj_strict,
+    _write_query({"command": "status",
+                  "overall_score": overall_score,
+                  "objective_score": objective_score,
+                  "strict_score": strict_score,
                   "dimension_scores": dim_scores,
                   "stats": stats, "scan_count": state.get("scan_count", 0),
                   "last_scan": state.get("last_scan"),
@@ -182,12 +189,13 @@ def _show_dimension_table(dim_scores: dict):
     print(colorize(f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len+2}} {'Tier'}  {'Action'}", "dim"))
     print(colorize("  " + "─" * 86, "dim"))
 
-    # Find lowest score for focus arrow (includes subjective dimensions)
+    # Find lowest strict score for focus arrow (includes subjective dimensions)
     lowest_name = None
     lowest_score = 101
     for name, ds in dim_scores.items():
-        if ds["score"] < lowest_score:
-            lowest_score = ds["score"]
+        strict_val = ds.get("strict", ds["score"])
+        if strict_val < lowest_score:
+            lowest_score = strict_val
             lowest_name = name
 
     for dim in DIMENSIONS:
@@ -245,8 +253,9 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
     lowest_score = 101
     lowest_issues = 0
     for name, ds in dim_scores.items():
-        if ds["score"] < lowest_score:
-            lowest_score = ds["score"]
+        strict_val = ds.get("strict", ds["score"])
+        if strict_val < lowest_score:
+            lowest_score = strict_val
             lowest_name = name
             lowest_issues = ds["issues"]
 

@@ -148,12 +148,22 @@ def generate_visualization(path: Path, state: dict | None = None,
     total_findings = sum(len(v) for v in fbf.values())
     open_findings = sum(1 for fs in fbf.values()
                         for f in fs if f.get("status") == "open")
-    score = state.get("score", "N/A") if state else "N/A"
+    if state:
+        from ..state import get_overall_score, get_objective_score, get_strict_score
+        overall_score = get_overall_score(state)
+        objective_score = get_objective_score(state)
+        strict_score = get_strict_score(state)
+    else:
+        overall_score = objective_score = strict_score = None
+    fmt_score = lambda v: f"{v:.1f}" if isinstance(v, (int, float)) else "N/A"
 
     replacements = {"__D3_CDN_URL__": D3_CDN_URL, "__TREE_DATA__": tree_json,
                      "__TOTAL_FILES__": str(total_files), "__TOTAL_LOC__": f"{total_loc:,}",
                      "__TOTAL_FINDINGS__": str(total_findings),
-                     "__OPEN_FINDINGS__": str(open_findings), "__SCORE__": str(score)}
+                     "__OPEN_FINDINGS__": str(open_findings),
+                     "__OVERALL_SCORE__": fmt_score(overall_score),
+                     "__OBJECTIVE_SCORE__": fmt_score(objective_score),
+                     "__STRICT_SCORE__": fmt_score(strict_score)}
     html = _get_html_template()
     for placeholder, value in replacements.items():
         html = html.replace(placeholder, value)

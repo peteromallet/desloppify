@@ -6,6 +6,8 @@ Every scan generates a scorecard badge you can add to your README — here's the
 
 <img src="scorecard.png" width="100%">
 
+Adding a new language plugin? See `ADDING_NEW_LANGUAGE.md`.
+
 ## For your agent's consideration...
 
 Copy-paste into any AI coding agent (Cursor, Codex, Copilot, etc.):

@@ -122,38 +122,40 @@ def _format_delta(value: float, prev: float | None) -> tuple[str, str]:
     return delta_str, color
 
 
-def _show_score_delta(state: dict, prev_score: float, prev_strict: float,
-                      prev_obj: float | None, prev_obj_strict: float | None):
-    """Print the score/health line with deltas."""
+def _show_score_delta(state: dict,
+                      prev_overall: float | None,
+                      prev_objective: float | None,
+                      prev_strict: float | None):
+    """Print the canonical score trio with deltas."""
+    from ..state import get_overall_score, get_objective_score, get_strict_score
+
     stats = state["stats"]
-    new_obj = state.get("objective_score")
-    new_obj_strict = state.get("objective_strict")
+    new_overall = get_overall_score(state)
+    new_objective = get_objective_score(state)
+    new_strict = get_strict_score(state)
 
     wontfix = stats.get("wontfix", 0)
     wontfix_str = f" · {wontfix} wontfix" if wontfix else ""
 
-    if new_obj is not None:
-        obj_delta_str, obj_color = _format_delta(new_obj, prev_obj)
-        strict_delta_str, strict_color = _format_delta(new_obj_strict, prev_obj_strict)
-        print(f"  Health: {colorize(f'{new_obj:.1f}/100{obj_delta_str}', obj_color)}" +
-              colorize(f"  strict: {new_obj_strict:.1f}/100{strict_delta_str}", strict_color) +
-              colorize(f"  |  {stats['open']} open{wontfix_str} / {stats['total']} total", "dim"))
-        # Surface wontfix debt gap prominently when significant
-        gap = (new_obj or 0) - (new_obj_strict or 0)
-        if gap >= 5 and wontfix >= 10:
-            print(colorize(f"  ⚠ {gap:.1f}-point gap between health and strict — "
-                           f"{wontfix} wontfix items represent hidden debt", "yellow"))
-    else:
-        new_score = state["score"]
-        new_strict = state.get("strict_score", 0)
-        delta_str, color = _format_delta(new_score, prev_score)
-        strict_delta_str, strict_color = _format_delta(new_strict, prev_strict)
-        print(f"  Score: {colorize(f'{new_score:.1f}/100{delta_str}', color)}" +
-              colorize(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
-              colorize(f"  |  {stats['open']} open{wontfix_str} / {stats['total']} total", "dim"))
-        print(colorize("  ⚠ Dimension-based scoring unavailable (potentials missing). "
-                "This score uses legacy weighted-progress and is unreliable. "
-                "Run a full scan to fix: desloppify scan --path <source-root>", "yellow"))
+    if new_overall is None or new_objective is None or new_strict is None:
+        print(colorize("  Scores unavailable — run a full scan with language detectors enabled.", "yellow"))
+        return
+
+    overall_delta_str, overall_color = _format_delta(new_overall, prev_overall)
+    objective_delta_str, objective_color = _format_delta(new_objective, prev_objective)
+    strict_delta_str, strict_color = _format_delta(new_strict, prev_strict)
+    print(
+        "  Scores: "
+        + colorize(f"overall {new_overall:.1f}/100{overall_delta_str}", overall_color)
+        + colorize(f"  objective {new_objective:.1f}/100{objective_delta_str}", objective_color)
+        + colorize(f"  strict {new_strict:.1f}/100{strict_delta_str}", strict_color)
+        + colorize(f"  |  {stats['open']} open{wontfix_str} / {stats['total']} total", "dim")
+    )
+    # Surface wontfix debt gap prominently when significant
+    gap = (new_overall or 0) - (new_strict or 0)
+    if gap >= 5 and wontfix >= 10:
+        print(colorize(f"  ⚠ {gap:.1f}-point gap between overall and strict — "
+                       f"{wontfix} wontfix items represent hidden debt", "yellow"))
 
 
 def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], dict]:
@@ -297,10 +299,10 @@ def cmd_scan(args) -> None:
 
     prev_scan_path = state.get("scan_path")
     path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
-    prev_score = state.get("score", 0) if not path_changed else 0
-    prev_strict = state.get("strict_score", 0) if not path_changed else 0
-    prev_obj = state.get("objective_score") if not path_changed else None
-    prev_obj_strict = state.get("objective_strict") if not path_changed else None
+    from ..state import get_overall_score, get_objective_score, get_strict_score
+    prev_overall = get_overall_score(state) if not path_changed else None
+    prev_objective = get_objective_score(state) if not path_changed else None
+    prev_strict = get_strict_score(state) if not path_changed else None
     # Persist zone distribution before save so narrative can access it
     if lang and lang._zone_map is not None:
         state["zone_distribution"] = lang._zone_map.counts()
@@ -329,7 +331,7 @@ def cmd_scan(args) -> None:
     print(colorize("  " + "─" * 50, "dim"))
 
     _show_diff_summary(diff)
-    _show_score_delta(state, prev_score, prev_strict, prev_obj, prev_obj_strict)
+    _show_score_delta(state, prev_overall, prev_objective, prev_strict)
     if not include_slow:
         print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
     _show_detector_progress(state)
@@ -353,12 +355,15 @@ def cmd_scan(args) -> None:
         save_state(state, sp)
 
     from ..config import config_for_query
-    _write_query({"command": "scan", "score": state["score"],
-                  "strict_score": state.get("strict_score", 0),
-                  "prev_score": prev_score, "diff": diff, "stats": state["stats"],
+    _write_query({"command": "scan",
+                  "overall_score": get_overall_score(state),
+                  "objective_score": get_objective_score(state),
+                  "strict_score": get_strict_score(state),
+                  "prev_overall_score": prev_overall,
+                  "prev_objective_score": prev_objective,
+                  "prev_strict_score": prev_strict,
+                  "diff": diff, "stats": state["stats"],
                   "warnings": warnings,
-                  "objective_score": state.get("objective_score"),
-                  "objective_strict": state.get("objective_strict"),
                   "dimension_scores": state.get("dimension_scores"),
                   "potentials": state.get("potentials"),
                   "zone_distribution": zone_distribution,
@@ -411,9 +416,10 @@ def _show_score_integrity(state: dict, diff: dict):
     if wontfix <= 5 and ignored <= 0 and ignore_patterns <= 0:
         return
 
-    obj = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
-    strict_gap = round(obj - obj_strict, 1) if obj is not None and obj_strict is not None else 0
+    from ..state import get_overall_score, get_strict_score
+    overall = get_overall_score(state)
+    strict = get_strict_score(state)
+    strict_gap = round(overall - strict, 1) if overall is not None and strict is not None else 0
 
     # Wontfix % of actionable findings (open + wontfix + fixed + auto_resolved + false_positive)
     actionable = stats.get("open", 0) + wontfix + stats.get("fixed", 0) + stats.get("auto_resolved", 0) + stats.get("false_positive", 0)
@@ -485,9 +491,11 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
         return
 
     dim_scores = state.get("dimension_scores", {})
-    obj_score = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
-    if obj_score is None and not dim_scores:
+    from ..state import get_overall_score, get_objective_score, get_strict_score
+    overall_score = get_overall_score(state)
+    objective_score = get_objective_score(state)
+    strict_score = get_strict_score(state)
+    if overall_score is None and objective_score is None and strict_score is None and not dim_scores:
         return
 
     print("─" * 60)
@@ -497,9 +505,12 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
     print("AND all subjective dimension scores in a markdown table.")
     print("The goal is to maximize strict scores. Never skip the scores.\n")
 
-    print(f"Overall health: {obj_score:.1f}/100")
-    if obj_strict is not None:
-        print(f"Strict health:  {obj_strict:.1f}/100")
+    if overall_score is not None:
+        print(f"Overall score:   {overall_score:.1f}/100")
+    if objective_score is not None:
+        print(f"Objective score: {objective_score:.1f}/100")
+    if strict_score is not None:
+        print(f"Strict score:    {strict_score:.1f}/100")
     print()
 
     # Build dimension table — separate mechanical from subjective
@@ -536,7 +547,7 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
         wontfix = stats.get("wontfix", 0)
         ignored = diff.get("ignored", 0) if diff else 0
         ignore_pats = diff.get("ignore_patterns", 0) if diff else 0
-        strict_gap = round((obj_score or 0) - (obj_strict or 0), 1) if obj_score and obj_strict else 0
+        strict_gap = round((overall_score or 0) - (strict_score or 0), 1) if overall_score and strict_score else 0
         print(f"Total findings: {stats.get('total', 0)} | "
               f"Open: {stats.get('open', 0)} | "
               f"Fixed: {stats.get('fixed', 0)} | "

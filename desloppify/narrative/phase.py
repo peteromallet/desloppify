@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 
-def _detect_phase(history: list[dict], obj_strict: float | None) -> str:
+def _history_strict(entry: dict) -> float | None:
+    """Strict score from history entry (supports old/new keys)."""
+    return entry.get("strict_score", entry.get("objective_strict"))
+
+
+def _detect_phase(history: list[dict], strict_score: float | None) -> str:
     """Detect project phase from scan history trajectory."""
     if not history:
         return "first_scan"
@@ -11,20 +16,20 @@ def _detect_phase(history: list[dict], obj_strict: float | None) -> str:
     if len(history) == 1:
         return "first_scan"
 
-    strict = obj_strict
+    strict = strict_score
     if strict is None and history:
-        strict = history[-1].get("objective_strict")
+        strict = _history_strict(history[-1])
 
     # Check regression: strict dropped from previous scan
     if len(history) >= 2:
-        prev = history[-2].get("objective_strict")
-        curr = history[-1].get("objective_strict")
+        prev = _history_strict(history[-2])
+        curr = _history_strict(history[-1])
         if prev is not None and curr is not None and curr < prev - 0.5:
             return "regression"
 
     # Check stagnation: strict unchanged ±0.5 for 3+ scans
     if len(history) >= 3:
-        recent = [h.get("objective_strict") for h in history[-3:]]
+        recent = [_history_strict(h) for h in history[-3:]]
         if all(r is not None for r in recent):
             spread = max(recent) - min(recent)
             if spread <= 0.5:
@@ -33,8 +38,8 @@ def _detect_phase(history: list[dict], obj_strict: float | None) -> str:
     # Early momentum: scans 2-5 with score rising — check BEFORE score thresholds
     # so early projects get motivational framing even if score is already high
     if len(history) <= 5 and len(history) >= 2:
-        first = history[0].get("objective_strict")
-        last = history[-1].get("objective_strict")
+        first = _history_strict(history[0])
+        last = _history_strict(history[-1])
         if first is not None and last is not None and last > first:
             return "early_momentum"
 
@@ -50,7 +55,8 @@ def _detect_phase(history: list[dict], obj_strict: float | None) -> str:
 def _detect_milestone(state: dict, diff: dict | None,
                       history: list[dict]) -> str | None:
     """Detect notable milestones worth celebrating."""
-    obj_strict = state.get("objective_strict")
+    from ..state import get_strict_score
+    strict_score = get_strict_score(state)
     stats = state.get("stats", {})
 
     # Check T1 clear
@@ -59,13 +65,13 @@ def _detect_milestone(state: dict, diff: dict | None,
     t2_open = by_tier.get("2", {}).get("open", 0)
 
     if len(history) >= 2:
-        prev_strict = history[-2].get("objective_strict")
-        if prev_strict is not None and obj_strict is not None:
+        prev_strict = _history_strict(history[-2])
+        if prev_strict is not None and strict_score is not None:
             # Crossed 90
-            if prev_strict < 90 and obj_strict >= 90:
+            if prev_strict < 90 and strict_score >= 90:
                 return "Crossed 90% strict!"
             # Crossed 80
-            if prev_strict < 80 and obj_strict >= 80:
+            if prev_strict < 80 and strict_score >= 80:
                 return "Crossed 80% strict!"
 
     if t1_open == 0 and t2_open == 0:

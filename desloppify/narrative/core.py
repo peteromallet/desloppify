@@ -93,15 +93,16 @@ def compute_narrative(state: dict, *, diff: dict | None = None,
                if lang else raw_history)
     dim_scores = state.get("dimension_scores", {})
     stats = state.get("stats", {})
-    obj_strict = state.get("objective_strict")
-    obj_score = state.get("objective_score")
+    from ..state import get_overall_score, get_strict_score
+    strict_score = get_strict_score(state)
+    overall_score = get_overall_score(state)
     from ..state import path_scoped_findings
     findings = path_scoped_findings(state.get("findings", {}), state.get("scan_path"))
 
     by_det = _count_open_by_detector(findings)
     badge = _compute_badge_status()
 
-    phase = _detect_phase(history, obj_strict)
+    phase = _detect_phase(history, strict_score)
     dimensions = _analyze_dimensions(dim_scores, history, state)
     debt = _analyze_debt(dim_scores, findings, history)
     milestone = _detect_milestone(state, diff, history)
@@ -109,7 +110,7 @@ def compute_narrative(state: dict, *, diff: dict | None = None,
     strategy = _compute_strategy(findings, by_det, actions, phase, lang)
     tools = _compute_tools(by_det, state, lang, badge)
     headline = _compute_headline(phase, dimensions, debt, milestone, diff,
-                                 obj_strict, obj_score, stats, history,
+                                 strict_score, overall_score, stats, history,
                                  open_by_detector=by_det)
     reminders, updated_reminder_history = _compute_reminders(
         state, lang, phase, debt, actions, dimensions, badge, command,

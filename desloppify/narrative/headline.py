@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 
+def _history_strict(entry: dict) -> float | None:
+    """Strict score from history entry (supports old/new keys)."""
+    return entry.get("strict_score", entry.get("objective_strict"))
+
+
 def _compute_headline(phase: str, dimensions: dict, debt: dict,
                       milestone: str | None, diff: dict | None,
                       obj_strict: float | None, obj_score: float | None,
@@ -39,7 +44,7 @@ def _compute_headline(phase: str, dimensions: dict, debt: dict,
 
 def _compute_headline_inner(phase: str, dimensions: dict, debt: dict,
                             milestone: str | None, diff: dict | None,
-                            obj_strict: float | None, obj_score: float | None,
+                            strict_score: float | None, overall_score: float | None,
                             stats: dict, history: list[dict]) -> str | None:
     """Compute the base headline (without security prefix)."""
     # Milestone takes priority
@@ -56,8 +61,8 @@ def _compute_headline_inner(phase: str, dimensions: dict, debt: dict,
 
     # Regression — acknowledge that drops after fixes are normal
     if phase == "regression" and len(history) >= 2:
-        prev = history[-2].get("objective_strict")
-        curr = history[-1].get("objective_strict")
+        prev = _history_strict(history[-2])
+        curr = _history_strict(history[-1])
         if prev is not None and curr is not None:
             drop = round(prev - curr, 1)
             return (f"Score shifted {drop} pts — this is normal after structural changes. "
@@ -65,7 +70,7 @@ def _compute_headline_inner(phase: str, dimensions: dict, debt: dict,
 
     # Stagnation — suggest which dimension to focus on
     if phase == "stagnation":
-        if obj_strict is not None:
+        if strict_score is not None:
             stuck_scans = min(len(history), 5)
             wontfix = debt.get("wontfix_count", 0)
             # Point to the specific dimension dragging things down
@@ -73,15 +78,15 @@ def _compute_headline_inner(phase: str, dimensions: dict, debt: dict,
             if lowest_dims:
                 dim = lowest_dims[0]
                 if wontfix > 0:
-                    return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+                    return (f"Score plateaued at {strict_score:.1f} for {stuck_scans} scans. "
                             f"{dim['name']} ({dim['strict']}%) is where the breakthrough is. "
                             f"{wontfix} wontfix items may also be worth revisiting.")
-                return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+                return (f"Score plateaued at {strict_score:.1f} for {stuck_scans} scans. "
                         f"{dim['name']} ({dim['strict']}%) is where the breakthrough is.")
             if wontfix > 0:
-                return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+                return (f"Score plateaued at {strict_score:.1f} for {stuck_scans} scans. "
                         f"{wontfix} wontfix items — revisit?")
-            return (f"Score plateaued at {obj_strict:.1f} for {stuck_scans} scans. "
+            return (f"Score plateaued at {strict_score:.1f} for {stuck_scans} scans. "
                     f"Try tackling a different dimension.")
 
     # Leverage point (lowest dimension with biggest impact)
@@ -95,13 +100,13 @@ def _compute_headline_inner(phase: str, dimensions: dict, debt: dict,
     if debt.get("overall_gap", 0) > 5.0:
         gap = debt["overall_gap"]
         worst = debt.get("worst_dimension", "")
-        if obj_strict is not None and obj_score is not None:
-            return (f"Strict {obj_strict:.1f} vs lenient {obj_score:.1f} — "
+        if strict_score is not None and overall_score is not None:
+            return (f"Strict {strict_score:.1f} vs overall {overall_score:.1f} — "
                     f"{gap} pts of wontfix debt, mostly in {worst}")
 
     # Maintenance phase
     if phase == "maintenance":
-        return f"Health {obj_strict:.1f}/100 — maintenance mode. Watch for regressions."
+        return f"Strict {strict_score:.1f}/100 — maintenance mode. Watch for regressions."
 
     # Middle grind fallback — point toward next item
     if phase == "middle_grind":
@@ -114,8 +119,8 @@ def _compute_headline_inner(phase: str, dimensions: dict, debt: dict,
             return f"{open_count} findings open. Run `desloppify next` for the highest-priority item."
 
     # Early momentum fallback — celebrate trajectory
-    if phase == "early_momentum" and obj_strict is not None:
+    if phase == "early_momentum" and strict_score is not None:
         open_count = stats.get("open", 0)
-        return f"Score {obj_strict:.1f}/100 with {open_count} findings open. Keep the momentum going."
+        return f"Score {strict_score:.1f}/100 with {open_count} findings open. Keep the momentum going."
 
     return None

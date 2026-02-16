@@ -191,13 +191,9 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
 
     output_path = Path(output_path)
     dim_scores = state.get("dimension_scores", {})
-    obj_score = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
-
-    main_score = obj_score if obj_score is not None else state.get("score", 0)
-    strict_score = (
-        obj_strict if obj_strict is not None else state.get("strict_score", 0)
-    )
+    from ..state import get_overall_score, get_strict_score
+    main_score = get_overall_score(state) or 0
+    strict_score = get_strict_score(state) or 0
 
     project_name = _get_project_name()
     package_version = _get_package_version()

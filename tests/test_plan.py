@@ -94,7 +94,7 @@ class TestPlanHeader:
         st = _state(score=42)
         lines = _plan_header(st, {})
         score_line = lines[2]
-        assert "Score: 42/100" in score_line
+        assert "Score: 42.0/100" in score_line
 
     def test_stats_in_header(self):
         stats = {"open": 10, "fixed": 5, "wontfix": 3, "auto_resolved": 2}

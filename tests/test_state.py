@@ -95,7 +95,9 @@ class TestEmptyState:
         assert s["last_scan"] is None
         assert s["scan_count"] == 0
         assert "config" not in s  # config moved to config.json
-        assert s["score"] == 0
+        assert s["overall_score"] == 0
+        assert s["objective_score"] == 0
+        assert s["strict_score"] == 0
         assert s["stats"] == {}
         assert s["findings"] == {}
         assert "created" in s
@@ -501,7 +503,8 @@ class TestWontfixAutoResolution:
         )
 
         assert st["objective_score"] == 100.0
-        assert st["objective_strict"] == 100.0
+        assert st["strict_score"] == 100.0
+        assert st["overall_score"] == 100.0
         assert st["dimension_scores"] == {}
 
     def test_zero_active_checks_with_assessments_keeps_subjective_scoring(self):
@@ -518,7 +521,10 @@ class TestWontfixAutoResolution:
             force_resolve=True,
         )
 
-        assert st["objective_score"] < 100.0
+        # Objective excludes subjective dimensions; overall/strict include them.
+        assert st["objective_score"] == 100.0
+        assert st["overall_score"] < 100.0
+        assert st["strict_score"] < 100.0
 
 
 class TestSuppressionAccounting:

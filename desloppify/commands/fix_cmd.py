@@ -165,24 +165,41 @@ def _print_fix_summary(fixer: FixerConfig, results, total_items, total_lines, dr
 def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_items,
                       lang, skip_reasons=None):
     """Resolve findings in state, run post-fix hooks, and print retro."""
-    from ..state import load_state, save_state
+    from ..state import (
+        load_state,
+        save_state,
+        get_overall_score,
+        get_objective_score,
+        get_strict_score,
+    )
     sp = state_path(args)
     state = load_state(sp)
-    prev_score = state.get("score", 0)
+    prev_overall = get_overall_score(state)
+    prev_objective = get_objective_score(state)
+    prev_strict = get_strict_score(state)
     resolved_ids = _resolve_fixer_results(state, results, fixer.detector, fixer_name)
     save_state(state, sp)
 
-    delta = state["score"] - prev_score
-    delta_str = f" ({'+' if delta > 0 else ''}{delta})" if delta else ""
+    new_overall = get_overall_score(state)
+    new_objective = get_objective_score(state)
+    new_strict = get_strict_score(state)
     print(f"\n  Auto-resolved {len(resolved_ids)} findings in state")
-    print(f"  Score: {state['score']}/100{delta_str}" +
-          colorize(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
+    if new_overall is not None and new_objective is not None and new_strict is not None:
+        overall_delta = new_overall - (prev_overall or 0)
+        delta_str = f" ({'+' if overall_delta > 0 else ''}{overall_delta:.1f})" if overall_delta else ""
+        print(
+            f"  Scores: overall {new_overall:.1f}/100{delta_str}"
+            + colorize(f"  objective {new_objective:.1f}/100", "dim")
+            + colorize(f"  strict {new_strict:.1f}/100", "dim")
+        )
+    else:
+        print(colorize("  Scores unavailable — run `desloppify scan`.", "yellow"))
 
     if fixer.post_fix:
         try:
-            fixer.post_fix(path, state, prev_score, False, lang=lang)
+            fixer.post_fix(path, state, prev_overall or 0, False, lang=lang)
         except TypeError:
-            fixer.post_fix(path, state, prev_score, False)
+            fixer.post_fix(path, state, prev_overall or 0, False)
         save_state(state, sp)
 
     if skip_reasons is None:
@@ -200,8 +217,13 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
     _write_query({"command": "fix", "fixer": fixer_name,
                   "files_fixed": len(results), "items_fixed": total_items,
                   "findings_resolved": len(resolved_ids),
-                  "score": state["score"], "strict_score": state.get("strict_score", 0),
-                  "prev_score": prev_score, "skip_reasons": skip_reasons,
+                  "overall_score": new_overall,
+                  "objective_score": new_objective,
+                  "strict_score": new_strict,
+                  "prev_overall_score": prev_overall,
+                  "prev_objective_score": prev_objective,
+                  "prev_strict_score": prev_strict,
+                  "skip_reasons": skip_reasons,
                   "next_action": next_action,
                   "narrative": narrative})
     _print_fix_retro(fixer_name, len(entries), total_items, len(resolved_ids), skip_reasons)

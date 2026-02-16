@@ -175,9 +175,16 @@ def _do_import(import_file, state, lang, sp, holistic=False):
         print(colorize(f"\n  {len(open_review)} review finding{'s' if len(open_review) != 1 else ''} open total", "bold"))
         print(colorize(f"  Run `desloppify issues` to see the work queue", "dim"))
 
-    obj_score = state.get("objective_score") or 0
-    if obj_score:
-        print(colorize(f"\n  Current score: {obj_score:.1f}/100", "dim"))
+    from ..state import get_overall_score, get_objective_score, get_strict_score
+    overall = get_overall_score(state)
+    objective = get_objective_score(state)
+    strict = get_strict_score(state)
+    if overall is not None and objective is not None and strict is not None:
+        print(colorize(
+            f"\n  Current scores: overall {overall:.1f}/100 · "
+            f"objective {objective:.1f}/100 · strict {strict:.1f}/100",
+            "dim",
+        ))
 
 
 def _setup_lang(lang, path: Path, config: dict) -> list[str]:

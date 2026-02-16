@@ -1,10 +1,8 @@
 # Adding a New Language
 
-This repo uses one standard path: scaffold, then fill in language logic.
+Use one path only: scaffold, then implement.
 
-## 1) Scaffold (Canonical Start)
-
-Run:
+## 1) Canonical Start (Do This)
 
 ```bash
 desloppify dev scaffold-lang <name> \
@@ -19,87 +17,81 @@ Example:
 desloppify dev scaffold-lang go --extension .go --marker go.mod --default-src .
 ```
 
-What this does:
+This generates the standardized plugin layout and (unless `--no-wire-pyproject`) updates `pyproject.toml` for test discovery/package excludes.
 
-- creates `desloppify/lang/<name>/` with the full standardized file layout
-- creates `tests/__init__.py` and `tests/test_init.py`
-- updates `pyproject.toml` (`testpaths` + setuptools `exclude`) unless `--no-wire-pyproject`
+Do not manually copy Python/TypeScript as your primary bootstrap strategy.
 
-## 2) Required Layout (Enforced)
+## 2) Required Plugin Layout (Enforced)
 
-Language registration fails if any of these are missing:
+`desloppify/lang/<name>/` must contain:
 
-```text
-desloppify/lang/<name>/
-├── __init__.py
-├── commands.py
-├── extractors.py
-├── phases.py
-├── move.py
-├── review.py
-├── test_coverage.py
-├── detectors/__init__.py
-├── fixers/__init__.py
-├── tests/__init__.py
-└── tests/test_*.py (at least one)
-```
+- `__init__.py` (required for module discovery)
+- `commands.py`
+- `extractors.py`
+- `phases.py`
+- `move.py`
+- `review.py`
+- `test_coverage.py`
+- `detectors/__init__.py`
+- `fixers/__init__.py`
+- `tests/__init__.py`
+- at least one `tests/test_*.py`
 
-## 3) LangConfig Contract (Validated at Runtime)
+Registration/validation fails if this contract is incomplete.
+
+## 3) LangConfig Runtime Contract (Enforced)
 
 `get_lang("<name>")` validates:
 
-- `name` matches the registered language name
-- `extensions` non-empty
-- `build_dep_graph`, `file_finder`, `extract_functions` callable
-- `phases` non-empty and each phase has non-empty label + callable `run`
-- `detect_commands` non-empty dict, callable values, snake_case lowercase keys
-- `fixers` dict of `FixerConfig`
-- `zone_rules` non-empty
+- `cfg` is `LangConfig` and `cfg.name == "<name>"`
+- non-empty `extensions`
+- callable `build_dep_graph`, `file_finder`, `extract_functions`
+- non-empty `phases`, each with non-empty label and callable `run`
+- non-empty `detect_commands` with lowercase snake_case keys and callable values
+- `fixers` is a dict of `FixerConfig` values (can be empty)
+- non-empty `zone_rules`
 
-## 4) Detector/Fixer Strategy
+## 4) Detector/Fixer Rules of Thumb
 
-Use generic detectors when normalized data is enough:
+Prefer shared/generic first:
 
-- `large`, `complexity`, `gods`, `dupes`, `single_use`, `cycles`, `orphaned`, `naming`
-- shared phases: `phase_security`, `phase_test_coverage`, `phase_subjective_review`
+- shared phases in `desloppify/lang/base.py`:
+  - `phase_security`
+  - `phase_test_coverage`
+  - `phase_subjective_review`
+  - `phase_dupes`
+  - `phase_private_imports` (if applicable)
+- generic detectors in `desloppify/detectors/` when normalized inputs are enough.
 
-Use language-specific detectors when syntax/framework semantics are required:
+Write language-specific detectors when correctness depends on parser/framework semantics (imports, AST-aware smells, framework conventions).
 
-- import graph parsing/resolution
-- syntax-aware smell/security rules
-- framework-specific conventions
+Fixers:
 
-Rule of thumb:
+- fixers are language-local (`desloppify/lang/<name>/fixers/`)
+- there is no global generic fixer layer
+- emitted `removed` identities must match finding IDs (`detector::file::name`) for correct state resolution
 
-1. If generic input shape works, reuse generic detector.
-2. If correctness depends on parser semantics, implement language-specific detector.
+## 5) Tests (Minimum)
 
-Fixer invariant:
+Add tests in `desloppify/lang/<name>/tests/` and run:
 
-- fixer `removed` IDs must match finding `name` exactly (`detector::file::name` identity)
+```bash
+pytest -q \
+  tests/test_lang_init.py \
+  tests/test_lang_standardization.py \
+  desloppify/lang/<name>/tests
+```
 
-## 5) Testing Standard
-
-Add colocated tests under `desloppify/lang/<name>/tests/` following existing Python/TypeScript patterns.
-
-Minimum:
-
-1. config/init contract tests
-2. command registry tests
-3. extractor/dep-graph tests
-4. move helper tests
-5. any language-specific detector tests
-
-Then run:
+Also run full suite before merge:
 
 ```bash
 pytest -q
 ```
 
-## 6) Definition of Done
+## 6) Done Checklist
 
-1. `desloppify --lang <name> scan --path <src>` works
-2. `desloppify --lang <name> detect <detector>` works
-3. `desloppify --lang <name> move ...` works for language files
-4. language tests pass
-5. `pyproject.toml` includes language test path + package exclude
+1. `desloppify --lang <name> scan --path <src>` works.
+2. `desloppify --lang <name> detect <detector>` works.
+3. `desloppify --lang <name> move ...` works for language files.
+4. Contract tests pass (`test_lang_init` + `test_lang_standardization` + language tests).
+5. `pyproject.toml` includes language test path/package exclude (or intentionally skipped via `--no-wire-pyproject`).

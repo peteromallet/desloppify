@@ -132,8 +132,8 @@ def _analyze_debt(dim_scores: dict, findings: dict,
     if len(history) >= 3:
         gaps = []
         for h in history[-5:]:
-            hs = h.get("objective_strict")
-            hl = h.get("objective_score")
+            hs = h.get("strict_score", h.get("objective_strict"))
+            hl = h.get("overall_score", h.get("objective_score"))
             if hs is not None and hl is not None:
                 gaps.append(hl - hs)
         if len(gaps) >= 2:

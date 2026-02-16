@@ -37,7 +37,8 @@ def _compute_reminders(state: dict, lang: str | None,
                        config: dict | None = None) -> tuple[list[dict], dict]:
     """Compute context-specific reminders, suppressing those shown too many times."""
     reminders = []
-    obj_strict = state.get("objective_strict")
+    from ..state import get_strict_score
+    strict_score = get_strict_score(state)
     reminder_history = state.get("reminder_history", {})
 
     # 1. Auto-fixers available
@@ -61,7 +62,7 @@ def _compute_reminders(state: dict, lang: str | None,
         })
 
     # 3. Badge recommendation (strict >= 90 and README doesn't have it)
-    if obj_strict is not None and obj_strict >= 90:
+    if strict_score is not None and strict_score >= 90:
         if badge.get("generated") and not badge.get("in_readme"):
             reminders.append({
                 "type": "badge_recommendation",
@@ -189,8 +190,8 @@ def _compute_reminders(state: dict, lang: str | None,
     # 9. Review not run — nudge when mechanical score is high but no review exists
     review_cache = state.get("review_cache", {})
     if not review_cache.get("files"):
-        obj_strict = state.get("objective_strict", 0)
-        if obj_strict >= 80:
+        current_strict = get_strict_score(state) or 0
+        if current_strict >= 80:
             reminders.append({
                 "type": "review_not_run",
                 "message": ("Mechanical checks look good! Run a subjective design review "
@@ -253,9 +254,9 @@ def _compute_reminders(state: dict, lang: str | None,
     if command == "scan":
         reminders.insert(0, {
             "type": "report_scores",
-            "message": ("ALWAYS share ALL scores with the user: overall health "
-                        "(lenient + strict), every dimension score (lenient + strict), "
-                        "and all subjective dimension scores. The goal is to maximize strict scores."),
+            "message": ("ALWAYS share ALL scores with the user: overall, objective, and strict, "
+                        "plus every dimension score (lenient + strict), including subjective dimensions. "
+                        "The goal is to maximize strict scores."),
             "command": None,
             "no_decay": True,
         })

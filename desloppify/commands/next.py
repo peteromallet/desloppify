@@ -14,7 +14,7 @@ def _serialize_item(f: dict) -> dict:
 
 def cmd_next(args) -> None:
     """Show next highest-priority open finding(s)."""
-    from ..state import load_state
+    from ..state import load_state, get_overall_score, get_objective_score, get_strict_score
     from ..plan import get_next_items
 
     sp = state_path(args)
@@ -30,8 +30,16 @@ def cmd_next(args) -> None:
 
     items = get_next_items(state, tier, count, scan_path=state.get("scan_path"))
     if not items:
-        print(colorize("Nothing to do! Score: 100/100", "green"))
-        _write_query({"command": "next", "items": [], "score": state.get("score", 0)})
+        strict = get_strict_score(state)
+        suffix = f" Strict score: {strict:.1f}/100" if strict is not None else ""
+        print(colorize(f"Nothing to do!{suffix}", "green"))
+        _write_query({
+            "command": "next",
+            "items": [],
+            "overall_score": get_overall_score(state),
+            "objective_score": get_objective_score(state),
+            "strict_score": strict,
+        })
         return
 
     from ..narrative import compute_narrative
@@ -42,7 +50,9 @@ def cmd_next(args) -> None:
 
     _write_query({
         "command": "next",
-        "score": state.get("score", 0),
+        "overall_score": get_overall_score(state),
+        "objective_score": get_objective_score(state),
+        "strict_score": get_strict_score(state),
         "items": [_serialize_item(f) for f in items],
         "narrative": narrative,
     })

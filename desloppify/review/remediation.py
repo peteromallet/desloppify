@@ -33,8 +33,10 @@ def generate_remediation_plan(state: dict, lang_name: str, *,
             safe_write_text(output_path, content)
         return content
 
-    obj_score = state.get("objective_score") or 0
-    obj_strict = state.get("objective_strict") or 0
+    from ..state import get_overall_score, get_objective_score, get_strict_score
+    overall_score = get_overall_score(state) or 0
+    objective_score = get_objective_score(state) or 0
+    strict_score = get_strict_score(state) or 0
 
     # Get review potential for score impact estimation
     potential = 0
@@ -70,7 +72,8 @@ def generate_remediation_plan(state: dict, lang_name: str, *,
 
     _w("# Holistic Review: Remediation Plan\n")
     _w(f"**Generated**: {utc_now()[:10]}  ")
-    _w(f"**Current score**: {obj_score:.1f}/100 (strict: {obj_strict:.1f}/100)  ")
+    _w(f"**Current scores**: overall {overall_score:.1f}/100 · "
+       f"objective {objective_score:.1f}/100 · strict {strict_score:.1f}/100  ")
     _w(f"**Open holistic findings**: {len(entries)}  ")
     _w(f"**Estimated improvement**: ~{total_impact:.1f} pts if all addressed\n")
     _w("---\n")
@@ -140,10 +143,14 @@ def generate_remediation_plan(state: dict, lang_name: str, *,
 
 def _empty_plan(state: dict, lang_name: str) -> str:
     """Generate a short plan when no holistic findings are open."""
-    obj_score = state.get("objective_score") or 0
+    from ..state import get_overall_score, get_objective_score, get_strict_score
+    overall = get_overall_score(state) or 0
+    objective = get_objective_score(state) or 0
+    strict = get_strict_score(state) or 0
     return (
         "# Holistic Review: Remediation Plan\n\n"
-        f"**Score**: {obj_score:.1f}/100\n\n"
+        f"**Scores**: overall {overall:.1f}/100 · "
+        f"objective {objective:.1f}/100 · strict {strict:.1f}/100\n\n"
         "No open holistic findings. The codebase is clean at the architectural level.\n\n"
         "To start a new holistic review cycle:\n"
         "```bash\n"

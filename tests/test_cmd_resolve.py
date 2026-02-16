@@ -63,7 +63,10 @@ class TestCmdResolve:
         monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")
 
         fake_state = {
-            "findings": {}, "score": 50, "strict_score": 40,
+            "findings": {},
+            "overall_score": 50,
+            "objective_score": 48,
+            "strict_score": 40,
             "stats": {}, "scan_count": 1, "last_scan": "2025-01-01",
         }
         monkeypatch.setattr(state_mod, "load_state", lambda sp: fake_state)
@@ -93,7 +96,9 @@ class TestCmdResolve:
 
         fake_state = {
             "findings": {"f1": {"status": "fixed"}},
-            "score": 60, "strict_score": 50,
+            "overall_score": 60,
+            "objective_score": 58,
+            "strict_score": 50,
             "stats": {}, "scan_count": 1, "last_scan": "2025-01-01",
         }
         monkeypatch.setattr(state_mod, "load_state", lambda sp: fake_state)
@@ -116,4 +121,4 @@ class TestCmdResolve:
         cmd_resolve(FakeArgs())
         out = capsys.readouterr().out
         assert "Resolved 1" in out
-        assert "Score:" in out
+        assert "Scores:" in out
