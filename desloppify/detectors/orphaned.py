@@ -82,6 +82,10 @@ def detect_orphaned_files(
         if loc < 10:
             continue
 
-        entries.append({"file": filepath, "loc": loc})
+        entries.append({
+            "file": filepath,
+            "loc": loc,
+            "import_count": entry.get("import_count", 0),
+        })
 
     return sorted(entries, key=lambda e: -e["loc"]), total_files

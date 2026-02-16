@@ -231,13 +231,30 @@ def display_entries(args, entries, *, label, empty_msg, columns, widths, row_fn,
     return True
 
 
-def rel(path: str) -> str:
+def _normalize_path_separators(path: str) -> str:
+    """Normalize path separators to forward slashes for stable output."""
+    return path.replace("\\", "/")
+
+
+def _safe_relpath(path: str | Path, start: str | Path) -> str:
+    """Compute relpath with cross-drive fallback to absolute path.
+
+    On Windows, os.path.relpath raises ValueError when path and start are on
+    different drives. In that case return an absolute path string.
+    """
     try:
-        return str(Path(path).resolve().relative_to(PROJECT_ROOT)).replace("\\", "/")
+        return os.path.relpath(str(path), str(start))
     except ValueError:
-        # Path outside PROJECT_ROOT — normalize to consistent relative form
-        import os
-        return os.path.relpath(str(Path(path).resolve()), str(PROJECT_ROOT)).replace("\\", "/")
+        return str(Path(path).resolve())
+
+
+def rel(path: str) -> str:
+    resolved = Path(path).resolve()
+    try:
+        return _normalize_path_separators(str(resolved.relative_to(PROJECT_ROOT)))
+    except ValueError:
+        # Path outside PROJECT_ROOT: prefer relative form when possible, else absolute.
+        return _normalize_path_separators(_safe_relpath(resolved, PROJECT_ROOT))
 
 
 def resolve_path(filepath: str) -> str:
@@ -291,7 +308,7 @@ def _find_source_files_cached(path: str, extensions: tuple[str, ...],
     files: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune excluded directories in-place (prevents descending into them)
-        rel_dir = os.path.relpath(dirpath, PROJECT_ROOT).replace("\\", "/")
+        rel_dir = _normalize_path_separators(_safe_relpath(dirpath, PROJECT_ROOT))
         dirnames[:] = sorted(
             d for d in dirnames
             if not _is_excluded_dir(d, rel_dir + "/" + d, all_exclusions)
@@ -299,7 +316,7 @@ def _find_source_files_cached(path: str, extensions: tuple[str, ...],
         for fname in filenames:
             if any(fname.endswith(ext) for ext in ext_set):
                 full = os.path.join(dirpath, fname)
-                rel_file = os.path.relpath(full, PROJECT_ROOT).replace("\\", "/")
+                rel_file = _normalize_path_separators(_safe_relpath(full, PROJECT_ROOT))
                 if all_exclusions and any(matches_exclusion(rel_file, ex) for ex in all_exclusions):
                     continue
                 files.append(rel_file)

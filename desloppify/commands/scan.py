@@ -3,7 +3,12 @@
 from pathlib import Path
 
 from ..utils import colorize
-from ._helpers import state_path, _write_query
+from ._helpers import (
+    _write_query,
+    resolve_lang_runtime_options,
+    resolve_lang_settings,
+    state_path,
+)
 
 
 def _audit_excluded_dirs(exclusions: tuple[str, ...], scanned_files: list[str],
@@ -65,6 +70,25 @@ def _collect_codebase_metrics(lang, path: Path) -> dict | None:
         "total_loc": total_loc,
         "total_directories": len(dirs),
     }
+
+
+def _resolve_scan_profile(profile: str | None, lang) -> str:
+    """Resolve effective scan profile from CLI and language defaults."""
+    if profile in {"objective", "full", "ci"}:
+        return profile
+    default_profile = getattr(lang, "default_scan_profile", "full") if lang else "full"
+    if default_profile in {"objective", "full", "ci"}:
+        return default_profile
+    return "full"
+
+
+def _effective_include_slow(include_slow: bool, profile: str) -> bool:
+    """Determine whether slow phases should run for this profile."""
+    return include_slow and profile != "ci"
+
+
+def _format_hidden_by_detector(hidden_by_detector: dict[str, int]) -> str:
+    return ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
 
 
 def _warn_explicit_lang_with_no_files(args, lang, path: Path, metrics: dict | None) -> None:
@@ -252,12 +276,25 @@ def cmd_scan(args) -> None:
     from ._helpers import resolve_lang
     lang = resolve_lang(args)
     lang_label = f" ({lang.name})" if lang else ""
+    profile = _resolve_scan_profile(getattr(args, "profile", None), lang)
+    effective_include_slow = _effective_include_slow(include_slow, profile)
 
     # Load zone overrides from config
     zone_overrides = config.get("zone_overrides") or None
 
     # Populate review cache and max age for review_coverage detector
+    runtime_context_enabled = False
     if lang:
+        runtime_context_enabled = (
+            hasattr(lang, "set_runtime_context")
+            and hasattr(lang, "clear_runtime_context")
+            and hasattr(lang, "normalize_settings")
+            and hasattr(lang, "normalize_runtime_options")
+        )
+        if runtime_context_enabled:
+            lang_options = resolve_lang_runtime_options(args, lang)
+            lang_settings = resolve_lang_settings(config, lang)
+            lang.set_runtime_context(settings=lang_settings, options=lang_options)
         lang._review_cache = state.get("review_cache", {}).get("files", {})
         lang._review_max_age_days = config.get("review_max_age_days", 30)
         state.setdefault("lang_capabilities", {})[lang.name] = {
@@ -276,9 +313,11 @@ def cmd_scan(args) -> None:
     from ..utils import enable_file_cache, disable_file_cache
     enable_file_cache()
     try:
-        findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang,
-                                                  zone_overrides=zone_overrides)
+        findings, potentials = generate_findings(path, include_slow=effective_include_slow, lang=lang,
+                                                 zone_overrides=zone_overrides, profile=profile)
     finally:
+        if lang and runtime_context_enabled:
+            lang.clear_runtime_context()
         disable_file_cache()
 
     codebase_metrics = _collect_codebase_metrics(lang, path)
@@ -315,7 +354,7 @@ def cmd_scan(args) -> None:
                       exclude=get_exclusions(),
                       potentials=potentials,
                       codebase_metrics=codebase_metrics,
-                      include_slow=include_slow,
+                      include_slow=effective_include_slow,
                       ignore=config.get("ignore", []))
 
     # Expire stale holistic review findings
@@ -330,10 +369,31 @@ def cmd_scan(args) -> None:
     print(colorize("  Scan complete", "bold"))
     print(colorize("  " + "─" * 50, "dim"))
 
+    hidden_by_detector: dict[str, int] = {}
+    hidden_total = 0
+    from ..state import apply_finding_noise_budget, path_scoped_findings, resolve_finding_noise_settings
+    noise_budget, global_noise_budget, budget_warning = resolve_finding_noise_settings(config)
+    open_findings = [
+        finding for finding in path_scoped_findings(state["findings"], state.get("scan_path")).values()
+        if finding.get("status") == "open"
+    ]
+    _, hidden_by_detector = apply_finding_noise_budget(
+        open_findings,
+        budget=noise_budget,
+        global_budget=global_noise_budget,
+    )
+    hidden_total = sum(hidden_by_detector.values())
+
     _show_diff_summary(diff)
     _show_score_delta(state, prev_overall, prev_objective, prev_strict)
-    if not include_slow:
+    if not effective_include_slow:
         print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
+    if budget_warning:
+        print(colorize(f"  * {budget_warning}", "yellow"))
+    if hidden_total:
+        global_label = f", {global_noise_budget} global" if global_noise_budget > 0 else ""
+        print(colorize(f"  * Noise budget: {noise_budget}/detector{global_label} "
+                       f"({hidden_total} findings hidden in show output: {_format_hidden_by_detector(hidden_by_detector)})", "dim"))
     _show_detector_progress(state)
 
     # Dimension deltas and low-dimension hints
@@ -362,6 +422,11 @@ def cmd_scan(args) -> None:
                   "prev_overall_score": prev_overall,
                   "prev_objective_score": prev_objective,
                   "prev_strict_score": prev_strict,
+                  "profile": profile,
+                  "noise_budget": noise_budget,
+                  "noise_global_budget": global_noise_budget,
+                  "hidden_by_detector": hidden_by_detector,
+                  "hidden_total": hidden_total,
                   "diff": diff, "stats": state["stats"],
                   "warnings": warnings,
                   "dimension_scores": state.get("dimension_scores"),

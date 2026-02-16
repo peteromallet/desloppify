@@ -10,6 +10,17 @@ from pathlib import Path
 from ..utils import rel
 
 
+def _norm_path(path: str) -> str:
+    """Normalize path separators for cross-platform prefix matching."""
+    return path.replace("\\", "/")
+
+
+def _norm_prefix(prefix: str) -> str:
+    """Normalize a directory prefix and ensure trailing slash."""
+    p = _norm_path(prefix)
+    return p if p.endswith("/") else p + "/"
+
+
 def detect_coupling_violations(path: Path, graph: dict,
                                 shared_prefix: str = "",
                                 tools_prefix: str = "") -> tuple[list[dict], int]:
@@ -22,15 +33,20 @@ def detect_coupling_violations(path: Path, graph: dict,
     Returns:
         (entries, total_cross_boundary_edges_checked)
     """
+    shared_prefix_norm = _norm_prefix(shared_prefix)
+    tools_prefix_norm = _norm_prefix(tools_prefix)
+
     total_edges = 0
     entries = []
     for filepath, entry in graph.items():
-        if not filepath.startswith(shared_prefix):
+        filepath_norm = _norm_path(filepath)
+        if not filepath_norm.startswith(shared_prefix_norm):
             continue
         for target in entry["imports"]:
-            if target.startswith(tools_prefix):
+            target_norm = _norm_path(target)
+            if target_norm.startswith(tools_prefix_norm):
                 total_edges += 1
-                remainder = target[len(tools_prefix):]
+                remainder = target_norm[len(tools_prefix_norm):]
                 tool = remainder.split("/")[0] if "/" in remainder else remainder
                 entries.append({
                     "file": filepath,
@@ -38,7 +54,7 @@ def detect_coupling_violations(path: Path, graph: dict,
                     "tool": tool,
                     "direction": "shared→tools",
                 })
-            elif target.startswith(shared_prefix):
+            elif target_norm.startswith(shared_prefix_norm):
                 total_edges += 1  # Count shared→shared edges too for the universe
     return sorted(entries, key=lambda e: (e["file"], e["target"])), total_edges
 
@@ -56,17 +72,22 @@ def detect_boundary_candidates(path: Path, graph: dict,
     Returns:
         (entries, total_shared_files_checked)
     """
+    shared_prefix_norm = _norm_prefix(shared_prefix)
+    tools_prefix_norm = _norm_prefix(tools_prefix)
+    ui_prefix_norm = shared_prefix_norm + "components/ui/"
+
     total_shared = 0
     entries = []
     skip_basenames = skip_basenames or set()
     for filepath, entry in graph.items():
-        if not filepath.startswith(shared_prefix):
+        filepath_norm = _norm_path(filepath)
+        if not filepath_norm.startswith(shared_prefix_norm):
             continue
         total_shared += 1
         basename = Path(filepath).name
         if basename in skip_basenames:
             continue
-        if f"{shared_prefix}components/ui/" in filepath:
+        if ui_prefix_norm in filepath_norm:
             continue
         if entry["importer_count"] == 0:
             continue
@@ -74,8 +95,9 @@ def detect_boundary_candidates(path: Path, graph: dict,
         tool_areas = set()
         has_non_tool_importer = False
         for imp in entry["importers"]:
-            if imp.startswith(tools_prefix):
-                remainder = imp[len(tools_prefix):]
+            imp_norm = _norm_path(imp)
+            if imp_norm.startswith(tools_prefix_norm):
+                remainder = imp_norm[len(tools_prefix_norm):]
                 tool = remainder.split("/")[0]
                 tool_areas.add(tool)
             else:
@@ -106,19 +128,23 @@ def detect_cross_tool_imports(path: Path, graph: dict,
     Returns:
         (entries, total_cross_tool_edges)
     """
+    tools_prefix_norm = _norm_prefix(tools_prefix)
+
     total_edges = 0
     entries = []
     for filepath, entry in graph.items():
-        if not filepath.startswith(tools_prefix):
+        filepath_norm = _norm_path(filepath)
+        if not filepath_norm.startswith(tools_prefix_norm):
             continue
-        remainder = filepath[len(tools_prefix):]
+        remainder = filepath_norm[len(tools_prefix_norm):]
         if "/" not in remainder:
             continue
         source_tool = remainder.split("/")[0]
         for target in entry["imports"]:
-            if not target.startswith(tools_prefix):
+            target_norm = _norm_path(target)
+            if not target_norm.startswith(tools_prefix_norm):
                 continue
-            target_tool = target[len(tools_prefix):].split("/")[0]
+            target_tool = target_norm[len(tools_prefix_norm):].split("/")[0]
             if source_tool != target_tool:
                 total_edges += 1
                 entries.append({

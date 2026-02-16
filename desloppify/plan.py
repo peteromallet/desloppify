@@ -23,9 +23,16 @@ TIER_LABELS = {
 CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
+def _is_subjective_phase(phase) -> bool:
+    label = (phase.label or "").lower()
+    run_name = getattr(phase.run, "__name__", "").lower()
+    return "subjective" in label or "review" in label or run_name == "phase_subjective_review"
+
+
 def generate_findings(
     path: Path, *, include_slow: bool = True, lang=None,
     zone_overrides: dict[str, str] | None = None,
+    profile: str = "full",
 ) -> tuple[list[dict], dict[str, int]]:
     """Run all detectors and convert results to normalized findings.
 
@@ -44,12 +51,14 @@ def generate_findings(
             detected = langs[0]
         lang = get_lang(detected)
     return _generate_findings_from_lang(path, lang, include_slow=include_slow,
-                                         zone_overrides=zone_overrides)
+                                         zone_overrides=zone_overrides,
+                                         profile=profile)
 
 
 def _generate_findings_from_lang(
     path: Path, lang, *, include_slow: bool = True,
     zone_overrides: dict[str, str] | None = None,
+    profile: str = "full",
 ) -> tuple[list[dict], dict[str, int]]:
     """Run detector phases from a LangConfig."""
     stderr = lambda msg: print(colorize(msg, "dim"), file=sys.stderr)
@@ -65,9 +74,12 @@ def _generate_findings_from_lang(
         zone_str = ", ".join(f"{z}: {n}" for z, n in sorted(counts.items()) if n > 0)
         stderr(f"  Zones: {zone_str}")
 
+    active_profile = profile if profile in {"objective", "full", "ci"} else "full"
     phases = lang.phases
-    if not include_slow:
+    if not include_slow or active_profile == "ci":
         phases = [p for p in phases if not p.slow]
+    if active_profile in {"objective", "ci"}:
+        phases = [p for p in phases if not _is_subjective_phase(p)]
 
     findings: list[dict] = []
     all_potentials: dict[str, int] = {}

@@ -20,7 +20,7 @@ desloppify/
 ├── plan.py             # Detector orchestration + finding normalization
 ├── state.py            # Persistent state: load/save, merge_scan, scoring
 ├── utils.py            # File discovery, path helpers, formatting
-├── visualize.py        # tree + viz commands
+├── output/visualize.py # tree + viz commands
 │
 ├── detectors/          # Layer 1: Generic algorithms (zero language knowledge)
 │   ├── base.py         # Shared data types: FunctionInfo, ClassInfo, ComplexitySignal, GodRule
@@ -67,6 +67,16 @@ desloppify/
 │       │   ├── deps.py     # Python import graph builder
 │       │   └── unused.py   # ruff-based unused detection
 │       └── fixers/     # PY auto-fixers (none yet — structural placeholder)
+│   │
+│   └── csharp/         # Everything C#/.NET
+│       ├── __init__.py # CSharpConfig + phase runners + config data
+│       ├── commands.py # detect-subcommand wrappers + command registry
+│       ├── extractors.py  # extract_csharp_functions, extract_csharp_classes
+│       ├── phases.py   # C# phase orchestration
+│       ├── detectors/  # C#-specific detector implementations
+│       │   ├── deps.py     # C# dependency graph builder (using + project refs)
+│       │   └── security.py # C# security checks
+│       └── fixers/     # C# auto-fixers (none yet — structural placeholder)
 │
 ├── commands/           # One file per CLI subcommand
 ```

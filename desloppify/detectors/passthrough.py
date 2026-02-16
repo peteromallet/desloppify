@@ -1,8 +1,7 @@
 """Passthrough/forwarding detection: shared classification algorithm.
 
-Language-specific detection functions live in lang/typescript/extractors.py
-and lang/python/extractors.py. This module provides the shared core that
-classifies parameters as passthrough vs direct-use.
+Language-specific extraction lives in language plugins. This module provides
+the shared core that classifies parameters as passthrough vs direct-use.
 """
 
 import re

@@ -1,11 +1,8 @@
-"""Project-wide configuration management (.desloppify/config.json).
-
-Config is project-wide (not per-language). Keys cover exclusions, zone overrides,
-review staleness thresholds, and scorecard generation settings.
-"""
+"""Project-wide + language-specific config (.desloppify/config.json)."""
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,12 +41,43 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         "Override LOC threshold for large file detection (0 = use language default)"),
     "props_threshold": ConfigKey(int, 0,
         "Override prop count threshold for bloated interface detection (0 = default 14)"),
+    "finding_noise_budget": ConfigKey(int, 10,
+        "Max findings surfaced per detector in show/scan summaries (0 = unlimited)"),
+    "finding_noise_global_budget": ConfigKey(int, 0,
+        "Global cap for surfaced findings after per-detector budget (0 = unlimited)"),
+    "languages": ConfigKey(dict, {},
+        "Language-specific settings {lang_name: {key: value}}"),
 }
+
+
+def _legacy_language_key_map() -> dict[str, tuple[str, str]]:
+    """Build legacy top-level config key mappings from language plugin metadata."""
+    try:
+        from .lang import available_langs, get_lang
+    except Exception:
+        return {}
+
+    key_map: dict[str, tuple[str, str]] = {}
+    for lang_name in available_langs():
+        try:
+            cfg = get_lang(lang_name)
+        except Exception:
+            continue
+        legacy_keys = getattr(cfg, "legacy_setting_keys", {}) or {}
+        if not isinstance(legacy_keys, dict):
+            continue
+        for old_key, setting_key in legacy_keys.items():
+            if not isinstance(old_key, str) or not old_key.strip():
+                continue
+            if not isinstance(setting_key, str) or not setting_key.strip():
+                continue
+            key_map[old_key] = (lang_name, setting_key)
+    return key_map
 
 
 def default_config() -> dict[str, Any]:
     """Return a config dict with all keys set to their defaults."""
-    return {k: v.default for k, v in CONFIG_SCHEMA.items()}
+    return {k: copy.deepcopy(v.default) for k, v in CONFIG_SCHEMA.items()}
 
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
@@ -68,10 +96,19 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
         # First run — try migrating from state files
         config = _migrate_from_state_files(p)
 
+    changed = _migrate_legacy_language_keys(config)
+
     # Fill missing keys with defaults
     for key, schema in CONFIG_SCHEMA.items():
         if key not in config:
-            config[key] = schema.default
+            config[key] = copy.deepcopy(schema.default)
+            changed = True
+
+    if changed and p.exists():
+        try:
+            save_config(config, p)
+        except OSError:
+            pass
 
     return config
 
@@ -130,13 +167,58 @@ def unset_config_value(config: dict, key: str) -> None:
     """Reset a config key to its default value."""
     if key not in CONFIG_SCHEMA:
         raise KeyError(f"Unknown config key: {key}")
-    config[key] = CONFIG_SCHEMA[key].default
+    config[key] = copy.deepcopy(CONFIG_SCHEMA[key].default)
 
 
 def config_for_query(config: dict[str, Any]) -> dict[str, Any]:
     """Return a sanitized config dict suitable for query.json."""
     return {k: config.get(k, schema.default)
             for k, schema in CONFIG_SCHEMA.items()}
+
+
+def _merge_config_value(config: dict, key: str, value: object) -> None:
+    """Merge a config value into the target dict."""
+    if key not in config:
+        config[key] = copy.deepcopy(value)
+        return
+    if isinstance(value, list) and isinstance(config[key], list):
+        for item in value:
+            if item not in config[key]:
+                config[key].append(item)
+        return
+    if isinstance(value, dict) and isinstance(config[key], dict):
+        for dk, dv in value.items():
+            if dk not in config[key]:
+                config[key][dk] = copy.deepcopy(dv)
+        return
+
+
+def _migrate_legacy_language_keys(config: dict[str, Any]) -> bool:
+    """Move deprecated top-level language keys into config.languages.<lang>."""
+    changed = False
+    legacy_key_map = _legacy_language_key_map()
+    if not legacy_key_map:
+        return changed
+
+    languages = config.get("languages")
+    if not isinstance(languages, dict):
+        languages = {}
+        config["languages"] = languages
+        changed = True
+
+    for old_key, (lang_name, setting_key) in legacy_key_map.items():
+        if old_key not in config:
+            continue
+        old_value = config.pop(old_key)
+        lang_config = languages.setdefault(lang_name, {})
+        if not isinstance(lang_config, dict):
+            lang_config = {}
+            languages[lang_name] = lang_config
+        if setting_key not in lang_config:
+            lang_config[setting_key] = old_value
+        changed = True
+
+    return changed
 
 
 def _migrate_from_state_files(config_path: Path) -> dict:
@@ -153,6 +235,7 @@ def _migrate_from_state_files(config_path: Path) -> dict:
 
     state_files = list(state_dir.glob("state-*.json")) + list(state_dir.glob("state.json"))
     migrated_any = False
+    legacy_key_map = _legacy_language_key_map()
 
     for sf in state_files:
         try:
@@ -166,18 +249,22 @@ def _migrate_from_state_files(config_path: Path) -> dict:
 
         # Merge: union for lists, merge for dicts, first-wins for scalars
         for k, v in old_config.items():
+            legacy_mapping = legacy_key_map.get(k)
+            if legacy_mapping is not None:
+                lang_name, setting_key = legacy_mapping
+                languages = config.setdefault("languages", {})
+                if not isinstance(languages, dict):
+                    languages = {}
+                    config["languages"] = languages
+                lang_config = languages.setdefault(lang_name, {})
+                if not isinstance(lang_config, dict):
+                    lang_config = {}
+                    languages[lang_name] = lang_config
+                _merge_config_value(lang_config, setting_key, v)
+                continue
             if k not in CONFIG_SCHEMA:
                 continue
-            if k not in config:
-                config[k] = v
-            elif isinstance(v, list) and isinstance(config[k], list):
-                for item in v:
-                    if item not in config[k]:
-                        config[k].append(item)
-            elif isinstance(v, dict) and isinstance(config[k], dict):
-                for dk, dv in v.items():
-                    if dk not in config[k]:
-                        config[k][dk] = dv
+            _merge_config_value(config, k, v)
 
         # Strip "config" from state file
         if "config" in state_data:
@@ -190,6 +277,7 @@ def _migrate_from_state_files(config_path: Path) -> dict:
         migrated_any = True
 
     if migrated_any and config:
+        _migrate_legacy_language_keys(config)
         try:
             save_config(config, config_path)
         except OSError:

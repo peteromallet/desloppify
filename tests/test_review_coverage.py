@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from desloppify.detectors.review_coverage import detect_review_coverage
+from desloppify.utils import rel
 from desloppify.review import (
     DEFAULT_DIMENSIONS, DIMENSION_PROMPTS,
     import_review_findings, MIN_REVIEW_LOC,
@@ -509,7 +510,7 @@ class TestReviewNeverExpires:
             content_hash = hashlib.sha256(content.encode()).hexdigest()
 
             # rel_path key must match what rel() returns for this filepath
-            rpath = os.path.relpath(fp, os.getcwd())
+            rpath = rel(fp)
             old_date = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat(timespec="seconds")
             cache = {rpath: {"content_hash": content_hash, "reviewed_at": old_date}}
 

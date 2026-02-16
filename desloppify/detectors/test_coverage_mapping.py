@@ -237,24 +237,22 @@ def _transitive_coverage(
     return visited - directly_tested
 
 
-def _strip_py_comment(line: str) -> str:
-    """Strip Python # comments while respecting string literals."""
-    from ..lang.python.test_coverage import _strip_py_comment as py_strip_py_comment
-
-    return py_strip_py_comment(line)
-
-
 def _analyze_test_quality(
     test_files: set[str],
     lang_name: str,
 ) -> dict[str, dict]:
     """Analyze test quality per file."""
     mod = _load_lang_test_coverage_module(lang_name)
-    assert_pats = getattr(mod, "ASSERT_PATTERNS", [])
-    mock_pats = getattr(mod, "MOCK_PATTERNS", [])
-    snapshot_pats = getattr(mod, "SNAPSHOT_PATTERNS", [])
+    assert_pats = list(getattr(mod, "ASSERT_PATTERNS", []) or [])
+    mock_pats = list(getattr(mod, "MOCK_PATTERNS", []) or [])
+    snapshot_pats = list(getattr(mod, "SNAPSHOT_PATTERNS", []) or [])
     test_func_re = getattr(mod, "TEST_FUNCTION_RE", re.compile(r"$^"))
-    strip_comments = getattr(mod, "strip_comments", lambda text: text)
+    strip_comments = getattr(mod, "strip_comments", None)
+
+    if not hasattr(test_func_re, "findall"):
+        test_func_re = re.compile(r"$^")
+    if not callable(strip_comments):
+        strip_comments = lambda text: text
 
     quality_map: dict[str, dict] = {}
 

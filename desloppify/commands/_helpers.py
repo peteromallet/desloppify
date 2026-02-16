@@ -138,8 +138,62 @@ def resolve_lang(args) -> LangConfig | None:
         from ..lang import available_langs
         from ..utils import colorize
         langs = available_langs()
-        sample = langs[0] if langs else "<language>"
+        langs_str = ", ".join(langs) if langs else "registered language plugins"
         print(colorize(f"  {e}", "red"), file=sys.stderr)
-        print(colorize(f"  Hint: use --lang to select manually (e.g. --lang {sample})", "dim"),
+        print(colorize(f"  Hint: use --lang to select manually (available: {langs_str})", "dim"),
               file=sys.stderr)
         sys.exit(1)
+
+
+def _parse_lang_opt_assignments(raw_values: list[str] | None) -> dict[str, str]:
+    """Parse repeated KEY=VALUE --lang-opt inputs."""
+    values = raw_values or []
+    parsed: dict[str, str] = {}
+    for raw in values:
+        text = (raw or "").strip()
+        if not text:
+            continue
+        if "=" not in text:
+            raise ValueError(f"Invalid --lang-opt '{raw}'. Expected KEY=VALUE.")
+        key, value = text.split("=", 1)
+        key = key.strip().replace("-", "_")
+        if not key:
+            raise ValueError(f"Invalid --lang-opt '{raw}'. Missing option key.")
+        parsed[key] = value.strip()
+    return parsed
+
+
+def resolve_lang_runtime_options(args, lang: LangConfig) -> dict[str, object]:
+    """Resolve runtime options from generic --lang-opt and legacy aliases."""
+    try:
+        options = _parse_lang_opt_assignments(getattr(args, "lang_opt", None))
+    except ValueError as e:
+        from ..utils import colorize
+        print(colorize(f"  {e}", "red"), file=sys.stderr)
+        sys.exit(2)
+
+    for arg_name, option_key in (lang.runtime_option_aliases or {}).items():
+        value = getattr(args, arg_name, None)
+        if value not in (None, ""):
+            options[option_key] = value
+
+    try:
+        return lang.normalize_runtime_options(options, strict=True)
+    except KeyError as e:
+        from ..utils import colorize
+        supported = sorted((lang.runtime_option_specs or {}).keys())
+        hint = ", ".join(supported) if supported else "(none)"
+        print(colorize(f"  {e}", "red"), file=sys.stderr)
+        print(colorize(f"  Supported {lang.name} runtime options: {hint}", "dim"), file=sys.stderr)
+        sys.exit(2)
+
+
+def resolve_lang_settings(config: dict, lang: LangConfig) -> dict[str, object]:
+    """Resolve persisted per-language settings from config.languages.<lang>."""
+    if not isinstance(config, dict):
+        return lang.normalize_settings({})
+    languages = config.get("languages", {})
+    if not isinstance(languages, dict):
+        return lang.normalize_settings({})
+    raw = languages.get(lang.name, {})
+    return lang.normalize_settings(raw if isinstance(raw, dict) else {})

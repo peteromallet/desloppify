@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -50,6 +51,15 @@ class BoundaryRule:
     label: str              # e.g. "shared→tools"
 
 
+@dataclass(frozen=True)
+class LangValueSpec:
+    """Typed language option/setting schema entry."""
+
+    type: type
+    default: object
+    description: str = ""
+
+
 @dataclass
 class LangConfig:
     """Language configuration — everything the pipeline needs to scan a codebase."""
@@ -94,6 +104,15 @@ class LangConfig:
     # Structural analysis thresholds
     large_threshold: int = 500
     complexity_threshold: int = 15
+    default_scan_profile: str = "full"
+
+    # Language-specific persisted settings and per-run runtime options.
+    setting_specs: dict[str, LangValueSpec] = field(default_factory=dict)
+    # Deprecated top-level config keys -> namespaced setting key.
+    legacy_setting_keys: dict[str, str] = field(default_factory=dict)
+    runtime_option_specs: dict[str, LangValueSpec] = field(default_factory=dict)
+    # argparse attribute -> runtime option key (for optional compatibility aliases).
+    runtime_option_aliases: dict[str, str] = field(default_factory=dict)
 
     # Project-level files that indicate this language is present
     detect_markers: list[str] = field(default_factory=list)
@@ -119,6 +138,119 @@ class LangConfig:
     _review_max_age_days: int = field(default=30, repr=False)  # from config, set before scan
     _props_threshold: int = field(default=0, repr=False)  # from config, 0 = use default (14)
     _complexity_map: dict = field(default_factory=dict, repr=False)  # file→score, set at scan time
+    _runtime_settings: dict = field(default_factory=dict, repr=False)
+    _runtime_options: dict = field(default_factory=dict, repr=False)
+
+    @staticmethod
+    def _clone_default(default: object) -> object:
+        return copy.deepcopy(default)
+
+    @classmethod
+    def _coerce_value(cls, raw: object, expected: type, default: object) -> object:
+        """Best-effort coercion for config/CLI values."""
+        fallback = cls._clone_default(default)
+        if raw is None:
+            return fallback
+
+        if expected is bool:
+            if isinstance(raw, bool):
+                return raw
+            if isinstance(raw, str):
+                lowered = raw.strip().lower()
+                if lowered in {"1", "true", "yes", "on"}:
+                    return True
+                if lowered in {"0", "false", "no", "off"}:
+                    return False
+                return fallback
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                return bool(raw)
+            return fallback
+
+        if expected is int:
+            if isinstance(raw, bool):
+                return fallback
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                return fallback
+
+        if expected is float:
+            if isinstance(raw, bool):
+                return fallback
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return fallback
+
+        if expected is str:
+            return raw if isinstance(raw, str) else str(raw)
+
+        if expected is list:
+            return raw if isinstance(raw, list) else fallback
+
+        if expected is dict:
+            return raw if isinstance(raw, dict) else fallback
+
+        return raw if isinstance(raw, expected) else fallback
+
+    def normalize_settings(self, values: dict[str, object] | None) -> dict[str, object]:
+        values = values if isinstance(values, dict) else {}
+        normalized: dict[str, object] = {}
+        for key, spec in self.setting_specs.items():
+            raw = values.get(key, spec.default)
+            normalized[key] = self._coerce_value(raw, spec.type, spec.default)
+        return normalized
+
+    def normalize_runtime_options(
+        self,
+        values: dict[str, object] | None,
+        *,
+        strict: bool = False,
+    ) -> dict[str, object]:
+        values = values if isinstance(values, dict) else {}
+        specs = self.runtime_option_specs
+        if strict:
+            unknown = sorted(set(values) - set(specs))
+            if unknown:
+                raise KeyError(
+                    f"Unknown runtime option(s) for {self.name}: {', '.join(unknown)}"
+                )
+        normalized: dict[str, object] = {}
+        for key, spec in specs.items():
+            raw = values.get(key, spec.default)
+            normalized[key] = self._coerce_value(raw, spec.type, spec.default)
+        return normalized
+
+    def set_runtime_context(
+        self,
+        *,
+        settings: dict[str, object] | None = None,
+        options: dict[str, object] | None = None,
+    ) -> None:
+        """Apply per-language config settings and per-command runtime options."""
+        self._runtime_settings = self.normalize_settings(settings)
+        self._runtime_options = self.normalize_runtime_options(options)
+
+    def clear_runtime_context(self) -> None:
+        """Clear per-command runtime values so LangConfig instances stay isolated."""
+        self._runtime_settings = {}
+        self._runtime_options = {}
+
+    def runtime_setting(self, key: str, default: object | None = None) -> object:
+        if key in self._runtime_settings:
+            return self._runtime_settings[key]
+        spec = self.setting_specs.get(key)
+        if spec:
+            return self._clone_default(spec.default)
+        return default
+
+    def runtime_option(self, key: str, default: object | None = None) -> object:
+        if key in self._runtime_options:
+            return self._runtime_options[key]
+        spec = self.runtime_option_specs.get(key)
+        if spec:
+            return self._clone_default(spec.default)
+        return default
 
 
 from .finding_factories import (  # noqa: F401
@@ -360,3 +492,35 @@ def phase_subjective_review(path: Path, lang: LangConfig) -> tuple[list[Finding]
         log(f"         subjective review: clean ({potential} reviewable files)")
 
     return results, {"subjective_review": potential}
+
+
+def detector_phase_test_coverage() -> DetectorPhase:
+    """Canonical shared detector phase entry for test coverage."""
+    return DetectorPhase("Test coverage", phase_test_coverage)
+
+
+def detector_phase_security() -> DetectorPhase:
+    """Canonical shared detector phase entry for security."""
+    return DetectorPhase("Security", phase_security)
+
+
+def detector_phase_subjective_review() -> DetectorPhase:
+    """Canonical shared detector phase entry for subjective review coverage."""
+    return DetectorPhase("Subjective review", phase_subjective_review)
+
+
+def detector_phase_duplicates() -> DetectorPhase:
+    """Canonical shared detector phase entry for duplicate detection."""
+    return DetectorPhase("Duplicates", phase_dupes, slow=True)
+
+
+def shared_subjective_duplicates_tail(
+    *,
+    pre_duplicates: list[DetectorPhase] | None = None,
+) -> list[DetectorPhase]:
+    """Shared review tail: subjective review, optional custom phases, then duplicates."""
+    phases = [detector_phase_subjective_review()]
+    if pre_duplicates:
+        phases.extend(pre_duplicates)
+    phases.append(detector_phase_duplicates())
+    return phases

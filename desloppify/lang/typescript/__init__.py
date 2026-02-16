@@ -6,8 +6,8 @@ from pathlib import Path
 
 from .. import register_lang
 from ..base import (BoundaryRule, DetectorPhase, FixerConfig, LangConfig,
-                    phase_dupes, phase_test_coverage, phase_security,
-                    phase_subjective_review)
+                    detector_phase_security, detector_phase_test_coverage,
+                    shared_subjective_duplicates_tail)
 from ...utils import find_ts_files, get_area
 from ...zones import ZoneRule, Zone, COMMON_ZONE_RULES
 from .phases import (TS_COMPLEXITY_SIGNALS, TS_GOD_RULES,  # noqa: F401 — re-exported for commands.py
@@ -156,11 +156,10 @@ class TypeScriptConfig(LangConfig):
                 DetectorPhase("Deprecated", _phase_deprecated),
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Coupling + single-use + patterns + naming", _phase_coupling),
-                DetectorPhase("Test coverage", phase_test_coverage),
+                detector_phase_test_coverage(),
                 DetectorPhase("Code smells", _phase_smells),
-                DetectorPhase("Security", phase_security),
-                DetectorPhase("Subjective review", phase_subjective_review),
-                DetectorPhase("Duplicates", phase_dupes, slow=True),
+                detector_phase_security(),
+                *shared_subjective_duplicates_tail(),
             ],
             fixers=_get_ts_fixers(),
             get_area=get_area,
@@ -172,6 +171,7 @@ class TypeScriptConfig(LangConfig):
             file_finder=find_ts_files,
             large_threshold=500,
             complexity_threshold=15,
+            default_scan_profile="full",
             detect_markers=["package.json"],
             external_test_dirs=["tests", "test", "__tests__"],
             test_file_extensions=[".ts", ".tsx"],

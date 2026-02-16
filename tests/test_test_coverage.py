@@ -20,10 +20,10 @@ from desloppify.detectors.test_coverage_mapping import (
     _parse_test_imports,
     _resolve_barrel_reexports,
     _resolve_import,
-    _strip_py_comment,
     _strip_test_markers,
     _transitive_coverage,
 )
+from desloppify.lang.python.test_coverage import _strip_py_comment
 from desloppify.lang.typescript.test_coverage import has_testable_logic as ts_has_testable_logic
 from desloppify.zones import FileZoneMap, Zone, ZoneRule
 

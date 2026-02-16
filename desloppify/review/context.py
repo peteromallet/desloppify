@@ -473,7 +473,8 @@ def _gather_migration_signals(file_contents: dict[str, str],
             stems_by_ext.setdefault(stem, set()).add(ext)
 
     # Pattern pair detection
-    pairs = getattr(lang_cfg, "migration_pattern_pairs", []) or []
+    pairs = list(getattr(lang_cfg, "migration_pattern_pairs", []) or [])
+
     pattern_results: list[dict] = []
     for name, old_re, new_re in pairs:
         old_count = sum(1 for c in file_contents.values() if old_re.search(c))

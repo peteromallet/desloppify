@@ -2,7 +2,6 @@
 
 import json
 import pytest
-from pathlib import Path
 
 from desloppify.config import (
     CONFIG_SCHEMA,
@@ -33,6 +32,9 @@ class TestDefaultConfig:
         assert cfg["holistic_max_age_days"] == 30
         assert cfg["generate_scorecard"] is True
         assert cfg["badge_path"] == "scorecard.png"
+        assert cfg["finding_noise_budget"] == 10
+        assert cfg["finding_noise_global_budget"] == 0
+        assert cfg["languages"] == {}
         assert cfg["exclude"] == []
         assert cfg["ignore"] == []
         assert cfg["zone_overrides"] == {}
@@ -74,6 +76,24 @@ class TestLoadSaveConfig:
         cfg = load_config(p)
         assert cfg == default_config()
 
+    def test_legacy_csharp_keys_migrate_to_languages_namespace(self, tmp_path):
+        p = tmp_path / "config.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            json.dumps(
+                {
+                    "csharp_corroboration_min_signals": 3,
+                    "csharp_high_fanout_threshold": 8,
+                }
+            )
+        )
+        cfg = load_config(p)
+        assert "csharp_corroboration_min_signals" not in cfg
+        assert "csharp_high_fanout_threshold" not in cfg
+        csharp_cfg = cfg["languages"].get("csharp", {})
+        assert csharp_cfg.get("corroboration_min_signals") == 3
+        assert csharp_cfg.get("high_fanout_threshold") == 8
+
 
 # ===========================================================================
 # set_config_value
@@ -84,6 +104,16 @@ class TestSetConfigValue:
         cfg = default_config()
         set_config_value(cfg, "review_max_age_days", "14")
         assert cfg["review_max_age_days"] == 14
+
+    def test_set_noise_budget_int(self):
+        cfg = default_config()
+        set_config_value(cfg, "finding_noise_budget", "25")
+        assert cfg["finding_noise_budget"] == 25
+
+    def test_set_noise_global_budget_int(self):
+        cfg = default_config()
+        set_config_value(cfg, "finding_noise_global_budget", "50")
+        assert cfg["finding_noise_global_budget"] == 50
 
     def test_set_never(self):
         cfg = default_config()
@@ -257,3 +287,25 @@ class TestMigrateFromStateFiles:
         overrides = result.get("zone_overrides", {})
         assert overrides.get("a.py") == "test"
         assert overrides.get("b.ts") == "vendor"
+
+    def test_legacy_language_keys_migrated_from_state(self, tmp_path):
+        state_dir = tmp_path
+        state_dir.mkdir(exist_ok=True)
+        s1 = {
+            "version": 1,
+            "config": {"csharp_corroboration_min_signals": 4},
+            "findings": {},
+        }
+        s2 = {
+            "version": 1,
+            "config": {"csharp_high_fanout_threshold": 9},
+            "findings": {},
+        }
+        (state_dir / "state-csharp.json").write_text(json.dumps(s1))
+        (state_dir / "state-csharp-alt.json").write_text(json.dumps(s2))
+        config_path = state_dir / "config.json"
+
+        result = _migrate_from_state_files(config_path)
+        csharp_cfg = result.get("languages", {}).get("csharp", {})
+        assert csharp_cfg.get("corroboration_min_signals") == 4
+        assert csharp_cfg.get("high_fanout_threshold") == 9

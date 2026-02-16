@@ -1,7 +1,7 @@
 """Cross-language security detector — hardcoded secrets, weak crypto, sensitive logging.
 
-Checks that apply to both Python and TypeScript codebases. Language-specific
-checks live in lang/{python,typescript}/detectors/security.py.
+Contains generic checks shared by all language plugins. Additional language-
+specific checks live under ``lang/<name>/detectors/security.py``.
 """
 
 from __future__ import annotations
