@@ -248,6 +248,8 @@ def cmd_scan(args):
     if lang:
         lang._review_cache = state.get("review_cache", {}).get("files", {})
         lang._review_max_age_days = config.get("review_max_age_days", 30)
+        if lang.name == "csharp":
+            lang._csharp_roslyn_cmd = getattr(args, "roslyn_cmd", None)
         # Apply config-level threshold overrides
         override_threshold = config.get("large_files_threshold", 0)
         if override_threshold > 0:
@@ -274,6 +276,9 @@ def cmd_scan(args):
         findings, potentials = generate_findings(path, include_slow=effective_include_slow, lang=lang,
                                                  zone_overrides=zone_overrides, profile=profile)
     finally:
+        if lang and lang.name == "csharp":
+            # Prevent cross-command leakage on reused LangConfig instances.
+            lang._csharp_roslyn_cmd = None
         disable_file_cache()
 
     codebase_metrics = _collect_codebase_metrics(lang, path)
@@ -721,4 +726,3 @@ def _show_low_dimension_hints(dim_scores: dict):
     for name, score, hint in low:
         print(colorize(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
     print()
-

@@ -93,6 +93,80 @@ def _parse_csproj_references(csproj_file: Path) -> tuple[set[Path], str | None]:
     return refs, root_ns
 
 
+def _resolve_project_ref_path(raw_ref: str, base_dirs: tuple[Path, ...]) -> Path | None:
+    """Resolve a .csproj path against a list of base directories."""
+    ref = (raw_ref or "").strip().strip('"')
+    if not ref:
+        return None
+    if not ref.lower().endswith(".csproj"):
+        return None
+    ref_path = Path(ref)
+    if ref_path.is_absolute():
+        try:
+            return ref_path.resolve()
+        except OSError:
+            return None
+    fallback: Path | None = None
+    for base_dir in base_dirs:
+        try:
+            candidate = (base_dir / ref_path).resolve()
+        except OSError:
+            continue
+        if candidate.exists():
+            return candidate
+        if fallback is None:
+            fallback = candidate
+    return fallback
+
+
+def _parse_project_assets_references(csproj_file: Path) -> set[Path]:
+    """Parse project refs from obj/project.assets.json, if available."""
+    assets_file = csproj_file.parent / "obj" / "project.assets.json"
+    if not assets_file.exists():
+        return set()
+    try:
+        payload = json.loads(assets_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return set()
+    if not isinstance(payload, dict):
+        return set()
+
+    refs: set[Path] = set()
+    base_dirs = (csproj_file.parent, assets_file.parent)
+
+    libraries = payload.get("libraries")
+    if isinstance(libraries, dict):
+        for lib_meta in libraries.values():
+            if not isinstance(lib_meta, dict):
+                continue
+            if str(lib_meta.get("type", "")).lower() != "project":
+                continue
+            for key in ("path", "msbuildProject"):
+                raw_ref = lib_meta.get(key)
+                if not isinstance(raw_ref, str):
+                    continue
+                resolved = _resolve_project_ref_path(raw_ref, base_dirs)
+                if resolved is not None:
+                    refs.add(resolved)
+
+    dep_groups = payload.get("projectFileDependencyGroups")
+    if isinstance(dep_groups, dict):
+        for deps in dep_groups.values():
+            if not isinstance(deps, list):
+                continue
+            for dep in deps:
+                if not isinstance(dep, str):
+                    continue
+                # Entries can include version qualifiers: "Foo.Bar >= 1.2.3".
+                dep_token = dep.split(maxsplit=1)[0]
+                resolved = _resolve_project_ref_path(dep_token, base_dirs)
+                if resolved is not None:
+                    refs.add(resolved)
+
+    refs.discard(csproj_file.resolve())
+    return refs
+
+
 def _map_file_to_project(cs_files: list[str], projects: list[Path]) -> dict[str, Path]:
     """Assign each source file to the nearest containing .csproj directory."""
     project_dirs = sorted((p.parent for p in projects), key=lambda d: len(d.parts), reverse=True)
@@ -257,9 +331,12 @@ def _build_roslyn_command(roslyn_cmd: str, path: Path) -> list[str] | None:
     return argv or None
 
 
-def _build_dep_graph_roslyn(path: Path) -> dict[str, dict] | None:
+def _build_dep_graph_roslyn(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict] | None:
     """Try optional Roslyn-backed graph command, return None on fallback."""
-    roslyn_cmd = os.environ.get("DESLOPPIFY_CSHARP_ROSLYN_CMD", "").strip()
+    resolved_roslyn_cmd = (roslyn_cmd or "").strip()
+    if not resolved_roslyn_cmd:
+        resolved_roslyn_cmd = os.environ.get("DESLOPPIFY_CSHARP_ROSLYN_CMD", "").strip()
+    roslyn_cmd = resolved_roslyn_cmd
     if not roslyn_cmd:
         return None
 
@@ -302,9 +379,9 @@ def _build_dep_graph_roslyn(path: Path) -> dict[str, dict] | None:
     return _parse_roslyn_graph_payload(payload)
 
 
-def build_dep_graph(path: Path) -> dict[str, dict]:
+def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict]:
     """Build a C# dependency graph compatible with shared graph detectors."""
-    roslyn_graph = _build_dep_graph_roslyn(path)
+    roslyn_graph = _build_dep_graph_roslyn(path, roslyn_cmd=roslyn_cmd)
     if roslyn_graph is not None:
         return roslyn_graph
 
@@ -319,7 +396,7 @@ def build_dep_graph(path: Path) -> dict[str, dict]:
     project_root_ns: dict[Path, str | None] = {}
     for p in projects:
         refs, root_ns = _parse_csproj_references(p)
-        project_refs[p] = refs
+        project_refs[p] = refs | _parse_project_assets_references(p)
         project_root_ns[p] = root_ns
 
     file_to_project = _map_file_to_project(cs_files, projects)
@@ -381,7 +458,7 @@ def build_dep_graph(path: Path) -> dict[str, dict]:
 
 def cmd_deps(args):
     """Show dependency info for a specific C# file or top coupled files."""
-    graph = build_dep_graph(Path(args.path))
+    graph = build_dep_graph(Path(args.path), roslyn_cmd=getattr(args, "roslyn_cmd", None))
 
     if getattr(args, "file", None):
         coupling = get_coupling_score(args.file, graph)
@@ -435,7 +512,7 @@ def cmd_deps(args):
 
 def cmd_cycles(args):
     """Show import cycles in C# source files."""
-    graph = build_dep_graph(Path(args.path))
+    graph = build_dep_graph(Path(args.path), roslyn_cmd=getattr(args, "roslyn_cmd", None))
     cycles, _ = detect_cycles(graph)
 
     if getattr(args, "json", False):

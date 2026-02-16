@@ -71,6 +71,15 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Skip scorecard image generation (also: DESLOPPIFY_NO_BADGE=true)")
     p_scan.add_argument("--badge-path", type=str, default=None, metavar="PATH",
                         help="Output path for scorecard image (default: scorecard.png)")
+    p_scan.add_argument(
+        "--roslyn-cmd",
+        type=str,
+        default=None,
+        help=(
+            "C# only: command that emits Roslyn dependency JSON to stdout. "
+            "Overrides DESLOPPIFY_CSHARP_ROSLYN_CMD for this invocation."
+        ),
+    )
 
     p_status = sub.add_parser("status", help="Score dashboard with per-tier progress")
     p_status.add_argument("--state", type=str, default=None)
@@ -149,6 +158,15 @@ def create_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--threshold", type=float, default=None,
                           help="LOC threshold (large) or similarity (dupes)")
     p_detect.add_argument("--file", type=str, default=None, help="Show deps for specific file")
+    p_detect.add_argument(
+        "--roslyn-cmd",
+        type=str,
+        default=None,
+        help=(
+            "C# only: command that emits Roslyn dependency JSON to stdout. "
+            "Overrides DESLOPPIFY_CSHARP_ROSLYN_CMD for this invocation."
+        ),
+    )
 
     p_move = sub.add_parser("move", help="Move a file or directory and update all import references")
     p_move.add_argument("source", type=str, help="File or directory to move (relative to project root)")

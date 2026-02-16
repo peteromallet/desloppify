@@ -1,6 +1,7 @@
 """Smoke tests for C# scan pipeline."""
 
 from collections import Counter
+import json
 from pathlib import Path
 import shutil
 from types import SimpleNamespace
@@ -62,9 +63,44 @@ def test_csharp_signal_rich_fixture_emits_meaningful_findings(tmp_path):
     orphan = next(f for f in findings if f["detector"] == "orphaned")
     assert orphan["confidence"] == "medium"
     assert orphan["detail"]["corroboration_count"] >= 2
+    assert "corroboration_min_required" in orphan["detail"]
+    assert "import_count" in orphan["detail"]
+    assert "complexity_score" in orphan["detail"]
 
     single_use = next(f for f in findings if f["detector"] == "single_use")
     assert single_use["confidence"] == "low"
+    assert "corroboration_count" in single_use["detail"]
+    assert "corroboration_min_required" in single_use["detail"]
+    assert "import_count" in single_use["detail"]
+
+
+def test_csharp_signal_rich_fixture_findings_are_deterministic(tmp_path):
+    fixture = (Path("tests") / "fixtures" / "csharp" / "signal_rich").resolve()
+    path = (tmp_path / "signal_rich").resolve()
+    shutil.copytree(fixture, path)
+
+    cfg_a = CSharpConfig()
+    cfg_a.get_area = _signal_rich_area
+    findings_a, _ = generate_findings(path, include_slow=False, lang=cfg_a, profile="objective")
+
+    cfg_b = CSharpConfig()
+    cfg_b.get_area = _signal_rich_area
+    findings_b, _ = generate_findings(path, include_slow=False, lang=cfg_b, profile="objective")
+
+    def _stable_projection(findings: list[dict]) -> list[tuple]:
+        return sorted(
+            (
+                f["id"],
+                f["detector"],
+                f["file"],
+                f["tier"],
+                f["confidence"],
+                f["summary"],
+            )
+            for f in findings
+        )
+
+    assert _stable_projection(findings_a) == _stable_projection(findings_b)
 
 
 def test_csharp_actionability_gate_downgrades_without_corroboration():
@@ -128,3 +164,41 @@ def test_csharp_actionability_gate_respects_configurable_signal_minimum():
     assert findings[0]["detail"]["corroboration_count"] == 2
     assert findings[0]["detail"]["corroboration_min_required"] == 3
     assert findings[0]["confidence"] == "low"
+
+
+def test_csharp_scan_uses_roslyn_cmd_override_from_lang_config(monkeypatch):
+    path = (Path("tests") / "fixtures" / "csharp" / "simple_app").resolve()
+    program = (path / "Program.cs").resolve()
+    greeter = (path / "Services" / "Greeter.cs").resolve()
+    payload = json.dumps(
+        {
+            "files": [
+                {"file": str(program), "imports": [str(greeter)]},
+                {"file": str(greeter), "imports": []},
+            ]
+        }
+    ).encode("utf-8")
+
+    class _Proc:
+        returncode = 0
+        stdout = payload
+        stderr = b""
+
+    captured: dict[str, object] = {}
+
+    def _fake_run(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return _Proc()
+
+    monkeypatch.setattr("desloppify.lang.csharp.detectors.deps.subprocess.run", _fake_run)
+
+    config = CSharpConfig()
+    config._csharp_roslyn_cmd = "override-roslyn --json"
+    findings, potentials = generate_findings(path, include_slow=False, lang=config, profile="objective")
+
+    assert findings is not None
+    assert "cycles" in potentials
+    cmd = captured["args"][0]
+    assert isinstance(cmd, list)
+    assert cmd[0] == "override-roslyn"

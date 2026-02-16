@@ -31,7 +31,7 @@ def cmd_orphaned(args):
     from .detectors.deps import build_dep_graph
     from ...detectors.orphaned import detect_orphaned_files
 
-    graph = build_dep_graph(Path(args.path))
+    graph = build_dep_graph(Path(args.path), roslyn_cmd=getattr(args, "roslyn_cmd", None))
     entries, _ = detect_orphaned_files(
         Path(args.path),
         graph,

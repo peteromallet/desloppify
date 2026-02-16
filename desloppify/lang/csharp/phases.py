@@ -189,7 +189,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     from ...detectors.single_use import detect_single_use_abstractions
     from .detectors.deps import build_dep_graph
 
-    graph = build_dep_graph(path)
+    graph = build_dep_graph(path, roslyn_cmd=getattr(lang, "_csharp_roslyn_cmd", None))
     lang._dep_graph = graph
     zm = lang._zone_map
 

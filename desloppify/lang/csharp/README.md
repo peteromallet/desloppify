@@ -230,6 +230,7 @@ It combines:
 - `namespace` declarations
 - `using` statements (normal, alias, static)
 - `.csproj` `ProjectReference` relationships
+- `obj/project.assets.json` project references (when restore metadata exists)
 - Optional `RootNamespace` from `.csproj`
 - Optional Roslyn JSON graph input via `DESLOPPIFY_CSHARP_ROSLYN_CMD`
 
@@ -237,12 +238,13 @@ How it works at a high level:
 
 1. Find C# source files and `.csproj` files
 2. Parse project references and root namespaces
-3. Map each source file to its nearest project file
-4. Build namespace to file index
-5. For each file, map `using` namespaces to possible target files
-6. Restrict cross-project edges using `ProjectReference` relationships
-7. Mark detected bootstrap/entrypoint files as graph roots (so they are not treated as orphaned)
-8. Return graph in shared detector format
+3. Merge additional project references from `obj/project.assets.json` when available
+4. Map each source file to its nearest project file
+5. Build namespace to file index
+6. For each file, map `using` namespaces to possible target files
+7. Restrict cross-project edges using project reference relationships
+8. Mark detected bootstrap/entrypoint files as graph roots (so they are not treated as orphaned)
+9. Return graph in shared detector format
 
 Bootstrap heuristics include path/name/content signals, for example:
 
@@ -252,7 +254,8 @@ Bootstrap heuristics include path/name/content signals, for example:
 
 Roslyn mode:
 
-- If `DESLOPPIFY_CSHARP_ROSLYN_CMD` is set, Desloppify runs that command first.
+- You can pass a one-off command with `--roslyn-cmd` on `scan` or `detect`.
+- If `--roslyn-cmd` is not provided, `DESLOPPIFY_CSHARP_ROSLYN_CMD` is used.
 - The command can include `{path}` placeholder and must print JSON to stdout.
 - The command is executed without shell interpolation (`shell=False`) for safer invocation.
 - Guardrails:
@@ -263,6 +266,17 @@ Roslyn mode:
   - `{"files":[{"file":"<abs-or-rel>", "imports":["<abs-or-rel>", ...]}]}`
   - `{"edges":[{"source":"<abs-or-rel>", "target":"<abs-or-rel>"}]}`
 - If command execution fails or JSON is invalid, Desloppify falls back to heuristic namespace/project graph building.
+
+Example:
+
+```bash
+desloppify --lang csharp detect deps --path . \
+  --roslyn-cmd "dotnet run --project contrib/csharp/RoslynGraphEmitter/RoslynGraphEmitter.csproj -- {path}"
+```
+
+Sample emitter:
+
+- `contrib/csharp/RoslynGraphEmitter/` (adapt to your repo/build setup)
 
 Graph node shape (same shape expected by shared graph detectors):
 
@@ -547,10 +561,12 @@ Common commands:
 ```bash
 desloppify --lang csharp scan --path .
 desloppify --lang csharp scan --profile full --path .
+desloppify --lang csharp scan --path . --roslyn-cmd "dotnet run --project contrib/csharp/RoslynGraphEmitter/RoslynGraphEmitter.csproj -- {path}"
 desloppify --lang csharp status
 desloppify --lang csharp next
 desloppify --lang csharp show .
 desloppify --lang csharp detect deps --path .
+desloppify --lang csharp detect deps --path . --roslyn-cmd "dotnet run --project contrib/csharp/RoslynGraphEmitter/RoslynGraphEmitter.csproj -- {path}"
 desloppify --lang csharp detect cycles --path .
 desloppify --lang csharp detect orphaned --path .
 desloppify --lang csharp detect dupes --path .

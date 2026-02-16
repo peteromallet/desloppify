@@ -56,6 +56,10 @@ class TestCreateParser:
         args = parser.parse_args(["scan", "--profile", "ci"])
         assert args.profile == "ci"
 
+    def test_scan_with_roslyn_cmd(self, parser):
+        args = parser.parse_args(["scan", "--roslyn-cmd", "dotnet run --project tools/RoslynGraph -- {path}"])
+        assert args.roslyn_cmd == "dotnet run --project tools/RoslynGraph -- {path}"
+
     def test_scan_with_lang(self, parser):
         args = parser.parse_args(["--lang", "python", "scan"])
         assert args.lang == "python"
@@ -158,6 +162,10 @@ class TestCreateParser:
     def test_detect_with_threshold(self, parser):
         args = parser.parse_args(["detect", "dupes", "--threshold", "0.85"])
         assert args.threshold == pytest.approx(0.85)
+
+    def test_detect_with_roslyn_cmd(self, parser):
+        args = parser.parse_args(["detect", "deps", "--roslyn-cmd", "fake-roslyn --json"])
+        assert args.roslyn_cmd == "fake-roslyn --json"
 
     def test_move_command(self, parser):
         args = parser.parse_args(["move", "src/foo.py", "src/bar/foo.py", "--dry-run"])
