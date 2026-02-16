@@ -341,6 +341,11 @@ def compute_tool_hash() -> str:
     """
     h = hashlib.sha256()
     for py_file in sorted(TOOL_DIR.rglob("*.py")):
+        rel_parts = py_file.relative_to(TOOL_DIR).parts
+        # Keep the hash focused on runtime code. Colocated test modules under
+        # lang/*/tests should not trigger scan staleness warnings.
+        if "tests" in rel_parts:
+            continue
         try:
             h.update(str(py_file.relative_to(TOOL_DIR)).encode())
             h.update(py_file.read_bytes())
