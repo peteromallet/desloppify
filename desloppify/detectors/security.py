@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from ..zones import FileZoneMap, Zone
 
@@ -227,7 +228,7 @@ def make_security_entry(
     filepath: str, line: int, check_id: str,
     summary: str, severity: str, confidence: str,
     content: str, remediation: str,
-) -> dict:
+) -> dict[str, Any]:
     """Build a security finding entry dict."""
     from ..utils import rel
     rel_path = rel(filepath)

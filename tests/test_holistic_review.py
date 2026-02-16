@@ -12,6 +12,7 @@ import pytest
 
 from desloppify.review import (
     HOLISTIC_DIMENSIONS,
+    HOLISTIC_DIMENSIONS_BY_LANG,
     HOLISTIC_DIMENSION_PROMPTS,
     HOLISTIC_REVIEW_SYSTEM_PROMPT,
     build_holistic_context,
@@ -87,6 +88,60 @@ class TestHolisticConstants:
 
 
 # ===================================================================
+# HOLISTIC_DIMENSIONS_BY_LANG
+# ===================================================================
+
+
+class TestHolisticDimensionsByLang:
+    def test_curated_dims_are_subset_of_superset(self):
+        for lang_name, dims in HOLISTIC_DIMENSIONS_BY_LANG.items():
+            for dim in dims:
+                assert dim in HOLISTIC_DIMENSIONS, (
+                    f"{lang_name} dim {dim!r} not in HOLISTIC_DIMENSIONS"
+                )
+
+    def test_all_curated_dims_have_prompts(self):
+        for lang_name, dims in HOLISTIC_DIMENSIONS_BY_LANG.items():
+            for dim in dims:
+                assert dim in HOLISTIC_DIMENSION_PROMPTS, (
+                    f"{lang_name} dim {dim!r} missing prompt"
+                )
+
+    def test_unknown_lang_falls_back_to_full(self, tmp_path):
+        f1 = _make_file(str(tmp_path), "module.go", lines=50)
+        lang = _mock_lang([f1])
+        lang.name = "go"  # not in HOLISTIC_DIMENSIONS_BY_LANG
+        state = _empty_state()
+
+        data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
+
+        assert len(data["dimensions"]) == 12
+
+    def test_python_gets_eight_dims(self, tmp_path):
+        f1 = _make_file(str(tmp_path), "module.py", lines=50)
+        lang = _mock_lang([f1])
+        state = _empty_state()
+
+        data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
+
+        assert len(data["dimensions"]) == 8
+        assert "package_organization" in data["dimensions"]
+        assert "api_surface_coherence" not in data["dimensions"]
+
+    def test_typescript_gets_eight_dims(self, tmp_path):
+        f1 = _make_file(str(tmp_path), "module.ts", lines=50)
+        lang = _mock_lang([f1])
+        lang.name = "typescript"
+        state = _empty_state()
+
+        data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
+
+        assert len(data["dimensions"]) == 8
+        assert "api_surface_coherence" in data["dimensions"]
+        assert "package_organization" not in data["dimensions"]
+
+
+# ===================================================================
 # build_holistic_context
 # ===================================================================
 
@@ -157,7 +212,8 @@ class TestPrepareHolisticReview:
 
         assert data["mode"] == "holistic"
         assert data["command"] == "review"
-        assert len(data["dimensions"]) == 12
+        # Python lang gets curated 8-dim subset
+        assert len(data["dimensions"]) == 8
         assert "holistic_context" in data
         assert "system_prompt" in data
 

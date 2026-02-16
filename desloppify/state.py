@@ -207,6 +207,68 @@ def _recompute_stats(state: dict, scan_path: str | None = None):
     _update_objective_health(state, findings)
 
 
+def suppression_metrics(state: dict, *, window: int = 5) -> dict:
+    """Summarize ignore suppression from recent scan history."""
+    history = state.get("scan_history", [])
+    if not history:
+        return {
+            "last_ignored": 0,
+            "last_raw_findings": 0,
+            "last_suppressed_pct": 0.0,
+            "last_ignore_patterns": 0,
+            "recent_scans": 0,
+            "recent_ignored": 0,
+            "recent_raw_findings": 0,
+            "recent_suppressed_pct": 0.0,
+        }
+
+    scans_with_suppression = [
+        h for h in history
+        if isinstance(h, dict) and (
+            "ignored" in h
+            or "raw_findings" in h
+            or "suppressed_pct" in h
+            or "ignore_patterns" in h
+        )
+    ]
+    if not scans_with_suppression:
+        return {
+            "last_ignored": 0,
+            "last_raw_findings": 0,
+            "last_suppressed_pct": 0.0,
+            "last_ignore_patterns": 0,
+            "recent_scans": 0,
+            "recent_ignored": 0,
+            "recent_raw_findings": 0,
+            "recent_suppressed_pct": 0.0,
+        }
+
+    recent = scans_with_suppression[-max(1, window):]
+    last = recent[-1]
+
+    recent_ignored = sum(int(h.get("ignored", 0) or 0) for h in recent)
+    recent_raw = sum(int(h.get("raw_findings", 0) or 0) for h in recent)
+    recent_pct = round(recent_ignored / recent_raw * 100, 1) if recent_raw else 0.0
+
+    last_ignored = int(last.get("ignored", 0) or 0)
+    last_raw = int(last.get("raw_findings", 0) or 0)
+    if "suppressed_pct" in last:
+        last_pct = round(float(last.get("suppressed_pct") or 0.0), 1)
+    else:
+        last_pct = round(last_ignored / last_raw * 100, 1) if last_raw else 0.0
+
+    return {
+        "last_ignored": last_ignored,
+        "last_raw_findings": last_raw,
+        "last_suppressed_pct": last_pct,
+        "last_ignore_patterns": int(last.get("ignore_patterns", 0) or 0),
+        "recent_scans": len(recent),
+        "recent_ignored": recent_ignored,
+        "recent_raw_findings": recent_raw,
+        "recent_suppressed_pct": recent_pct,
+    }
+
+
 def is_ignored(finding_id: str, file: str, ignore_patterns: list[str]) -> bool:
     """Check if a finding matches any ignore pattern (glob, ID prefix, or file path)."""
     for pat in ignore_patterns:
@@ -372,6 +434,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
                lang: str | None = None, scan_path: str | None = None,
                force_resolve: bool = False, exclude: tuple[str, ...] = (),
                potentials: dict[str, int] | None = None,
+               merge_potentials: bool = False,
                codebase_metrics: dict | None = None,
                include_slow: bool = True,
                ignore: list[str] | None = None) -> dict:
@@ -382,7 +445,13 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     state["scan_count"] = state.get("scan_count", 0) + 1
     state["tool_hash"] = compute_tool_hash()
     if potentials is not None and lang:
-        state.setdefault("potentials", {})[lang] = potentials
+        all_pots = state.setdefault("potentials", {})
+        if merge_potentials and isinstance(all_pots.get(lang), dict):
+            merged = dict(all_pots[lang])
+            merged.update(potentials)
+            all_pots[lang] = merged
+        else:
+            all_pots[lang] = potentials
     if codebase_metrics is not None and lang:
         state.setdefault("codebase_metrics", {})[lang] = codebase_metrics
     if lang:
@@ -393,6 +462,8 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     ignore = ignore if ignore is not None else state.get("config", {}).get("ignore", [])
     current_ids, new_count, reopened_count, current_by_detector, ignored_count = _upsert_findings(
         existing, current_findings, ignore, now, lang=lang)
+    raw_findings = len(current_findings)
+    suppressed_pct = round(ignored_count / raw_findings * 100, 1) if raw_findings else 0.0
     # Detectors that appear in potentials actually ran — trust their 0-finding results.
     # Use `is not None` (not truthiness) so an empty dict {} still means "potentials
     # were provided" — prevents marking all detectors as suspect on empty scans.
@@ -414,6 +485,10 @@ def merge_scan(state: dict, current_findings: list[dict], *,
         "open": state["stats"]["open"],
         "diff_new": new_count,
         "diff_resolved": auto_resolved,
+        "ignored": ignored_count,
+        "raw_findings": raw_findings,
+        "suppressed_pct": suppressed_pct,
+        "ignore_patterns": len(ignore),
         "dimension_scores": {
             name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
             for name, ds in state.get("dimension_scores", {}).items()
@@ -433,6 +508,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
         "chronic_reopeners": chronic,
         "skipped_other_lang": skipped_lang, "skipped_out_of_scope": skipped_path,
         "ignored": ignored_count, "ignore_patterns": len(ignore),
+        "raw_findings": raw_findings, "suppressed_pct": suppressed_pct,
     }
 
 

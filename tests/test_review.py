@@ -493,6 +493,17 @@ class TestImportReviewFindings:
         assert "unused::src/foo.ts::bar" in state_with_findings["findings"]
         assert diff["new"] == 3
 
+    def test_import_preserves_existing_mechanical_potentials(self, empty_state, sample_findings_data):
+        from desloppify.review import import_review_findings
+
+        empty_state["potentials"] = {"typescript": {"unused": 10, "smells": 25}}
+        import_review_findings(sample_findings_data, empty_state, "typescript")
+
+        pots = empty_state["potentials"]["typescript"]
+        assert pots["unused"] == 10
+        assert pots["smells"] == 25
+        assert pots.get("review", 0) > 0
+
     def test_import_preserves_wontfix_findings(self, empty_state, sample_findings_data):
         from desloppify.review import import_review_findings
         # First import
@@ -1626,6 +1637,25 @@ class TestSkippedFindings:
 
 class TestAutoResolveOnReImport:
     """Old findings should auto-resolve when re-imported without them."""
+
+    def test_holistic_import_preserves_existing_mechanical_potentials(self):
+        from desloppify.state import _empty_state
+        from desloppify.review import import_holistic_findings
+
+        state = _empty_state()
+        state["potentials"] = {"typescript": {"unused": 12, "smells": 40}}
+        data = {
+            "findings": [
+                {"dimension": "cross_module_architecture", "identifier": "god_mod",
+                 "summary": "too central", "confidence": "high"},
+            ],
+        }
+        import_holistic_findings(data, state, "typescript")
+
+        pots = state["potentials"]["typescript"]
+        assert pots["unused"] == 12
+        assert pots["smells"] == 40
+        assert pots.get("review", 0) > 0
 
     def test_holistic_auto_resolve_on_reimport(self):
         from desloppify.state import _empty_state

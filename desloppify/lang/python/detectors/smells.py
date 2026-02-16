@@ -22,7 +22,7 @@ SMELL_CHECKS = [
     _smell("bare_except", "Bare except clause (catches everything including SystemExit)",
            "high", r"^\s*except\s*:"),
     _smell("broad_except", "Broad except — check library exceptions before narrowing",
-           "medium", r"^\s*except\s+Exception\s*(?:as\s+\w+\s*)?:"),
+           "medium", r"^\s*except\s+(?:Exception|BaseException)\s*(?:as\s+\w+\s*)?:"),
     _smell("mutable_default", "Mutable default argument (list/dict/set literal)",
            "high", r"def\s+\w+\([^)]*=\s*(?:\[\]|\{\}|set\(\))"),
     _smell("global_keyword", "Global keyword usage", "medium", r"^\s+global\s+\w+"),
@@ -292,5 +292,4 @@ def _detect_swallowed_errors(filepath: str, lines: list[str], smell_counts: dict
             smell_counts["swallowed_error"].append({
                 "file": filepath, "line": i + 1, "content": stripped[:100],
             })
-
 

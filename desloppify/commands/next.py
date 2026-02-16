@@ -12,7 +12,7 @@ def _serialize_item(f: dict) -> dict:
             "file": f["file"], "summary": f["summary"], "detail": f.get("detail", {})}
 
 
-def cmd_next(args):
+def cmd_next(args) -> None:
     """Show next highest-priority open finding(s)."""
     from ..state import load_state
     from ..plan import get_next_items

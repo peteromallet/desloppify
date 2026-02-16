@@ -13,13 +13,13 @@ allowed-tools: Bash(desloppify *)
 
 ## 1. Your Job
 
-**Improve code quality by fixing findings.** The score reflects progress but is not the goal. Never suppress findings to improve the score. After every scan, show the user ALL scores:
+**Get strict scores as high as possible.** After every scan, show the user ALL scores:
 
 | What | How |
 |------|-----|
 | Overall health | lenient + strict |
 | 5 mechanical dimensions | File health, Code quality, Duplication, Test health, Security |
-| 5 subjective dimensions | Naming Quality, Error Consistency, Abstraction Fit, Logic Clarity, AI Generated Debt |
+| 7 subjective dimensions | Naming Quality, Error Consistency, Abstraction Fit, Logic Clarity, AI Generated Debt, Type Safety, Contract Coherence |
 
 Never skip scores. The user tracks progress through them.
 
@@ -76,15 +76,6 @@ Even moderate scores (60-80) dramatically improve overall health.
 - `--skip-slow` skips duplicate detection for faster iteration.
 - `--lang python` or `--lang typescript` to force language.
 - Score can temporarily drop after fixes (cascade effects are normal).
-
-## 6. Escalate Tool Issues Upstream
-
-When desloppify itself appears wrong or inconsistent:
-
-1. Capture a minimal repro (`command`, `path`, `expected`, `actual`).
-2. Open a GitHub issue in `peteromallet/desloppify`.
-3. If you can fix it safely, open a PR linked to that issue.
-4. If unsure whether it is tool bug vs user workflow, issue first, PR second.
 
 ## Prerequisite
 

@@ -218,7 +218,7 @@ def _apply_persisted_exclusions(args, config: dict):
             print(colorize(f"  Excluding (from config): {', '.join(combined)}", "dim"), file=sys.stderr)
 
 
-def main():
+def main() -> None:
     # Ensure Unicode output works on Windows terminals (cp1252 etc.)
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):

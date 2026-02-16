@@ -29,9 +29,32 @@ Keep going until all issues are resolved. If you notice anything wrong or confus
 desloppify itself, tell me and ask if I want you to log an issue. If you need to understand
 how desloppify works or debug an issue: git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify
 
-If you're Claude Code, also run:
+If you're Claude Code (only), you can also run:
 mkdir -p .claude/skills/desloppify && curl -sL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md -o .claude/skills/desloppify/SKILL.md
 ```
+
+### Codex vs Claude setup
+
+- Codex users: no `.claude/skills/...` setup is required to run `desloppify` commands.
+- Claude users: the `.claude/skills/...` snippet above is Claude-only.
+- Optional Codex skill install (for reusable global skill):
+
+```bash
+python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
+  --repo peteromallet/desloppify \
+  --path . \
+  --name desloppify
+```
+
+If you add a new skill file and it does not appear immediately, restart Codex once.
+
+### If desloppify looks inconsistent
+
+When an agent sees likely tool bugs, confusing behavior, or documentation mismatch:
+
+1. Open an issue in `peteromallet/desloppify` with repro steps and expected vs actual behavior.
+2. If you have a concrete fix, open a PR linked to that issue.
+3. If unclear whether it is usage error vs tool bug, open the issue first, then follow with a PR if needed.
 
 ## From Vibe Coding to Vibe Engineering
 

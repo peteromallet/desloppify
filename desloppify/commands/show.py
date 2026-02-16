@@ -54,7 +54,7 @@ def _format_detail(detail: dict) -> list[str]:
     return parts
 
 
-def cmd_show(args):
+def cmd_show(args) -> None:
     """Show all findings for a file, directory, detector, or pattern."""
     from ..state import load_state, match_findings
 

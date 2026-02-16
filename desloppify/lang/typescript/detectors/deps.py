@@ -1,9 +1,12 @@
 """Dependency graph + coupling analysis (fan-in/fan-out) + dynamic imports."""
 
+from __future__ import annotations
+
 import json
 import re
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from ....utils import PROJECT_ROOT, c, grep_files, print_table, rel, resolve_path
 from ....detectors.graph import detect_cycles, get_coupling_score, finalize_graph
@@ -121,7 +124,7 @@ def _resolve_alias(module_path: str, tsconfig_paths: dict[str, str],
 def _resolve_module(module_path: str, filepath: str,
                     tsconfig_paths: dict[str, str],
                     project_root: Path,
-                    graph: dict[str, dict],
+                    graph: dict[str, dict[str, Any]],
                     source_resolved: str) -> None:
     """Resolve an import specifier and add edges to the graph.
 
@@ -149,14 +152,14 @@ def _resolve_module(module_path: str, filepath: str,
             break
 
 
-def build_dep_graph(path: Path) -> dict[str, dict]:
+def build_dep_graph(path: Path) -> dict[str, dict[str, Any]]:
     """Build a dependency graph: for each file, who it imports and who imports it.
 
     Returns {resolved_path: {"imports": set[str], "importers": set[str], "import_count": int, "importer_count": int}}
     """
     from ....utils import find_ts_files, find_source_files
 
-    graph: dict[str, dict] = defaultdict(lambda: {"imports": set(), "importers": set()})
+    graph: dict[str, dict[str, Any]] = defaultdict(lambda: {"imports": set(), "importers": set()})
     module_re = re.compile(r"""from\s+['"]([^'"]+)['"]""")
     tsconfig_paths = _load_tsconfig_paths(PROJECT_ROOT)
 
@@ -189,7 +192,7 @@ def build_dep_graph(path: Path) -> dict[str, dict]:
     return finalize_graph(dict(graph))
 
 
-def cmd_deps(args):
+def cmd_deps(args: Any) -> None:
     """Show dependency info for a specific file or top coupled files."""
     graph = build_dep_graph(Path(args.path))
 
@@ -239,7 +242,7 @@ def cmd_deps(args):
     print_table(["File", "In", "Out", "Total"], rows, [60, 5, 5, 6])
 
 
-def cmd_cycles(args):
+def cmd_cycles(args: Any) -> None:
     """Show import cycles in the codebase."""
     graph = build_dep_graph(Path(args.path))
     cycles, _ = detect_cycles(graph)

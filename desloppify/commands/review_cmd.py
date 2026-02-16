@@ -7,7 +7,7 @@ from pathlib import Path
 from ..utils import colorize
 
 
-def cmd_review(args):
+def cmd_review(args) -> None:
     """Prepare or import subjective code review findings."""
     from ..state import load_state
     from ._helpers import state_path, resolve_lang

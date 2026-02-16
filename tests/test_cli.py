@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from desloppify.commands._helpers import _write_query
+from desloppify.commands._helpers import _write_query, resolve_lang
 from desloppify.cli import (
     DETECTOR_NAMES,
     _apply_persisted_exclusions,
@@ -244,6 +244,81 @@ class TestStatePath:
         args = SimpleNamespace(state="/tmp/override.json", lang="python")
         result = state_path(args)
         assert result == Path("/tmp/override.json")
+
+
+class TestResolveLang:
+    def test_prefers_explicit_lang(self):
+        args = SimpleNamespace(lang="python", path="/tmp/somewhere")
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
+    def test_auto_detect_uses_path_when_it_looks_like_project_root(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        # CWD-style project root is python.
+        cwd_root = tmp_path / "cwd_project"
+        cwd_root.mkdir()
+        (cwd_root / "pyproject.toml").write_text("[tool.pytest]\n")
+        py_src = cwd_root / "src"
+        py_src.mkdir()
+        (py_src / "main.py").write_text("print('x')\n")
+
+        # Target --path root is typescript.
+        target_root = tmp_path / "target_project"
+        target_root.mkdir()
+        (target_root / "package.json").write_text('{"name": "target"}\n')
+        ts_src = target_root / "src"
+        ts_src.mkdir()
+        (ts_src / "index.ts").write_text("export const x = 1\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", cwd_root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", cwd_root)
+        args = SimpleNamespace(lang=None, path=str(target_root))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "typescript"
+
+    def test_auto_detect_falls_back_to_project_root_for_subdir_path(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / "pyproject.toml").write_text("[tool.pytest]\n")
+        src = root / "src"
+        src.mkdir()
+        (src / "main.py").write_text("print('x')\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", root)
+        args = SimpleNamespace(lang=None, path=str(src))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
+    def test_auto_detect_walks_up_from_external_subdir_path(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        # CWD-style project root is python.
+        cwd_root = tmp_path / "cwd_project"
+        cwd_root.mkdir()
+        (cwd_root / "pyproject.toml").write_text("[tool.pytest]\n")
+        (cwd_root / "local.py").write_text("print('local')\n")
+
+        # External target is typescript, and --path points to target/src.
+        target_root = tmp_path / "target_project"
+        target_root.mkdir()
+        (target_root / "package.json").write_text('{"name":"target"}\n')
+        target_src = target_root / "src"
+        target_src.mkdir()
+        (target_src / "index.ts").write_text("export const x = 1\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", cwd_root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", cwd_root)
+        args = SimpleNamespace(lang=None, path=str(target_src))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "typescript"
 
 
 # ===========================================================================

@@ -233,10 +233,25 @@ def compute_dimension_scores(
     return results
 
 
-_SHORT_NAMES: dict[str, str] = {
-    "abstraction_fitness": "Abstraction Fit",
-    "ai_generated_debt": "AI Generated Debt",
-    "package_organization": "Package Org",
+DISPLAY_NAMES: dict[str, str] = {
+    # Holistic dimensions
+    "cross_module_architecture": "Cross-Module Arch",
+    "initialization_coupling":  "Init Coupling",
+    "convention_outlier":       "Convention Drift",
+    "error_consistency":        "Error Consistency",
+    "abstraction_fitness":      "Abstraction Fit",
+    "dependency_health":        "Dep Health",
+    "test_strategy":            "Test Strategy",
+    "api_surface_coherence":    "API Coherence",
+    "authorization_consistency": "Auth Consistency",
+    "ai_generated_debt":        "AI Generated Debt",
+    "incomplete_migration":     "Stale Migration",
+    "package_organization":     "Package Org",
+    # Per-file review dimensions
+    "naming_quality":           "Naming Quality",
+    "logic_clarity":            "Logic Clarity",
+    "type_safety":              "Type Safety",
+    "contract_coherence":       "Contracts",
 }
 
 
@@ -260,7 +275,7 @@ def _append_subjective_dimensions(
         if not is_default and not assessment:
             continue
 
-        display = _SHORT_NAMES.get(dim_name, dim_name.replace("_", " ").title())
+        display = DISPLAY_NAMES.get(dim_name, dim_name.replace("_", " ").title())
         if display.lower() in existing_lower:
             display = f"{display} (subjective)"
 

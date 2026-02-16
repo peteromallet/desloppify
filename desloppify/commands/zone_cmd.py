@@ -1,5 +1,8 @@
 """zone command: show/set/clear zone classifications."""
 
+from __future__ import annotations
+
+import argparse
 from pathlib import Path
 
 from ..utils import colorize, rel
@@ -7,7 +10,7 @@ from ._helpers import state_path
 from ..zones import Zone
 
 
-def cmd_zone(args):
+def cmd_zone(args: argparse.Namespace) -> None:
     """Handle zone subcommands: show, set, clear."""
     action = getattr(args, "zone_action", None)
     if action == "show":

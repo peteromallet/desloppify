@@ -261,6 +261,13 @@ def _draw_right_panel(
             text_y = band_top + (row_h - row_text_h) // 2 - row_text_offset + _s(1)
             score = data.get("score", 100)
             strict = data.get("strict", score)
+            # Truncate name with ellipsis if it overflows the column
+            max_name_w = col_name_w - _s(2)
+            name_w = draw.textlength(name, font=font_row)
+            if name_w > max_name_w:
+                while name and draw.textlength(name + "\u2026", font=font_row) > max_name_w:
+                    name = name[:-1]
+                name = name.rstrip() + "\u2026"
             draw.text((col_name, text_y), name, fill=_TEXT, font=font_row)
             draw.text(
                 (col_health, text_y),

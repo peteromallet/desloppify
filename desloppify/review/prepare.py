@@ -16,7 +16,7 @@ from .selection import (
 )
 from .dimensions import (
     DEFAULT_DIMENSIONS, DIMENSION_PROMPTS,
-    HOLISTIC_DIMENSIONS, HOLISTIC_DIMENSION_PROMPTS,
+    HOLISTIC_DIMENSIONS, HOLISTIC_DIMENSIONS_BY_LANG, HOLISTIC_DIMENSION_PROMPTS,
     REVIEW_SYSTEM_PROMPT, HOLISTIC_REVIEW_SYSTEM_PROMPT,
     LANG_GUIDANCE,
 )
@@ -150,7 +150,7 @@ def prepare_holistic_review(path: Path, lang, state: dict, *,
         if not already_cached:
             disable_file_cache()
 
-    dims = dimensions or HOLISTIC_DIMENSIONS
+    dims = dimensions or HOLISTIC_DIMENSIONS_BY_LANG.get(lang.name, HOLISTIC_DIMENSIONS)
     lang_guide = LANG_GUIDANCE.get(lang.name, {})
     batches = _build_investigation_batches(context, lang)
 

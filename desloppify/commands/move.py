@@ -208,7 +208,7 @@ def _apply_changes(
 # ── Main command ──────────────────────────────────────────
 
 
-def cmd_move(args):
+def cmd_move(args) -> None:
     """Move a file or directory and update all import references."""
     source_rel = args.source
     source_abs = resolve_path(source_rel)

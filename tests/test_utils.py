@@ -153,6 +153,27 @@ def test_find_source_files_with_explicit_exclusion(tmp_path, monkeypatch):
     assert not any("generated" in f for f in files)
 
 
+def test_find_source_files_excludes_prefixed_virtualenv_dirs(tmp_path, monkeypatch):
+    """Prefixed virtualenv directories (.venv-*, venv-*) are pruned."""
+    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    utils_mod._find_source_files_cached.cache_clear()
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.py").write_text("keep")
+
+    hidden_venv = src / ".venv-custom"
+    hidden_venv.mkdir()
+    (hidden_venv / "skip_hidden.py").write_text("skip")
+
+    named_venv = src / "venv-project"
+    named_venv.mkdir()
+    (named_venv / "skip_named.py").write_text("skip")
+
+    files = find_source_files(str(src), [".py"])
+    assert files == ["src/keep.py"]
+
+
 # ── set_exclusions() ─────────────────────────────────────────
 
 

@@ -198,7 +198,7 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
     return warnings, narrative
 
 
-def cmd_scan(args):
+def cmd_scan(args) -> None:
     """Run all detectors, update persistent state, show diff."""
     from ..state import load_state, save_state, merge_scan
     from ..plan import generate_findings
@@ -373,7 +373,7 @@ def _show_score_integrity(state: dict, diff: dict):
     ignored = diff.get("ignored", 0)
     ignore_patterns = diff.get("ignore_patterns", 0)
 
-    if wontfix <= 5 and ignored <= 0:
+    if wontfix <= 5 and ignored <= 0 and ignore_patterns <= 0:
         return
 
     obj = state.get("objective_score")
@@ -425,6 +425,12 @@ def _show_score_integrity(state: dict, diff: dict):
         print(colorize(f"  \u26a0 {ignore_patterns} ignore pattern{'s' if ignore_patterns != 1 else ''} "
                         f"suppressed {ignored} finding{'s' if ignored != 1 else ''} this scan", style))
         print(colorize(f"    Ignored findings are invisible to scoring", "dim"))
+    elif ignore_patterns > 0:
+        print(colorize(
+            f"  {ignore_patterns} ignore pattern{'s' if ignore_patterns != 1 else ''} active "
+            f"(0 findings suppressed this scan)",
+            "dim",
+        ))
 
     print(colorize("  " + "\u2504" * 55, "dim"))
     print()
@@ -500,7 +506,7 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
               f"Open: {stats.get('open', 0)} | "
               f"Fixed: {stats.get('fixed', 0)} | "
               f"Wontfix: {wontfix}")
-        if wontfix or ignored:
+        if wontfix or ignored or ignore_pats:
             print(f"Ignored: {ignored} (by {ignore_pats} patterns) | Strict gap: {strict_gap} pts")
             print("Focus on strict score \u2014 wontfix and ignore inflate the lenient score.")
         print()

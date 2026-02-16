@@ -13,6 +13,21 @@ HOLISTIC_DIMENSIONS = [
     "package_organization",
 ]
 
+HOLISTIC_DIMENSIONS_BY_LANG: dict[str, list[str]] = {
+    "python": [
+        "cross_module_architecture", "convention_outlier",
+        "error_consistency", "abstraction_fitness",
+        "dependency_health", "test_strategy",
+        "ai_generated_debt", "package_organization",
+    ],
+    "typescript": [
+        "cross_module_architecture", "convention_outlier",
+        "error_consistency", "abstraction_fitness",
+        "api_surface_coherence", "authorization_consistency",
+        "ai_generated_debt", "incomplete_migration",
+    ],
+}
+
 HOLISTIC_DIMENSION_PROMPTS = {
     "cross_module_architecture": {
         "description": "God modules, circular deps, layer violations, hidden coupling",

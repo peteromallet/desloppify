@@ -1,11 +1,14 @@
 """detect command: run a single detector directly (bypass state tracking)."""
 
+from __future__ import annotations
+
+import argparse
 import sys
 
 from ..utils import colorize
 
 
-def cmd_detect(args):
+def cmd_detect(args: argparse.Namespace) -> None:
     """Run a single detector directly (bypass state tracking)."""
     detector = args.detector
 

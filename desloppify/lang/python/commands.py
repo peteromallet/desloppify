@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
 from ...utils import c, display_entries, find_py_files, print_table, rel
+
+if TYPE_CHECKING:
+    import argparse
+
 from . import PY_COMPLEXITY_SIGNALS, PY_GOD_RULES, PY_SKIP_NAMES, PY_ENTRY_PATTERNS
 from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_single_use,
                              make_cmd_passthrough, make_cmd_naming, make_cmd_smells,
@@ -30,7 +35,7 @@ cmd_passthrough = make_cmd_passthrough(
 cmd_naming = make_cmd_naming(find_py_files, skip_names=PY_SKIP_NAMES)
 
 
-def cmd_gods(args):
+def cmd_gods(args: argparse.Namespace) -> None:
     from ...detectors.gods import detect_gods
     from .extractors import extract_py_classes
     entries, _ = detect_gods(extract_py_classes(Path(args.path)), PY_GOD_RULES)
@@ -42,7 +47,7 @@ def cmd_gods(args):
                           ", ".join(e["reasons"])])
 
 
-def cmd_orphaned(args):
+def cmd_orphaned(args: argparse.Namespace) -> None:
     import json
     from .detectors.deps import build_dep_graph
     from ...detectors.orphaned import detect_orphaned_files
@@ -66,7 +71,7 @@ def cmd_orphaned(args):
     print_table(["File", "LOC"], rows, [80, 6])
 
 
-def cmd_unused(args):
+def cmd_unused(args: argparse.Namespace) -> None:
     import json
     from .detectors.unused import detect_unused
     entries, _ = detect_unused(Path(args.path))
@@ -81,7 +86,7 @@ def cmd_unused(args):
         print(f"  {rel(e['file'])}:{e['line']}  {e['category']}: {e['name']}")
 
 
-def cmd_deps(args):
+def cmd_deps(args: argparse.Namespace) -> None:
     import json
     from .detectors.deps import build_dep_graph
     graph = build_dep_graph(Path(args.path))
@@ -95,7 +100,7 @@ def cmd_deps(args):
         print(f"  {rel(filepath):60s}  {entry['importer_count']:3d} importers  {len(entry['imports']):3d} imports")
 
 
-def cmd_cycles(args):
+def cmd_cycles(args: argparse.Namespace) -> None:
     import json
     from .detectors.deps import build_dep_graph
     from ...detectors.graph import detect_cycles
@@ -124,7 +129,7 @@ cmd_smells = make_cmd_smells(_detect_py_smells)
 cmd_facade = make_cmd_facade(_build_dep_graph, lang="python")
 
 
-def cmd_dupes(args):
+def cmd_dupes(args: argparse.Namespace) -> None:
     import json
     from ...detectors.dupes import detect_duplicates
     from .extractors import extract_py_functions
@@ -153,7 +158,7 @@ def cmd_dupes(args):
 # ── Command registry ──────────────────────────────────────
 
 
-def get_detect_commands() -> dict[str, callable]:
+def get_detect_commands() -> dict[str, Callable[..., None]]:
     """Build the Python detector command registry."""
     return {
         "unused":      cmd_unused,

@@ -8,14 +8,19 @@ Language-specific commands with unique display logic stay in their own modules.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from ..utils import colorize, display_entries, print_table, rel
 
+if TYPE_CHECKING:
+    import argparse
 
-def make_cmd_large(file_finder: Callable, default_threshold: int):
+    from ..detectors.base import ComplexitySignal
+
+
+def make_cmd_large(file_finder: Callable[..., Any], default_threshold: int) -> Callable[[argparse.Namespace], None]:
     """Factory: detect large files."""
-    def cmd_large(args):
+    def cmd_large(args: argparse.Namespace) -> None:
         from ..detectors.large import detect_large_files
         threshold = getattr(args, "threshold", default_threshold)
         entries, _ = detect_large_files(Path(args.path), file_finder=file_finder,
@@ -29,10 +34,10 @@ def make_cmd_large(file_finder: Callable, default_threshold: int):
 
 
 def make_cmd_complexity(
-    file_finder: Callable, signals: list, default_threshold: int = 15,
-):
+    file_finder: Callable[..., Any], signals: list[ComplexitySignal], default_threshold: int = 15,
+) -> Callable[[argparse.Namespace], None]:
     """Factory: detect complexity signals."""
-    def cmd_complexity(args):
+    def cmd_complexity(args: argparse.Namespace) -> None:
         from ..detectors.complexity import detect_complexity
         entries, _ = detect_complexity(Path(args.path), signals=signals,
                                     file_finder=file_finder, threshold=default_threshold)
@@ -45,9 +50,9 @@ def make_cmd_complexity(
     return cmd_complexity
 
 
-def make_cmd_single_use(build_dep_graph: Callable, barrel_names: set[str]):
+def make_cmd_single_use(build_dep_graph: Callable[..., Any], barrel_names: set[str]) -> Callable[[argparse.Namespace], None]:
     """Factory: detect single-use abstractions."""
-    def cmd_single_use(args):
+    def cmd_single_use(args: argparse.Namespace) -> None:
         from ..detectors.single_use import detect_single_use_abstractions
         graph = build_dep_graph(Path(args.path))
         entries, _ = detect_single_use_abstractions(
@@ -61,10 +66,10 @@ def make_cmd_single_use(build_dep_graph: Callable, barrel_names: set[str]):
 
 
 def make_cmd_passthrough(
-    detect_fn: Callable, noun: str, name_key: str, total_key: str,
-):
+    detect_fn: Callable[..., Any], noun: str, name_key: str, total_key: str,
+) -> Callable[[argparse.Namespace], None]:
     """Factory: detect passthrough components/functions."""
-    def cmd_passthrough(args):
+    def cmd_passthrough(args: argparse.Namespace) -> None:
         entries = detect_fn(Path(args.path))
         display_entries(args, entries,
             label=f"Passthrough {noun}s",
@@ -78,11 +83,11 @@ def make_cmd_passthrough(
 
 
 def make_cmd_naming(
-    file_finder: Callable, skip_names: set[str],
+    file_finder: Callable[..., Any], skip_names: set[str],
     skip_dirs: set[str] | None = None,
-):
+) -> Callable[[argparse.Namespace], None]:
     """Factory: detect naming inconsistencies."""
-    def cmd_naming(args):
+    def cmd_naming(args: argparse.Namespace) -> None:
         from ..detectors.naming import detect_naming_inconsistencies
         kwargs = dict(file_finder=file_finder, skip_names=skip_names)
         if skip_dirs:
@@ -101,9 +106,9 @@ def make_cmd_naming(
     return cmd_naming
 
 
-def make_cmd_facade(build_dep_graph_fn: Callable, lang: str):
+def make_cmd_facade(build_dep_graph_fn: Callable[..., Any], lang: str) -> Callable[[argparse.Namespace], None]:
     """Factory: detect re-export facades."""
-    def cmd_facade(args):
+    def cmd_facade(args: argparse.Namespace) -> None:
         import json
         from ..detectors.facade import detect_reexport_facades
         graph = build_dep_graph_fn(Path(args.path))
@@ -131,9 +136,9 @@ def make_cmd_facade(build_dep_graph_fn: Callable, lang: str):
     return cmd_facade
 
 
-def make_cmd_smells(detect_smells_fn: Callable):
+def make_cmd_smells(detect_smells_fn: Callable[..., Any]) -> Callable[[argparse.Namespace], None]:
     """Factory: detect code smells."""
-    def cmd_smells(args):
+    def cmd_smells(args: argparse.Namespace) -> None:
         import json
         entries, _ = detect_smells_fn(Path(args.path))
         if getattr(args, "json", False):

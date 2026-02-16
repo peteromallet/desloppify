@@ -1,14 +1,17 @@
 """Stale @deprecated shim detection."""
 
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from ....utils import (PROJECT_ROOT, SRC_PATH, c, grep_count_files, grep_files,
                        print_table, rel, resolve_path)
 
 
-def detect_deprecated(path: Path) -> tuple[list[dict], int]:
+def detect_deprecated(path: Path) -> tuple[list[dict[str, Any]], int]:
     from ....utils import find_ts_files
     ts_files = find_ts_files(path)
     hits = grep_files(r"@deprecated", ts_files)
@@ -117,7 +120,7 @@ def _count_importers(name: str, declaring_file: str) -> int:
     return count
 
 
-def cmd_deprecated(args):
+def cmd_deprecated(args: Any) -> None:
     entries, _ = detect_deprecated(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))

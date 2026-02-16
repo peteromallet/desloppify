@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
 from ...utils import c, display_entries, find_ts_files, print_table, rel, SRC_PATH
+
+if TYPE_CHECKING:
+    import argparse
+
 from . import TS_COMPLEXITY_SIGNALS, TS_GOD_RULES, TS_SKIP_NAMES, TS_SKIP_DIRS
 from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_single_use,
                              make_cmd_passthrough, make_cmd_naming, make_cmd_smells,
@@ -30,7 +35,7 @@ cmd_passthrough = make_cmd_passthrough(
 cmd_naming = make_cmd_naming(find_ts_files, skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS)
 
 
-def cmd_gods(args):
+def cmd_gods(args: argparse.Namespace) -> None:
     from ...detectors.gods import detect_gods
     from .extractors import extract_ts_components
     entries, _ = detect_gods(extract_ts_components(Path(args.path)), TS_GOD_RULES)
@@ -43,7 +48,7 @@ def cmd_gods(args):
                           ", ".join(e["reasons"])])
 
 
-def cmd_orphaned(args):
+def cmd_orphaned(args: argparse.Namespace) -> None:
     import json
     from .detectors.deps import build_dep_graph, build_dynamic_import_targets, ts_alias_resolver
     from ...detectors.orphaned import detect_orphaned_files
@@ -72,7 +77,7 @@ def cmd_orphaned(args):
 # ── Complex wrappers (unique display logic) ───────────────
 
 
-def cmd_dupes(args):
+def cmd_dupes(args: argparse.Namespace) -> None:
     import json
     from ...detectors.dupes import detect_duplicates
     from .extractors import extract_ts_functions
@@ -124,7 +129,7 @@ cmd_smells = make_cmd_smells(_detect_ts_smells)
 cmd_facade = make_cmd_facade(_build_dep_graph, lang="typescript")
 
 
-def cmd_coupling(args):
+def cmd_coupling(args: argparse.Namespace) -> None:
     import json
     from .detectors.deps import build_dep_graph
     from ...detectors.coupling import (detect_coupling_violations, detect_boundary_candidates,
@@ -179,7 +184,7 @@ def cmd_coupling(args):
 # ── Command registry ──────────────────────────────────────
 
 
-def get_detect_commands() -> dict[str, callable]:
+def get_detect_commands() -> dict[str, Callable[..., None]]:
     """Build the TypeScript detector command registry."""
     from .detectors.logs import cmd_logs
     from .detectors.unused import cmd_unused

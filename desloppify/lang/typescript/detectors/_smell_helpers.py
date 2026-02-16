@@ -6,10 +6,13 @@ window-global, catch-return-default, and switch-no-default detectors live
 in _smell_detectors.py.
 """
 
+from __future__ import annotations
+
 import re
+from collections.abc import Generator
 
 
-def scan_code(text: str, start: int = 0, end: int | None = None):
+def scan_code(text: str, start: int = 0, end: int | None = None) -> Generator[tuple[int, str, bool], None, None]:
     """Yield (index, char, in_string) tuples, handling escapes correctly.
 
     Skips escaped characters (\\x) by advancing +2 instead of +1.

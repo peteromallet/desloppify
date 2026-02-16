@@ -22,6 +22,7 @@ class TestReviewImports:
         from desloppify.review import (
             # dimensions
             HOLISTIC_DIMENSIONS,
+            HOLISTIC_DIMENSIONS_BY_LANG,
             HOLISTIC_DIMENSION_PROMPTS,
             HOLISTIC_REVIEW_SYSTEM_PROMPT,
             DEFAULT_DIMENSIONS,

@@ -8,7 +8,7 @@ from ..utils import colorize, rel
 from ._helpers import state_path, _write_query
 
 
-def cmd_fix(args):
+def cmd_fix(args) -> None:
     """Auto-fix mechanical issues."""
     fixer_name = args.fixer
     if fixer_name == "review":

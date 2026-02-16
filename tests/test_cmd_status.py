@@ -5,6 +5,7 @@ import pytest
 from desloppify.commands.status import (
     _show_dimension_table,
     _show_focus_suggestion,
+    _show_ignore_summary,
     _show_structural_areas,
     cmd_status,
 )
@@ -28,6 +29,9 @@ class TestStatusModuleSanity:
 
     def test_show_structural_areas_callable(self):
         assert callable(_show_structural_areas)
+
+    def test_show_ignore_summary_callable(self):
+        assert callable(_show_ignore_summary)
 
 
 # ---------------------------------------------------------------------------
@@ -101,3 +105,38 @@ class TestShowStructuralAreas:
         _show_structural_areas(state)
         out = capsys.readouterr().out
         assert "Structural Debt" in out
+
+
+class TestShowIgnoreSummary:
+    def test_prints_last_scan_and_recent_suppression(self, capsys):
+        _show_ignore_summary(
+            ["smells::*", "logs::*"],
+            {
+                "last_ignored": 12,
+                "last_raw_findings": 40,
+                "last_suppressed_pct": 30.0,
+                "recent_scans": 3,
+                "recent_ignored": 20,
+                "recent_raw_findings": 100,
+                "recent_suppressed_pct": 20.0,
+            },
+        )
+        out = capsys.readouterr().out
+        assert "Ignore list (2)" in out
+        assert "12/40 findings hidden (30.0%)" in out
+        assert "Recent (3 scans): 20/100 findings hidden (20.0%)" in out
+
+    def test_prints_zero_hidden_when_no_last_raw(self, capsys):
+        _show_ignore_summary(
+            ["smells::*"],
+            {
+                "last_ignored": 0,
+                "last_raw_findings": 0,
+                "recent_scans": 1,
+                "recent_ignored": 0,
+                "recent_raw_findings": 0,
+                "recent_suppressed_pct": 0.0,
+            },
+        )
+        out = capsys.readouterr().out
+        assert "Ignore suppression (last scan): 0 findings hidden" in out

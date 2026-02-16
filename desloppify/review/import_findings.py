@@ -127,6 +127,7 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
         state, review_findings,
         lang=lang_name,
         potentials={"review": pots.get("review", 0)},
+        merge_potentials=True,
     )
 
     # Auto-resolve per-file review findings for re-reviewed files that no longer
@@ -252,6 +253,7 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
         state, review_findings,
         lang=lang_name,
         potentials={"review": pots.get("review", 0)},
+        merge_potentials=True,
     )
 
     # Auto-resolve old holistic findings not in the new import

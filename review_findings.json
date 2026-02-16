@@ -1,0 +1,57 @@
+{
+  "assessments": {
+    "naming_quality": 86,
+    "error_consistency": 84,
+    "abstraction_fitness": 85,
+    "logic_clarity": 90,
+    "ai_generated_debt": 88,
+    "type_safety": 82,
+    "contract_coherence": 85
+  },
+  "findings": [
+    {
+      "file": "desloppify/issues.py",
+      "dimension": "logic_clarity",
+      "identifier": "_render_issue_detail",
+      "summary": "Duplicate branches in identifier extraction: len>=4 and len>=3 both use parts[-2]",
+      "evidence_lines": [111, 115],
+      "evidence": ["Lines 111-117: if len(parts) >= 4: identifier = parts[-2] / elif len(parts) >= 3: identifier = parts[-2] — both branches are identical"],
+      "suggestion": "Collapse into single branch: if len(parts) >= 3: identifier = parts[-2]",
+      "reasoning": "Dead logic branch that misleads readers into thinking the two cases differ",
+      "confidence": "high"
+    },
+    {
+      "file": "desloppify/issues.py",
+      "dimension": "logic_clarity",
+      "identifier": "list_open_review_findings",
+      "summary": "_finding_weight(f) called twice per sort comparison — compute once",
+      "evidence_lines": [50],
+      "evidence": ["Line 50: review.sort(key=lambda f: (-_finding_weight(f)[0], _finding_weight(f)[2])) — double computation"],
+      "suggestion": "Use walrus operator or pre-compute: key=lambda f: (w := _finding_weight(f)) and (-w[0], w[2])",
+      "reasoning": "Unnecessary double computation in sort key, easy to fix",
+      "confidence": "high"
+    },
+    {
+      "file": "desloppify/detectors/security.py",
+      "dimension": "contract_coherence",
+      "identifier": "_is_comment_or_string_context",
+      "summary": "Function name says 'or string context' but only checks comment lines, match_start param unused",
+      "evidence_lines": [104],
+      "evidence": ["Function accepts match_start parameter but never uses it; only checks if line starts with comment markers (#, //, *, /*)"],
+      "suggestion": "Rename to _is_comment_line and remove unused match_start parameter",
+      "reasoning": "Name/behavior mismatch and unused parameter violate the function's stated contract",
+      "confidence": "high"
+    },
+    {
+      "file": "desloppify/scoring.py",
+      "dimension": "naming_quality",
+      "identifier": "_EXCLUDED_ZONES",
+      "summary": "Pure alias _EXCLUDED_ZONES = EXCLUDED_ZONE_VALUES adds indirection without value",
+      "evidence_lines": [48],
+      "evidence": ["Line 48: _EXCLUDED_ZONES = EXCLUDED_ZONE_VALUES — imports and rebinds with no transformation"],
+      "suggestion": "Use EXCLUDED_ZONE_VALUES directly at all call sites in scoring.py",
+      "reasoning": "Alias forces readers to check whether this is the same set or a different one",
+      "confidence": "medium"
+    }
+  ]
+}

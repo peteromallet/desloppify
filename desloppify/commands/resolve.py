@@ -1,12 +1,15 @@
 """resolve and ignore commands: mark findings, manage ignore list."""
 
+from __future__ import annotations
+
+import argparse
 import sys
 
 from ..utils import colorize
 from ._helpers import state_path, _write_query
 
 
-def cmd_resolve(args):
+def cmd_resolve(args: argparse.Namespace) -> None:
     """Resolve finding(s) matching one or more patterns."""
     from ..state import load_state, save_state, resolve_findings
 
@@ -90,7 +93,7 @@ def cmd_resolve(args):
                   "narrative": narrative})
 
 
-def cmd_ignore_pattern(args):
+def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     """Add a pattern to the ignore list."""
     from ..config import add_ignore_pattern, save_config
     from ..state import load_state, save_state, remove_ignored_findings

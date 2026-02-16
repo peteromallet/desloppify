@@ -1,5 +1,8 @@
 """status command: score dashboard with per-tier progress."""
 
+from __future__ import annotations
+
+import argparse
 import json
 from collections import defaultdict
 
@@ -7,13 +10,14 @@ from ..utils import LOC_COMPACT_THRESHOLD, colorize, get_area, print_table
 from ._helpers import state_path, _write_query
 
 
-def cmd_status(args):
+def cmd_status(args: argparse.Namespace) -> None:
     """Show score dashboard."""
-    from ..state import load_state
+    from ..state import load_state, suppression_metrics
 
     sp = state_path(args)
     state = load_state(sp)
     stats = state.get("stats", {})
+    suppression = suppression_metrics(state)
 
     if getattr(args, "json", False):
         print(json.dumps({"score": state.get("score", 0),
@@ -24,6 +28,7 @@ def cmd_status(args):
                           "potentials": state.get("potentials"),
                           "codebase_metrics": state.get("codebase_metrics"),
                           "stats": stats,
+                          "suppression": suppression,
                           "scan_count": state.get("scan_count", 0),
                           "last_scan": state.get("last_scan")}, indent=2))
         return
@@ -116,9 +121,7 @@ def cmd_status(args):
 
     ignores = args._config.get("ignore", [])
     if ignores:
-        print(colorize(f"\n  Ignore list ({len(ignores)}):", "dim"))
-        for p in ignores[:10]:
-            print(colorize(f"    {p}", "dim"))
+        _show_ignore_summary(ignores, suppression)
 
     review_age = args._config.get("review_max_age_days", 30)
     if review_age != 30:
@@ -132,9 +135,40 @@ def cmd_status(args):
                   "stats": stats, "scan_count": state.get("scan_count", 0),
                   "last_scan": state.get("last_scan"),
                   "by_tier": by_tier, "ignores": ignores,
+                  "suppression": suppression,
                   "potentials": state.get("potentials"),
                   "codebase_metrics": state.get("codebase_metrics"),
                   "narrative": narrative})
+
+
+def _show_ignore_summary(ignores: list[str], suppression: dict) -> None:
+    """Show ignore list plus suppression accountability from recent scans."""
+    print(colorize(f"\n  Ignore list ({len(ignores)}):", "dim"))
+    for p in ignores[:10]:
+        print(colorize(f"    {p}", "dim"))
+
+    last_ignored = int(suppression.get("last_ignored", 0) or 0)
+    last_raw = int(suppression.get("last_raw_findings", 0) or 0)
+    last_pct = float(suppression.get("last_suppressed_pct", 0.0) or 0.0)
+
+    if last_raw > 0:
+        style = "red" if last_pct >= 30 else "yellow" if last_pct >= 10 else "dim"
+        print(colorize(
+            f"  Ignore suppression (last scan): {last_ignored}/{last_raw} findings hidden ({last_pct:.1f}%)",
+            style,
+        ))
+    elif suppression.get("recent_scans", 0):
+        print(colorize("  Ignore suppression (last scan): 0 findings hidden", "dim"))
+
+    recent_scans = int(suppression.get("recent_scans", 0) or 0)
+    recent_raw = int(suppression.get("recent_raw_findings", 0) or 0)
+    if recent_scans > 1 and recent_raw > 0:
+        recent_ignored = int(suppression.get("recent_ignored", 0) or 0)
+        recent_pct = float(suppression.get("recent_suppressed_pct", 0.0) or 0.0)
+        print(colorize(
+            f"    Recent ({recent_scans} scans): {recent_ignored}/{recent_raw} findings hidden ({recent_pct:.1f}%)",
+            "dim",
+        ))
 
 
 def _show_dimension_table(dim_scores: dict):

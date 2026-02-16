@@ -9,6 +9,7 @@ No LLM calls happen here — this module is pure Python.
 
 from .dimensions import (
     HOLISTIC_DIMENSIONS,
+    HOLISTIC_DIMENSIONS_BY_LANG,
     HOLISTIC_DIMENSION_PROMPTS,
     HOLISTIC_REVIEW_SYSTEM_PROMPT,
     DEFAULT_DIMENSIONS,
@@ -64,7 +65,7 @@ from .remediation import (
 
 __all__ = [
     # dimensions
-    "HOLISTIC_DIMENSIONS", "HOLISTIC_DIMENSION_PROMPTS", "HOLISTIC_REVIEW_SYSTEM_PROMPT",
+    "HOLISTIC_DIMENSIONS", "HOLISTIC_DIMENSIONS_BY_LANG", "HOLISTIC_DIMENSION_PROMPTS", "HOLISTIC_REVIEW_SYSTEM_PROMPT",
     "DEFAULT_DIMENSIONS", "DIMENSION_PROMPTS", "LANG_GUIDANCE", "REVIEW_SYSTEM_PROMPT",
     # context
     "ReviewContext", "build_review_context", "_serialize_context",

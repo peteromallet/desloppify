@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .utils import PROJECT_ROOT, safe_write_text
 
@@ -46,12 +47,12 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
 }
 
 
-def default_config() -> dict:
+def default_config() -> dict[str, Any]:
     """Return a config dict with all keys set to their defaults."""
     return {k: v.default for k, v in CONFIG_SCHEMA.items()}
 
 
-def load_config(path: Path | None = None) -> dict:
+def load_config(path: Path | None = None) -> dict[str, Any]:
     """Load config from disk, auto-migrating from state files if needed.
 
     Fills missing keys with defaults. If no config.json exists, attempts
@@ -132,7 +133,7 @@ def unset_config_value(config: dict, key: str) -> None:
     config[key] = CONFIG_SCHEMA[key].default
 
 
-def config_for_query(config: dict) -> dict:
+def config_for_query(config: dict[str, Any]) -> dict[str, Any]:
     """Return a sanitized config dict suitable for query.json."""
     return {k: config.get(k, schema.default)
             for k, schema in CONFIG_SCHEMA.items()}
