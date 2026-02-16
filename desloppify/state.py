@@ -57,6 +57,37 @@ def _empty_state() -> dict:
     }
 
 
+def _migrate_progress_scores(state: dict) -> None:
+    """Normalize legacy score keys into the canonical progress score trio."""
+    if state.get("objective_score") is None and state.get("score") is not None:
+        state["objective_score"] = state["score"]
+    if state.get("overall_score") is None:
+        if state.get("objective_score") is not None:
+            state["overall_score"] = state["objective_score"]
+        elif state.get("score") is not None:
+            state["overall_score"] = state["score"]
+    if state.get("strict_score") is None and state.get("objective_strict") is not None:
+        state["strict_score"] = state["objective_strict"]
+
+    for entry in state.get("scan_history", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("objective_score") is None and entry.get("score") is not None:
+            entry["objective_score"] = entry["score"]
+        if entry.get("overall_score") is None:
+            if entry.get("objective_score") is not None:
+                entry["overall_score"] = entry["objective_score"]
+            elif entry.get("score") is not None:
+                entry["overall_score"] = entry["score"]
+        if entry.get("strict_score") is None and entry.get("objective_strict") is not None:
+            entry["strict_score"] = entry["objective_strict"]
+        entry.pop("score", None)
+        entry.pop("objective_strict", None)
+
+    state.pop("score", None)
+    state.pop("objective_strict", None)
+
+
 def load_state(path: Path | None = None) -> dict:
     """Load state from disk, or return empty state.
 
@@ -90,6 +121,7 @@ def load_state(path: Path | None = None) -> dict:
     if version > CURRENT_VERSION:
         print(f"  \u26a0 State file version {version} is newer than supported ({CURRENT_VERSION}). "
               f"Some features may not work correctly.", file=sys.stderr)
+    _migrate_progress_scores(data)
     return data
 
 
@@ -199,9 +231,7 @@ def _update_objective_health(state: dict, findings: dict):
     state["overall_score"] = round(compute_objective_score(lenient_scores), 1)
     state["objective_score"] = round(compute_objective_score(mechanical_lenient_scores), 1)
     state["strict_score"] = round(compute_objective_score(strict_scores), 1)
-    # Remove deprecated score keys when recomputing from canonical dimensions.
-    state.pop("score", None)
-    state.pop("objective_strict", None)
+    _migrate_progress_scores(state)
 
 
 def path_scoped_findings(findings: dict, scan_path: str | None) -> dict:
@@ -537,33 +567,17 @@ def merge_scan(state: dict, current_findings: list[dict], *,
 
 def get_overall_score(state: dict) -> float | None:
     """Canonical overall score (lenient, includes subjective dimensions)."""
-    if state.get("overall_score") is not None:
-        return state.get("overall_score")
-    if state.get("objective_score") is not None and state.get("objective_strict") is not None:
-        return state.get("objective_score")
-    if state.get("score") is not None:
-        return state.get("score")
-    return None
+    return state.get("overall_score")
 
 
 def get_objective_score(state: dict) -> float | None:
     """Canonical objective score (lenient, mechanical dimensions only)."""
-    if state.get("objective_score") is not None:
-        return state.get("objective_score")
-    if state.get("score") is not None:
-        return state.get("score")
-    return None
+    return state.get("objective_score")
 
 
 def get_strict_score(state: dict) -> float | None:
     """Canonical strict score (strict, includes subjective dimensions)."""
-    if state.get("overall_score") is not None and state.get("strict_score") is not None:
-        return state.get("strict_score")
-    if state.get("objective_strict") is not None:
-        return state.get("objective_strict")
-    if state.get("strict_score") is not None:
-        return state.get("strict_score")
-    return None
+    return state.get("strict_score")
 
 
 def _matches_pattern(fid: str, f: dict, pattern: str) -> bool:

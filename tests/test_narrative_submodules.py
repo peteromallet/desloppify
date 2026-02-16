@@ -256,14 +256,14 @@ class TestDetectPhase:
 
     def test_first_scan_single(self):
         from desloppify.narrative.phase import _detect_phase
-        assert _detect_phase([{"objective_strict": 80}], 80) == "first_scan"
+        assert _detect_phase([{"strict_score": 80}], 80) == "first_scan"
 
     def test_early_momentum(self):
         from desloppify.narrative.phase import _detect_phase
         history = [
-            {"objective_strict": 70},
-            {"objective_strict": 75},
-            {"objective_strict": 80},
+            {"strict_score": 70},
+            {"strict_score": 75},
+            {"strict_score": 80},
         ]
         result = _detect_phase(history, 80)
         assert result in ("early_momentum", "steady_progress", "high_plateau", "regression")
@@ -277,10 +277,10 @@ class TestDetectMilestone:
 
     def test_with_history(self, empty_state):
         from desloppify.narrative.phase import _detect_milestone
-        empty_state["objective_strict"] = 85.0
+        empty_state["strict_score"] = 85.0
         history = [
-            {"objective_strict": 70},
-            {"objective_strict": 80},
+            {"strict_score": 70},
+            {"strict_score": 80},
         ]
         result = _detect_milestone(empty_state, None, history)
         # May or may not detect a milestone depending on thresholds

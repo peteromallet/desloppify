@@ -255,7 +255,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 10, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         warnings, narrative = _show_post_scan_analysis(diff, state, FakeLang())
         assert len(warnings) >= 1
         assert any("reopened" in w.lower() for w in warnings)
@@ -269,7 +269,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 15, "auto_resolved": 1, "reopened": 0, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         warnings, _ = _show_post_scan_analysis(diff, state, FakeLang())
         assert any("cascading" in w.lower() for w in warnings)
 
@@ -283,7 +283,7 @@ class TestShowPostScanAnalysis:
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 0,
                 "chronic_reopeners": ["f1", "f2", "f3"]}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         warnings, _ = _show_post_scan_analysis(diff, state, FakeLang())
         assert any("chronic" in w.lower() for w in warnings)
 
@@ -296,7 +296,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 2, "auto_resolved": 5, "reopened": 0, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 90}
+        state = {"findings": {}, "overall_score": 90, "objective_score": 90, "strict_score": 90}
         warnings, narrative = _show_post_scan_analysis(diff, state, FakeLang())
         assert warnings == []
 
@@ -313,7 +313,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         _show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "desloppify fix unused-imports" in out

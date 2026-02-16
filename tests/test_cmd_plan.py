@@ -37,7 +37,7 @@ class TestCmdPlanOutput:
 
         monkeypatch.setattr(plan_cmd, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(state_mod, "load_state", lambda sp: {
-            "findings": {}, "score": 0, "last_scan": None,
+            "findings": {}, "last_scan": None,
         })
 
         class FakeArgs:
@@ -57,7 +57,7 @@ class TestCmdPlanOutput:
 
         monkeypatch.setattr(plan_cmd, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(state_mod, "load_state", lambda sp: {
-            "findings": {}, "score": 80, "last_scan": "2025-01-01",
+            "findings": {}, "last_scan": "2025-01-01",
         })
         monkeypatch.setattr(plan_mod, "generate_plan_md",
                             lambda state: "# Plan\n\nNothing to do.")
@@ -82,7 +82,7 @@ class TestCmdPlanOutput:
 
         monkeypatch.setattr(plan_cmd, "state_path", lambda a: "/tmp/fake.json")
         monkeypatch.setattr(state_mod, "load_state", lambda sp: {
-            "findings": {}, "score": 80, "last_scan": "2025-01-01",
+            "findings": {}, "last_scan": "2025-01-01",
         })
         monkeypatch.setattr(plan_mod, "generate_plan_md",
                             lambda state: "# Plan\n\n## Tier 1")

@@ -475,7 +475,7 @@ class TestGenerateRemediationPlan:
         )
         empty_state["findings"][f["id"]] = f
         empty_state["objective_score"] = 85.0
-        empty_state["objective_strict"] = 84.0
+        empty_state["strict_score"] = 84.0
         empty_state["potentials"] = {"typescript": {"review": 50}}
         result = generate_remediation_plan(empty_state, "typescript")
         assert "God module detected" in result

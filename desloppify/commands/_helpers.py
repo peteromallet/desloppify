@@ -78,7 +78,8 @@ def _resolve_detection_root(args) -> Path:
     """Best root to auto-detect language from.
 
     Prefer --path when it points to (or is under) a project root with language
-    config markers. Fall back to PROJECT_ROOT when no marker can be found.
+    config markers. When no marker is found, fall back to the provided path
+    subtree so file-count detection can choose a local language.
     """
     raw_path = getattr(args, "path", None)
     if not raw_path:
@@ -93,7 +94,9 @@ def _resolve_detection_root(args) -> Path:
     for root in (search_root, *search_root.parents):
         if _looks_like_project_root(root):
             return root
-    return PROJECT_ROOT
+    # No marker found — prefer the user-provided path subtree so file-count
+    # based detection can still pick the local language.
+    return search_root
 
 
 def _auto_detect_lang_name(args) -> str | None:

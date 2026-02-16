@@ -827,7 +827,7 @@ class TestNarrativeIntegration:
             },
             "findings": {},
             "reminder_history": {},
-            "objective_strict": 80.0,
+            "strict_score": 80.0,
         }
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind",
@@ -874,7 +874,7 @@ class TestNarrativeIntegration:
         state = {
             "findings": {},
             "reminder_history": {},
-            "objective_strict": 85.0,
+            "strict_score": 85.0,
         }
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind",
@@ -892,7 +892,7 @@ class TestNarrativeIntegration:
         state = {
             "findings": {},
             "reminder_history": {},
-            "objective_strict": 60.0,
+            "strict_score": 60.0,
         }
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind",
@@ -914,7 +914,7 @@ class TestNarrativeIntegration:
             },
             "findings": {},
             "reminder_history": {},
-            "objective_strict": 95.0,
+            "strict_score": 95.0,
         }
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind",

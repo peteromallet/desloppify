@@ -42,7 +42,13 @@ class TestCmdNextOutput:
 
         # Mock load_state to return empty state
         def mock_load_state(sp):
-            return {"findings": {}, "score": 100, "stats": {}}
+            return {
+                "findings": {},
+                "overall_score": 100,
+                "objective_score": 100,
+                "strict_score": 100,
+                "stats": {},
+            }
 
         # Mock get_next_items to return empty list
         def mock_get_next_items(state, tier, count, scan_path=None):
