@@ -56,12 +56,14 @@ def _draw_left_panel(
     main_score: float,
     strict_score: float,
     project_name: str,
+    package_version: str,
     lp_left: int,
     lp_right: int,
     lp_top: int,
     lp_bot: int,
 ):
     """Draw the left panel: score panel background, title, score, strict, project name."""
+    font_version = _load_font(9, mono=True)
     font_title = _load_font(15, serif=True, bold=True)
     font_big = _load_font(42, serif=True, bold=True)
     font_strict_label = _load_font(12, serif=True)
@@ -79,6 +81,15 @@ def _draw_left_panel(
     )
 
     # Measure all elements
+    version_text = (
+        f"v{package_version}"
+        if package_version and package_version != "unknown"
+        else "version unknown"
+    )
+    version_bbox = draw.textbbox((0, 0), version_text, font=font_version)
+    version_h = version_bbox[3] - version_bbox[1]
+    version_w = draw.textlength(version_text, font=font_version)
+
     title = "DESLOPPIFY SCORE"
     title_bbox = draw.textbbox((0, 0), title, font=font_title)
     title_h = title_bbox[3] - title_bbox[1]
@@ -100,6 +111,7 @@ def _draw_left_panel(
     proj_h = proj_bbox[3] - proj_bbox[1]
 
     # Stack: title → ornament rule → score → strict → project pill
+    version_gap = _s(4)
     ornament_gap = _s(7)
     score_gap = _s(6)
     proj_gap = _s(8)
@@ -107,7 +119,9 @@ def _draw_left_panel(
     pill_pad_x = _s(8)
     proj_pill_h = proj_h + 2 * pill_pad_y
     total_h = (
-        title_h
+        version_h
+        + version_gap
+        + title_h
         + ornament_gap
         + _s(6)
         + ornament_gap
@@ -119,11 +133,25 @@ def _draw_left_panel(
     )
     y0 = (lp_top + lp_bot) // 2 - total_h // 2 + _s(3)
 
+    # Version
+    draw.text(
+        (lp_cx - version_w / 2, y0 - version_bbox[1]),
+        version_text,
+        fill=_DIM,
+        font=font_version,
+    )
+
     # Title
-    draw.text((lp_cx - tw / 2, y0 - title_bbox[1]), title, fill=_TEXT, font=font_title)
+    title_y = y0 + version_h + version_gap
+    draw.text(
+        (lp_cx - tw / 2, title_y - title_bbox[1]),
+        title,
+        fill=_TEXT,
+        font=font_title,
+    )
 
     # Ornamental rule
-    rule_y = y0 + title_h + ornament_gap
+    rule_y = title_y + title_h + ornament_gap
     rule_inset = _s(28)
     _draw_rule_with_ornament(
         draw,

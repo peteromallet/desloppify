@@ -15,6 +15,7 @@ desloppify = "desloppify.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["desloppify*"]
+exclude = ["desloppify.lang.python.tests*", "desloppify.lang.typescript.tests*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "desloppify/lang/python/tests", "desloppify/lang/typescript/tests"]

@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from .commands._helpers import state_path, resolve_lang
+from .lang import available_langs, get_lang
 from .utils import DEFAULT_PATH, PROJECT_ROOT
 
 
@@ -46,6 +47,9 @@ examples:
 
 
 def create_parser() -> argparse.ArgumentParser:
+    langs = available_langs()
+    lang_help = ", ".join(langs) if langs else "registered languages"
+
     parser = argparse.ArgumentParser(
         prog="desloppify",
         description="Desloppify — codebase health tracker",
@@ -54,7 +58,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     # Global flags
     parser.add_argument("--lang", type=str, default=None,
-                        help="Language to scan (typescript, python). Auto-detected if omitted.")
+                        help=f"Language to scan ({lang_help}). Auto-detected if omitted.")
     parser.add_argument("--exclude", action="append", default=None, metavar="PATTERN",
                         help="Path substring to exclude (repeatable: --exclude foo --exclude bar)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -114,11 +118,20 @@ def create_parser() -> argparse.ArgumentParser:
     p_ignore.add_argument("pattern", help="File path, glob, or detector::prefix")
     p_ignore.add_argument("--state", type=str, default=None)
 
-    p_fix = sub.add_parser("fix", help="Auto-fix mechanical issues",
-                           epilog="fixers (typescript): unused-imports, unused-vars, unused-params, "
-                                  "dead-exports, debug-logs, dead-useeffect, empty-if-chain\n"
-                                  "fixers (python): none yet\n"
-                                  "special: review — prepare structured review data")
+    fixer_help_lines: list[str] = []
+    for lang_name in langs:
+        try:
+            fixer_names = sorted(get_lang(lang_name).fixers.keys())
+        except Exception:
+            fixer_names = []
+        fixer_list = ", ".join(fixer_names) if fixer_names else "none yet"
+        fixer_help_lines.append(f"fixers ({lang_name}): {fixer_list}")
+    fixer_help_lines.append("special: review — prepare structured review data")
+    p_fix = sub.add_parser(
+        "fix",
+        help="Auto-fix mechanical issues",
+        epilog="\n".join(fixer_help_lines),
+    )
     p_fix.add_argument("fixer", type=str, help="What to fix")
     p_fix.add_argument("--path", type=str, default=None)
     p_fix.add_argument("--state", type=str, default=None)

@@ -95,29 +95,30 @@ class TestComputeActions:
 class TestComputeTools:
     def test_empty(self):
         from desloppify.narrative.actions import _compute_tools
-        result = _compute_tools({}, "typescript", {})
+        result = _compute_tools({}, {}, "typescript", {})
         assert "fixers" in result
         assert "move" in result
         assert "plan" in result
 
     def test_fixers_only_when_open(self):
         from desloppify.narrative.actions import _compute_tools
-        result = _compute_tools({"unused": 5}, "typescript", {})
+        result = _compute_tools({"unused": 5}, {}, "typescript", {})
         assert len(result["fixers"]) >= 1
 
     def test_no_fixers_for_python(self):
         from desloppify.narrative.actions import _compute_tools
-        result = _compute_tools({"unused": 5}, "python", {})
+        state = {"lang_capabilities": {"python": {"fixers": []}}}
+        result = _compute_tools({"unused": 5}, state, "python", {})
         assert result["fixers"] == []
 
     def test_move_relevant_with_coupling(self):
         from desloppify.narrative.actions import _compute_tools
-        result = _compute_tools({"coupling": 3}, "typescript", {})
+        result = _compute_tools({"coupling": 3}, {}, "typescript", {})
         assert result["move"]["relevant"] is True
 
     def test_move_not_relevant_empty(self):
         from desloppify.narrative.actions import _compute_tools
-        result = _compute_tools({}, "typescript", {})
+        result = _compute_tools({}, {}, "typescript", {})
         assert result["move"]["relevant"] is False
 
 

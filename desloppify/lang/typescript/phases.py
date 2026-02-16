@@ -244,7 +244,8 @@ def _make_boundary_findings(
     results = []
     deduped = 0
     boundary_entries, total_shared = detect_boundary_candidates(
-        path, graph, shared_prefix=shared_prefix, tools_prefix=tools_prefix)
+        path, graph, shared_prefix=shared_prefix, tools_prefix=tools_prefix,
+        skip_basenames={"index.ts", "index.tsx"})
     for e in boundary_entries:
         if rel(e["file"]) in single_use_emitted:
             deduped += 1
@@ -267,6 +268,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     from ...detectors.graph import detect_cycles
     from ...detectors.coupling import detect_coupling_violations, detect_cross_tool_imports
     from ...detectors.orphaned import detect_orphaned_files
+    from .detectors.facade import detect_reexport_facades
     from ...detectors.naming import detect_naming_inconsistencies
     from ...utils import SRC_PATH
     from .detectors.deps import build_dep_graph, build_dynamic_import_targets, ts_alias_resolver
@@ -330,8 +332,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     results.extend(make_orphaned_findings(orphan_entries, log))
 
     # Re-export facades (shared detector)
-    from ...detectors.facade import detect_reexport_facades
-    facade_entries, _ = detect_reexport_facades(graph, lang="typescript")
+    facade_entries, _ = detect_reexport_facades(graph)
     facade_entries = filter_entries(zm, facade_entries, "facade")
     results.extend(make_facade_findings(facade_entries, log))
 

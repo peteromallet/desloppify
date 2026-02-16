@@ -26,6 +26,10 @@ def _detect_passthrough(path):
     from .extractors import detect_passthrough_functions
     return detect_passthrough_functions(path)
 
+def _detect_facades(graph):
+    from .detectors.facade import detect_reexport_facades
+    return detect_reexport_facades(graph)
+
 
 cmd_large = make_cmd_large(find_py_files, default_threshold=300)
 cmd_complexity = make_cmd_complexity(find_py_files, PY_COMPLEXITY_SIGNALS, default_threshold=25)
@@ -126,7 +130,7 @@ def _detect_py_smells(path):
 cmd_smells = make_cmd_smells(_detect_py_smells)
 
 
-cmd_facade = make_cmd_facade(_build_dep_graph, lang="python")
+cmd_facade = make_cmd_facade(_build_dep_graph, detect_facades_fn=_detect_facades)
 
 
 def cmd_dupes(args: argparse.Namespace) -> None:

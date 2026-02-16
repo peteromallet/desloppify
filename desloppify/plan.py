@@ -34,10 +34,15 @@ def generate_findings(
     Returns (findings, potentials) where potentials maps detector names to checked counts.
     """
     if lang is None:
-        from .lang import get_lang, auto_detect_lang
+        from .lang import get_lang, auto_detect_lang, available_langs
         from .utils import PROJECT_ROOT
         detected = auto_detect_lang(PROJECT_ROOT)
-        lang = get_lang(detected or "typescript")
+        if detected is None:
+            langs = available_langs()
+            if not langs:
+                raise ValueError("No language plugins available")
+            detected = langs[0]
+        lang = get_lang(detected)
     return _generate_findings_from_lang(path, lang, include_slow=include_slow,
                                          zone_overrides=zone_overrides)
 

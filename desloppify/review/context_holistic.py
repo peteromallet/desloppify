@@ -207,16 +207,11 @@ def _build_holistic_context_inner(files: list[str], lang, state: dict) -> dict:
 
     # 8. API surface: export patterns
     api: dict = {}
-    is_ts = lang.name == "typescript"
-    if is_ts:
-        sync_async_mix = []
-        for filepath, content in file_contents.items():
-            has_sync = bool(re.search(r"\bexport\s+function\s+\w+", content))
-            has_async = bool(re.search(r"\bexport\s+async\s+function\s+\w+", content))
-            if has_sync and has_async:
-                sync_async_mix.append(rel(filepath))
-        if sync_async_mix:
-            api["sync_async_mix"] = sync_async_mix[:20]
+    api_surface_fn = getattr(lang, "review_api_surface_fn", None)
+    if callable(api_surface_fn):
+        computed = api_surface_fn(file_contents)
+        if isinstance(computed, dict):
+            api = computed
     ctx["api_surface"] = api
 
     # 9. Authorization context
@@ -230,7 +225,7 @@ def _build_holistic_context_inner(files: list[str], lang, state: dict) -> dict:
         ctx["ai_debt_signals"] = ai_debt
 
     # 11. Migration signals
-    migration = _gather_migration_signals(file_contents, lang.name)
+    migration = _gather_migration_signals(file_contents, lang)
     if migration:
         ctx["migration_signals"] = migration
 

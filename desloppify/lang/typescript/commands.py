@@ -26,6 +26,10 @@ def _detect_passthrough(path):
     from .extractors import detect_passthrough_components
     return detect_passthrough_components(path)
 
+def _detect_facades(graph):
+    from .detectors.facade import detect_reexport_facades
+    return detect_reexport_facades(graph)
+
 
 cmd_large = make_cmd_large(find_ts_files, default_threshold=500)
 cmd_complexity = make_cmd_complexity(find_ts_files, TS_COMPLEXITY_SIGNALS)
@@ -126,7 +130,7 @@ def _detect_ts_smells(path):
 cmd_smells = make_cmd_smells(_detect_ts_smells)
 
 
-cmd_facade = make_cmd_facade(_build_dep_graph, lang="typescript")
+cmd_facade = make_cmd_facade(_build_dep_graph, detect_facades_fn=_detect_facades)
 
 
 def cmd_coupling(args: argparse.Namespace) -> None:
@@ -140,7 +144,8 @@ def cmd_coupling(args: argparse.Namespace) -> None:
     violations, _ = detect_coupling_violations(Path(args.path), graph,
                                              shared_prefix=shared_prefix, tools_prefix=tools_prefix)
     candidates, _ = detect_boundary_candidates(Path(args.path), graph,
-                                             shared_prefix=shared_prefix, tools_prefix=tools_prefix)
+                                             shared_prefix=shared_prefix, tools_prefix=tools_prefix,
+                                             skip_basenames={"index.ts", "index.tsx"})
     if getattr(args, "json", False):
         print(json.dumps({
             "violations": len(violations),

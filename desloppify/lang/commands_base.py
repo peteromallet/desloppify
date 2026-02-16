@@ -106,13 +106,15 @@ def make_cmd_naming(
     return cmd_naming
 
 
-def make_cmd_facade(build_dep_graph_fn: Callable[..., Any], lang: str) -> Callable[[argparse.Namespace], None]:
+def make_cmd_facade(
+    build_dep_graph_fn: Callable[..., Any],
+    detect_facades_fn: Callable[..., tuple[list[dict], int]],
+) -> Callable[[argparse.Namespace], None]:
     """Factory: detect re-export facades."""
     def cmd_facade(args: argparse.Namespace) -> None:
         import json
-        from ..detectors.facade import detect_reexport_facades
         graph = build_dep_graph_fn(Path(args.path))
-        entries, _ = detect_reexport_facades(graph, lang=lang)
+        entries, _ = detect_facades_fn(graph)
         if getattr(args, "json", False):
             print(json.dumps({"count": len(entries), "entries": [
                 {**e, "file": rel(e["file"])} for e in entries

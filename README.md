@@ -29,24 +29,103 @@ Keep going until all issues are resolved. If you notice anything wrong or confus
 desloppify itself, tell me and ask if I want you to log an issue. If you need to understand
 how desloppify works or debug an issue: git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify
 
-If you're Claude Code (only), you can also run:
-mkdir -p .claude/skills/desloppify && curl -sL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md -o .claude/skills/desloppify/SKILL.md
+If you're Claude Code, also run:
+mkdir -p .claude/skills/desloppify && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CLAUDE.md; } > .claude/skills/desloppify/SKILL.md
+
+If you're Codex, also run:
+mkdir -p .agents/skills/desloppify && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CODEX.md; } > .agents/skills/desloppify/SKILL.md
+
+If your Codex build reads $CODEX_HOME/skills, also run:
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/desloppify" && cp .agents/skills/desloppify/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/desloppify/SKILL.md"
 ```
 
-### Codex vs Claude setup
+### Agent-specific skill install (core + overlay)
 
-- Codex users: no `.claude/skills/...` setup is required to run `desloppify` commands.
-- Claude users: the `.claude/skills/...` snippet above is Claude-only.
-- Optional Codex skill install (for reusable global skill):
+Run exactly one of the following.
+
+#### Claude Code
 
 ```bash
-python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
-  --repo peteromallet/desloppify \
-  --path . \
-  --name desloppify
+mkdir -p .claude/skills/desloppify && {
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md
+  printf '\n\n'
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CLAUDE.md
+} > .claude/skills/desloppify/SKILL.md
 ```
 
-If you add a new skill file and it does not appear immediately, restart Codex once.
+#### Codex (documented path: `.agents/skills`)
+
+```bash
+mkdir -p .agents/skills/desloppify && {
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md
+  printf '\n\n'
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CODEX.md
+} > .agents/skills/desloppify/SKILL.md
+```
+
+Optional compatibility copy for Codex builds that still read `$CODEX_HOME/skills`:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/desloppify" \
+  && cp .agents/skills/desloppify/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/desloppify/SKILL.md"
+```
+
+### Deploy isolated reviewers
+
+#### Claude Code (first-class subagents)
+
+```bash
+mkdir -p .claude/agents && cat > .claude/agents/desloppify-reviewer.md <<'EOF'
+---
+name: desloppify-reviewer
+description: Blind subjective reviewer for desloppify packets.
+---
+You are an isolated reviewer for subjective desloppify scans.
+
+Only use .desloppify/review_packet_blind.json and referenced source files.
+Do not use prior chat context, score history, or narrative summaries.
+Return JSON only:
+{"assessments":{"naming_quality":0,"error_consistency":0,"abstraction_fit":0,"logic_clarity":0,"ai_generated_debt":0},"findings":[]}
+EOF
+```
+
+Use `/agents` in Claude Code and delegate subjective review tasks to `desloppify-reviewer`.
+
+#### Codex (equivalent isolation pattern)
+
+Codex currently uses isolated tasks/worktrees rather than named subagents.
+
+```bash
+REVIEW_DIR="../$(basename "$PWD")-review-$(date +%Y%m%d%H%M%S)"
+git worktree add --detach "$REVIEW_DIR"
+mkdir -p "$REVIEW_DIR/.desloppify"
+cp .desloppify/review_packet_blind.json "$REVIEW_DIR/.desloppify/review_packet_blind.json"
+```
+
+Then run a new Codex thread (or cloud task) from `"$REVIEW_DIR"` for the subjective review.
+
+### Isolated subjective reviews (recommended)
+
+When you want a clean review that is not biased by score history:
+
+1. Prepare review data:
+
+```bash
+desloppify review --prepare --path .
+```
+
+2. Create a blind packet:
+
+```bash
+jq 'del(.narrative, .objective_score, .objective_strict, .dimension_scores, .stats, .scan_count, .last_scan)' \
+  .desloppify/query.json > .desloppify/review_packet_blind.json
+```
+
+3. Run the review in an isolated agent context:
+
+- Claude Code: use `/agents` with `desloppify-reviewer`, or a skill with `context: fork`.
+- Codex app/CLI: run a new thread on a dedicated worktree.
+- Codex web: delegate a separate cloud task (each task has its own environment).
 
 ### If desloppify looks inconsistent
 

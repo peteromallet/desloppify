@@ -45,7 +45,8 @@ def detect_coupling_violations(path: Path, graph: dict,
 
 def detect_boundary_candidates(path: Path, graph: dict,
                                 shared_prefix: str = "",
-                                tools_prefix: str = "") -> tuple[list[dict], int]:
+                                tools_prefix: str = "",
+                                skip_basenames: set[str] | None = None) -> tuple[list[dict], int]:
     """Find shared/ files whose importers ALL come from a single tool.
 
     Args:
@@ -57,12 +58,13 @@ def detect_boundary_candidates(path: Path, graph: dict,
     """
     total_shared = 0
     entries = []
+    skip_basenames = skip_basenames or set()
     for filepath, entry in graph.items():
         if not filepath.startswith(shared_prefix):
             continue
         total_shared += 1
         basename = Path(filepath).name
-        if basename in ("index.ts", "index.tsx"):
+        if basename in skip_basenames:
             continue
         if f"{shared_prefix}components/ui/" in filepath:
             continue

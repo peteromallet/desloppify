@@ -15,7 +15,6 @@ from .context import _abs, _dep_graph_lookup, _importer_count
 # they're mostly declarations (types, constants, enums) not logic.
 LOW_VALUE_NAMES = re.compile(
     r"(?:^|/)(?:types|constants|enums|index)\.[a-z]+$"
-    r"|\.d\.ts$"
 )
 
 # Minimum LOC to be worth a review slot
@@ -96,8 +95,8 @@ def _compute_review_priority(filepath: str, lang, state: dict) -> int:
     if loc < MIN_REVIEW_LOC:
         return -1
 
-    # Low-value files: types, constants, enums, index files, .d.ts
-    is_low_value = bool(LOW_VALUE_NAMES.search(rpath))
+    # Low-value files: language-provided pattern or generic fallback.
+    is_low_value = is_low_value_file(rpath, lang)
 
     # High blast radius (many importers)
     if lang._dep_graph:
@@ -137,6 +136,31 @@ def _compute_review_priority(filepath: str, lang, state: dict) -> int:
         score = score // 3
 
     return score
+
+
+def low_value_pattern(lang_or_name=None):
+    """Return the low-value filename regex for a language, with generic fallback."""
+    if lang_or_name is not None and hasattr(lang_or_name, "review_low_value_pattern"):
+        pattern = getattr(lang_or_name, "review_low_value_pattern", None)
+        if isinstance(pattern, re.Pattern):
+            return pattern
+
+    if isinstance(lang_or_name, str):
+        try:
+            from ..lang import get_lang
+            pattern = getattr(get_lang(lang_or_name), "review_low_value_pattern", None)
+            if isinstance(pattern, re.Pattern):
+                return pattern
+        except Exception:
+            pass
+
+    return LOW_VALUE_NAMES
+
+
+def is_low_value_file(filepath: str, lang_or_name=None) -> bool:
+    """Whether a file path is low-value for subjective review."""
+    pattern = low_value_pattern(lang_or_name)
+    return bool(pattern.search(filepath))
 
 
 def _get_file_findings(state: dict, filepath: str) -> list[dict]:
