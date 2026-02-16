@@ -18,7 +18,7 @@ from .dimensions import (
     DEFAULT_DIMENSIONS, DIMENSION_PROMPTS,
     HOLISTIC_DIMENSIONS, HOLISTIC_DIMENSIONS_BY_LANG, HOLISTIC_DIMENSION_PROMPTS,
     REVIEW_SYSTEM_PROMPT, HOLISTIC_REVIEW_SYSTEM_PROMPT,
-    LANG_GUIDANCE,
+    get_lang_guidance,
 )
 
 
@@ -62,7 +62,7 @@ def prepare_review(path: Path, lang, state: dict, *,
             disable_file_cache()
 
     dims = dimensions or config_dimensions or DEFAULT_DIMENSIONS
-    lang_guide = LANG_GUIDANCE.get(lang.name, {})
+    lang_guide = get_lang_guidance(lang.name)
 
     return {
         "command": "review",
@@ -151,7 +151,7 @@ def prepare_holistic_review(path: Path, lang, state: dict, *,
             disable_file_cache()
 
     dims = dimensions or HOLISTIC_DIMENSIONS_BY_LANG.get(lang.name, HOLISTIC_DIMENSIONS)
-    lang_guide = LANG_GUIDANCE.get(lang.name, {})
+    lang_guide = get_lang_guidance(lang.name)
     batches = _build_investigation_batches(context, lang)
 
     return {

@@ -227,7 +227,7 @@ class TestDetectBoundaryCandidates:
         with patch("desloppify.detectors.coupling.rel",
                     side_effect=lambda p: str(Path(p).relative_to(tmp_path))):
             entries, total_shared = detect_boundary_candidates(
-                tmp_path, graph, sp, tp)
+                tmp_path, graph, sp, tp, skip_basenames={"index.ts", "index.tsx"})
 
         assert total_shared == 1
         assert len(entries) == 1
@@ -259,7 +259,7 @@ class TestDetectBoundaryCandidates:
         with patch("desloppify.detectors.coupling.rel",
                     side_effect=lambda p: str(Path(p).relative_to(tmp_path))):
             entries, total_shared = detect_boundary_candidates(
-                tmp_path, graph, sp, tp)
+                tmp_path, graph, sp, tp, skip_basenames={"index.ts", "index.tsx"})
 
         assert total_shared == 2
         assert entries == []

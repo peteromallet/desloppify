@@ -17,13 +17,42 @@ from pathlib import Path
 from ..utils import PROJECT_ROOT, colorize, rel
 
 
+def _resolve_visualization_lang(path: Path, lang):
+    """Resolve language config for visualization if not already provided."""
+    if lang:
+        return lang
+    from ..lang import auto_detect_lang, get_lang
+
+    search_roots = [path if path.is_dir() else path.parent]
+    search_roots.extend(search_roots[0].parents)
+    for root in search_roots:
+        detected = auto_detect_lang(root)
+        if detected:
+            return get_lang(detected)
+    return None
+
+
+def _fallback_source_files(path: Path) -> list[str]:
+    """Collect source files using extensions from all registered language plugins."""
+    from ..lang import available_langs, get_lang
+    from ..utils import find_source_files
+
+    extensions: set[str] = set()
+    for lang_name in available_langs():
+        cfg = get_lang(lang_name)
+        extensions.update(cfg.extensions)
+    if not extensions:
+        return []
+    return find_source_files(path, sorted(extensions))
+
+
 def _collect_file_data(path: Path, lang=None) -> list[dict]:
     """Collect LOC for all source files using the language's file finder."""
-    if lang and lang.file_finder:
-        source_files = lang.file_finder(path)
+    resolved_lang = _resolve_visualization_lang(path, lang)
+    if resolved_lang and resolved_lang.file_finder:
+        source_files = resolved_lang.file_finder(path)
     else:
-        from ..utils import find_ts_files
-        source_files = find_ts_files(path)
+        source_files = _fallback_source_files(path)
     files = []
     for filepath in source_files:
         try:
@@ -87,15 +116,10 @@ def _build_tree(files: list[dict], dep_graph: dict, findings_by_file: dict) -> d
 
 
 def _build_dep_graph_for_path(path: Path, lang) -> dict:
-    """Build dependency graph using lang plugin or fallback to TS."""
-    if lang and lang.build_dep_graph:
-        return lang.build_dep_graph(path)
-    if not lang:
-        try:
-            from ..lang.typescript.deps import build_dep_graph
-            return build_dep_graph(path)
-        except (ImportError, ModuleNotFoundError):
-            pass
+    """Build dependency graph using the resolved language plugin."""
+    resolved_lang = _resolve_visualization_lang(path, lang)
+    if resolved_lang and resolved_lang.build_dep_graph:
+        return resolved_lang.build_dep_graph(path)
     return {}
 
 

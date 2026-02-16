@@ -13,20 +13,25 @@ HOLISTIC_DIMENSIONS = [
     "package_organization",
 ]
 
-HOLISTIC_DIMENSIONS_BY_LANG: dict[str, list[str]] = {
-    "python": [
-        "cross_module_architecture", "convention_outlier",
-        "error_consistency", "abstraction_fitness",
-        "dependency_health", "test_strategy",
-        "ai_generated_debt", "package_organization",
-    ],
-    "typescript": [
-        "cross_module_architecture", "convention_outlier",
-        "error_consistency", "abstraction_fitness",
-        "api_surface_coherence", "authorization_consistency",
-        "ai_generated_debt", "incomplete_migration",
-    ],
-}
+def _collect_holistic_dims_by_lang() -> dict[str, list[str]]:
+    """Collect per-language holistic dimension defaults from language plugins."""
+    try:
+        from ..lang import available_langs, get_lang
+    except Exception:
+        return {}
+
+    out: dict[str, list[str]] = {}
+    for lang_name in available_langs():
+        try:
+            dims = list(getattr(get_lang(lang_name), "holistic_review_dimensions", []) or [])
+        except Exception:
+            dims = []
+        if dims:
+            out[lang_name] = dims
+    return out
+
+
+HOLISTIC_DIMENSIONS_BY_LANG: dict[str, list[str]] = _collect_holistic_dims_by_lang()
 
 HOLISTIC_DIMENSION_PROMPTS = {
     "cross_module_architecture": {
@@ -464,46 +469,41 @@ DIMENSION_PROMPTS = {
     },
 }
 
-# Language-specific review guidance — appended to system prompt when applicable
-LANG_GUIDANCE = {
-    "python": {
-        "patterns": [
-            "Check for `async def` functions that never `await` — they add overhead with no benefit",
-            "Look for bare `except:` or `except Exception:` that swallow errors silently",
-            "Verify `@lru_cache` isn't used on methods with mutable default args",
-            "Flag `subprocess` calls without `timeout` parameter",
-            "Check for mutable class-level variables (list/dict/set as class attributes)",
-            "Verify `__all__` is defined when `from module import *` is used",
-        ],
-        "auth": [
-            "Check `@login_required` consistency — sibling views in same module should all have it or none",
-            "Flag `request.user` access in views without `@login_required` or equivalent auth decorator",
-            "Look for unvalidated `request.data` / `request.POST` used directly in ORM queries",
-            "Verify permission decorators match route sensitivity (admin views need `@staff_member_required`)",
-        ],
-        "naming": "Python uses snake_case for functions/variables, PascalCase for classes. "
-                  "Check for Java-style camelCase leaking in.",
-    },
-    "typescript": {
-        "patterns": [
-            "Check for `useEffect` with empty dependency arrays that should react to state changes",
-            "Look for `setTimeout`/`setInterval` used for synchronization instead of proper async patterns",
-            "Flag React components with >15 props — likely needs decomposition",
-            "Check for `dangerouslySetInnerHTML` without sanitization",
-            "Verify `useRef` isn't overused as a state escape hatch (>5 refs in a component)",
-            "Look for Context providers nested >5 deep — consider composition or state management",
-        ],
-        "auth": [
-            "Check `useAuth()` / `getServerSession()` consistency — sibling routes should use the same pattern",
-            "Flag API routes that access request body without validation (zod, yup, or manual checks)",
-            "Look for Supabase RLS bypass patterns — `service_role` key used outside server-only code",
-            "Verify auth middleware on API routes — sibling handlers should all check auth or none",
-            "Flag `createClient` with hardcoded keys or missing `cookies()` in server components",
-        ],
-        "naming": "TypeScript uses camelCase for functions/variables, PascalCase for types/components. "
-                  "Check for inconsistency within modules.",
-    },
-}
+def _collect_lang_guidance() -> dict[str, dict]:
+    """Collect review guidance from registered language plugins."""
+    try:
+        from ..lang import available_langs, get_lang
+    except Exception:
+        return {}
+
+    out: dict[str, dict] = {}
+    for lang_name in available_langs():
+        try:
+            guide = getattr(get_lang(lang_name), "review_guidance", {}) or {}
+        except Exception:
+            guide = {}
+        if guide:
+            out[lang_name] = guide
+    return out
+
+
+LANG_GUIDANCE = _collect_lang_guidance()
+
+
+def get_lang_guidance(lang_name: str) -> dict:
+    """Return language-specific review guidance from plugin configuration."""
+    if lang_name in LANG_GUIDANCE:
+        return LANG_GUIDANCE[lang_name]
+
+    try:
+        from ..lang import get_lang
+        guide = getattr(get_lang(lang_name), "review_guidance", {}) or {}
+    except Exception:
+        guide = {}
+
+    if guide:
+        LANG_GUIDANCE[lang_name] = guide
+    return guide
 
 REVIEW_SYSTEM_PROMPT = """\
 You are reviewing code for subjective quality issues that linters cannot catch.

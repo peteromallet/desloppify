@@ -108,8 +108,11 @@ def resolve_lang(args) -> LangConfig | None:
     try:
         return get_lang(lang_name)
     except ValueError as e:
+        from ..lang import available_langs
         from ..utils import colorize
+        langs = available_langs()
+        sample = langs[0] if langs else "<language>"
         print(colorize(f"  {e}", "red"), file=sys.stderr)
-        print(colorize(f"  Hint: use --lang to select manually (e.g. --lang python)", "dim"),
+        print(colorize(f"  Hint: use --lang to select manually (e.g. --lang {sample})", "dim"),
               file=sys.stderr)
         sys.exit(1)

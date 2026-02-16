@@ -58,22 +58,24 @@ def auto_detect_lang(project_root: Path) -> str | None:
     on first-match ordering.
     """
     _load_all()
-    candidates = []
-    if (project_root / "package.json").exists():
-        candidates.append("typescript")
-    if ((project_root / "pyproject.toml").exists()
-            or (project_root / "setup.py").exists()
-            or (project_root / "setup.cfg").exists()):
-        candidates.append("python")
-    if (project_root / "go.mod").exists():
-        candidates.append("go")
-    if (project_root / "Cargo.toml").exists():
-        candidates.append("rust")
+    candidates: list[str] = []
+    for lang_name, cfg_cls in _registry.items():
+        cfg = cfg_cls()
+        markers = getattr(cfg, "detect_markers", []) or []
+        if markers and any((project_root / marker).exists() for marker in markers):
+            candidates.append(lang_name)
 
-    # Filter to registered languages only
-    candidates = [c for c in candidates if c in _registry]
     if not candidates:
-        return None
+        # Marker-less fallback: pick language with most source files.
+        best, best_count = None, 0
+        for lang_name, cfg_cls in _registry.items():
+            cfg = cfg_cls()
+            if not cfg.file_finder:
+                continue
+            count = len(cfg.file_finder(project_root))
+            if count > best_count:
+                best, best_count = lang_name, count
+        return best if best_count > 0 else None
     if len(candidates) == 1:
         return candidates[0]
 

@@ -713,8 +713,8 @@ class TestComputeReminders:
         reminder_types = [r["type"] for r in reminders]
         assert "auto_fixers_available" in reminder_types
 
-    def test_no_auto_fixers_for_python(self):
-        """Python has no auto-fixers, so auto_fixers_available should not fire."""
+    def test_auto_fixers_reminder_depends_on_actions_not_lang(self):
+        """Auto-fixer reminder follows action availability, not language name."""
         state = {"objective_strict": 50.0}
         actions = [{"type": "auto_fix", "count": 5, "command": "desloppify fix unused-imports --dry-run"}]
         reminders, _ = _compute_reminders(
@@ -722,7 +722,7 @@ class TestComputeReminders:
             actions, {}, {}, None,
         )
         reminder_types = [r["type"] for r in reminders]
-        assert "auto_fixers_available" not in reminder_types
+        assert "auto_fixers_available" in reminder_types
 
     def test_stagnant_dimension_reminder(self):
         state = {"objective_strict": 70.0}
@@ -1173,9 +1173,9 @@ class TestOpenFilesByDetector:
 # ===================================================================
 
 class TestFixerLeverage:
-    def test_python_no_fixers(self):
+    def test_no_auto_fix_actions_recommend_none(self):
         result = _compute_fixer_leverage(
-            {"unused": 10}, [{"type": "auto_fix", "count": 10, "impact": 5.0}],
+            {"unused": 10}, [{"type": "manual_fix", "count": 10, "impact": 5.0}],
             "middle_grind", "python",
         )
         assert result["recommendation"] == "none"

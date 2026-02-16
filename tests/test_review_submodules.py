@@ -161,8 +161,8 @@ class TestLowValueNames:
         assert LOW_VALUE_NAMES.search("src/types.ts")
 
     def test_dts_file(self):
-        from desloppify.review.selection import LOW_VALUE_NAMES
-        assert LOW_VALUE_NAMES.search("src/foo.d.ts")
+        from desloppify.review.selection import is_low_value_file
+        assert is_low_value_file("src/foo.d.ts", "typescript")
 
     def test_normal_file(self):
         from desloppify.review.selection import LOW_VALUE_NAMES

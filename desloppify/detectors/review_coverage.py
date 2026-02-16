@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ..review import MIN_REVIEW_LOC, LOW_VALUE_NAMES, hash_file
+from ..review import MIN_REVIEW_LOC, hash_file
+from ..review.selection import is_low_value_file
 from ..utils import rel, read_file_text, resolve_path
 
 
@@ -44,8 +45,8 @@ def detect_review_coverage(
             if zone.value in ("test", "generated", "vendor", "config", "script"):
                 continue
 
-        # Skip low-value files (types, constants, enums, index, .d.ts)
-        if LOW_VALUE_NAMES.search(rpath):
+        # Skip low-value files (language-specific + generic patterns)
+        if is_low_value_file(rpath, lang_name):
             continue
 
         # Skip files below minimum LOC

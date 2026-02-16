@@ -107,7 +107,7 @@ def compute_narrative(state: dict, *, diff: dict | None = None,
     milestone = _detect_milestone(state, diff, history)
     actions = _compute_actions(by_det, dim_scores, state, debt, lang)
     strategy = _compute_strategy(findings, by_det, actions, phase, lang)
-    tools = _compute_tools(by_det, lang, badge)
+    tools = _compute_tools(by_det, state, lang, badge)
     headline = _compute_headline(phase, dimensions, debt, milestone, diff,
                                  obj_strict, obj_score, stats, history,
                                  open_by_detector=by_det)

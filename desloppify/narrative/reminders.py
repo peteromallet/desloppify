@@ -41,17 +41,16 @@ def _compute_reminders(state: dict, lang: str | None,
     reminder_history = state.get("reminder_history", {})
 
     # 1. Auto-fixers available
-    if lang != "python":
-        auto_fix_actions = [a for a in actions if a.get("type") == "auto_fix"]
-        if auto_fix_actions:
-            total = sum(a.get("count", 0) for a in auto_fix_actions)
-            if total > 0:
-                first_cmd = auto_fix_actions[0].get("command", "desloppify fix <fixer> --dry-run")
-                reminders.append({
-                    "type": "auto_fixers_available",
-                    "message": f"{total} findings are auto-fixable. Run `{first_cmd}`.",
-                    "command": first_cmd,
-                })
+    auto_fix_actions = [a for a in actions if a.get("type") == "auto_fix"]
+    if auto_fix_actions:
+        total = sum(a.get("count", 0) for a in auto_fix_actions)
+        if total > 0:
+            first_cmd = auto_fix_actions[0].get("command", "desloppify fix <fixer> --dry-run")
+            reminders.append({
+                "type": "auto_fixers_available",
+                "message": f"{total} findings are auto-fixable. Run `{first_cmd}`.",
+                "command": first_cmd,
+            })
 
     # 2. Rescan needed — only after fix or resolve, not passive queries
     if command in ("fix", "resolve", "ignore"):

@@ -228,6 +228,10 @@ def cmd_scan(args) -> None:
     if lang:
         lang._review_cache = state.get("review_cache", {}).get("files", {})
         lang._review_max_age_days = config.get("review_max_age_days", 30)
+        state.setdefault("lang_capabilities", {})[lang.name] = {
+            "fixers": sorted(lang.fixers.keys()),
+            "typecheck_cmd": lang.typecheck_cmd,
+        }
         # Apply config-level threshold overrides
         override_threshold = config.get("large_files_threshold", 0)
         if override_threshold > 0:
@@ -670,4 +674,3 @@ def _show_low_dimension_hints(dim_scores: dict):
     for name, score, hint in low:
         print(colorize(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
     print()
-

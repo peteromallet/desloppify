@@ -5,6 +5,23 @@ from __future__ import annotations
 from ._constants import DETECTOR_TOOLS
 
 
+def _supported_fixers(state: dict, lang: str | None) -> set[str] | None:
+    """Return supported fixers for the active language, or None when unknown."""
+    if not lang:
+        return None
+
+    caps = state.get("lang_capabilities", {}).get(lang, {})
+    fixers = caps.get("fixers")
+    if isinstance(fixers, list):
+        return set(fixers)
+
+    try:
+        from ..lang import get_lang
+        return set(get_lang(lang).fixers.keys())
+    except (ImportError, ValueError):
+        return None
+
+
 def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
                      debt: dict, lang: str | None) -> list[dict]:
     """Compute prioritized action list with tool mapping."""
@@ -13,6 +30,7 @@ def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
     potentials = merge_potentials(state.get("potentials", {}))
     actions = []
     priority = 0
+    fixers_supported = _supported_fixers(state, lang)
 
     def _impact_for(det: str, count: int) -> float:
         if not potentials or not dim_scores:
@@ -37,8 +55,11 @@ def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
 
         impact = _impact_for(det, count)
 
-        # Python has no auto-fixers — suggest manual fix instead
-        if lang == "python":
+        available_fixers = [
+            fixer for fixer in tool_info["fixers"]
+            if fixers_supported is None or fixer in fixers_supported
+        ]
+        if not available_fixers:
             priority += 1
             actions.append({
                 "priority": priority,
@@ -53,20 +74,19 @@ def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
             })
             continue
 
-        for fixer in tool_info["fixers"]:
-            priority += 1
-            actions.append({
-                "priority": priority,
-                "type": "auto_fix",
-                "detector": det,
-                "count": count,
-                "description": (f"{count} {det} findings — run "
-                                f"`desloppify fix {fixer} --dry-run` to preview, then apply"),
-                "command": f"desloppify fix {fixer} --dry-run",
-                "impact": round(impact, 1),
-                "dimension": _dim_name_for(det),
-            })
-            break  # One action per detector, listing first fixer
+        fixer = available_fixers[0]
+        priority += 1
+        actions.append({
+            "priority": priority,
+            "type": "auto_fix",
+            "detector": det,
+            "count": count,
+            "description": (f"{count} {det} findings — run "
+                            f"`desloppify fix {fixer} --dry-run` to preview, then apply"),
+            "command": f"desloppify fix {fixer} --dry-run",
+            "impact": round(impact, 1),
+            "dimension": _dim_name_for(det),
+        })
 
     # Reorganize actions
     for det, tool_info in DETECTOR_TOOLS.items():
@@ -147,25 +167,27 @@ def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
     return actions
 
 
-def _compute_tools(by_det: dict[str, int], lang: str | None,
+def _compute_tools(by_det: dict[str, int], state: dict, lang: str | None,
                    badge: dict) -> dict:
     """Compute available tools inventory for the current context."""
     # Available fixers (only those with >0 open findings)
     fixers = []
-    if lang != "python":
-        for det, tool_info in DETECTOR_TOOLS.items():
-            if tool_info["action_type"] != "auto_fix":
+    fixers_supported = _supported_fixers(state, lang)
+    for det, tool_info in DETECTOR_TOOLS.items():
+        if tool_info["action_type"] != "auto_fix":
+            continue
+        count = by_det.get(det, 0)
+        if count == 0:
+            continue
+        for fixer in tool_info["fixers"]:
+            if fixers_supported is not None and fixer not in fixers_supported:
                 continue
-            count = by_det.get(det, 0)
-            if count == 0:
-                continue
-            for fixer in tool_info["fixers"]:
-                fixers.append({
-                    "name": fixer,
-                    "detector": det,
-                    "open_count": count,
-                    "command": f"desloppify fix {fixer} --dry-run",
-                })
+            fixers.append({
+                "name": fixer,
+                "detector": det,
+                "open_count": count,
+                "command": f"desloppify fix {fixer} --dry-run",
+            })
 
     # Move tool relevance
     org_issues = sum(by_det.get(d, 0) for d in

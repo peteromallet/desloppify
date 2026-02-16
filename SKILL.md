@@ -59,7 +59,7 @@ desloppify review --import file.json       # import review results
 Score = 75% mechanical + 25% subjective. Subjective starts at 0% until reviewed.
 
 1. `desloppify review --prepare` — writes review data to `query.json`
-2. Launch a subagent to read `query.json`, review files, write assessments:
+2. Launch an isolated reviewer (Claude subagent, or Codex fresh thread/worktree/cloud task) to read `query.json` (or `review_packet_blind.json`), review files, and write assessments:
    ```json
    {"assessments": {"naming_quality": 75, ...}, "findings": [...]}
    ```

@@ -15,6 +15,14 @@ from .phases import (TS_COMPLEXITY_SIGNALS, TS_GOD_RULES,  # noqa: F401 — re-e
                      _phase_logs, _phase_unused, _phase_exports,
                      _phase_deprecated, _phase_structural,
                      _phase_coupling, _phase_smells)
+from .review import (
+    REVIEW_GUIDANCE as TS_REVIEW_GUIDANCE,
+    MIGRATION_PATTERN_PAIRS as TS_MIGRATION_PATTERN_PAIRS,
+    MIGRATION_MIXED_EXTENSIONS as TS_MIGRATION_MIXED_EXTENSIONS,
+    LOW_VALUE_PATTERN as TS_LOW_VALUE_PATTERN,
+    module_patterns as ts_review_module_patterns,
+    api_surface as ts_review_api_surface,
+)
 
 
 # ── Zone classification rules (order matters — first match wins) ──
@@ -164,6 +172,21 @@ class TypeScriptConfig(LangConfig):
             file_finder=find_ts_files,
             large_threshold=500,
             complexity_threshold=15,
+            detect_markers=["package.json"],
+            external_test_dirs=["tests", "test", "__tests__"],
+            test_file_extensions=[".ts", ".tsx"],
+            review_module_patterns_fn=ts_review_module_patterns,
+            review_api_surface_fn=ts_review_api_surface,
+            review_guidance=TS_REVIEW_GUIDANCE,
+            review_low_value_pattern=TS_LOW_VALUE_PATTERN,
+            holistic_review_dimensions=[
+                "cross_module_architecture", "convention_outlier",
+                "error_consistency", "abstraction_fitness",
+                "api_surface_coherence", "authorization_consistency",
+                "ai_generated_debt", "incomplete_migration",
+            ],
+            migration_pattern_pairs=TS_MIGRATION_PATTERN_PAIRS,
+            migration_mixed_extensions=TS_MIGRATION_MIXED_EXTENSIONS,
             extract_functions=_ts_extract_functions,
             zone_rules=TS_ZONE_RULES,
         )

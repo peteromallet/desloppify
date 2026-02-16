@@ -12,12 +12,15 @@ def cmd_detect(args: argparse.Namespace) -> None:
     """Run a single detector directly (bypass state tracking)."""
     detector = args.detector
 
-    # Resolve language (from --lang flag, default to typescript)
+    # Resolve language (from --lang flag or auto-detection)
     from ._helpers import resolve_lang
+    from ..lang import available_langs
     lang = resolve_lang(args)
 
     if not lang:
-        print(colorize("No language specified. Use --lang python or --lang typescript.", "red"))
+        langs = ", ".join(available_langs())
+        hint = f" Use --lang <one of: {langs}>." if langs else " Use --lang <language>."
+        print(colorize(f"No language specified.{hint}", "red"))
         sys.exit(1)
 
     # Validate detector name

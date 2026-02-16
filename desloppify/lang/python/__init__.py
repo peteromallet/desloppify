@@ -16,6 +16,14 @@ from ...detectors.base import ComplexitySignal, GodRule
 from ...utils import find_py_files, log
 from ...zones import ZoneRule, Zone, COMMON_ZONE_RULES, adjust_potential, filter_entries
 from .detectors.complexity import compute_max_params, compute_nesting_depth, compute_long_functions
+from .review import (
+    REVIEW_GUIDANCE as PY_REVIEW_GUIDANCE,
+    MIGRATION_PATTERN_PAIRS as PY_MIGRATION_PATTERN_PAIRS,
+    MIGRATION_MIXED_EXTENSIONS as PY_MIGRATION_MIXED_EXTENSIONS,
+    LOW_VALUE_PATTERN as PY_LOW_VALUE_PATTERN,
+    module_patterns as py_review_module_patterns,
+    api_surface as py_review_api_surface,
+)
 
 
 # ── Zone classification rules (order matters — first match wins) ──
@@ -150,10 +158,10 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
 
 def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.deps import build_dep_graph
+    from .detectors.facade import detect_reexport_facades
     from ...detectors.graph import detect_cycles
     from ...detectors.orphaned import detect_orphaned_files
     from ...detectors.single_use import detect_single_use_abstractions
-    from ...detectors.facade import detect_reexport_facades
 
     graph = build_dep_graph(path)
     lang._dep_graph = graph
@@ -176,7 +184,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
     results.extend(make_orphaned_findings(orphan_entries, log))
 
-    facade_entries, _ = detect_reexport_facades(graph, lang="python")
+    facade_entries, _ = detect_reexport_facades(graph)
     facade_entries = filter_entries(zm, facade_entries, "facade")
     results.extend(make_facade_findings(facade_entries, log))
 
@@ -322,6 +330,10 @@ class PythonConfig(LangConfig):
         from .detectors.security import detect_python_security
         return detect_python_security(files, zone_map)
 
+    def detect_private_imports(self, graph, zone_map):
+        from .detectors.private_imports import detect_private_imports
+        return detect_private_imports(graph, zone_map)
+
     def __init__(self):
         from .commands import get_detect_commands
         super().__init__(
@@ -354,6 +366,21 @@ class PythonConfig(LangConfig):
             file_finder=find_py_files,
             large_threshold=300,
             complexity_threshold=25,
+            detect_markers=["pyproject.toml", "setup.py", "setup.cfg"],
+            external_test_dirs=["tests", "test"],
+            test_file_extensions=[".py"],
+            review_module_patterns_fn=py_review_module_patterns,
+            review_api_surface_fn=py_review_api_surface,
+            review_guidance=PY_REVIEW_GUIDANCE,
+            review_low_value_pattern=PY_LOW_VALUE_PATTERN,
+            holistic_review_dimensions=[
+                "cross_module_architecture", "convention_outlier",
+                "error_consistency", "abstraction_fitness",
+                "dependency_health", "test_strategy",
+                "ai_generated_debt", "package_organization",
+            ],
+            migration_pattern_pairs=PY_MIGRATION_PATTERN_PAIRS,
+            migration_mixed_extensions=PY_MIGRATION_MIXED_EXTENSIONS,
             extract_functions=_py_extract_functions,
             zone_rules=PY_ZONE_RULES,
         )

@@ -180,18 +180,20 @@ class TestMakeCmdFacade:
 
     def test_returns_callable(self):
         """Factory returns a callable."""
-        cmd = make_cmd_facade(build_dep_graph_fn=lambda p: {}, lang="typescript")
+        cmd = make_cmd_facade(
+            build_dep_graph_fn=lambda p: {},
+            detect_facades_fn=lambda graph: ([], 0),
+        )
         assert callable(cmd)
 
     def test_json_output(self, capsys):
         """With json=True, outputs JSON."""
         mock_graph = MagicMock(return_value={})
-        cmd = make_cmd_facade(build_dep_graph_fn=mock_graph, lang="typescript")
+        mock_detect = MagicMock(return_value=([], 0))
+        cmd = make_cmd_facade(build_dep_graph_fn=mock_graph, detect_facades_fn=mock_detect)
 
-        with patch("desloppify.detectors.facade.detect_reexport_facades",
-                    return_value=([], 0)):
-            args = _make_args(json_flag=True)
-            cmd(args)
+        args = _make_args(json_flag=True)
+        cmd(args)
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -201,11 +203,10 @@ class TestMakeCmdFacade:
     def test_no_entries_prints_green(self, capsys):
         """With no entries and no json, prints the 'no facades' message."""
         mock_graph = MagicMock(return_value={})
-        cmd = make_cmd_facade(build_dep_graph_fn=mock_graph, lang="python")
+        mock_detect = MagicMock(return_value=([], 0))
+        cmd = make_cmd_facade(build_dep_graph_fn=mock_graph, detect_facades_fn=mock_detect)
 
-        with patch("desloppify.detectors.facade.detect_reexport_facades",
-                    return_value=([], 0)):
-            cmd(_make_args())
+        cmd(_make_args())
 
         captured = capsys.readouterr()
         assert "No re-export facades found" in captured.out
