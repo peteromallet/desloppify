@@ -177,15 +177,14 @@ class TestCrossLangSecretNames:
         finally:
             os.unlink(path)
 
-    def test_hardcoded_secret_in_test_zone_medium_confidence(self):
+    def test_hardcoded_secret_in_test_zone_skipped(self):
         content = 'password = "test_secret_value123"'
         path = _write_temp_file(content)
         try:
             zm = _make_zone_map([path], Zone.TEST)
-            entries, _ = detect_security_issues([path], zm, "python")
-            secret_name = [e for e in entries if e["detail"]["kind"] == "hardcoded_secret_name"]
-            assert len(secret_name) >= 1
-            assert secret_name[0]["confidence"] == "medium"
+            entries, scanned = detect_security_issues([path], zm, "python")
+            assert entries == []
+            assert scanned == 0
         finally:
             os.unlink(path)
 
@@ -315,26 +314,25 @@ class TestCrossLangZoneFiltering:
         finally:
             os.unlink(path)
 
-    def test_test_zone_NOT_skipped(self):
-        """Security findings in test zones should still be detected."""
+    def test_test_zone_skipped(self):
         content = 'AWS_KEY = "AKIAIOSFODNN7EXAMPLE"'
         path = _write_temp_file(content)
         try:
             zm = _make_zone_map([path], Zone.TEST)
             entries, scanned = detect_security_issues([path], zm, "python")
-            assert len(entries) >= 1
-            assert scanned == 1
+            assert len(entries) == 0
+            assert scanned == 0
         finally:
             os.unlink(path)
 
-    def test_config_zone_NOT_skipped(self):
-        """Security findings in config zones should still be detected."""
+    def test_config_zone_skipped(self):
         content = 'DB_URL = "postgres://admin:s3cret@localhost:5432/mydb"'
         path = _write_temp_file(content)
         try:
             zm = _make_zone_map([path], Zone.CONFIG)
             entries, scanned = detect_security_issues([path], zm, "python")
-            assert len(entries) >= 1
+            assert len(entries) == 0
+            assert scanned == 0
         finally:
             os.unlink(path)
 
@@ -848,8 +846,8 @@ class TestSecurityDimensionScoring:
         assert scores["Security"]["score"] < 100.0
         assert scores["Security"]["issues"] == 5
 
-    def test_security_zone_not_excluded(self):
-        """Security findings in test zone ARE scored (unlike most detectors)."""
+    def test_security_zone_test_excluded(self):
+        """Security findings in test zone are skipped from scoring."""
         fid = "security::test_file.py::security::check::1"
         findings = {
             fid: {
@@ -861,8 +859,24 @@ class TestSecurityDimensionScoring:
         potentials = {"security": 10}
         scores = compute_dimension_scores(findings, potentials)
         assert "Security" in scores
-        assert scores["Security"]["issues"] == 1
-        assert scores["Security"]["score"] < 100.0
+        assert scores["Security"]["issues"] == 0
+        assert scores["Security"]["score"] == 100.0
+
+    def test_security_zone_config_excluded(self):
+        """Security findings in config zone are skipped from scoring."""
+        fid = "security::config.py::security::check::1"
+        findings = {
+            fid: {
+                "id": fid, "detector": "security", "file": "config.py",
+                "tier": 2, "confidence": "high", "status": "open",
+                "zone": "config",
+            },
+        }
+        potentials = {"security": 10}
+        scores = compute_dimension_scores(findings, potentials)
+        assert "Security" in scores
+        assert scores["Security"]["issues"] == 0
+        assert scores["Security"]["score"] == 100.0
 
     def test_security_zone_vendor_excluded(self):
         """Security findings in vendor zone ARE skipped from scoring."""
@@ -896,19 +910,19 @@ class TestSecurityDimensionScoring:
         assert scores["Security"]["issues"] == 0
 
     def test_security_excluded_zones_constant(self):
-        assert _SECURITY_EXCLUDED_ZONES == {"generated", "vendor"}
+        assert _SECURITY_EXCLUDED_ZONES == {"test", "config", "generated", "vendor"}
 
 
 class TestSecurityZonePolicy:
     """Verify zone policies for security detector."""
 
-    def test_security_not_skipped_in_test_zone(self):
+    def test_security_skipped_in_test_zone(self):
         policy = ZONE_POLICIES[Zone.TEST]
-        assert "security" not in policy.skip_detectors
+        assert "security" in policy.skip_detectors
 
-    def test_security_not_skipped_in_config_zone(self):
+    def test_security_skipped_in_config_zone(self):
         policy = ZONE_POLICIES[Zone.CONFIG]
-        assert "security" not in policy.skip_detectors
+        assert "security" in policy.skip_detectors
 
     def test_security_not_skipped_in_script_zone(self):
         policy = ZONE_POLICIES[Zone.SCRIPT]

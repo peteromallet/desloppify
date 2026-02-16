@@ -24,8 +24,8 @@ class TestGetDetectCommands:
         commands = get_detect_commands()
         expected = {
             "unused", "large", "complexity", "gods",
-            "passthrough", "smells", "dupes", "deps",
-            "cycles", "orphaned", "single-use", "naming",
+            "props", "smells", "dupes", "deps",
+            "cycles", "orphaned", "single_use", "naming",
             "facade",
         }
         assert expected <= set(commands.keys())

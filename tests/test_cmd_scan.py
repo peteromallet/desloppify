@@ -12,6 +12,7 @@ from desloppify.commands.scan import (
     _show_post_scan_analysis,
     _show_dimension_deltas,
     _show_detector_progress,
+    _warn_explicit_lang_with_no_files,
     cmd_scan,
 )
 
@@ -31,6 +32,7 @@ class TestScanModuleSanity:
         assert callable(_collect_codebase_metrics)
         assert callable(_format_delta)
         assert callable(_show_diff_summary)
+        assert callable(_warn_explicit_lang_with_no_files)
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +214,53 @@ class TestCollectCodebaseMetrics:
 
 
 # ---------------------------------------------------------------------------
+# _warn_explicit_lang_with_no_files
+# ---------------------------------------------------------------------------
+
+class TestWarnExplicitLangWithNoFiles:
+    def test_warns_for_explicit_lang_when_zero_files(self, monkeypatch, capsys, tmp_path):
+        class FakeArgs:
+            lang = "typescript"
+
+        class FakeLang:
+            name = "typescript"
+
+        import desloppify.lang as lang_mod
+        monkeypatch.setattr(lang_mod, "auto_detect_lang", lambda _root: "python")
+
+        _warn_explicit_lang_with_no_files(
+            FakeArgs(), FakeLang(), tmp_path, {"total_files": 0}
+        )
+        out = capsys.readouterr().out
+        assert "No typescript source files found" in out
+        assert "--lang python" in out
+
+    def test_no_warning_when_not_explicit(self, capsys, tmp_path):
+        class FakeArgs:
+            lang = None
+
+        class FakeLang:
+            name = "typescript"
+
+        _warn_explicit_lang_with_no_files(
+            FakeArgs(), FakeLang(), tmp_path, {"total_files": 0}
+        )
+        assert capsys.readouterr().out == ""
+
+    def test_no_warning_when_files_present(self, capsys, tmp_path):
+        class FakeArgs:
+            lang = "typescript"
+
+        class FakeLang:
+            name = "typescript"
+
+        _warn_explicit_lang_with_no_files(
+            FakeArgs(), FakeLang(), tmp_path, {"total_files": 5}
+        )
+        assert capsys.readouterr().out == ""
+
+
+# ---------------------------------------------------------------------------
 # _show_post_scan_analysis
 # ---------------------------------------------------------------------------
 
@@ -227,7 +276,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 10, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         warnings, narrative = _show_post_scan_analysis(diff, state, FakeLang())
         assert len(warnings) >= 1
         assert any("reopened" in w.lower() for w in warnings)
@@ -241,7 +290,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 15, "auto_resolved": 1, "reopened": 0, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         warnings, _ = _show_post_scan_analysis(diff, state, FakeLang())
         assert any("cascading" in w.lower() for w in warnings)
 
@@ -255,7 +304,7 @@ class TestShowPostScanAnalysis:
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 0,
                 "chronic_reopeners": ["f1", "f2", "f3"]}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         warnings, _ = _show_post_scan_analysis(diff, state, FakeLang())
         assert any("chronic" in w.lower() for w in warnings)
 
@@ -268,7 +317,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 2, "auto_resolved": 5, "reopened": 0, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 90}
+        state = {"findings": {}, "overall_score": 90, "objective_score": 90, "strict_score": 90}
         warnings, narrative = _show_post_scan_analysis(diff, state, FakeLang())
         assert warnings == []
 
@@ -285,7 +334,7 @@ class TestShowPostScanAnalysis:
             name = "python"
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
-        state = {"findings": {}, "score": 50}
+        state = {"findings": {}, "overall_score": 50, "objective_score": 50, "strict_score": 50}
         _show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "desloppify fix unused-imports" in out

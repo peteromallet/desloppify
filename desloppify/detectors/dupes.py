@@ -5,6 +5,9 @@ Each entry contains a representative pair for display plus the full cluster memb
 """
 
 import difflib
+import os
+import sys
+import time
 
 
 def _build_clusters(pairs: list[tuple[int, int, float, str]],
@@ -48,6 +51,11 @@ def detect_duplicates(functions, threshold: float = 0.9) -> tuple[list[dict], in
     n = len(functions)
     if not functions:
         return [], 0
+    debug = os.getenv("DESLOPPIFY_DUPES_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+    try:
+        debug_every = max(1, int(os.getenv("DESLOPPIFY_DUPES_DEBUG_EVERY", "100") or "100"))
+    except ValueError:
+        debug_every = 100
 
     # Phase 1: Exact duplicates (same hash)
     by_hash: dict[str, list[int]] = {}
@@ -70,6 +78,20 @@ def detect_duplicates(functions, threshold: float = 0.9) -> tuple[list[dict], in
     # Phase 2: Near-duplicates (difflib similarity on functions >= 15 LOC)
     large_idx = [(idx, fn) for idx, fn in enumerate(functions) if fn.loc >= 15]
     large_idx.sort(key=lambda x: x[1].loc)
+    normalized_lines = [fn.normalized.splitlines() for fn in functions]
+    normalized_line_counts = [len(lines) for lines in normalized_lines]
+
+    near_candidates = 0
+    near_ratio_calls = 0
+    near_pruned_by_length = 0
+    near_start = time.perf_counter()
+
+    if debug:
+        print(
+            f"[dupes] start near pass: total_functions={n} "
+            f"candidates_by_loc={len(large_idx)} threshold={threshold:.2f}",
+            file=sys.stderr,
+        )
 
     for i_pos in range(len(large_idx)):
         for j_pos in range(i_pos + 1, len(large_idx)):
@@ -77,16 +99,60 @@ def detect_duplicates(functions, threshold: float = 0.9) -> tuple[list[dict], in
             idx_b, fb = large_idx[j_pos]
             if fb.loc > fa.loc * 1.5:
                 break
+            near_candidates += 1
             pair_key = (f"{fa.file}:{fa.name}", f"{fb.file}:{fb.name}")
             if pair_key in seen_pairs:
                 continue
             if fa.body_hash == fb.body_hash:
                 continue
 
-            ratio = difflib.SequenceMatcher(None, fa.normalized, fb.normalized).ratio()
+            # Upper bound on SequenceMatcher.ratio() based on sequence lengths:
+            # ratio = 2*M/(len_a+len_b) and M <= min(len_a, len_b).
+            len_a = normalized_line_counts[idx_a]
+            len_b = normalized_line_counts[idx_b]
+            if not len_a or not len_b:
+                near_pruned_by_length += 1
+                continue
+            max_possible = (2 * min(len_a, len_b)) / (len_a + len_b)
+            if max_possible < threshold:
+                near_pruned_by_length += 1
+                continue
+
+            matcher = difflib.SequenceMatcher(
+                None,
+                normalized_lines[idx_a],
+                normalized_lines[idx_b],
+                autojunk=False,
+            )
+            # Cheap similarity bounds before full ratio().
+            if matcher.real_quick_ratio() < threshold:
+                continue
+            if matcher.quick_ratio() < threshold:
+                continue
+
+            near_ratio_calls += 1
+            ratio = matcher.ratio()
             if ratio >= threshold:
                 seen_pairs.add(pair_key)
                 pairs.append((idx_a, idx_b, ratio, "near-duplicate"))
+
+        if debug and i_pos and i_pos % debug_every == 0:
+            elapsed = time.perf_counter() - near_start
+            print(
+                f"[dupes] progress i={i_pos}/{len(large_idx)} "
+                f"candidate_pairs={near_candidates} ratio_calls={near_ratio_calls} "
+                f"matches={len(pairs)} elapsed={elapsed:.2f}s",
+                file=sys.stderr,
+            )
+
+    if debug:
+        elapsed = time.perf_counter() - near_start
+        print(
+            f"[dupes] done near pass: candidate_pairs={near_candidates} "
+            f"ratio_calls={near_ratio_calls} pruned_by_length={near_pruned_by_length} "
+            f"matches={len(pairs)} elapsed={elapsed:.2f}s",
+            file=sys.stderr,
+        )
 
     # Cluster: group connected functions so N similar → 1 entry (not N^2/2)
     clusters = _build_clusters(pairs, n)

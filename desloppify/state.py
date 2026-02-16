@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
-from .scoring import TIER_WEIGHTS
 from .utils import PROJECT_ROOT, rel, matches_exclusion, safe_write_text
 
 
@@ -49,11 +48,44 @@ def _empty_state() -> dict:
         "created": utc_now(),
         "last_scan": None,
         "scan_count": 0,
-        "score": 0,
+        "overall_score": 0,
+        "objective_score": 0,
+        "strict_score": 0,
         "stats": {},
         "findings": {},
         "subjective_assessments": {},
     }
+
+
+def _migrate_progress_scores(state: dict) -> None:
+    """Normalize legacy score keys into the canonical progress score trio."""
+    if state.get("objective_score") is None and state.get("score") is not None:
+        state["objective_score"] = state["score"]
+    if state.get("overall_score") is None:
+        if state.get("objective_score") is not None:
+            state["overall_score"] = state["objective_score"]
+        elif state.get("score") is not None:
+            state["overall_score"] = state["score"]
+    if state.get("strict_score") is None and state.get("objective_strict") is not None:
+        state["strict_score"] = state["objective_strict"]
+
+    for entry in state.get("scan_history", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("objective_score") is None and entry.get("score") is not None:
+            entry["objective_score"] = entry["score"]
+        if entry.get("overall_score") is None:
+            if entry.get("objective_score") is not None:
+                entry["overall_score"] = entry["objective_score"]
+            elif entry.get("score") is not None:
+                entry["overall_score"] = entry["score"]
+        if entry.get("strict_score") is None and entry.get("objective_strict") is not None:
+            entry["strict_score"] = entry["objective_strict"]
+        entry.pop("score", None)
+        entry.pop("objective_strict", None)
+
+    state.pop("score", None)
+    state.pop("objective_strict", None)
 
 
 def load_state(path: Path | None = None) -> dict:
@@ -89,6 +121,7 @@ def load_state(path: Path | None = None) -> dict:
     if version > CURRENT_VERSION:
         print(f"  \u26a0 State file version {version} is newer than supported ({CURRENT_VERSION}). "
               f"Some features may not work correctly.", file=sys.stderr)
+    _migrate_progress_scores(data)
     return data
 
 
@@ -293,8 +326,13 @@ def _weighted_progress(findings: dict) -> tuple[float, float]:
     return round((addressed_w / total_w) * 100, 1), round((fixed_w / total_w) * 100, 1)
 
 
+def _is_subjective_dimension(data: dict) -> bool:
+    """Whether a dimension entry is subjective-review driven."""
+    return "subjective_assessment" in data.get("detectors", {})
+
+
 def _update_objective_health(state: dict, findings: dict):
-    """Compute dimension-based objective health scores from potentials."""
+    """Compute canonical score trio from dimension scoring."""
     pots = state.get("potentials", {})
     if not pots:
         return
@@ -304,16 +342,48 @@ def _update_objective_health(state: dict, findings: dict):
         return
     subjective_assessments = (state.get("subjective_assessments")
                               or state.get("review_assessments") or None)
-    ds = compute_dimension_scores(findings, merged, strict=False,
-                                   subjective_assessments=subjective_assessments)
-    ss = compute_dimension_scores(findings, merged, strict=True,
-                                   subjective_assessments=subjective_assessments)
+    # If nothing was checked for this scan scope (all detector potentials are zero)
+    # and there are no subjective assessments, objective health is effectively
+    # "no active checks" — treat as neutral instead of 0%.
+    has_active_checks = any((count or 0) > 0 for count in merged.values())
+    if not has_active_checks and not subjective_assessments:
+        state["dimension_scores"] = {}
+        state["overall_score"] = 100.0
+        state["objective_score"] = 100.0
+        state["strict_score"] = 100.0
+        return
+
+    lenient_scores = compute_dimension_scores(
+        findings,
+        merged,
+        strict=False,
+        subjective_assessments=subjective_assessments,
+    )
+    strict_scores = compute_dimension_scores(
+        findings,
+        merged,
+        strict=True,
+        subjective_assessments=subjective_assessments,
+    )
     state["dimension_scores"] = {
-        n: {"score": ds[n]["score"], "strict": ss[n]["score"], "checks": ds[n]["checks"],
-            "issues": ds[n]["issues"], "tier": ds[n]["tier"], "detectors": ds[n].get("detectors", {})}
-        for n in ds}
-    state["objective_score"] = round(compute_objective_score(ds), 1)
-    state["objective_strict"] = round(compute_objective_score(ss), 1)
+        name: {
+            "score": lenient_scores[name]["score"],
+            "strict": strict_scores[name]["score"],
+            "checks": lenient_scores[name]["checks"],
+            "issues": lenient_scores[name]["issues"],
+            "tier": lenient_scores[name]["tier"],
+            "detectors": lenient_scores[name].get("detectors", {}),
+        }
+        for name in lenient_scores
+    }
+    mechanical_lenient_scores = {
+        name: data for name, data in lenient_scores.items()
+        if not _is_subjective_dimension(data)
+    }
+    state["overall_score"] = round(compute_objective_score(lenient_scores), 1)
+    state["objective_score"] = round(compute_objective_score(mechanical_lenient_scores), 1)
+    state["strict_score"] = round(compute_objective_score(strict_scores), 1)
+    _migrate_progress_scores(state)
 
 
 def path_scoped_findings(findings: dict, scan_path: str | None) -> dict:
@@ -330,18 +400,77 @@ def path_scoped_findings(findings: dict, scan_path: str | None) -> dict:
 
 
 def _recompute_stats(state: dict, scan_path: str | None = None):
-    """Recompute stats, progress scores, and objective health scores from findings."""
+    """Recompute stats and canonical health scores from findings."""
     findings = path_scoped_findings(state["findings"], scan_path)
     counters, tier_stats = _count_findings(findings)
-    score, strict_score = _weighted_progress(findings)
     state["stats"] = {
         "total": sum(counters.values()),
         **counters,
         "by_tier": {str(t): ts for t, ts in sorted(tier_stats.items())},
     }
-    state["score"] = score
-    state["strict_score"] = strict_score
     _update_objective_health(state, findings)
+
+
+def suppression_metrics(state: dict, *, window: int = 5) -> dict:
+    """Summarize ignore suppression from recent scan history."""
+    history = state.get("scan_history", [])
+    if not history:
+        return {
+            "last_ignored": 0,
+            "last_raw_findings": 0,
+            "last_suppressed_pct": 0.0,
+            "last_ignore_patterns": 0,
+            "recent_scans": 0,
+            "recent_ignored": 0,
+            "recent_raw_findings": 0,
+            "recent_suppressed_pct": 0.0,
+        }
+
+    scans_with_suppression = [
+        h for h in history
+        if isinstance(h, dict) and (
+            "ignored" in h
+            or "raw_findings" in h
+            or "suppressed_pct" in h
+            or "ignore_patterns" in h
+        )
+    ]
+    if not scans_with_suppression:
+        return {
+            "last_ignored": 0,
+            "last_raw_findings": 0,
+            "last_suppressed_pct": 0.0,
+            "last_ignore_patterns": 0,
+            "recent_scans": 0,
+            "recent_ignored": 0,
+            "recent_raw_findings": 0,
+            "recent_suppressed_pct": 0.0,
+        }
+
+    recent = scans_with_suppression[-max(1, window):]
+    last = recent[-1]
+
+    recent_ignored = sum(int(h.get("ignored", 0) or 0) for h in recent)
+    recent_raw = sum(int(h.get("raw_findings", 0) or 0) for h in recent)
+    recent_pct = round(recent_ignored / recent_raw * 100, 1) if recent_raw else 0.0
+
+    last_ignored = int(last.get("ignored", 0) or 0)
+    last_raw = int(last.get("raw_findings", 0) or 0)
+    if "suppressed_pct" in last:
+        last_pct = round(float(last.get("suppressed_pct") or 0.0), 1)
+    else:
+        last_pct = round(last_ignored / last_raw * 100, 1) if last_raw else 0.0
+
+    return {
+        "last_ignored": last_ignored,
+        "last_raw_findings": last_raw,
+        "last_suppressed_pct": last_pct,
+        "last_ignore_patterns": int(last.get("ignore_patterns", 0) or 0),
+        "recent_scans": len(recent),
+        "recent_ignored": recent_ignored,
+        "recent_raw_findings": recent_raw,
+        "recent_suppressed_pct": recent_pct,
+    }
 
 
 def is_ignored(finding_id: str, file: str, ignore_patterns: list[str]) -> bool:
@@ -509,6 +638,7 @@ def merge_scan(state: dict, current_findings: list[dict], *,
                lang: str | None = None, scan_path: str | None = None,
                force_resolve: bool = False, exclude: tuple[str, ...] = (),
                potentials: dict[str, int] | None = None,
+               merge_potentials: bool = False,
                codebase_metrics: dict | None = None,
                include_slow: bool = True,
                ignore: list[str] | None = None) -> dict:
@@ -519,7 +649,13 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     state["scan_count"] = state.get("scan_count", 0) + 1
     state["tool_hash"] = compute_tool_hash()
     if potentials is not None and lang:
-        state.setdefault("potentials", {})[lang] = potentials
+        all_pots = state.setdefault("potentials", {})
+        if merge_potentials and isinstance(all_pots.get(lang), dict):
+            merged = dict(all_pots[lang])
+            merged.update(potentials)
+            all_pots[lang] = merged
+        else:
+            all_pots[lang] = potentials
     if codebase_metrics is not None and lang:
         state.setdefault("codebase_metrics", {})[lang] = codebase_metrics
     if lang:
@@ -530,6 +666,8 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     ignore = ignore if ignore is not None else state.get("config", {}).get("ignore", [])
     current_ids, new_count, reopened_count, current_by_detector, ignored_count = _upsert_findings(
         existing, current_findings, ignore, now, lang=lang)
+    raw_findings = len(current_findings)
+    suppressed_pct = round(ignored_count / raw_findings * 100, 1) if raw_findings else 0.0
     # Detectors that appear in potentials actually ran — trust their 0-finding results.
     # Use `is not None` (not truthiness) so an empty dict {} still means "potentials
     # were provided" — prevents marking all detectors as suspect on empty scans.
@@ -546,11 +684,16 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     history.append({
         "timestamp": now,
         "lang": lang,
-        "objective_strict": state.get("objective_strict"),
+        "strict_score": state.get("strict_score"),
         "objective_score": state.get("objective_score"),
+        "overall_score": state.get("overall_score"),
         "open": state["stats"]["open"],
         "diff_new": new_count,
         "diff_resolved": auto_resolved,
+        "ignored": ignored_count,
+        "raw_findings": raw_findings,
+        "suppressed_pct": suppressed_pct,
+        "ignore_patterns": len(ignore),
         "dimension_scores": {
             name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
             for name, ds in state.get("dimension_scores", {}).items()
@@ -570,7 +713,23 @@ def merge_scan(state: dict, current_findings: list[dict], *,
         "chronic_reopeners": chronic,
         "skipped_other_lang": skipped_lang, "skipped_out_of_scope": skipped_path,
         "ignored": ignored_count, "ignore_patterns": len(ignore),
+        "raw_findings": raw_findings, "suppressed_pct": suppressed_pct,
     }
+
+
+def get_overall_score(state: dict) -> float | None:
+    """Canonical overall score (lenient, includes subjective dimensions)."""
+    return state.get("overall_score")
+
+
+def get_objective_score(state: dict) -> float | None:
+    """Canonical objective score (lenient, mechanical dimensions only)."""
+    return state.get("objective_score")
+
+
+def get_strict_score(state: dict) -> float | None:
+    """Canonical strict score (strict, includes subjective dimensions)."""
+    return state.get("strict_score")
 
 
 def _matches_pattern(fid: str, f: dict, pattern: str) -> bool:

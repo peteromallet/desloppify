@@ -1,47 +1,49 @@
-"""Python import specifier computation and replacement finding for move command."""
+"""Python move helpers for import replacement computation."""
+
+from __future__ import annotations
 
 import os
 import re
 from pathlib import Path
 
-from ..utils import PROJECT_ROOT
-from .move import _dedup
+from ...utils import PROJECT_ROOT
+
+VERIFY_HINT = ""
 
 
-# ── Python import specifier computation ───────────────────
+def _dedup(replacements: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Deduplicate replacement tuples while preserving order."""
+    seen: set[tuple[str, str]] = set()
+    result = []
+    for pair in replacements:
+        if pair not in seen:
+            seen.add(pair)
+            result.append(pair)
+    return result
 
 
 def _path_to_py_module(filepath: str, root: Path) -> str | None:
-    """Convert a Python file path to a dotted module name relative to root.
-
-    E.g. scripts/foo/commands/move.py -> scripts.foo.commands.move
-    """
+    """Convert a Python file path to a dotted module name relative to root."""
     try:
         rel_path = Path(filepath).relative_to(root)
     except ValueError:
         return None
     parts = list(rel_path.parts)
-    # Strip .py extension from last part
     if parts and parts[-1].endswith(".py"):
         parts[-1] = parts[-1][:-3]
-    # Strip __init__ (package itself)
     if parts and parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts) if parts else None
 
 
 def _has_exact_module(line: str, module: str) -> bool:
-    """Check if a Python import line references this exact module (not a child).
-
-    Uses lookaround instead of \\b because \\b treats '.' as a word boundary,
-    causing 'source.foo' to falsely match inside 'source.foo.bar'.
-    """
-    return bool(re.search(rf'(?<!\w){re.escape(module)}(?![\w.])', line))
+    """Check whether an import line references this exact module."""
+    return bool(re.search(rf"(?<!\w){re.escape(module)}(?![\w.])", line))
 
 
 def _replace_exact_module(line: str, old_module: str, new_module: str) -> str:
     """Replace an exact module reference in a Python import line."""
-    return re.sub(rf'(?<!\w){re.escape(old_module)}(?![\w.])', new_module, line)
+    return re.sub(rf"(?<!\w){re.escape(old_module)}(?![\w.])", new_module, line)
 
 
 def _resolve_py_relative(source_dir: Path, dots: str, remainder: str) -> str | None:
@@ -59,7 +61,6 @@ def _resolve_py_relative(source_dir: Path, dots: str, remainder: str) -> str | N
     else:
         target_base = base
 
-    # Try foo.py, foo/__init__.py
     candidate = Path(str(target_base) + ".py")
     if candidate.is_file():
         return str(candidate.resolve())
@@ -70,20 +71,14 @@ def _resolve_py_relative(source_dir: Path, dots: str, remainder: str) -> str | N
 
 
 def _compute_py_relative_import(from_file: str, to_file: str) -> str | None:
-    """Compute a relative Python import string from from_file to to_file.
-
-    Returns the 'from' part, e.g. '.foo' or '..bar.baz'.
-    """
+    """Compute a relative Python import string from from_file to to_file."""
     from_dir = Path(from_file).parent
-
-    # Find common ancestor
     try:
         rel_path = os.path.relpath(to_file, from_dir)
     except ValueError:
         return None
 
     parts = Path(rel_path).parts
-    # Count leading '..' to determine dot count
     ups = 0
     for p in parts:
         if p == "..":
@@ -91,14 +86,11 @@ def _compute_py_relative_import(from_file: str, to_file: str) -> str | None:
         else:
             break
 
-    # dots = ups + 1 (one dot = same package)
     dot_count = ups + 1
     remainder_parts = list(parts[ups:])
 
-    # Strip .py extension from last part
     if remainder_parts and remainder_parts[-1].endswith(".py"):
         remainder_parts[-1] = remainder_parts[-1][:-3]
-    # Strip __init__ (importing from package)
     if remainder_parts and remainder_parts[-1] == "__init__":
         remainder_parts = remainder_parts[:-1]
 
@@ -107,22 +99,15 @@ def _compute_py_relative_import(from_file: str, to_file: str) -> str | None:
     return f"{dots}{remainder}"
 
 
-# ── Finding import lines and computing replacements ───────
-
-
-def find_py_replacements(
+def find_replacements(
     source_abs: str, dest_abs: str, graph: dict,
 ) -> dict[str, list[tuple[str, str]]]:
-    """Compute all import string replacements needed for a Python file move.
-
-    Returns {filepath: [(old_str, new_str), ...]}
-    """
+    """Compute all import string replacements needed for a Python file move."""
     changes: dict[str, list[tuple[str, str]]] = {}
     entry = graph.get(source_abs)
     if not entry:
         return changes
 
-    # Compute old and new dotted module names
     old_module = _path_to_py_module(source_abs, PROJECT_ROOT)
     new_module = _path_to_py_module(dest_abs, PROJECT_ROOT)
     if not old_module or not new_module:
@@ -147,22 +132,18 @@ def find_py_replacements(
             if not (stripped.startswith("from ") or stripped.startswith("import ")):
                 continue
 
-            # Handle absolute imports: from old.module import X / import old.module
-            # Use word-boundary check to avoid matching old.module.child
             if _has_exact_module(stripped, old_module):
                 new_line = _replace_exact_module(stripped, old_module, new_module)
                 if new_line != stripped:
                     replacements.append((stripped, new_line))
                     continue
 
-            # Handle relative imports
             m = re.match(r"from\s+(\.+)(\w*(?:\.\w+)*)\s+import", stripped)
             if m:
                 dots = m.group(1)
                 remainder = m.group(2)
                 resolved = _resolve_py_relative(importer_dir, dots, remainder)
                 if resolved and str(Path(resolved).resolve()) == source_abs:
-                    # Recompute relative import from importer to new location
                     new_rel = _compute_py_relative_import(importer, dest_abs)
                     if new_rel:
                         old_from = f"from {dots}{remainder}"
@@ -175,7 +156,7 @@ def find_py_replacements(
     return changes
 
 
-def find_py_self_replacements(
+def find_self_replacements(
     source_abs: str, dest_abs: str, graph: dict,
 ) -> list[tuple[str, str]]:
     """Compute replacements for the moved file's own relative imports."""
@@ -199,13 +180,10 @@ def find_py_self_replacements(
 
         dots = m.group(1)
         remainder = m.group(2)
-
-        # Resolve what this relative import points to from the source location
         resolved = _resolve_py_relative(source_dir, dots, remainder)
         if not resolved:
             continue
 
-        # Compute new relative import from dest location to the same target
         new_rel = _compute_py_relative_import(dest_abs, resolved)
         if not new_rel:
             continue
@@ -216,3 +194,33 @@ def find_py_self_replacements(
             replacements.append((old_from, new_from))
 
     return _dedup(replacements)
+
+
+def filter_intra_package_importer_changes(
+    _source_file: str, replacements: list[tuple[str, str]], _moving_files: set[str],
+) -> list[tuple[str, str]]:
+    """For Python package moves, keep only absolute import replacements."""
+    return [(old, new) for old, new in replacements if not re.match(r"from\s+\.", old)]
+
+
+def filter_directory_self_changes(
+    source_file: str, self_changes: list[tuple[str, str]], moving_files: set[str],
+) -> list[tuple[str, str]]:
+    """Drop self-import updates that remain valid inside a co-moving package."""
+    filtered_self = []
+    src_dir = Path(source_file).parent
+    for old_str, new_str in self_changes:
+        m = re.match(r"from\s+(\.+)(\w*(?:\.\w+)*)", old_str)
+        if m:
+            dots, remainder = m.group(1), m.group(2)
+            resolved = _resolve_py_relative(src_dir, dots, remainder)
+            if resolved and resolved in moving_files:
+                continue
+        filtered_self.append((old_str, new_str))
+    return filtered_self
+
+
+# Backward-compat aliases
+find_py_replacements = find_replacements
+find_py_self_replacements = find_self_replacements
+

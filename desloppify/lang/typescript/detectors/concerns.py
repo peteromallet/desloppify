@@ -1,13 +1,16 @@
 """Mixed concerns detection (UI + data fetching + transforms in one file)."""
 
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from ....utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
 
 
-def detect_mixed_concerns(path: Path) -> tuple[list[dict], int]:
+def detect_mixed_concerns(path: Path) -> tuple[list[dict[str, Any]], int]:
     """Find files that mix UI rendering with data fetching, state management, and business logic.
 
     Heuristic: a .tsx file that has both JSX returns AND direct API/supabase calls
@@ -64,7 +67,7 @@ def detect_mixed_concerns(path: Path) -> tuple[list[dict], int]:
     return sorted(entries, key=lambda e: -e["concern_count"]), len(files)
 
 
-def cmd_concerns(args):
+def cmd_concerns(args: Any) -> None:
     entries, _ = detect_mixed_concerns(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))

@@ -95,6 +95,22 @@ class LangConfig:
     large_threshold: int = 500
     complexity_threshold: int = 15
 
+    # Project-level files that indicate this language is present
+    detect_markers: list[str] = field(default_factory=list)
+
+    # External test discovery (outside scanned path)
+    external_test_dirs: list[str] = field(default_factory=lambda: ["tests", "test"])
+    test_file_extensions: list[str] = field(default_factory=list)
+
+    # Review-context language hooks
+    review_module_patterns_fn: Callable[[str], list[str]] | None = None
+    review_api_surface_fn: Callable[[dict[str, str]], dict] | None = None
+    review_guidance: dict = field(default_factory=dict)
+    review_low_value_pattern: object | None = None
+    holistic_review_dimensions: list[str] = field(default_factory=list)
+    migration_pattern_pairs: list[tuple[str, object, object]] = field(default_factory=list)
+    migration_mixed_extensions: set[str] = field(default_factory=set)
+
     # Zone classification
     zone_rules: list = field(default_factory=list)
     _zone_map: object = field(default=None, repr=False)  # FileZoneMap, set at scan time
@@ -195,13 +211,12 @@ def phase_dupes(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, 
 # ── Shared phase runners ──────────────────────────────────────
 
 
-def find_external_test_files(path: Path, lang_name: str) -> set[str]:
+def find_external_test_files(path: Path, lang: LangConfig) -> set[str]:
     """Find test files in standard locations outside the scanned path."""
     import os
     extra = set()
-    test_dirs = ["tests", "test"]
-    if lang_name in ("typescript", "csharp"):
-        test_dirs.append("__tests__")
+    test_dirs = lang.external_test_dirs or ["tests", "test"]
+    exts = tuple(lang.test_file_extensions or lang.extensions)
     for test_dir in test_dirs:
         d = PROJECT_ROOT / test_dir
         if not d.is_dir():
@@ -211,18 +226,9 @@ def find_external_test_files(path: Path, lang_name: str) -> set[str]:
             continue  # test_dir is inside scanned path, zone_map already has it
         except ValueError:
             pass
-        if lang_name == "python":
-            ext = ".py"
-        elif lang_name == "csharp":
-            ext = ".cs"
-        else:
-            ext = (".ts", ".tsx")
         for root, _, files in os.walk(d):
             for f in files:
-                if isinstance(ext, tuple):
-                    if any(f.endswith(e) for e in ext):
-                        extra.add(os.path.join(root, f))
-                elif f.endswith(ext):
+                if any(f.endswith(e) for e in exts):
                     extra.add(os.path.join(root, f))
     return extra
 
@@ -273,7 +279,7 @@ def phase_test_coverage(path: Path, lang: LangConfig) -> tuple[list[Finding], di
         return [], {}
 
     graph = lang._dep_graph or lang.build_dep_graph(path)
-    extra = find_external_test_files(path, lang.name)
+    extra = find_external_test_files(path, lang)
     entries, potential = detect_test_coverage(graph, zm, lang.name,
                                               extra_test_files=extra or None,
                                               complexity_map=lang._complexity_map or None)
@@ -297,13 +303,15 @@ def phase_test_coverage(path: Path, lang: LangConfig) -> tuple[list[Finding], di
 
 def phase_private_imports(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:
     """Shared phase: detect cross-module private imports."""
-    from ..detectors.private_imports import detect_private_imports
     from ..zones import filter_entries
+
+    if not hasattr(lang, "detect_private_imports"):
+        return [], {}
 
     zm = lang._zone_map
     graph = lang._dep_graph or lang.build_dep_graph(path)
 
-    entries, potential = detect_private_imports(graph, zm)
+    entries, potential = lang.detect_private_imports(graph, zm)
     entries = filter_entries(zm, entries, "private_imports")
 
     results = []

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ..review import MIN_REVIEW_LOC, LOW_VALUE_NAMES, hash_file
+from ..review import MIN_REVIEW_LOC, hash_file
+from ..review.selection import is_low_value_file
 from ..utils import rel, read_file_text, resolve_path
 
 
@@ -25,7 +26,7 @@ def detect_review_coverage(
         files: list of file paths from file_finder
         zone_map: FileZoneMap (or None)
         review_cache: dict of {rel_path: {content_hash, reviewed_at, finding_count}}
-        lang_name: "python" or "typescript"
+        lang_name: language plugin name (for low-value pattern matching)
         max_age_days: reviews older than this are flagged as stale
 
     Returns:
@@ -44,8 +45,8 @@ def detect_review_coverage(
             if zone.value in ("test", "generated", "vendor", "config", "script"):
                 continue
 
-        # Skip low-value files (types, constants, enums, index, .d.ts)
-        if LOW_VALUE_NAMES.search(rpath):
+        # Skip low-value files (language-specific + generic patterns)
+        if is_low_value_file(rpath, lang_name):
             continue
 
         # Skip files below minimum LOC
@@ -142,6 +143,10 @@ def detect_holistic_review_staleness(
     - Stale (>max_age_days) → holistic_stale
     - File count drifted >20% since review → holistic_stale
     """
+    # No production files in scope means holistic review is not applicable.
+    if total_files <= 0:
+        return []
+
     holistic = review_cache.get("holistic")
     if not holistic:
         return [{

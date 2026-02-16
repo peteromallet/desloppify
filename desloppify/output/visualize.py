@@ -17,13 +17,42 @@ from pathlib import Path
 from ..utils import PROJECT_ROOT, colorize, rel
 
 
+def _resolve_visualization_lang(path: Path, lang):
+    """Resolve language config for visualization if not already provided."""
+    if lang:
+        return lang
+    from ..lang import auto_detect_lang, get_lang
+
+    search_roots = [path if path.is_dir() else path.parent]
+    search_roots.extend(search_roots[0].parents)
+    for root in search_roots:
+        detected = auto_detect_lang(root)
+        if detected:
+            return get_lang(detected)
+    return None
+
+
+def _fallback_source_files(path: Path) -> list[str]:
+    """Collect source files using extensions from all registered language plugins."""
+    from ..lang import available_langs, get_lang
+    from ..utils import find_source_files
+
+    extensions: set[str] = set()
+    for lang_name in available_langs():
+        cfg = get_lang(lang_name)
+        extensions.update(cfg.extensions)
+    if not extensions:
+        return []
+    return find_source_files(path, sorted(extensions))
+
+
 def _collect_file_data(path: Path, lang=None) -> list[dict]:
     """Collect LOC for all source files using the language's file finder."""
-    if lang and lang.file_finder:
-        source_files = lang.file_finder(path)
+    resolved_lang = _resolve_visualization_lang(path, lang)
+    if resolved_lang and resolved_lang.file_finder:
+        source_files = resolved_lang.file_finder(path)
     else:
-        from ..utils import find_source_files
-        source_files = find_source_files(path, [".ts", ".tsx", ".py", ".cs"])
+        source_files = _fallback_source_files(path)
     files = []
     for filepath in source_files:
         try:
@@ -87,15 +116,10 @@ def _build_tree(files: list[dict], dep_graph: dict, findings_by_file: dict) -> d
 
 
 def _build_dep_graph_for_path(path: Path, lang) -> dict:
-    """Build dependency graph using lang plugin or fallback to TS."""
-    if lang and lang.build_dep_graph:
-        return lang.build_dep_graph(path)
-    if not lang:
-        try:
-            from ..lang.typescript.deps import build_dep_graph
-            return build_dep_graph(path)
-        except (ImportError, ModuleNotFoundError):
-            pass
+    """Build dependency graph using the resolved language plugin."""
+    resolved_lang = _resolve_visualization_lang(path, lang)
+    if resolved_lang and resolved_lang.build_dep_graph:
+        return resolved_lang.build_dep_graph(path)
     return {}
 
 
@@ -124,12 +148,22 @@ def generate_visualization(path: Path, state: dict | None = None,
     total_findings = sum(len(v) for v in fbf.values())
     open_findings = sum(1 for fs in fbf.values()
                         for f in fs if f.get("status") == "open")
-    score = state.get("score", "N/A") if state else "N/A"
+    if state:
+        from ..state import get_overall_score, get_objective_score, get_strict_score
+        overall_score = get_overall_score(state)
+        objective_score = get_objective_score(state)
+        strict_score = get_strict_score(state)
+    else:
+        overall_score = objective_score = strict_score = None
+    fmt_score = lambda v: f"{v:.1f}" if isinstance(v, (int, float)) else "N/A"
 
     replacements = {"__D3_CDN_URL__": D3_CDN_URL, "__TREE_DATA__": tree_json,
                      "__TOTAL_FILES__": str(total_files), "__TOTAL_LOC__": f"{total_loc:,}",
                      "__TOTAL_FINDINGS__": str(total_findings),
-                     "__OPEN_FINDINGS__": str(open_findings), "__SCORE__": str(score)}
+                     "__OPEN_FINDINGS__": str(open_findings),
+                     "__OVERALL_SCORE__": fmt_score(overall_score),
+                     "__OBJECTIVE_SCORE__": fmt_score(objective_score),
+                     "__STRICT_SCORE__": fmt_score(strict_score)}
     html = _get_html_template()
     for placeholder, value in replacements.items():
         html = html.replace(placeholder, value)
@@ -148,13 +182,20 @@ def generate_visualization(path: Path, state: dict | None = None,
 def _load_cmd_context(args):
     """Load lang config and state from CLI args."""
     from ..state import load_state
-    from ..commands._helpers import resolve_lang
+    from ..commands._helpers import resolve_lang, state_path
     lang = resolve_lang(args)
-    state = None
-    try:
-        state = load_state(Path(args.state) if getattr(args, "state", None) else None)
-    except (OSError, json.JSONDecodeError):
-        pass
+
+    # Prefer state preloaded by CLI main() so per-language state routing stays consistent
+    # across all commands (including tree/viz).
+    state = getattr(args, "_preloaded_state", None)
+    if state is None:
+        sp = getattr(args, "_state_path", None)
+        if sp is None:
+            sp = Path(args.state) if getattr(args, "state", None) else state_path(args)
+        try:
+            state = load_state(sp)
+        except (OSError, json.JSONDecodeError):
+            state = None
     return Path(args.path), lang, state
 
 

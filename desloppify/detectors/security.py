@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from ..zones import FileZoneMap, Zone
 
@@ -141,10 +142,10 @@ def detect_security_issues(
     scanned = 0
 
     for filepath in files:
-        # Skip generated/vendor zones
+        # Skip zones excluded from security scanning.
         if zone_map is not None:
             zone = zone_map.get(filepath)
-            if zone in (Zone.GENERATED, Zone.VENDOR):
+            if zone in (Zone.TEST, Zone.CONFIG, Zone.GENERATED, Zone.VENDOR):
                 continue
 
         try:
@@ -227,7 +228,7 @@ def make_security_entry(
     filepath: str, line: int, check_id: str,
     summary: str, severity: str, confidence: str,
     content: str, remediation: str,
-) -> dict:
+) -> dict[str, Any]:
     """Build a security finding entry dict."""
     from ..utils import rel
     rel_path = rel(filepath)

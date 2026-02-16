@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from .commands._helpers import state_path, resolve_lang
+from .lang import available_langs, get_lang
 from .utils import DEFAULT_PATH, PROJECT_ROOT
 
 
@@ -40,12 +41,16 @@ examples:
   desloppify ignore "smells::*::async_no_await"
   desloppify detect logs --top 10
   desloppify detect dupes --threshold 0.9
+  desloppify dev scaffold-lang go --extension .go --marker go.mod --default-src .
   desloppify move src/shared/hooks/useFoo.ts src/shared/hooks/video/useFoo.ts --dry-run
   desloppify move scripts/foo/bar.py scripts/foo/baz/bar.py
 """
 
 
 def create_parser() -> argparse.ArgumentParser:
+    langs = available_langs()
+    lang_help = ", ".join(langs) if langs else "registered languages"
+
     parser = argparse.ArgumentParser(
         prog="desloppify",
         description="Desloppify — codebase health tracker",
@@ -54,7 +59,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     # Global flags
     parser.add_argument("--lang", type=str, default=None,
-                        help="Language to scan (typescript, python, csharp). Auto-detected if omitted.")
+                        help=f"Language to scan ({lang_help}). Auto-detected if omitted.")
     parser.add_argument("--exclude", action="append", default=None, metavar="PATTERN",
                         help="Path substring to exclude (repeatable: --exclude foo --exclude bar)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -125,12 +130,20 @@ def create_parser() -> argparse.ArgumentParser:
     p_ignore.add_argument("pattern", help="File path, glob, or detector::prefix")
     p_ignore.add_argument("--state", type=str, default=None)
 
-    p_fix = sub.add_parser("fix", help="Auto-fix mechanical issues",
-                           epilog="fixers (typescript): unused-imports, unused-vars, unused-params, "
-                                  "dead-exports, debug-logs, dead-useeffect, empty-if-chain\n"
-                                  "fixers (python): none yet\n"
-                                  "fixers (csharp): none yet\n"
-                                  "special: review — prepare structured review data")
+    fixer_help_lines: list[str] = []
+    for lang_name in langs:
+        try:
+            fixer_names = sorted(get_lang(lang_name).fixers.keys())
+        except Exception:
+            fixer_names = []
+        fixer_list = ", ".join(fixer_names) if fixer_names else "none yet"
+        fixer_help_lines.append(f"fixers ({lang_name}): {fixer_list}")
+    fixer_help_lines.append("special: review — prepare structured review data")
+    p_fix = sub.add_parser(
+        "fix",
+        help="Auto-fix mechanical issues",
+        epilog="\n".join(fixer_help_lines),
+    )
     p_fix.add_argument("fixer", type=str, help="What to fix")
     p_fix.add_argument("--path", type=str, default=None)
     p_fix.add_argument("--state", type=str, default=None)
@@ -220,6 +233,40 @@ def create_parser() -> argparse.ArgumentParser:
     c_unset = config_sub.add_parser("unset", help="Reset a config key to default")
     c_unset.add_argument("config_key", type=str, help="Config key name")
 
+    p_dev = sub.add_parser("dev", help="Developer utilities")
+    dev_sub = p_dev.add_subparsers(dest="dev_action", required=True)
+    d_scaffold = dev_sub.add_parser("scaffold-lang", help="Generate a standardized language plugin scaffold")
+    d_scaffold.add_argument("name", type=str, help="Language name (snake_case)")
+    d_scaffold.add_argument(
+        "--extension",
+        action="append",
+        default=None,
+        metavar="EXT",
+        help="Source file extension (repeatable, e.g. --extension .go --extension .gomod)",
+    )
+    d_scaffold.add_argument(
+        "--marker",
+        action="append",
+        default=None,
+        metavar="FILE",
+        help="Project-root detection marker file (repeatable)",
+    )
+    d_scaffold.add_argument(
+        "--default-src",
+        type=str,
+        default="src",
+        metavar="DIR",
+        help="Default source directory for scans (default: src)",
+    )
+    d_scaffold.add_argument("--force", action="store_true", help="Overwrite existing scaffold files")
+    d_scaffold.add_argument(
+        "--no-wire-pyproject",
+        dest="wire_pyproject",
+        action="store_false",
+        help="Do not edit pyproject.toml testpaths/exclude arrays",
+    )
+    d_scaffold.set_defaults(wire_pyproject=True)
+
     return parser
 
 
@@ -239,7 +286,7 @@ def _apply_persisted_exclusions(args, config: dict):
             print(colorize(f"  Excluding (from config): {', '.join(combined)}", "dim"), file=sys.stderr)
 
 
-def main():
+def main() -> None:
     # Ensure Unicode output works on Windows terminals (cp1252 etc.)
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -289,6 +336,7 @@ def main():
         "review": (".commands.review_cmd", "cmd_review"),
         "issues": (".commands.issues_cmd", "cmd_issues"),
         "config": (".commands.config_cmd", "cmd_config"),
+        "dev": (".commands.dev_cmd", "cmd_dev"),
     }
 
     module_path, func_name = _COMMAND_MAP[args.command]

@@ -288,6 +288,8 @@ def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
     """Check if a directory should be pruned during traversal."""
     if name in DEFAULT_EXCLUSIONS or name.endswith(".egg-info"):
         return True
+    if name.startswith(".venv") or name.startswith("venv"):
+        return True
     if extra and any(matches_exclusion(rel_path, ex) or ex == name for ex in extra):
         return True
     return False
@@ -356,6 +358,11 @@ def compute_tool_hash() -> str:
     """
     h = hashlib.sha256()
     for py_file in sorted(TOOL_DIR.rglob("*.py")):
+        rel_parts = py_file.relative_to(TOOL_DIR).parts
+        # Keep the hash focused on runtime code. Colocated test modules under
+        # lang/*/tests should not trigger scan staleness warnings.
+        if "tests" in rel_parts:
+            continue
         try:
             h.update(str(py_file.relative_to(TOOL_DIR)).encode())
             h.update(py_file.read_bytes())

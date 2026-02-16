@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from desloppify.commands._helpers import _write_query
+from desloppify.commands._helpers import _write_query, resolve_lang
 from desloppify.cli import (
     DETECTOR_NAMES,
     _apply_persisted_exclusions,
@@ -178,6 +178,52 @@ class TestCreateParser:
         args = parser.parse_args(["viz"])
         assert args.command == "viz"
 
+    def test_review_command_defaults(self, parser):
+        args = parser.parse_args(["review"])
+        assert args.command == "review"
+        assert args.prepare is False
+        assert args.import_file is None
+
+    def test_review_prepare_flag(self, parser):
+        args = parser.parse_args(["review", "--prepare"])
+        assert args.prepare is True
+
+    def test_issues_command_defaults(self, parser):
+        args = parser.parse_args(["issues"])
+        assert args.command == "issues"
+        assert args.issues_action is None
+
+    def test_issues_show_subcommand(self, parser):
+        args = parser.parse_args(["issues", "show", "3"])
+        assert args.command == "issues"
+        assert args.issues_action == "show"
+        assert args.number == 3
+
+    def test_issues_update_subcommand(self, parser):
+        args = parser.parse_args(["issues", "update", "2", "--file", "analysis.md"])
+        assert args.command == "issues"
+        assert args.issues_action == "update"
+        assert args.number == 2
+        assert args.file == "analysis.md"
+
+    def test_config_command_defaults(self, parser):
+        args = parser.parse_args(["config"])
+        assert args.command == "config"
+        assert args.config_action is None
+
+    def test_config_set_subcommand(self, parser):
+        args = parser.parse_args(["config", "set", "review_max_age_days", "14"])
+        assert args.command == "config"
+        assert args.config_action == "set"
+        assert args.config_key == "review_max_age_days"
+        assert args.config_value == "14"
+
+    def test_config_unset_subcommand(self, parser):
+        args = parser.parse_args(["config", "unset", "review_max_age_days"])
+        assert args.command == "config"
+        assert args.config_action == "unset"
+        assert args.config_key == "review_max_age_days"
+
     def test_zone_show(self, parser):
         args = parser.parse_args(["zone", "show"])
         assert args.command == "zone"
@@ -193,6 +239,40 @@ class TestCreateParser:
         args = parser.parse_args(["zone", "clear", "src/foo.py"])
         assert args.zone_action == "clear"
         assert args.zone_path == "src/foo.py"
+
+    def test_dev_scaffold_lang(self, parser):
+        args = parser.parse_args(
+            [
+                "dev",
+                "scaffold-lang",
+                "ruby",
+                "--extension",
+                ".rb",
+                "--extension",
+                ".rake",
+                "--marker",
+                "Gemfile",
+                "--default-src",
+                "lib",
+                "--force",
+            ]
+        )
+        assert args.command == "dev"
+        assert args.dev_action == "scaffold-lang"
+        assert args.name == "ruby"
+        assert args.extension == [".rb", ".rake"]
+        assert args.marker == ["Gemfile"]
+        assert args.default_src == "lib"
+        assert args.force is True
+        assert args.wire_pyproject is True
+
+    def test_dev_scaffold_lang_no_wire_pyproject(self, parser):
+        args = parser.parse_args(["dev", "scaffold-lang", "go", "--extension", ".go", "--no-wire-pyproject"])
+        assert args.wire_pyproject is False
+
+    def test_dev_requires_action(self, parser):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["dev"])
 
     def test_scan_badge_options(self, parser):
         args = parser.parse_args(["scan", "--no-badge", "--badge-path", "custom.png"])
@@ -257,6 +337,144 @@ class TestStatePath:
         args = SimpleNamespace(state="/tmp/override.json", lang="python")
         result = state_path(args)
         assert result == Path("/tmp/override.json")
+
+
+class TestResolveLang:
+    def test_prefers_explicit_lang(self):
+        args = SimpleNamespace(lang="python", path="/tmp/somewhere")
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
+    def test_auto_detect_uses_path_when_it_looks_like_project_root(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        # CWD-style project root is python.
+        cwd_root = tmp_path / "cwd_project"
+        cwd_root.mkdir()
+        (cwd_root / "pyproject.toml").write_text("[tool.pytest]\n")
+        py_src = cwd_root / "src"
+        py_src.mkdir()
+        (py_src / "main.py").write_text("print('x')\n")
+
+        # Target --path root is typescript.
+        target_root = tmp_path / "target_project"
+        target_root.mkdir()
+        (target_root / "package.json").write_text('{"name": "target"}\n')
+        ts_src = target_root / "src"
+        ts_src.mkdir()
+        (ts_src / "index.ts").write_text("export const x = 1\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", cwd_root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", cwd_root)
+        args = SimpleNamespace(lang=None, path=str(target_root))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "typescript"
+
+    def test_auto_detect_falls_back_to_project_root_for_subdir_path(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / "pyproject.toml").write_text("[tool.pytest]\n")
+        src = root / "src"
+        src.mkdir()
+        (src / "main.py").write_text("print('x')\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", root)
+        args = SimpleNamespace(lang=None, path=str(src))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
+    def test_auto_detect_walks_up_from_external_subdir_path(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        # CWD-style project root is python.
+        cwd_root = tmp_path / "cwd_project"
+        cwd_root.mkdir()
+        (cwd_root / "pyproject.toml").write_text("[tool.pytest]\n")
+        (cwd_root / "local.py").write_text("print('local')\n")
+
+        # External target is typescript, and --path points to target/src.
+        target_root = tmp_path / "target_project"
+        target_root.mkdir()
+        (target_root / "package.json").write_text('{"name":"target"}\n')
+        target_src = target_root / "src"
+        target_src.mkdir()
+        (target_src / "index.ts").write_text("export const x = 1\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", cwd_root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", cwd_root)
+        args = SimpleNamespace(lang=None, path=str(target_src))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "typescript"
+
+    def test_auto_detect_prefers_path_subtree_when_no_markers(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        root = tmp_path / "project"
+        root.mkdir()
+
+        # No marker files anywhere in this repo-style tree.
+        ts_dir = root / "web"
+        ts_dir.mkdir()
+        for i in range(3):
+            (ts_dir / f"view_{i}.ts").write_text("export const x = 1\n")
+
+        py_dir = root / "scripts"
+        py_dir.mkdir()
+        for i in range(2):
+            (py_dir / f"job_{i}.py").write_text("print('x')\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", root)
+
+        # Path points to python subtree; detection should use this subtree first,
+        # not the entire repo where TypeScript files are more numerous.
+        args = SimpleNamespace(lang=None, path=str(py_dir))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
+    def test_lang_config_markers_include_plugin_markers(self, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        class DummyCfg:
+            detect_markers = ["deno.json", "custom.lock"]
+
+        helpers_mod._lang_config_markers.cache_clear()
+        monkeypatch.setattr("desloppify.lang.available_langs", lambda: ["dummy"])
+        monkeypatch.setattr("desloppify.lang.get_lang", lambda _name: DummyCfg())
+
+        markers = helpers_mod._lang_config_markers()
+        assert "deno.json" in markers
+        assert "custom.lock" in markers
+
+        helpers_mod._lang_config_markers.cache_clear()
+
+    def test_resolve_detection_root_uses_plugin_marker(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        cwd_root = tmp_path / "cwd_project"
+        cwd_root.mkdir()
+        (cwd_root / "pyproject.toml").write_text("[tool.pytest]\n")
+
+        target_root = tmp_path / "target_project"
+        target_root.mkdir()
+        (target_root / "deno.json").write_text("{}\n")
+        target_src = target_root / "src"
+        target_src.mkdir()
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", cwd_root)
+        monkeypatch.setattr(helpers_mod, "_lang_config_markers", lambda: ("deno.json",))
+
+        args = SimpleNamespace(path=str(target_src))
+        resolved = helpers_mod._resolve_detection_root(args)
+        assert resolved == target_root
 
 
 # ===========================================================================

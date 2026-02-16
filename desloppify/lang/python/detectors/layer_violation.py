@@ -21,11 +21,54 @@ _DEFAULT_RULES: list[tuple[str, str, str]] = [
         "Shared detector imports from language plugin — breaks language-agnosticity",
     ),
     (
+        "detectors/",
+        "review/",
+        "Shared detector imports from review layer — breaks layer separation",
+    ),
+    (
         "narrative/",
         "commands/",
         "Narrative module imports from command layer — breaks separation of concerns",
     ),
 ]
+
+
+def _forbidden_matches_module(module_path: str, forbidden: str) -> bool:
+    """Component-aware forbidden import match."""
+    parts = [p for p in module_path.split("/") if p]
+    forbidden_parts = [p for p in forbidden.strip("/").split("/") if p]
+    if not parts or not forbidden_parts:
+        return False
+    width = len(forbidden_parts)
+    for idx in range(len(parts) - width + 1):
+        if parts[idx:idx + width] == forbidden_parts:
+            return True
+    return False
+
+
+def _resolve_import_modules(node: ast.AST, filepath: str) -> list[str]:
+    """Return imported module paths (dotted) for ast.Import/ast.ImportFrom nodes."""
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names if alias.name]
+
+    if not isinstance(node, ast.ImportFrom):
+        return []
+
+    # Absolute import
+    if node.level == 0:
+        return [node.module] if node.module else [alias.name for alias in node.names if alias.name]
+
+    rel_parts = list(Path(filepath).with_suffix("").parts[:-1])
+    # level=1 stays in current package; level=2 goes up 1 package; etc.
+    up = max(0, node.level - 1)
+    if up:
+        rel_parts = rel_parts[:-up] if up <= len(rel_parts) else []
+
+    if node.module:
+        return [".".join(rel_parts + node.module.split("."))]
+
+    # from .. import review, foo
+    return [".".join(rel_parts + [alias.name]) for alias in node.names if alias.name]
 
 
 def detect_layer_violations(
@@ -72,20 +115,16 @@ def detect_layer_violations(
             continue
 
         for node in ast.walk(tree):
-            module = None
-            if isinstance(node, ast.ImportFrom) and node.module:
-                module = node.module
-            elif isinstance(node, ast.Import):
-                module = node.names[0].name if node.names else None
-
-            if module is None:
+            modules = _resolve_import_modules(node, filepath)
+            if not modules:
                 continue
 
-            # Convert dotted module path to slash path for pattern matching
-            module_path = module.replace(".", "/")
+            for module in modules:
+                module_path = module.replace(".", "/")
+                for forbidden, desc in matching_rules:
+                    if not _forbidden_matches_module(module_path, forbidden):
+                        continue
 
-            for forbidden, desc in matching_rules:
-                if forbidden in module_path:
                     # Extract the source package for the finding
                     source_pkg = ""
                     for source, _, _ in active_rules:

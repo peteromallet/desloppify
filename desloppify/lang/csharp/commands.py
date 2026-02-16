@@ -10,10 +10,18 @@ from .extractors import extract_csharp_functions, find_csharp_files
 from .phases import CSHARP_COMPLEXITY_SIGNALS
 
 
-cmd_large = make_cmd_large(find_csharp_files, default_threshold=500)
-cmd_complexity = make_cmd_complexity(
+_cmd_large_impl = make_cmd_large(find_csharp_files, default_threshold=500)
+_cmd_complexity_impl = make_cmd_complexity(
     find_csharp_files, CSHARP_COMPLEXITY_SIGNALS, default_threshold=20
 )
+
+
+def cmd_large(args):
+    _cmd_large_impl(args)
+
+
+def cmd_complexity(args):
+    _cmd_complexity_impl(args)
 
 
 def cmd_deps(args):

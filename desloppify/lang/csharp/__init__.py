@@ -13,6 +13,14 @@ from .extractors import (
     find_csharp_files,
 )
 from .phases import _phase_coupling, _phase_structural
+from .review import (
+    LOW_VALUE_PATTERN as CSHARP_LOW_VALUE_PATTERN,
+    MIGRATION_MIXED_EXTENSIONS as CSHARP_MIGRATION_MIXED_EXTENSIONS,
+    MIGRATION_PATTERN_PAIRS as CSHARP_MIGRATION_PATTERN_PAIRS,
+    REVIEW_GUIDANCE as CSHARP_REVIEW_GUIDANCE,
+    api_surface as csharp_review_api_surface,
+    module_patterns as csharp_review_module_patterns,
+)
 
 
 def _get_csharp_area(filepath: str) -> str:
@@ -94,6 +102,25 @@ class CSharpConfig(LangConfig):
             file_finder=find_csharp_files,
             large_threshold=500,
             complexity_threshold=20,
+            detect_markers=["global.json"],
+            external_test_dirs=["tests", "test"],
+            test_file_extensions=[".cs"],
+            review_module_patterns_fn=csharp_review_module_patterns,
+            review_api_surface_fn=csharp_review_api_surface,
+            review_guidance=CSHARP_REVIEW_GUIDANCE,
+            review_low_value_pattern=CSHARP_LOW_VALUE_PATTERN,
+            holistic_review_dimensions=[
+                "cross_module_architecture",
+                "convention_outlier",
+                "error_consistency",
+                "abstraction_fitness",
+                "api_surface_coherence",
+                "authorization_consistency",
+                "ai_generated_debt",
+                "incomplete_migration",
+            ],
+            migration_pattern_pairs=CSHARP_MIGRATION_PATTERN_PAIRS,
+            migration_mixed_extensions=CSHARP_MIGRATION_MIXED_EXTENSIONS,
             extract_functions=_extract_csharp_functions,
             zone_rules=CSHARP_ZONE_RULES,
         )

@@ -41,10 +41,15 @@ def generate_findings(
     Returns (findings, potentials) where potentials maps detector names to checked counts.
     """
     if lang is None:
-        from .lang import get_lang, auto_detect_lang
+        from .lang import get_lang, auto_detect_lang, available_langs
         from .utils import PROJECT_ROOT
         detected = auto_detect_lang(PROJECT_ROOT)
-        lang = get_lang(detected or "typescript")
+        if detected is None:
+            langs = available_langs()
+            if not langs:
+                raise ValueError("No language plugins available")
+            detected = langs[0]
+        lang = get_lang(detected)
     return _generate_findings_from_lang(path, lang, include_slow=include_slow,
                                          zone_overrides=zone_overrides,
                                          profile=profile)
@@ -102,15 +107,21 @@ def _generate_findings_from_lang(
 
 def _plan_header(state: dict, stats: dict) -> list[str]:
     """Build the plan header: title, score line, and codebase metrics."""
-    score = state.get("score", 0)
+    from .state import get_overall_score, get_objective_score, get_strict_score
 
-    # Use objective score if available, fall back to progress score
-    obj_score = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
-    if obj_score is not None:
-        header_score = f"**Health: {obj_score:.1f}/100** (strict: {obj_strict:.1f})"
+    overall_score = get_overall_score(state)
+    objective_score = get_objective_score(state)
+    strict_score = get_strict_score(state)
+    if overall_score is not None and objective_score is not None and strict_score is not None:
+        header_score = (
+            f"**Health:** overall {overall_score:.1f}/100 | "
+            f"objective {objective_score:.1f}/100 | "
+            f"strict {strict_score:.1f}/100"
+        )
+    elif overall_score is not None:
+        header_score = f"**Score: {overall_score:.1f}/100**"
     else:
-        header_score = f"**Score: {score}/100**"
+        header_score = "**Scores unavailable**"
 
     # Codebase metrics
     metrics = state.get("codebase_metrics", {})

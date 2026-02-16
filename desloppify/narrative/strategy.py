@@ -36,8 +36,7 @@ def _compute_fixer_leverage(by_det: dict[str, int], actions: list[dict],
     auto_impact = sum(a.get("impact", 0) for a in actions if a.get("type") == "auto_fix")
     impact_ratio = auto_impact / total_impact if total_impact > 0 else 0.0
 
-    # Python has no fixers
-    if lang == "python" or coverage == 0:
+    if coverage == 0:
         rec = "none"
     elif coverage > 0.4 or impact_ratio > 0.3:
         rec = "strong"

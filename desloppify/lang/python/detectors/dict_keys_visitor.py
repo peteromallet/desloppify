@@ -75,7 +75,7 @@ class DictKeyVisitor(ast.NodeVisitor):
 
     # -- Dict creation --
 
-    def visit_Assign(self, node: ast.Assign):
+    def visit_Assign(self, node: ast.Assign) -> None:
         if len(node.targets) == 1:
             target = node.targets[0]
             name = _get_name(target)
@@ -86,7 +86,7 @@ class DictKeyVisitor(ast.NodeVisitor):
             self._check_subscript_write(target, node.lineno)
         self.generic_visit(node)
 
-    def visit_AugAssign(self, node: ast.AugAssign):
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
         # AugAssign (d["k"] += v) is both a read AND a write
         if isinstance(node.target, ast.Subscript):
             name = _get_name(node.target.value)
@@ -152,7 +152,7 @@ class DictKeyVisitor(ast.NodeVisitor):
 
     # -- Dict reads --
 
-    def visit_Subscript(self, node: ast.Subscript):
+    def visit_Subscript(self, node: ast.Subscript) -> None:
         if isinstance(node.ctx, ast.Load):
             name = _get_name(node.value)
             if name:
@@ -165,7 +165,7 @@ class DictKeyVisitor(ast.NodeVisitor):
                         td.has_dynamic_key = True
         self.generic_visit(node)
 
-    def visit_Delete(self, node: ast.Delete):
+    def visit_Delete(self, node: ast.Delete) -> None:
         for target in node.targets:
             if isinstance(target, ast.Subscript):
                 name = _get_name(target.value)
@@ -179,7 +179,7 @@ class DictKeyVisitor(ast.NodeVisitor):
                             td.has_dynamic_key = True
         self.generic_visit(node)
 
-    def visit_Call(self, node: ast.Call):
+    def visit_Call(self, node: ast.Call) -> None:
         # Check method calls on tracked dicts: d.get("key"), d.update({...}), etc.
         if isinstance(node.func, ast.Attribute):
             name = _get_name(node.func.value)
@@ -251,7 +251,7 @@ class DictKeyVisitor(ast.NodeVisitor):
             self._mark_returned_or_passed(node.value)
         self.generic_visit(node)
 
-    def visit_Compare(self, node: ast.Compare):
+    def visit_Compare(self, node: ast.Compare) -> None:
         """Handle "key" in d."""
         for i, op in enumerate(node.ops):
             if isinstance(op, (ast.In, ast.NotIn)):
@@ -287,7 +287,7 @@ class DictKeyVisitor(ast.NodeVisitor):
 
     # -- Dict literal collection (standalone, non-assigned) --
 
-    def visit_Dict(self, node: ast.Dict):
+    def visit_Dict(self, node: ast.Dict) -> None:
         """Collect dict literals for schema drift analysis."""
         if (all(isinstance(k, ast.Constant) and isinstance(k.value, str)
                 for k in node.keys if k is not None)

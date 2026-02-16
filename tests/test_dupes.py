@@ -174,3 +174,41 @@ class TestDetectDuplicates:
         entries, total = detect_duplicates(fns, threshold=0.8)
         assert len(entries) == 2
         assert entries[0]["similarity"] >= entries[1]["similarity"]
+
+    def test_prunes_near_dupes_when_line_count_bound_cannot_meet_threshold(self, monkeypatch):
+        """Skip expensive matcher work when line-count upper bound is impossible."""
+        body_a = "\n".join(f"a_{i}" for i in range(16))
+        body_b = "\n".join(f"b_{i}" for i in range(24))
+        fns = [
+            _make_fn("short_fn", "a.py", body_a, loc=16),
+            _make_fn("long_fn", "b.py", body_b, loc=24),
+        ]
+
+        class _ShouldNotInstantiate:
+            def __init__(self, *_args, **_kwargs):
+                raise AssertionError("SequenceMatcher should not be created for pruned pairs")
+
+        monkeypatch.setattr(
+            "desloppify.detectors.dupes.difflib.SequenceMatcher",
+            _ShouldNotInstantiate,
+        )
+
+        entries, total = detect_duplicates(fns, threshold=0.81)
+        assert entries == []
+        assert total == 2
+
+    def test_does_not_prune_true_near_duplicates_with_uneven_line_lengths(self):
+        """Length pruning should not drop near-duplicates that differ by line text length."""
+        base = ["x" for _ in range(20)]
+        modified = base.copy()
+        modified[-1] = "y" * 1000
+        fns = [
+            _make_fn("a", "a.py", "\n".join(base), loc=20),
+            _make_fn("b", "b.py", "\n".join(modified), loc=20),
+        ]
+
+        entries, total = detect_duplicates(fns, threshold=0.9)
+        assert len(entries) == 1
+        assert entries[0]["kind"] == "near-duplicate"
+        assert entries[0]["similarity"] >= 0.9
+        assert total == 2

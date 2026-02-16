@@ -48,16 +48,17 @@ def _findings_dict(*findings: dict) -> dict:
 
 
 def _history_entry(
-    objective_strict: float | None = None,
+    strict_score: float | None = None,
     objective_score: float | None = None,
     lang: str | None = None,
     dimension_scores: dict | None = None,
 ) -> dict:
     entry: dict = {}
-    if objective_strict is not None:
-        entry["objective_strict"] = objective_strict
+    if strict_score is not None:
+        entry["strict_score"] = strict_score
     if objective_score is not None:
         entry["objective_score"] = objective_score
+        entry["overall_score"] = objective_score
     if lang is not None:
         entry["lang"] = lang
     if dimension_scores is not None:
@@ -159,39 +160,39 @@ class TestDetectPhase:
         assert _detect_phase([], None) == "first_scan"
 
     def test_single_entry_history(self):
-        history = [_history_entry(objective_strict=50.0)]
+        history = [_history_entry(strict_score=50.0)]
         assert _detect_phase(history, 50.0) == "first_scan"
 
     def test_regression_strict_dropped(self):
         """Strict dropped > 0.5 from previous scan."""
         history = [
-            _history_entry(objective_strict=80.0),
-            _history_entry(objective_strict=79.0),
+            _history_entry(strict_score=80.0),
+            _history_entry(strict_score=79.0),
         ]
         assert _detect_phase(history, 79.0) == "regression"
 
     def test_regression_exact_half_point_no_regression(self):
         """Dropping exactly 0.5 is NOT regression (must exceed 0.5)."""
         history = [
-            _history_entry(objective_strict=80.0),
-            _history_entry(objective_strict=79.5),
+            _history_entry(strict_score=80.0),
+            _history_entry(strict_score=79.5),
         ]
         assert _detect_phase(history, 79.5) != "regression"
 
     def test_stagnation_three_scans_unchanged(self):
         """Strict unchanged (spread <= 0.5) for 3+ scans."""
         history = [
-            _history_entry(objective_strict=75.0),
-            _history_entry(objective_strict=75.2),
-            _history_entry(objective_strict=75.3),
+            _history_entry(strict_score=75.0),
+            _history_entry(strict_score=75.2),
+            _history_entry(strict_score=75.3),
         ]
         assert _detect_phase(history, 75.3) == "stagnation"
 
     def test_stagnation_requires_three_scans(self):
         """Only two scans with same score is not stagnation."""
         history = [
-            _history_entry(objective_strict=75.0),
-            _history_entry(objective_strict=75.0),
+            _history_entry(strict_score=75.0),
+            _history_entry(strict_score=75.0),
         ]
         # Two scans, same score but len(history) < 3 so no stagnation
         # This should trigger early_momentum check (len 2, and first==last)
@@ -202,30 +203,30 @@ class TestDetectPhase:
     def test_early_momentum_scans_2_to_5_rising(self):
         """Scans 2-5, score rising from first to last."""
         history = [
-            _history_entry(objective_strict=60.0),
-            _history_entry(objective_strict=70.0),
+            _history_entry(strict_score=60.0),
+            _history_entry(strict_score=70.0),
         ]
         assert _detect_phase(history, 70.0) == "early_momentum"
 
     def test_early_momentum_at_five_scans(self):
         history = [
-            _history_entry(objective_strict=50.0),
-            _history_entry(objective_strict=55.0),
-            _history_entry(objective_strict=60.0),
-            _history_entry(objective_strict=65.0),
-            _history_entry(objective_strict=70.0),
+            _history_entry(strict_score=50.0),
+            _history_entry(strict_score=55.0),
+            _history_entry(strict_score=60.0),
+            _history_entry(strict_score=65.0),
+            _history_entry(strict_score=70.0),
         ]
         assert _detect_phase(history, 70.0) == "early_momentum"
 
     def test_early_momentum_not_at_six_scans(self):
         """More than 5 scans should not be early_momentum."""
         history = [
-            _history_entry(objective_strict=50.0),
-            _history_entry(objective_strict=55.0),
-            _history_entry(objective_strict=60.0),
-            _history_entry(objective_strict=65.0),
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=75.0),
+            _history_entry(strict_score=50.0),
+            _history_entry(strict_score=55.0),
+            _history_entry(strict_score=60.0),
+            _history_entry(strict_score=65.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=75.0),
         ]
         # len=6, not in 2-5 range, falls through
         result = _detect_phase(history, 75.0)
@@ -234,8 +235,8 @@ class TestDetectPhase:
     def test_declining_trajectory_not_early_momentum(self):
         """Score declining from first scan should NOT return early_momentum."""
         history = [
-            _history_entry(objective_strict=80.0),
-            _history_entry(objective_strict=75.0),
+            _history_entry(strict_score=80.0),
+            _history_entry(strict_score=75.0),
         ]
         # last (75) < first (80), so not early_momentum
         # Also triggers regression (80 - 75 = 5 > 0.5)
@@ -246,8 +247,8 @@ class TestDetectPhase:
     def test_flat_trajectory_not_early_momentum(self):
         """Score equal from first scan should NOT return early_momentum."""
         history = [
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
         ]
         # last == first, not >
         result = _detect_phase(history, 70.0)
@@ -256,36 +257,36 @@ class TestDetectPhase:
     def test_maintenance_above_93(self):
         """Score > 93 triggers maintenance phase."""
         history = [
-            _history_entry(objective_strict=85.0),
-            _history_entry(objective_strict=88.0),
-            _history_entry(objective_strict=90.0),
-            _history_entry(objective_strict=92.0),
-            _history_entry(objective_strict=93.5),
-            _history_entry(objective_strict=94.0),
+            _history_entry(strict_score=85.0),
+            _history_entry(strict_score=88.0),
+            _history_entry(strict_score=90.0),
+            _history_entry(strict_score=92.0),
+            _history_entry(strict_score=93.5),
+            _history_entry(strict_score=94.0),
         ]
         assert _detect_phase(history, 94.0) == "maintenance"
 
     def test_refinement_above_80(self):
         """Score > 80 but <= 93 triggers refinement."""
         history = [
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=75.0),
-            _history_entry(objective_strict=78.0),
-            _history_entry(objective_strict=81.0),
-            _history_entry(objective_strict=82.0),
-            _history_entry(objective_strict=85.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=75.0),
+            _history_entry(strict_score=78.0),
+            _history_entry(strict_score=81.0),
+            _history_entry(strict_score=82.0),
+            _history_entry(strict_score=85.0),
         ]
         assert _detect_phase(history, 85.0) == "refinement"
 
     def test_middle_grind_below_80(self):
         """Score <= 80 with > 5 scans, no regression/stagnation."""
         history = [
-            _history_entry(objective_strict=40.0),
-            _history_entry(objective_strict=45.0),
-            _history_entry(objective_strict=50.0),
-            _history_entry(objective_strict=55.0),
-            _history_entry(objective_strict=60.0),
-            _history_entry(objective_strict=65.0),
+            _history_entry(strict_score=40.0),
+            _history_entry(strict_score=45.0),
+            _history_entry(strict_score=50.0),
+            _history_entry(strict_score=55.0),
+            _history_entry(strict_score=60.0),
+            _history_entry(strict_score=65.0),
         ]
         assert _detect_phase(history, 65.0) == "middle_grind"
 
@@ -294,30 +295,30 @@ class TestDetectPhase:
         # Last 3 scans: 80, 80, 79 — stagnation spread 1.0 > 0.5 so not stagnant
         # But prev=80, curr=79 — drop is 1 > 0.5, so regression
         history = [
-            _history_entry(objective_strict=80.0),
-            _history_entry(objective_strict=80.0),
-            _history_entry(objective_strict=79.0),
+            _history_entry(strict_score=80.0),
+            _history_entry(strict_score=80.0),
+            _history_entry(strict_score=79.0),
         ]
         assert _detect_phase(history, 79.0) == "regression"
 
     def test_stagnation_takes_priority_over_early_momentum(self):
         """Stagnation is checked before early_momentum for short histories."""
         history = [
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
         ]
         assert _detect_phase(history, 70.0) == "stagnation"
 
     def test_obj_strict_none_uses_last_history(self):
-        """When obj_strict is None, fallback to history[-1].objective_strict."""
+        """When obj_strict is None, fallback to history[-1].strict_score."""
         history = [
-            _history_entry(objective_strict=50.0),
-            _history_entry(objective_strict=55.0),
-            _history_entry(objective_strict=60.0),
-            _history_entry(objective_strict=65.0),
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=75.0),
+            _history_entry(strict_score=50.0),
+            _history_entry(strict_score=55.0),
+            _history_entry(strict_score=60.0),
+            _history_entry(strict_score=65.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=75.0),
         ]
         # obj_strict None -> uses history[-1] = 75.0 -> refinement (> 80 would be, but 75 is not)
         # 75 <= 80 -> middle_grind
@@ -327,8 +328,8 @@ class TestDetectPhase:
     def test_regression_with_none_strict_values(self):
         """If prev or curr strict is None, regression check is skipped."""
         history = [
-            _history_entry(),  # no objective_strict
-            _history_entry(objective_strict=70.0),
+            _history_entry(),  # no strict_score
+            _history_entry(strict_score=70.0),
         ]
         result = _detect_phase(history, 70.0)
         # No prev strict to compare, regression check skipped
@@ -343,46 +344,46 @@ class TestDetectPhase:
 
 class TestDetectMilestone:
     def test_crossed_90_strict(self):
-        state = {"objective_strict": 91.0, "stats": {"by_tier": {}}}
+        state = {"strict_score": 91.0, "stats": {"by_tier": {}}}
         history = [
-            _history_entry(objective_strict=89.0),
-            _history_entry(objective_strict=91.0),
+            _history_entry(strict_score=89.0),
+            _history_entry(strict_score=91.0),
         ]
         result = _detect_milestone(state, None, history)
         assert result == "Crossed 90% strict!"
 
     def test_crossed_80_strict(self):
-        state = {"objective_strict": 82.0, "stats": {"by_tier": {}}}
+        state = {"strict_score": 82.0, "stats": {"by_tier": {}}}
         history = [
-            _history_entry(objective_strict=78.0),
-            _history_entry(objective_strict=82.0),
+            _history_entry(strict_score=78.0),
+            _history_entry(strict_score=82.0),
         ]
         result = _detect_milestone(state, None, history)
         assert result == "Crossed 80% strict!"
 
     def test_crossed_90_takes_priority_over_80(self):
         """If somehow both thresholds are crossed simultaneously, 90 wins."""
-        state = {"objective_strict": 91.0, "stats": {"by_tier": {}}}
+        state = {"strict_score": 91.0, "stats": {"by_tier": {}}}
         history = [
-            _history_entry(objective_strict=79.0),
-            _history_entry(objective_strict=91.0),
+            _history_entry(strict_score=79.0),
+            _history_entry(strict_score=91.0),
         ]
         result = _detect_milestone(state, None, history)
         assert result == "Crossed 90% strict!"
 
     def test_already_above_90_no_milestone(self):
         """If already above 90, no crossing milestone."""
-        state = {"objective_strict": 95.0, "stats": {"by_tier": {}}}
+        state = {"strict_score": 95.0, "stats": {"by_tier": {}}}
         history = [
-            _history_entry(objective_strict=92.0),
-            _history_entry(objective_strict=95.0),
+            _history_entry(strict_score=92.0),
+            _history_entry(strict_score=95.0),
         ]
         result = _detect_milestone(state, None, history)
         assert result is None
 
     def test_all_t1_t2_cleared(self):
         state = {
-            "objective_strict": 70.0,
+            "strict_score": 70.0,
             "stats": {
                 "by_tier": {
                     "1": {"open": 0, "resolved": 5},
@@ -390,13 +391,13 @@ class TestDetectMilestone:
                 },
             },
         }
-        history = [_history_entry(objective_strict=70.0)]
+        history = [_history_entry(strict_score=70.0)]
         result = _detect_milestone(state, None, history)
         assert result == "All T1 and T2 items cleared!"
 
     def test_all_t1_cleared_with_t2_remaining(self):
         state = {
-            "objective_strict": 70.0,
+            "strict_score": 70.0,
             "stats": {
                 "by_tier": {
                     "1": {"open": 0, "resolved": 5},
@@ -404,13 +405,13 @@ class TestDetectMilestone:
                 },
             },
         }
-        history = [_history_entry(objective_strict=70.0)]
+        history = [_history_entry(strict_score=70.0)]
         result = _detect_milestone(state, None, history)
         assert result == "All T1 items cleared!"
 
     def test_t1_still_open_no_milestone(self):
         state = {
-            "objective_strict": 70.0,
+            "strict_score": 70.0,
             "stats": {
                 "by_tier": {
                     "1": {"open": 3, "resolved": 2},
@@ -418,40 +419,40 @@ class TestDetectMilestone:
                 },
             },
         }
-        history = [_history_entry(objective_strict=70.0)]
+        history = [_history_entry(strict_score=70.0)]
         result = _detect_milestone(state, None, history)
         assert result is None
 
     def test_zero_open_findings(self):
         state = {
-            "objective_strict": 100.0,
+            "strict_score": 100.0,
             "stats": {
                 "open": 0,
                 "total": 10,
                 "by_tier": {},
             },
         }
-        history = [_history_entry(objective_strict=100.0)]
+        history = [_history_entry(strict_score=100.0)]
         result = _detect_milestone(state, None, history)
         assert result == "Zero open findings!"
 
     def test_zero_total_findings_no_milestone(self):
         """Zero open AND zero total means nothing was ever found -- no celebration."""
         state = {
-            "objective_strict": 100.0,
+            "strict_score": 100.0,
             "stats": {
                 "open": 0,
                 "total": 0,
                 "by_tier": {},
             },
         }
-        history = [_history_entry(objective_strict=100.0)]
+        history = [_history_entry(strict_score=100.0)]
         result = _detect_milestone(state, None, history)
         assert result is None
 
     def test_no_milestone_ordinary_case(self):
         state = {
-            "objective_strict": 70.0,
+            "strict_score": 70.0,
             "stats": {
                 "open": 15,
                 "total": 50,
@@ -461,21 +462,21 @@ class TestDetectMilestone:
                 },
             },
         }
-        history = [_history_entry(objective_strict=70.0)]
+        history = [_history_entry(strict_score=70.0)]
         result = _detect_milestone(state, None, history)
         assert result is None
 
     def test_threshold_milestones_require_two_history_entries(self):
         """Single history entry cannot trigger 90/80 crossing."""
-        state = {"objective_strict": 95.0, "stats": {"by_tier": {}}}
-        history = [_history_entry(objective_strict=95.0)]
+        state = {"strict_score": 95.0, "stats": {"by_tier": {}}}
+        history = [_history_entry(strict_score=95.0)]
         result = _detect_milestone(state, None, history)
         assert result is None
 
     def test_t1_t2_cleared_requires_prior_items(self):
         """If there were never T1/T2 items, no clearing milestone."""
         state = {
-            "objective_strict": 70.0,
+            "strict_score": 70.0,
             "stats": {
                 "by_tier": {
                     "1": {"open": 0},  # totals sum to 0
@@ -483,7 +484,7 @@ class TestDetectMilestone:
                 },
             },
         }
-        history = [_history_entry(objective_strict=70.0)]
+        history = [_history_entry(strict_score=70.0)]
         result = _detect_milestone(state, None, history)
         assert result is None
 
@@ -532,9 +533,9 @@ class TestAnalyzeDebt:
     def test_trend_growing(self):
         """Gap increased over history -> growing."""
         history = [
-            _history_entry(objective_strict=80.0, objective_score=82.0),
-            _history_entry(objective_strict=78.0, objective_score=84.0),
-            _history_entry(objective_strict=75.0, objective_score=85.0),
+            _history_entry(strict_score=80.0, objective_score=82.0),
+            _history_entry(strict_score=78.0, objective_score=84.0),
+            _history_entry(strict_score=75.0, objective_score=85.0),
         ]
         # gaps: 2.0, 6.0, 10.0 -- last (10) > first (2) + 0.5 -> growing
         result = _analyze_debt({}, {}, history)
@@ -543,9 +544,9 @@ class TestAnalyzeDebt:
     def test_trend_shrinking(self):
         """Gap decreased over history -> shrinking."""
         history = [
-            _history_entry(objective_strict=70.0, objective_score=80.0),
-            _history_entry(objective_strict=75.0, objective_score=80.0),
-            _history_entry(objective_strict=79.0, objective_score=80.0),
+            _history_entry(strict_score=70.0, objective_score=80.0),
+            _history_entry(strict_score=75.0, objective_score=80.0),
+            _history_entry(strict_score=79.0, objective_score=80.0),
         ]
         # gaps: 10.0, 5.0, 1.0 -- last (1) < first (10) - 0.5 -> shrinking
         result = _analyze_debt({}, {}, history)
@@ -554,9 +555,9 @@ class TestAnalyzeDebt:
     def test_trend_stable(self):
         """Gap unchanged -> stable."""
         history = [
-            _history_entry(objective_strict=75.0, objective_score=80.0),
-            _history_entry(objective_strict=75.0, objective_score=80.0),
-            _history_entry(objective_strict=75.0, objective_score=80.0),
+            _history_entry(strict_score=75.0, objective_score=80.0),
+            _history_entry(strict_score=75.0, objective_score=80.0),
+            _history_entry(strict_score=75.0, objective_score=80.0),
         ]
         # gaps: 5.0, 5.0, 5.0 -- last == first -> stable
         result = _analyze_debt({}, {}, history)
@@ -565,8 +566,8 @@ class TestAnalyzeDebt:
     def test_trend_requires_three_scans(self):
         """Fewer than 3 scans -> stable (no trend)."""
         history = [
-            _history_entry(objective_strict=70.0, objective_score=80.0),
-            _history_entry(objective_strict=60.0, objective_score=85.0),
+            _history_entry(strict_score=70.0, objective_score=80.0),
+            _history_entry(strict_score=60.0, objective_score=85.0),
         ]
         result = _analyze_debt({}, {}, history)
         assert result["trend"] == "stable"
@@ -588,7 +589,7 @@ class TestAnalyzeDebt:
 class TestComputeReminders:
     def test_returns_tuple(self):
         """Must return (list, dict) tuple."""
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         result = _compute_reminders(
             state, "typescript", "middle_grind", {}, [], {}, {}, None,
         )
@@ -600,7 +601,7 @@ class TestComputeReminders:
     def test_decay_suppresses_after_three(self):
         """Reminders shown >= 3 times are suppressed."""
         state = {
-            "objective_strict": 50.0,
+            "strict_score": 50.0,
             "reminder_history": {"rescan_needed": 3},
         }
         reminders, history = _compute_reminders(
@@ -614,7 +615,7 @@ class TestComputeReminders:
     def test_decay_allows_below_threshold(self):
         """Reminders shown < 3 times are allowed through."""
         state = {
-            "objective_strict": 50.0,
+            "strict_score": 50.0,
             "reminder_history": {"rescan_needed": 2},
         }
         reminders, history = _compute_reminders(
@@ -627,7 +628,7 @@ class TestComputeReminders:
     def test_updated_history_increments_count(self):
         """Updated history increments count for shown reminders."""
         state = {
-            "objective_strict": 50.0,
+            "strict_score": 50.0,
             "reminder_history": {"rescan_needed": 1},
         }
         reminders, updated = _compute_reminders(
@@ -637,7 +638,7 @@ class TestComputeReminders:
         assert updated["rescan_needed"] == 2
 
     def test_rescan_reminder_after_fix(self):
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {},
             [], {}, {}, "fix",
@@ -646,7 +647,7 @@ class TestComputeReminders:
         assert "rescan_needed" in reminder_types
 
     def test_rescan_reminder_after_resolve(self):
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {},
             [], {}, {}, "resolve",
@@ -655,7 +656,7 @@ class TestComputeReminders:
         assert "rescan_needed" in reminder_types
 
     def test_no_rescan_reminder_after_scan(self):
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {},
             [], {}, {}, "scan",
@@ -664,7 +665,7 @@ class TestComputeReminders:
         assert "rescan_needed" not in reminder_types
 
     def test_wontfix_growing_reminder(self):
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         debt = {"trend": "growing"}
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", debt,
@@ -674,7 +675,7 @@ class TestComputeReminders:
         assert "wontfix_growing" in reminder_types
 
     def test_badge_recommendation_above_90(self):
-        state = {"objective_strict": 92.0}
+        state = {"strict_score": 92.0}
         badge = {"generated": True, "in_readme": False}
         reminders, _ = _compute_reminders(
             state, "typescript", "maintenance", {},
@@ -684,7 +685,7 @@ class TestComputeReminders:
         assert "badge_recommendation" in reminder_types
 
     def test_no_badge_recommendation_below_90(self):
-        state = {"objective_strict": 85.0}
+        state = {"strict_score": 85.0}
         badge = {"generated": True, "in_readme": False}
         reminders, _ = _compute_reminders(
             state, "typescript", "refinement", {},
@@ -694,7 +695,7 @@ class TestComputeReminders:
         assert "badge_recommendation" not in reminder_types
 
     def test_no_badge_recommendation_already_in_readme(self):
-        state = {"objective_strict": 95.0}
+        state = {"strict_score": 95.0}
         badge = {"generated": True, "in_readme": True}
         reminders, _ = _compute_reminders(
             state, "typescript", "maintenance", {},
@@ -704,7 +705,7 @@ class TestComputeReminders:
         assert "badge_recommendation" not in reminder_types
 
     def test_auto_fixers_available_typescript(self):
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         actions = [{"type": "auto_fix", "count": 5, "command": "desloppify fix unused-imports --dry-run"}]
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {},
@@ -713,19 +714,19 @@ class TestComputeReminders:
         reminder_types = [r["type"] for r in reminders]
         assert "auto_fixers_available" in reminder_types
 
-    def test_no_auto_fixers_for_python(self):
-        """Python has no auto-fixers, so auto_fixers_available should not fire."""
-        state = {"objective_strict": 50.0}
+    def test_auto_fixers_reminder_depends_on_actions_not_lang(self):
+        """Auto-fixer reminder follows action availability, not language name."""
+        state = {"strict_score": 50.0}
         actions = [{"type": "auto_fix", "count": 5, "command": "desloppify fix unused-imports --dry-run"}]
         reminders, _ = _compute_reminders(
             state, "python", "middle_grind", {},
             actions, {}, {}, None,
         )
         reminder_types = [r["type"] for r in reminders]
-        assert "auto_fixers_available" not in reminder_types
+        assert "auto_fixers_available" in reminder_types
 
     def test_stagnant_dimension_reminder(self):
-        state = {"objective_strict": 70.0}
+        state = {"strict_score": 70.0}
         dimensions = {
             "stagnant_dimensions": [
                 {"name": "Import hygiene", "strict": 80.0, "stuck_scans": 4},
@@ -739,7 +740,7 @@ class TestComputeReminders:
         assert "stagnant_nudge" in reminder_types
 
     def test_dry_run_first_reminder(self):
-        state = {"objective_strict": 50.0}
+        state = {"strict_score": 50.0}
         actions = [{"type": "auto_fix", "count": 3, "command": "desloppify fix unused-imports --dry-run"}]
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {},
@@ -752,7 +753,7 @@ class TestComputeReminders:
         """The reminder_history on state must not be mutated."""
         original_history = {"rescan_needed": 1}
         state = {
-            "objective_strict": 50.0,
+            "strict_score": 50.0,
             "reminder_history": original_history,
         }
         _, updated = _compute_reminders(
@@ -767,8 +768,8 @@ class TestComputeReminders:
     def test_feedback_nudge_after_two_scans(self):
         """General feedback nudge appears after 2+ scans with command=scan."""
         state = {
-            "objective_strict": 50.0,
-            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "strict_score": 50.0,
+            "scan_history": [{"strict_score": 45.0}, {"strict_score": 50.0}],
         }
         reminders, _ = _compute_reminders(
             state, "python", "middle_grind", {},
@@ -782,8 +783,8 @@ class TestComputeReminders:
     def test_no_feedback_nudge_on_first_scan(self):
         """No feedback nudge on the very first scan."""
         state = {
-            "objective_strict": 50.0,
-            "scan_history": [{"objective_strict": 50.0}],
+            "strict_score": 50.0,
+            "scan_history": [{"strict_score": 50.0}],
         }
         reminders, _ = _compute_reminders(
             state, "python", "first_scan", {},
@@ -795,8 +796,8 @@ class TestComputeReminders:
     def test_no_feedback_nudge_on_non_scan_command(self):
         """Feedback nudge only fires on scan, not fix/show/next."""
         state = {
-            "objective_strict": 50.0,
-            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "strict_score": 50.0,
+            "scan_history": [{"strict_score": 45.0}, {"strict_score": 50.0}],
         }
         for cmd in ("fix", "resolve", "show", "next", None):
             reminders, _ = _compute_reminders(
@@ -809,8 +810,8 @@ class TestComputeReminders:
     def test_feedback_nudge_stagnation_variant(self):
         """Stagnation phase triggers the stagnation-specific message."""
         state = {
-            "objective_strict": 70.0,
-            "scan_history": [{"objective_strict": 70.0}] * 4,
+            "strict_score": 70.0,
+            "scan_history": [{"strict_score": 70.0}] * 4,
         }
         reminders, _ = _compute_reminders(
             state, "python", "stagnation", {},
@@ -830,8 +831,8 @@ class TestComputeReminders:
             findings[str(i)] = _finding("unused", status="false_positive")
         # 7 total, 3 FP → 43% FP rate
         state = {
-            "objective_strict": 50.0,
-            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "strict_score": 50.0,
+            "scan_history": [{"strict_score": 45.0}, {"strict_score": 50.0}],
             "findings": findings,
         }
         reminders, _ = _compute_reminders(
@@ -845,8 +846,8 @@ class TestComputeReminders:
     def test_feedback_nudge_shared_decay(self):
         """All variants share one decay counter — 3 total then suppressed."""
         state = {
-            "objective_strict": 50.0,
-            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "strict_score": 50.0,
+            "scan_history": [{"strict_score": 45.0}, {"strict_score": 50.0}],
             "reminder_history": {"feedback_nudge": 3},
         }
         # Generic variant
@@ -866,8 +867,8 @@ class TestComputeReminders:
         """Feedback nudge message includes the issue tracker URL."""
         from desloppify.narrative import _FEEDBACK_URL
         state = {
-            "objective_strict": 50.0,
-            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "strict_score": 50.0,
+            "scan_history": [{"strict_score": 45.0}, {"strict_score": 50.0}],
         }
         reminders, _ = _compute_reminders(
             state, "python", "middle_grind", {},
@@ -937,8 +938,8 @@ class TestComputeHeadline:
 
     def test_regression_message(self):
         history = [
-            _history_entry(objective_strict=80.0),
-            _history_entry(objective_strict=75.0),
+            _history_entry(strict_score=80.0),
+            _history_entry(strict_score=75.0),
         ]
         result = _compute_headline(
             phase="regression",
@@ -957,9 +958,9 @@ class TestComputeHeadline:
 
     def test_stagnation_with_lowest_dim(self):
         history = [
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
         ]
         dimensions = {
             "lowest_dimensions": [
@@ -984,9 +985,9 @@ class TestComputeHeadline:
 
     def test_stagnation_with_wontfix(self):
         history = [
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
-            _history_entry(objective_strict=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
+            _history_entry(strict_score=70.0),
         ]
         dimensions = {
             "lowest_dimensions": [
@@ -1173,9 +1174,9 @@ class TestOpenFilesByDetector:
 # ===================================================================
 
 class TestFixerLeverage:
-    def test_python_no_fixers(self):
+    def test_no_auto_fix_actions_recommend_none(self):
         result = _compute_fixer_leverage(
-            {"unused": 10}, [{"type": "auto_fix", "count": 10, "impact": 5.0}],
+            {"unused": 10}, [{"type": "manual_fix", "count": 10, "impact": 5.0}],
             "middle_grind", "python",
         )
         assert result["recommendation"] == "none"

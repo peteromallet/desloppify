@@ -1,7 +1,7 @@
 """move command: move a file or directory and update all import references."""
 
+import importlib
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -22,12 +22,19 @@ def _dedup(replacements: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 # ── Language detection ────────────────────────────────────
 
-_EXT_TO_LANG = {
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".py": "python",
-    ".cs": "csharp",
-}
+def _build_ext_to_lang_map() -> dict[str, str]:
+    """Build extension→language map from registered language configs."""
+    from ..lang import available_langs, get_lang
+
+    ext_map: dict[str, str] = {}
+    for lang_name in available_langs():
+        cfg = get_lang(lang_name)
+        for ext in cfg.extensions:
+            ext_map.setdefault(ext, lang_name)
+    return ext_map
+
+
+_EXT_TO_LANG = _build_ext_to_lang_map()
 
 
 def _detect_lang_from_ext(source: str) -> str | None:
@@ -48,7 +55,18 @@ def _detect_lang_from_dir(source_dir: str) -> str | None:
 
 
 def _resolve_lang_for_move(source_abs: str, args) -> str | None:
-    """Resolve language for a move operation, from extension or --lang flag."""
+    """Resolve language for a move operation.
+
+    Explicit ``--lang`` takes priority. Otherwise, infer from file extension and
+    finally fall back to auto-detection.
+    """
+    explicit_lang = getattr(args, "lang", None)
+    if explicit_lang:
+        from ._helpers import resolve_lang
+        lang = resolve_lang(args)
+        if lang:
+            return lang.name
+
     lang_name = _detect_lang_from_ext(source_abs)
     if not lang_name:
         from ._helpers import resolve_lang
@@ -56,6 +74,20 @@ def _resolve_lang_for_move(source_abs: str, args) -> str | None:
         if lang:
             lang_name = lang.name
     return lang_name
+
+
+def _supported_ext_hint() -> str:
+    exts = ", ".join(sorted(_EXT_TO_LANG))
+    return exts or "<none>"
+
+
+def _load_lang_move_module(lang_name: str):
+    """Load language-specific move helpers from lang/<name>/move.py."""
+    try:
+        return importlib.import_module(f"..lang.{lang_name}.move", package="desloppify.commands")
+    except ImportError as ex:
+        print(colorize(f"Move not yet supported for language: {lang_name} ({ex})", "red"), file=sys.stderr)
+        sys.exit(1)
 
 
 # ── Path helpers ──────────────────────────────────────────
@@ -74,31 +106,13 @@ def _resolve_dest(source: str, dest_raw: str) -> str:
 
 
 def _compute_replacements(
-    lang_name: str, source_abs: str, dest_abs: str, graph: dict,
+    move_mod, source_abs: str, dest_abs: str, graph: dict,
 ) -> tuple[dict[str, list[tuple[str, str]]], list[tuple[str, str]]]:
-    """Dispatch to language-specific replacement finders.
-
-    Returns (importer_changes, self_changes).
-    """
-    if lang_name == "typescript":
-        from ._move_ts import find_ts_replacements, find_ts_self_replacements
-        return (
-            find_ts_replacements(source_abs, dest_abs, graph),
-            find_ts_self_replacements(source_abs, dest_abs, graph),
-        )
-    elif lang_name == "python":
-        from ._move_py import find_py_replacements, find_py_self_replacements
-        return (
-            find_py_replacements(source_abs, dest_abs, graph),
-            find_py_self_replacements(source_abs, dest_abs, graph),
-        )
-    elif lang_name == "csharp":
-        # MVP: path move support without import/namespace rewrite.
-        # Future C# move helpers can plug into this dispatch.
-        return ({}, [])
-    else:
-        print(colorize(f"Move not yet supported for language: {lang_name}", "red"), file=sys.stderr)
-        sys.exit(1)
+    """Compute importer/self replacements via language move module."""
+    return (
+        move_mod.find_replacements(source_abs, dest_abs, graph),
+        move_mod.find_self_replacements(source_abs, dest_abs, graph),
+    )
 
 
 # ── Reporting ─────────────────────────────────────────────
@@ -213,7 +227,7 @@ def _apply_changes(
 # ── Main command ──────────────────────────────────────────
 
 
-def cmd_move(args):
+def cmd_move(args) -> None:
     """Move a file or directory and update all import references."""
     source_rel = args.source
     source_abs = resolve_path(source_rel)
@@ -237,12 +251,15 @@ def cmd_move(args):
     # Detect language from file extension, fall back to --lang
     lang_name = _resolve_lang_for_move(source_abs, args)
     if not lang_name:
-        print(colorize("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py/.cs extension.", "red"),
+        print(colorize(
+            f"Cannot detect language. Use --lang or ensure file has one of: {_supported_ext_hint()}",
+            "red"),
               file=sys.stderr)
         sys.exit(1)
 
     from ..lang import get_lang
     lang = get_lang(lang_name)
+    move_mod = _load_lang_move_module(lang_name)
 
     # Use the language-specific default path for scanning.
     # args.path may have been pre-resolved for a different language (e.g. src/ for TS
@@ -252,7 +269,7 @@ def cmd_move(args):
 
     # Compute replacements based on language
     importer_changes, self_changes = _compute_replacements(
-        lang_name, source_abs, dest_abs, graph,
+        move_mod, source_abs, dest_abs, graph,
     )
 
     # Report
@@ -266,10 +283,9 @@ def cmd_move(args):
     _apply_changes(source_abs, dest_abs, importer_changes, self_changes)
 
     print(colorize("  Done.", "green"))
-    if lang_name == "typescript":
-        print(colorize("  Run `npx tsc --noEmit` to verify.", "dim"))
-    elif lang_name == "csharp":
-        print(colorize("  Run `dotnet build` to verify.", "dim"))
+    verify_hint = getattr(move_mod, "VERIFY_HINT", "")
+    if verify_hint:
+        print(colorize(f"  Run `{verify_hint}` to verify.", "dim"))
     print()
 
 
@@ -283,24 +299,35 @@ def _cmd_move_dir(args, source_abs: str):
         print(colorize(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
         sys.exit(1)
 
-    # Detect language from directory contents or --lang
-    lang_name = _detect_lang_from_dir(source_abs)
+    # Detect language from explicit --lang first; otherwise infer from contents.
+    lang_name = None
+    if getattr(args, "lang", None):
+        from ._helpers import resolve_lang
+        lang = resolve_lang(args)
+        if lang:
+            lang_name = lang.name
+    else:
+        lang_name = _detect_lang_from_dir(source_abs)
+
     if not lang_name:
         from ._helpers import resolve_lang
         lang = resolve_lang(args)
         if lang:
             lang_name = lang.name
     if not lang_name:
-        print(colorize("Cannot detect language from directory contents. Use --lang.", "red"),
+        print(colorize(
+            f"Cannot detect language from directory contents. Use --lang "
+            f"(supported extensions: {_supported_ext_hint()}).",
+            "red"),
               file=sys.stderr)
         sys.exit(1)
 
     from ..lang import get_lang
     lang = get_lang(lang_name)
+    move_mod = _load_lang_move_module(lang_name)
 
     # Find all source files in the directory
-    ext_map = {"python": [".py"], "typescript": [".ts", ".tsx"], "csharp": [".cs"]}
-    extensions = ext_map.get(lang_name, [])
+    extensions = list(lang.extensions)
     source_files = []
     for ext in extensions:
         source_files.extend(source_path.rglob(f"*{ext}"))
@@ -328,23 +355,32 @@ def _cmd_move_dir(args, source_abs: str):
     all_importer_changes: dict[str, list[tuple[str, str]]] = {}
     intra_pkg_changes: dict[str, list[tuple[str, str]]] = {}
     all_self_changes: dict[str, list[tuple[str, str]]] = {}
+    intra_filter = getattr(
+        move_mod,
+        "filter_intra_package_importer_changes",
+        lambda _source, replacements, _moving: replacements,
+    )
+    self_filter = getattr(
+        move_mod,
+        "filter_directory_self_changes",
+        lambda _source, replacements, _moving: replacements,
+    )
 
     for src_file, dst_file in file_moves:
         importer_changes, self_changes = _compute_replacements(
-            lang_name, src_file, dst_file, graph)
+            move_mod, src_file, dst_file, graph)
 
         for filepath, replacements in importer_changes.items():
             if filepath in moving_files:
-                # Intra-package importer — only keep ABSOLUTE import changes.
-                # Relative imports between co-moving files don't need updating.
-                abs_only = [(old, new) for old, new in replacements
-                            if not re.match(r"from\s+\.", old)]
-                if abs_only:
+                intra_changes = intra_filter(
+                    src_file, replacements, moving_files)
+                if intra_changes:
                     if filepath in intra_pkg_changes:
                         existing = set(intra_pkg_changes[filepath])
-                        intra_pkg_changes[filepath].extend(r for r in abs_only if r not in existing)
+                        intra_pkg_changes[filepath].extend(
+                            r for r in intra_changes if r not in existing)
                     else:
-                        intra_pkg_changes[filepath] = list(abs_only)
+                        intra_pkg_changes[filepath] = list(intra_changes)
             else:
                 if filepath in all_importer_changes:
                     existing = set(all_importer_changes[filepath])
@@ -353,23 +389,8 @@ def _cmd_move_dir(args, source_abs: str):
                     all_importer_changes[filepath] = list(replacements)
 
         if self_changes:
-            # Filter self-changes: only keep imports pointing OUTSIDE the moved dir.
-            # Intra-package relative imports stay the same because files move together.
-            filtered_self = []
-            if lang_name == "python":
-                from ._move_py import _resolve_py_relative
-                for old_str, new_str in self_changes:
-                    src_dir = Path(src_file).parent
-                    m = re.match(r"from\s+(\.+)(\w*(?:\.\w+)*)", old_str)
-                    if m:
-                        dots, remainder = m.group(1), m.group(2)
-                        resolved = _resolve_py_relative(src_dir, dots, remainder)
-                        if resolved and resolved in moving_files:
-                            continue  # intra-package relative import, skip
-                    filtered_self.append((old_str, new_str))
-            else:
-                filtered_self = self_changes
-
+            filtered_self = self_filter(
+                src_file, self_changes, moving_files)
             if filtered_self:
                 all_self_changes[src_file] = filtered_self
 
@@ -469,8 +490,7 @@ def _cmd_move_dir(args, source_abs: str):
         raise
 
     print(colorize("  Done.", "green"))
-    if lang_name == "typescript":
-        print(colorize("  Run `npx tsc --noEmit` to verify.", "dim"))
-    elif lang_name == "csharp":
-        print(colorize("  Run `dotnet build` to verify.", "dim"))
+    verify_hint = getattr(move_mod, "VERIFY_HINT", "")
+    if verify_hint:
+        print(colorize(f"  Run `{verify_hint}` to verify.", "dim"))
     print()

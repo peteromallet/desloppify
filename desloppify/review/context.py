@@ -144,10 +144,6 @@ def build_review_context(path: Path, lang, state: dict,
 def _build_review_context_inner(files: list[str], lang, state: dict,
                                 ctx: ReviewContext) -> ReviewContext:
     """Inner context builder (runs with file cache enabled)."""
-    is_ts = lang.name == "typescript"
-    is_py = lang.name == "python"
-    is_csharp = lang.name == "csharp"
-
     # Pre-read all file contents once (cache will store them)
     file_contents: dict[str, str] = {}
     for filepath in files:
@@ -179,32 +175,20 @@ def _build_review_context_inner(files: list[str], lang, state: dict,
 
     # 3. Module patterns — what each directory typically uses
     dir_patterns: dict[str, Counter] = {}
+    module_pattern_fn = getattr(lang, "review_module_patterns_fn", None)
+    if not callable(module_pattern_fn):
+        module_pattern_fn = _default_review_module_patterns
     for filepath, content in file_contents.items():
         parts = Path(filepath).parts
         if len(parts) < 2:
             continue
         dir_name = parts[-2] + "/"
         counter = dir_patterns.setdefault(dir_name, Counter())
-        if is_ts:
-            if re.search(r"\bexport\s+default\b", content):
-                counter["default_export"] += 1
-            if re.search(r"\bexport\s+(?:function|const|class)\b", content):
-                counter["named_export"] += 1
-        elif is_py:
-            if re.search(r"\bdef\s+\w+", content):
-                counter["functions"] += 1
-            if re.search(r"^__all__\s*=", content, re.MULTILINE):
-                counter["explicit_api"] += 1
-        elif is_csharp:
-            if re.search(r"\bnamespace\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", content):
-                counter["namespace"] += 1
-            if re.search(r"\b(?:public|internal)\s+(?:class|record|struct)\s+\w+", content):
-                counter["public_types"] += 1
-            if re.search(r"\bpublic\s+.*\(", content):
-                counter["public_methods"] += 1
-        else:
-            if re.search(r"\bclass\s+\w+", content):
-                counter["class_based"] += 1
+        pattern_names = module_pattern_fn(content)
+        if not isinstance(pattern_names, (list, tuple, set)):
+            pattern_names = _default_review_module_patterns(content)
+        for pattern_name in pattern_names:
+            counter[pattern_name] += 1
         if re.search(r"\bclass\s+\w+", content):
             counter["class_based"] += 1
     ctx.module_patterns = {
@@ -469,10 +453,8 @@ _PATTERN_PAIRS_CSHARP = [
     ("SqlClient→Dapper/EF", re.compile(r"\bSqlConnection\b|\bSqlCommand\b"), re.compile(r"\bDapper\b|\bDbContext\b")),
     ("sync→async APIs", re.compile(r"\b[A-Za-z_]\w+\s*\([^)]*\)\s*\{"), re.compile(r"\basync\s+Task\b")),
 ]
-
-
 def _gather_migration_signals(file_contents: dict[str, str],
-                               lang_name: str) -> dict:
+                              lang) -> dict:
     """Compute migration/deprecated signals from file contents.
 
     Returns deprecated markers, migration TODOs, pattern pairs, mixed extensions.
@@ -480,6 +462,16 @@ def _gather_migration_signals(file_contents: dict[str, str],
     deprecated_files: dict[str, int] = {}
     migration_todos: list[dict] = []
     stems_by_ext: dict[str, set[str]] = {}  # stem -> set of extensions
+
+    lang_cfg = lang
+    if isinstance(lang, str):
+        try:
+            from ..lang import get_lang
+            lang_cfg = get_lang(lang)
+        except Exception:
+            lang_cfg = None
+
+    mixed_exts = set(getattr(lang_cfg, "migration_mixed_extensions", set()) or set())
 
     for filepath, content in file_contents.items():
         rpath = rel(filepath)
@@ -497,16 +489,22 @@ def _gather_migration_signals(file_contents: dict[str, str],
         p = Path(rpath)
         stem = p.stem
         ext = p.suffix
-        if ext in (".js", ".ts", ".jsx", ".tsx"):
+        if ext in mixed_exts:
             stems_by_ext.setdefault(stem, set()).add(ext)
 
     # Pattern pair detection
-    if lang_name == "typescript":
-        pairs = _PATTERN_PAIRS_TS
-    elif lang_name == "python":
-        pairs = _PATTERN_PAIRS_PY
-    else:
-        pairs = _PATTERN_PAIRS_CSHARP
+    pairs = list(getattr(lang_cfg, "migration_pattern_pairs", []) or [])
+    if not pairs:
+        lang_name = getattr(lang_cfg, "name", "") if lang_cfg is not None else ""
+        if not lang_name and isinstance(lang, str):
+            lang_name = lang
+        if lang_name == "typescript":
+            pairs = _PATTERN_PAIRS_TS
+        elif lang_name == "python":
+            pairs = _PATTERN_PAIRS_PY
+        elif lang_name == "csharp":
+            pairs = _PATTERN_PAIRS_CSHARP
+
     pattern_results: list[dict] = []
     for name, old_re, new_re in pairs:
         old_count = sum(1 for c in file_contents.values() if old_re.search(c))
@@ -533,6 +531,20 @@ def _gather_migration_signals(file_contents: dict[str, str],
     if mixed_stems:
         result["mixed_extensions"] = mixed_stems[:20]
     return result
+
+
+def _default_review_module_patterns(content: str) -> list[str]:
+    """Fallback module-pattern extraction used when language hook is absent."""
+    out: list[str] = []
+    if re.search(r"\bexport\s+default\b", content):
+        out.append("default_export")
+    if re.search(r"\bexport\s+(?:function|const|class)\b", content):
+        out.append("named_export")
+    if re.search(r"\bdef\s+\w+", content):
+        out.append("functions")
+    if re.search(r"^__all__\s*=", content, re.MULTILINE):
+        out.append("explicit_api")
+    return out
 
 
 def _classify_error_strategy(content: str) -> str | None:

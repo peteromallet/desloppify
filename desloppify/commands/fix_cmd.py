@@ -8,7 +8,7 @@ from ..utils import colorize, rel
 from ._helpers import state_path, _write_query
 
 
-def cmd_fix(args):
+def cmd_fix(args) -> None:
     """Auto-fix mechanical issues."""
     fixer_name = args.fixer
     if fixer_name == "review":
@@ -17,7 +17,7 @@ def cmd_fix(args):
     dry_run = getattr(args, "dry_run", False)
     path = Path(args.path)
 
-    fixer = _load_fixer(args, fixer_name)
+    lang, fixer = _load_fixer(args, fixer_name)
 
     if not dry_run:
         _warn_uncommitted_changes()
@@ -43,7 +43,7 @@ def cmd_fix(args):
 
     if not dry_run:
         _apply_and_report(args, path, fixer, fixer_name, entries, results,
-                          total_items, skip_reasons)
+                          total_items, lang, skip_reasons)
     else:
         _report_dry_run(args, fixer_name, entries, results, total_items)
     print()
@@ -53,7 +53,7 @@ def _cmd_fix_review(args):
     """Prepare structured review data with dimension templates for AI evaluation."""
     from ._helpers import resolve_lang, state_path
     from ..state import load_state
-    from ..review import prepare_review, LANG_GUIDANCE
+    from ..review import prepare_review, get_lang_guidance
     from .review_cmd import _setup_lang
 
     lang = resolve_lang(args)
@@ -65,7 +65,7 @@ def _cmd_fix_review(args):
     state = load_state(sp)
     path = Path(args.path)
 
-    found_files = _setup_lang(lang, path, state)
+    found_files = _setup_lang(lang, path, args._config)
     data = prepare_review(path, lang, state, files=found_files or None)
 
     if data["total_candidates"] == 0:
@@ -93,7 +93,7 @@ def _cmd_fix_review(args):
                 print(colorize(f"      - {item}", "dim"))
         print()
 
-    lang_guide = data.get("lang_guidance") or LANG_GUIDANCE.get(lang.name, {})
+    lang_guide = data.get("lang_guidance") or get_lang_guidance(lang.name)
     if lang_guide:
         print(colorize(f"  Language: {lang.name}", "cyan"))
         if lang_guide.get("naming"):
@@ -113,10 +113,10 @@ def _cmd_fix_review(args):
     print()
 
 
-_COMMAND_POST_FIX: dict[str, object] = {}  # populated after _cascade_import_cleanup is defined
+_COMMAND_POST_FIX: dict[str, object] = {}  # populated after _cascade_unused_import_cleanup is defined
 
 
-def _load_fixer(args, fixer_name: str) -> FixerConfig:
+def _load_fixer(args, fixer_name: str) -> tuple[object, FixerConfig]:
     """Resolve fixer from language plugin registry, or exit."""
     from ._helpers import resolve_lang
     lang = resolve_lang(args)
@@ -135,7 +135,7 @@ def _load_fixer(args, fixer_name: str) -> FixerConfig:
     # Attach command-level post-fix hooks (e.g. cascading import cleanup)
     if fixer_name in _COMMAND_POST_FIX and not fc.post_fix:
         fc.post_fix = _COMMAND_POST_FIX[fixer_name]
-    return fc
+    return lang, fc
 
 
 def _detect(fixer: FixerConfig, path: Path) -> list[dict]:
@@ -163,23 +163,43 @@ def _print_fix_summary(fixer: FixerConfig, results, total_items, total_lines, dr
 
 
 def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_items,
-                      skip_reasons=None):
+                      lang, skip_reasons=None):
     """Resolve findings in state, run post-fix hooks, and print retro."""
-    from ..state import load_state, save_state
+    from ..state import (
+        load_state,
+        save_state,
+        get_overall_score,
+        get_objective_score,
+        get_strict_score,
+    )
     sp = state_path(args)
     state = load_state(sp)
-    prev_score = state.get("score", 0)
+    prev_overall = get_overall_score(state)
+    prev_objective = get_objective_score(state)
+    prev_strict = get_strict_score(state)
     resolved_ids = _resolve_fixer_results(state, results, fixer.detector, fixer_name)
     save_state(state, sp)
 
-    delta = state["score"] - prev_score
-    delta_str = f" ({'+' if delta > 0 else ''}{delta})" if delta else ""
+    new_overall = get_overall_score(state)
+    new_objective = get_objective_score(state)
+    new_strict = get_strict_score(state)
     print(f"\n  Auto-resolved {len(resolved_ids)} findings in state")
-    print(f"  Score: {state['score']}/100{delta_str}" +
-          colorize(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
+    if new_overall is not None and new_objective is not None and new_strict is not None:
+        overall_delta = new_overall - (prev_overall or 0)
+        delta_str = f" ({'+' if overall_delta > 0 else ''}{overall_delta:.1f})" if overall_delta else ""
+        print(
+            f"  Scores: overall {new_overall:.1f}/100{delta_str}"
+            + colorize(f"  objective {new_objective:.1f}/100", "dim")
+            + colorize(f"  strict {new_strict:.1f}/100", "dim")
+        )
+    else:
+        print(colorize("  Scores unavailable — run `desloppify scan`.", "yellow"))
 
     if fixer.post_fix:
-        fixer.post_fix(path, state, prev_score, False)
+        try:
+            fixer.post_fix(path, state, prev_overall or 0, False, lang=lang)
+        except TypeError:
+            fixer.post_fix(path, state, prev_overall or 0, False)
         save_state(state, sp)
 
     if skip_reasons is None:
@@ -189,12 +209,22 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
     fix_lang = resolve_lang(args)
     fix_lang_name = fix_lang.name if fix_lang else None
     narrative = compute_narrative(state, lang=fix_lang_name, command="fix")
+    typecheck_cmd = getattr(lang, "typecheck_cmd", "")
+    if typecheck_cmd:
+        next_action = f"Run `{typecheck_cmd}` to verify, then `desloppify scan` to update state"
+    else:
+        next_action = "Run `desloppify scan` to update state"
     _write_query({"command": "fix", "fixer": fixer_name,
                   "files_fixed": len(results), "items_fixed": total_items,
                   "findings_resolved": len(resolved_ids),
-                  "score": state["score"], "strict_score": state.get("strict_score", 0),
-                  "prev_score": prev_score, "skip_reasons": skip_reasons,
-                  "next_action": "Run `npx tsc --noEmit` to verify, then `desloppify scan` to update state",
+                  "overall_score": new_overall,
+                  "objective_score": new_objective,
+                  "strict_score": new_strict,
+                  "prev_overall_score": prev_overall,
+                  "prev_objective_score": prev_objective,
+                  "prev_strict_score": prev_strict,
+                  "skip_reasons": skip_reasons,
+                  "next_action": next_action,
                   "narrative": narrative})
     _print_fix_retro(fixer_name, len(entries), total_items, len(resolved_ids), skip_reasons)
 
@@ -280,13 +310,28 @@ def _print_file_sample(result, entries):
             print(f"    {marker} {i+1:4d}  {lines[i][:90]}")
         shown += 1
 
-def _cascade_import_cleanup(path: Path, state: dict, prev_score: int, dry_run: bool):
-    """Post-fix hook: removing debug logs may leave orphaned imports."""
-    from ..lang.typescript.detectors.unused import detect_unused
-    from ..lang.typescript.fixers import fix_unused_imports
+def _cascade_unused_import_cleanup(
+    path: Path, state: dict, prev_score: int, dry_run: bool, *, lang=None,
+):
+    """Post-fix hook: run language's unused-import fixer after structural edits."""
+    _ = prev_score  # hook contract includes it; not needed in this hook
+    if not lang or "unused-imports" not in getattr(lang, "fixers", {}):
+        print(colorize("  Cascade: no unused-imports fixer for this language", "dim"))
+        return
+
+    fixer = lang.fixers["unused-imports"]
     print(colorize("\n  Running cascading import cleanup...", "dim"), file=sys.stderr)
-    entries, _ = detect_unused(path, category="imports")
-    results = fix_unused_imports(entries, dry_run=dry_run) if entries else []
+    entries = fixer.detect(path)
+    if not entries:
+        print(colorize("  Cascade: no orphaned imports found", "dim"))
+        return
+
+    raw = fixer.fix(entries, dry_run=dry_run)
+    if isinstance(raw, FixResult):
+        results = raw.entries
+    else:
+        results = raw
+
     if not results:
         print(colorize("  Cascade: no orphaned imports found", "dim"))
         return
@@ -294,14 +339,14 @@ def _cascade_import_cleanup(path: Path, state: dict, prev_score: int, dry_run: b
     n_lines = sum(r["lines_removed"] for r in results)
     print(colorize(f"  Cascade: removed {n_removed} now-orphaned imports "
             f"from {len(results)} files ({n_lines} lines)", "green"))
-    resolved = _resolve_fixer_results(state, results, "unused", "debug-logs (cascade)")
+    resolved = _resolve_fixer_results(state, results, fixer.detector, "cascade-unused-imports")
     if resolved:
         print(f"  Cascade: auto-resolved {len(resolved)} import findings")
 
 
-# Attach command-level post-fix hooks now that _cascade_import_cleanup is defined
-_COMMAND_POST_FIX["debug-logs"] = _cascade_import_cleanup
-_COMMAND_POST_FIX["dead-useeffect"] = _cascade_import_cleanup
+# Attach command-level post-fix hooks now that _cascade_unused_import_cleanup is defined
+_COMMAND_POST_FIX["debug-logs"] = _cascade_unused_import_cleanup
+_COMMAND_POST_FIX["dead-useeffect"] = _cascade_unused_import_cleanup
 
 
 _SKIP_REASON_LABELS = {
@@ -325,7 +370,7 @@ def _print_fix_retro(fixer_name: str, detected: int, fixed: int, resolved: int,
         for reason, count in sorted(skip_reasons.items(), key=lambda x: -x[1]):
             print(colorize(f"    {count:4d}  {_SKIP_REASON_LABELS.get(reason, reason)}", "dim"))
         print()
-    checklist = ["Run `npx tsc --noEmit` — does it still build?",
+    checklist = ["Run your language typecheck/build command — does it still build?",
                  "Spot-check a few changed files — do the edits look correct?"]
     if skipped > 0 and not skip_reasons:
         checklist.append(f"{skipped} items were skipped. Should the fixer handle more patterns?")

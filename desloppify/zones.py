@@ -193,14 +193,14 @@ ZONE_POLICIES: dict[Zone, ZonePolicy] = {
     Zone.PRODUCTION: ZonePolicy(),
     Zone.TEST: ZonePolicy(
         skip_detectors={"dupes", "single_use", "orphaned", "coupling", "facade",
-                        "dict_keys", "test_coverage"},
+                        "dict_keys", "test_coverage", "security"},
         downgrade_detectors={"smells", "structural"},
         exclude_from_score=True,
     ),
     Zone.CONFIG: ZonePolicy(
         skip_detectors={"smells", "structural", "dupes", "naming",
                         "single_use", "orphaned", "coupling", "facade",
-                        "dict_keys", "test_coverage"},
+                        "dict_keys", "test_coverage", "security"},
         exclude_from_score=True,
     ),
     Zone.GENERATED: ZonePolicy(

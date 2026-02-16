@@ -12,6 +12,7 @@ import os
 import re
 from pathlib import Path
 
+from .lang_hooks import load_lang_hook_module
 from ..utils import PROJECT_ROOT
 from ..zones import FileZoneMap, Zone
 
@@ -20,10 +21,6 @@ _MIN_LOC = 10
 
 # Max untested modules to report when there are zero tests
 _MAX_NO_TESTS_ENTRIES = 50
-
-# Python: does the file contain any function definition?
-_PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+", re.MULTILINE)
-
 
 def detect_test_coverage(
     graph: dict,
@@ -37,7 +34,7 @@ def detect_test_coverage(
     Args:
         graph: dep graph from lang.build_dep_graph — {filepath: {"imports": set, "importer_count": int, ...}}
         zone_map: FileZoneMap from lang._zone_map
-        lang_name: "python", "typescript", or "csharp"
+        lang_name: language plugin name (for loading language-specific coverage hooks)
         extra_test_files: test files outside the scanned path (e.g. PROJECT_ROOT/tests/)
         complexity_map: {filepath: complexity_score} from structural phase — files above
             _COMPLEXITY_TIER_UPGRADE threshold get their tier upgraded to 2
@@ -89,7 +86,7 @@ def detect_test_coverage(
         return entries, potential
 
     # Step 1: Import-based mapping (precise)
-    directly_tested = _import_based_mapping(graph, test_files, production_files)
+    directly_tested = _import_based_mapping(graph, test_files, production_files, lang_name)
 
     # Step 2: Naming convention fallback
     name_tested = _naming_based_mapping(test_files, production_files, lang_name)
@@ -136,111 +133,23 @@ def _has_testable_logic(filepath: str, lang_name: str) -> bool:
     - Barrel files containing only re-exports
     - Python files with no function or method definitions
     """
-    if filepath.endswith(".d.ts"):
-        return False
-
     try:
         content = Path(filepath).read_text()
     except (OSError, UnicodeDecodeError):
         return True  # assume testable if unreadable
 
-    if lang_name == "python":
-        return bool(_PY_DEF_RE.search(content))
-    if lang_name == "typescript":
-        return _ts_has_testable_logic(content)
+    mod = _load_lang_test_coverage_module(lang_name)
+    has_logic = getattr(mod, "has_testable_logic", None)
+    if callable(has_logic):
+        return bool(has_logic(filepath, content))
     if lang_name == "csharp":
-        # Skip trivial declaration-only files with no classes or methods.
         return bool(re.search(r"\b(?:class|record|struct)\b|\b(?:public|private|protected|internal)\b.*\(", content))
     return True
 
 
-def _ts_has_testable_logic(content: str) -> bool:
-    """Return True if a TypeScript file has runtime logic worth testing.
-
-    Returns False when every substantive line is a type/interface declaration,
-    import, re-export, or ambient declaration — i.e. the file produces no
-    runtime JavaScript.
-    """
-    in_block_comment = False
-    brace_context = False  # True when inside type/interface/import/export braces
-    brace_depth = 0
-
-    for line in content.splitlines():
-        stripped = line.strip()
-
-        # ── Block comments ──
-        if in_block_comment:
-            if "*/" in stripped:
-                in_block_comment = False
-            continue
-        if stripped.startswith("/*"):
-            if "*/" not in stripped:
-                in_block_comment = True
-            continue
-
-        # ── Blank / line comments ──
-        if not stripped or stripped.startswith("//"):
-            continue
-
-        # ── Inside a non-testable brace body (type/interface/import/export) ──
-        if brace_context:
-            brace_depth += stripped.count("{") - stripped.count("}")
-            if brace_depth <= 0:
-                brace_context = False
-                brace_depth = 0
-            continue
-
-        # ── Type / interface declarations ──
-        if re.match(r"(?:export\s+)?(?:type|interface)\s+\w+", stripped):
-            opens = stripped.count("{")
-            closes = stripped.count("}")
-            if opens > closes:
-                brace_context = True
-                brace_depth = opens - closes
-            continue
-
-        # ── Import statements ──
-        if re.match(r"import\s+", stripped):
-            if "{" in stripped and "}" not in stripped:
-                brace_context = True
-                brace_depth = stripped.count("{") - stripped.count("}")
-            continue
-
-        # ── Re-exports: export [type] { ... } from / export * from ──
-        if re.match(r"export\s+(?:type\s+)?\{", stripped):
-            if "}" not in stripped:
-                brace_context = True
-                brace_depth = stripped.count("{") - stripped.count("}")
-            continue
-        if re.match(r"export\s+\*\s*(?:as\s+\w+\s+)?from\s+", stripped):
-            continue
-
-        # ── export default type/interface ──
-        if re.match(r"export\s+default\s+(?:type|interface)\s+", stripped):
-            opens = stripped.count("{")
-            closes = stripped.count("}")
-            if opens > closes:
-                brace_context = True
-                brace_depth = opens - closes
-            continue
-
-        # ── Ambient declarations (declare ...) ──
-        if re.match(r"declare\s+", stripped):
-            opens = stripped.count("{")
-            closes = stripped.count("}")
-            if opens > closes:
-                brace_context = True
-                brace_depth = opens - closes
-            continue
-
-        # ── Standalone closing braces from previous constructs ──
-        if re.match(r"^[}\])\s;,]*$", stripped):
-            continue
-
-        # This line has runtime logic
-        return True
-
-    return False
+def _load_lang_test_coverage_module(lang_name: str):
+    """Load language-specific test coverage helpers from ``lang/<name>/test_coverage.py``."""
+    return load_lang_hook_module(lang_name, "test_coverage") or object()
 
 
 def _no_tests_findings(
@@ -356,7 +265,7 @@ def _generate_findings(
                                    "mocks": tq["mocks"], "assertions": tq["assertions"],
                                    "loc_weight": lw},
                     })
-                elif tq["quality"] == "snapshot_heavy" and lang_name == "typescript":
+                elif tq["quality"] == "snapshot_heavy":
                     entries.append({
                         "file": f,
                         "name": f"snapshot_heavy::{os.path.basename(tf)}",

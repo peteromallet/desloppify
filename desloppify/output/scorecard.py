@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 from ..utils import PROJECT_ROOT
@@ -143,6 +145,29 @@ def _get_project_name() -> str:
         return PROJECT_ROOT.name
 
 
+def _get_package_version() -> str:
+    """Get package version for scorecard display.
+
+    Prefers installed package metadata. Falls back to parsing local
+    `pyproject.toml` when running from source without an installed package.
+    """
+    try:
+        return importlib_metadata.version("desloppify")
+    except importlib_metadata.PackageNotFoundError:
+        pass
+
+    pyproject_path = PROJECT_ROOT / "pyproject.toml"
+    try:
+        text = pyproject_path.read_text(encoding="utf-8")
+        match = re.search(r'^\s*version\s*=\s*"([^"]+)"\s*$', text, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+
+    return "unknown"
+
+
 # -- Palette used by all drawing functions --
 _BG = (247, 240, 228)
 _BG_SCORE = (240, 232, 217)
@@ -166,15 +191,12 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
 
     output_path = Path(output_path)
     dim_scores = state.get("dimension_scores", {})
-    obj_score = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
-
-    main_score = obj_score if obj_score is not None else state.get("score", 0)
-    strict_score = (
-        obj_strict if obj_strict is not None else state.get("strict_score", 0)
-    )
+    from ..state import get_overall_score, get_strict_score
+    main_score = get_overall_score(state) or 0
+    strict_score = get_strict_score(state) or 0
 
     project_name = _get_project_name()
+    package_version = _get_package_version()
 
     # Layout — landscape (wide), File health first
     # Exclude unassessed subjective dimensions (score=0, issues=0) — they're placeholders
@@ -229,6 +251,7 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
         main_score,
         strict_score,
         project_name,
+        package_version,
         lp_left=frame_inset + _s(11),  # Match outer margins
         lp_right=divider_x - _s(11),  # Match outer margins, center divider
         lp_top=content_top + _s(4),

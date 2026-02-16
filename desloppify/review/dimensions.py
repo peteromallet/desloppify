@@ -13,6 +13,26 @@ HOLISTIC_DIMENSIONS = [
     "package_organization",
 ]
 
+def _collect_holistic_dims_by_lang() -> dict[str, list[str]]:
+    """Collect per-language holistic dimension defaults from language plugins."""
+    try:
+        from ..lang import available_langs, get_lang
+    except Exception:
+        return {}
+
+    out: dict[str, list[str]] = {}
+    for lang_name in available_langs():
+        try:
+            dims = list(getattr(get_lang(lang_name), "holistic_review_dimensions", []) or [])
+        except Exception:
+            dims = []
+        if dims:
+            out[lang_name] = dims
+    return out
+
+
+HOLISTIC_DIMENSIONS_BY_LANG: dict[str, list[str]] = _collect_holistic_dims_by_lang()
+
 HOLISTIC_DIMENSION_PROMPTS = {
     "cross_module_architecture": {
         "description": "God modules, circular deps, layer violations, hidden coupling",
@@ -449,8 +469,7 @@ DIMENSION_PROMPTS = {
     },
 }
 
-# Language-specific review guidance — appended to system prompt when applicable
-LANG_GUIDANCE = {
+_DEFAULT_LANG_GUIDANCE = {
     "python": {
         "patterns": [
             "Check for `async def` functions that never `await` — they add overhead with no benefit",
@@ -506,6 +525,43 @@ LANG_GUIDANCE = {
                   "Check for inconsistent naming inside the same layer.",
     },
 }
+
+
+def _collect_lang_guidance() -> dict[str, dict]:
+    """Collect review guidance from registered language plugins."""
+    try:
+        from ..lang import available_langs, get_lang
+    except Exception:
+        return {}
+
+    out: dict[str, dict] = dict(_DEFAULT_LANG_GUIDANCE)
+    for lang_name in available_langs():
+        try:
+            guide = getattr(get_lang(lang_name), "review_guidance", {}) or {}
+        except Exception:
+            guide = {}
+        if guide:
+            out[lang_name] = guide
+    return out
+
+
+LANG_GUIDANCE = _collect_lang_guidance()
+
+
+def get_lang_guidance(lang_name: str) -> dict:
+    """Return language-specific review guidance from plugin configuration."""
+    if lang_name in LANG_GUIDANCE:
+        return LANG_GUIDANCE[lang_name]
+
+    try:
+        from ..lang import get_lang
+        guide = getattr(get_lang(lang_name), "review_guidance", {}) or {}
+    except Exception:
+        guide = {}
+
+    if guide:
+        LANG_GUIDANCE[lang_name] = guide
+    return guide
 
 REVIEW_SYSTEM_PROMPT = """\
 You are reviewing code for subjective quality issues that linters cannot catch.

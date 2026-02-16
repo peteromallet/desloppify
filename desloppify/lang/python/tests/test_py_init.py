@@ -152,3 +152,9 @@ class TestZoneRules:
         from desloppify.zones import Zone
         zones = {r.zone for r in PY_ZONE_RULES}
         assert Zone.TEST in zones
+
+    def test_test_prefix_pattern_present(self):
+        from desloppify.zones import Zone
+        test_rule = next((r for r in PY_ZONE_RULES if r.zone == Zone.TEST), None)
+        assert test_rule is not None
+        assert "test_" in test_rule.patterns

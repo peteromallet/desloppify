@@ -9,21 +9,22 @@ import pytest
 from desloppify.detectors.test_coverage import (
     _file_loc,
     _has_testable_logic,
-    _ts_has_testable_logic,
     detect_test_coverage,
 )
 from desloppify.detectors.test_coverage_mapping import (
     _analyze_test_quality,
+    _infer_lang_name,
     _import_based_mapping,
     _map_test_to_source,
     _naming_based_mapping,
     _parse_test_imports,
     _resolve_barrel_reexports,
-    _resolve_ts_import,
+    _resolve_import,
     _strip_py_comment,
     _strip_test_markers,
     _transitive_coverage,
 )
+from desloppify.lang.typescript.test_coverage import has_testable_logic as ts_has_testable_logic
 from desloppify.zones import FileZoneMap, Zone, ZoneRule
 
 
@@ -72,6 +73,24 @@ class TestStripTestMarkers:
     def test_python_test_prefix_nested(self):
         # Only basename is passed, so nested name shouldn't matter
         assert _strip_test_markers("test_deep_module.py", "python") == "deep_module.py"
+
+
+# ── _infer_lang_name ──────────────────────────────────────
+
+
+class TestInferLangName:
+    def test_prefers_language_with_matching_extensions(self):
+        result = _infer_lang_name({"tests/test_utils.py"}, {"src/utils.py"})
+        assert result == "python"
+
+    def test_returns_none_when_no_languages_available(self, monkeypatch):
+        monkeypatch.setattr("desloppify.lang.available_langs", lambda: [])
+        result = _infer_lang_name(set(), set())
+        assert result is None
+
+    def test_returns_none_when_paths_have_no_known_extensions(self):
+        result = _infer_lang_name({"docs/test_notes.txt"}, {"docs/notes.txt"})
+        assert result is None
 
 
 # ── _map_test_to_source ──────────────────────────────────
@@ -310,9 +329,7 @@ class TestTransitiveCoverage:
 
 
 class TestAnalyzeTestQuality:
-    # Note: PY_TEST_FUNC regex uses ^ without re.MULTILINE, so findall
-    # only matches the FIRST test function if it starts at the beginning
-    # of the file. Tests are written to match actual behavior.
+    # Python test function counting uses MULTILINE and should count all test defs.
 
     def test_python_thorough(self, tmp_path):
         # Single test function with many assertions → thorough
@@ -352,7 +369,6 @@ class TestAnalyzeTestQuality:
         assert result[tf]["test_functions"] == 1
 
     def test_python_over_mocked(self, tmp_path):
-        # test function must be at start of file for PY_TEST_FUNC to match
         content = (
             "def test_a(m1, m2, m3):\n"
             "    assert True\n"
@@ -366,6 +382,22 @@ class TestAnalyzeTestQuality:
         result = _analyze_test_quality({tf}, "python")
         assert result[tf]["quality"] == "over_mocked"
         assert result[tf]["mocks"] > result[tf]["assertions"]
+
+    def test_python_counts_multiple_test_functions(self, tmp_path):
+        content = (
+            "def test_a():\n"
+            "    assert True\n"
+            "\n"
+            "def test_b():\n"
+            "    pass\n"
+            "\n"
+            "def test_c():\n"
+            "    pass\n"
+        )
+        tf = _write_file(tmp_path, "test_multi.py", content)
+        result = _analyze_test_quality({tf}, "python")
+        assert result[tf]["test_functions"] == 3
+        assert result[tf]["quality"] == "smoke"
 
     def test_typescript_snapshot_heavy(self, tmp_path):
         content = (
@@ -381,18 +413,7 @@ class TestAnalyzeTestQuality:
         assert result[tf]["snapshots"] >= 3
 
     def test_python_smoke(self, tmp_path):
-        """Test function found but assertions/functions < 1 → smoke.
-
-        PY_TEST_FUNC only matches the first function (no MULTILINE).
-        So we need exactly one test function at file start with zero assertions,
-        but that would be assertion_free. Instead we use pytest.raises which
-        counts as an assertion, plus extra functions counted manually is still 1.
-        Actually, smoke requires assertions > 0 but assertions/test_functions < 1.
-        With only 1 test_function detected, we can never get ratio < 1 unless
-        assertions == 0, which would be assertion_free instead. So smoke is only
-        reachable if PY_TEST_FUNC regex finds >1 function (not possible without
-        MULTILINE). We test the TS path instead.
-        """
+        """TS test function count supports smoke classification (<1 assertion per test)."""
         content = (
             'it("a", () => {});\n'
             'it("b", () => {});\n'
@@ -661,7 +682,7 @@ class TestNamingBasedMapping:
         assert result == {"src/deep/utils.py"}
 
 
-# ── _resolve_ts_import ───────────────────────────────────
+# ── _resolve_import (TypeScript) ─────────────────────────
 
 
 class TestResolveTsImport:
@@ -669,62 +690,54 @@ class TestResolveTsImport:
         """./utils resolves to sibling file."""
         prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
         test = _write_file(tmp_path, "src/utils.test.ts", "")
-        result = _resolve_ts_import("./utils", test, {prod})
+        result = _resolve_import("./utils", test, {prod}, "typescript")
         assert result == prod
 
     def test_relative_import_parent_dir(self, tmp_path):
         """../utils resolves to parent directory file."""
         prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
         test = _write_file(tmp_path, "src/__tests__/utils.test.ts", "")
-        result = _resolve_ts_import("../utils", test, {prod})
+        result = _resolve_import("../utils", test, {prod}, "typescript")
         assert result == prod
 
     def test_relative_import_deep(self, tmp_path):
         """../../lib/helpers resolves multi-level relative path."""
         prod = _write_file(tmp_path, "lib/helpers.ts", "export const x = 1;\n")
         test = _write_file(tmp_path, "src/__tests__/sub/test.ts", "")
-        result = _resolve_ts_import("../../../lib/helpers", test, {prod})
+        result = _resolve_import("../../../lib/helpers", test, {prod}, "typescript")
         assert result == prod
 
     def test_alias_at_slash(self, tmp_path, monkeypatch):
         """@/components/Button resolves via SRC_PATH."""
-        import desloppify.detectors.test_coverage_mapping as tc
-        orig = tc.SRC_PATH
-        monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
-        try:
-            prod = _write_file(tmp_path, "src/components/Button.tsx", "export default function Button() {}\n")
-            result = _resolve_ts_import("@/components/Button", "/any/test.ts", {prod})
-            assert result == prod
-        finally:
-            monkeypatch.setattr(tc, "SRC_PATH", orig)
+        import desloppify.lang.typescript.test_coverage as ts_cov
+        monkeypatch.setattr(ts_cov, "SRC_PATH", tmp_path / "src")
+        prod = _write_file(tmp_path, "src/components/Button.tsx", "export default function Button() {}\n")
+        result = _resolve_import("@/components/Button", "/any/test.ts", {prod}, "typescript")
+        assert result == prod
 
     def test_alias_tilde(self, tmp_path, monkeypatch):
         """~/utils resolves via SRC_PATH."""
-        import desloppify.detectors.test_coverage_mapping as tc
-        orig = tc.SRC_PATH
-        monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
-        try:
-            prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
-            result = _resolve_ts_import("~/utils", "/any/test.ts", {prod})
-            assert result == prod
-        finally:
-            monkeypatch.setattr(tc, "SRC_PATH", orig)
+        import desloppify.lang.typescript.test_coverage as ts_cov
+        monkeypatch.setattr(ts_cov, "SRC_PATH", tmp_path / "src")
+        prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        result = _resolve_import("~/utils", "/any/test.ts", {prod}, "typescript")
+        assert result == prod
 
     def test_index_ts_extension_probing(self, tmp_path):
         """Bare directory import resolves to index.ts."""
         prod = _write_file(tmp_path, "src/components/index.ts", "export * from './Button';\n")
         test = _write_file(tmp_path, "src/components.test.ts", "")
-        result = _resolve_ts_import("./components", test, {prod})
+        result = _resolve_import("./components", test, {prod}, "typescript")
         assert result == prod
 
     def test_nonexistent_returns_none(self, tmp_path):
         test = _write_file(tmp_path, "src/test.ts", "")
-        result = _resolve_ts_import("./nonexistent", test, set())
+        result = _resolve_import("./nonexistent", test, set(), "typescript")
         assert result is None
 
     def test_non_relative_returns_none(self):
         """Bare module specifiers (like 'react') return None."""
-        result = _resolve_ts_import("react", "/test.ts", set())
+        result = _resolve_import("react", "/test.ts", set(), "typescript")
         assert result is None
 
 
@@ -1212,8 +1225,7 @@ class TestHasTestableLogic:
             "}\n"
         )
         f = _write_file(tmp_path, "declarations.d.ts", content)
-        # .d.ts extension catches this, but also test the content parser
-        assert _ts_has_testable_logic(content) is False
+        assert ts_has_testable_logic(str(f), content) is False
 
     # ── TypeScript multiline imports ──
 

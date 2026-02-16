@@ -31,7 +31,7 @@ def test_expected_commands_present():
     cmds = get_detect_commands()
     expected = [
         "logs", "unused", "exports", "deprecated", "large",
-        "complexity", "gods", "single-use", "props", "passthrough",
+        "complexity", "gods", "single_use", "props", "passthrough",
         "concerns", "dupes", "smells", "coupling", "patterns",
         "naming", "cycles", "orphaned", "react", "facade",
     ]

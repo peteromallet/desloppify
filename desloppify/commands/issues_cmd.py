@@ -89,7 +89,7 @@ def _show_issue(args):
 
     finding = items[number - 1]
     lang = resolve_lang(args)
-    lang_name = lang.name if lang else finding.get("lang", "typescript")
+    lang_name = lang.name if lang else finding.get("lang", "unknown")
 
     assessments = state.get("subjective_assessments") or state.get("review_assessments") or {}
     doc = render_issue_detail(finding, lang_name, number=number,
@@ -145,7 +145,7 @@ def _update_issue(args):
 
     save_state(state, sp)
     lang = resolve_lang(args)
-    lang_name = lang.name if lang else finding.get("lang", "typescript")
+    lang_name = lang.name if lang else finding.get("lang", "unknown")
     print(colorize(f"\n  Investigation saved for issue #{number}.", "green"))
     print(colorize(f"  Fix the issue, then: desloppify --lang {lang_name} resolve fixed \"{finding['id']}\"", "dim"))
     print()

@@ -1,5 +1,8 @@
 """status command: score dashboard with per-tier progress."""
 
+from __future__ import annotations
+
+import argparse
 import json
 from collections import defaultdict
 
@@ -7,23 +10,30 @@ from ..utils import LOC_COMPACT_THRESHOLD, colorize, get_area, print_table
 from ._helpers import state_path, _write_query
 
 
-def cmd_status(args):
+def cmd_status(args: argparse.Namespace) -> None:
     """Show score dashboard."""
-    from ..state import load_state
+    from ..state import (
+        load_state,
+        suppression_metrics,
+        get_overall_score,
+        get_objective_score,
+        get_strict_score,
+    )
 
     sp = state_path(args)
     state = load_state(sp)
     stats = state.get("stats", {})
+    suppression = suppression_metrics(state)
 
     if getattr(args, "json", False):
-        print(json.dumps({"score": state.get("score", 0),
-                          "strict_score": state.get("strict_score", 0),
-                          "objective_score": state.get("objective_score"),
-                          "objective_strict": state.get("objective_strict"),
+        print(json.dumps({"overall_score": get_overall_score(state),
+                          "objective_score": get_objective_score(state),
+                          "strict_score": get_strict_score(state),
                           "dimension_scores": state.get("dimension_scores"),
                           "potentials": state.get("potentials"),
                           "codebase_metrics": state.get("codebase_metrics"),
                           "stats": stats,
+                          "suppression": suppression,
                           "scan_count": state.get("scan_count", 0),
                           "last_scan": state.get("last_scan")}, indent=2))
         return
@@ -37,22 +47,22 @@ def cmd_status(args):
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
 
-    score = state.get("score", 0)
-    strict_score = state.get("strict_score", 0)
-    obj_score = state.get("objective_score")
-    obj_strict = state.get("objective_strict")
+    overall_score = get_overall_score(state)
+    objective_score = get_objective_score(state)
+    strict_score = get_strict_score(state)
     dim_scores = state.get("dimension_scores", {})
     by_tier = stats.get("by_tier", {})
 
-    # Header: prefer objective score when available
-    if obj_score is not None:
-        print(colorize(f"\n  Desloppify Health: {obj_score:.1f}/100", "bold") +
-              colorize(f"  (strict: {obj_strict:.1f})", "dim"))
+    if overall_score is not None and objective_score is not None and strict_score is not None:
+        print(colorize(
+            f"\n  Scores: overall {overall_score:.1f}/100 · "
+            f"objective {objective_score:.1f}/100 · "
+            f"strict {strict_score:.1f}/100",
+            "bold",
+        ))
     else:
-        print(colorize(f"\n  Desloppify Score: {score}/100", "bold") +
-              colorize(f"  (strict: {strict_score}/100)", "dim"))
-        print(colorize("  ⚠ Dimension-based scoring unavailable (potentials missing). "
-                "Run a full scan to fix: desloppify scan --path <source-root>", "yellow"))
+        print(colorize("\n  Scores unavailable", "bold"))
+        print(colorize("  Run a full scan to compute overall/objective/strict scores.", "yellow"))
 
     # Codebase metrics
     metrics = state.get("codebase_metrics", {})
@@ -116,9 +126,7 @@ def cmd_status(args):
 
     ignores = args._config.get("ignore", [])
     if ignores:
-        print(colorize(f"\n  Ignore list ({len(ignores)}):", "dim"))
-        for p in ignores[:10]:
-            print(colorize(f"    {p}", "dim"))
+        _show_ignore_summary(ignores, suppression)
 
     review_age = args._config.get("review_max_age_days", 30)
     if review_age != 30:
@@ -126,15 +134,48 @@ def cmd_status(args):
         print(colorize(f"  Review staleness: {label}", "dim"))
     print()
 
-    _write_query({"command": "status", "score": score, "strict_score": strict_score,
-                  "objective_score": obj_score, "objective_strict": obj_strict,
+    _write_query({"command": "status",
+                  "overall_score": overall_score,
+                  "objective_score": objective_score,
+                  "strict_score": strict_score,
                   "dimension_scores": dim_scores,
                   "stats": stats, "scan_count": state.get("scan_count", 0),
                   "last_scan": state.get("last_scan"),
                   "by_tier": by_tier, "ignores": ignores,
+                  "suppression": suppression,
                   "potentials": state.get("potentials"),
                   "codebase_metrics": state.get("codebase_metrics"),
                   "narrative": narrative})
+
+
+def _show_ignore_summary(ignores: list[str], suppression: dict) -> None:
+    """Show ignore list plus suppression accountability from recent scans."""
+    print(colorize(f"\n  Ignore list ({len(ignores)}):", "dim"))
+    for p in ignores[:10]:
+        print(colorize(f"    {p}", "dim"))
+
+    last_ignored = int(suppression.get("last_ignored", 0) or 0)
+    last_raw = int(suppression.get("last_raw_findings", 0) or 0)
+    last_pct = float(suppression.get("last_suppressed_pct", 0.0) or 0.0)
+
+    if last_raw > 0:
+        style = "red" if last_pct >= 30 else "yellow" if last_pct >= 10 else "dim"
+        print(colorize(
+            f"  Ignore suppression (last scan): {last_ignored}/{last_raw} findings hidden ({last_pct:.1f}%)",
+            style,
+        ))
+    elif suppression.get("recent_scans", 0):
+        print(colorize("  Ignore suppression (last scan): 0 findings hidden", "dim"))
+
+    recent_scans = int(suppression.get("recent_scans", 0) or 0)
+    recent_raw = int(suppression.get("recent_raw_findings", 0) or 0)
+    if recent_scans > 1 and recent_raw > 0:
+        recent_ignored = int(suppression.get("recent_ignored", 0) or 0)
+        recent_pct = float(suppression.get("recent_suppressed_pct", 0.0) or 0.0)
+        print(colorize(
+            f"    Recent ({recent_scans} scans): {recent_ignored}/{recent_raw} findings hidden ({recent_pct:.1f}%)",
+            "dim",
+        ))
 
 
 def _show_dimension_table(dim_scores: dict):
@@ -148,12 +189,13 @@ def _show_dimension_table(dim_scores: dict):
     print(colorize(f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len+2}} {'Tier'}  {'Action'}", "dim"))
     print(colorize("  " + "─" * 86, "dim"))
 
-    # Find lowest score for focus arrow (includes subjective dimensions)
+    # Find lowest strict score for focus arrow (includes subjective dimensions)
     lowest_name = None
     lowest_score = 101
     for name, ds in dim_scores.items():
-        if ds["score"] < lowest_score:
-            lowest_score = ds["score"]
+        strict_val = ds.get("strict", ds["score"])
+        if strict_val < lowest_score:
+            lowest_score = strict_val
             lowest_name = name
 
     for dim in DIMENSIONS:
@@ -211,8 +253,9 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
     lowest_score = 101
     lowest_issues = 0
     for name, ds in dim_scores.items():
-        if ds["score"] < lowest_score:
-            lowest_score = ds["score"]
+        strict_val = ds.get("strict", ds["score"])
+        if strict_val < lowest_score:
+            lowest_score = strict_val
             lowest_name = name
             lowest_issues = ds["issues"]
 

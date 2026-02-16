@@ -4,12 +4,15 @@ The graph structure is: {resolved_path: {"imports": set, "importers": set, "impo
 Language-specific modules build the graph; this module provides shared algorithms.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
 from ..utils import rel, resolve_path, PROJECT_ROOT
 
 
-def finalize_graph(graph: dict) -> dict:
+def finalize_graph(graph: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Add counts to a raw graph (imports/importers sets only).
 
     Also filters out nodes matching global --exclude patterns, and removes
@@ -46,7 +49,7 @@ def finalize_graph(graph: dict) -> dict:
     return graph
 
 
-def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> tuple[list[dict], int]:
+def detect_cycles(graph: dict[str, dict[str, Any]], *, skip_deferred: bool = True) -> tuple[list[dict[str, Any]], int]:
     """Find import cycles using Tarjan's strongly connected components (iterative).
 
     When skip_deferred=True (default), deferred imports (inside functions) are
@@ -124,7 +127,7 @@ def detect_cycles(graph: dict, *, skip_deferred: bool = True) -> tuple[list[dict
     return [{"files": scc, "length": len(scc)} for scc in sorted(sccs, key=lambda s: -len(s))], len(graph)
 
 
-def get_coupling_score(filepath: str, graph: dict) -> dict:
+def get_coupling_score(filepath: str, graph: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Get coupling metrics for a file."""
     resolved = resolve_path(filepath)
     entry = graph.get(resolved, {"imports": set(), "importers": set(), "import_count": 0, "importer_count": 0})

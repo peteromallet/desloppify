@@ -161,8 +161,8 @@ class TestLowValueNames:
         assert LOW_VALUE_NAMES.search("src/types.ts")
 
     def test_dts_file(self):
-        from desloppify.review.selection import LOW_VALUE_NAMES
-        assert LOW_VALUE_NAMES.search("src/foo.d.ts")
+        from desloppify.review.selection import is_low_value_file
+        assert is_low_value_file("src/foo.d.ts", "typescript")
 
     def test_normal_file(self):
         from desloppify.review.selection import LOW_VALUE_NAMES
@@ -475,7 +475,7 @@ class TestGenerateRemediationPlan:
         )
         empty_state["findings"][f["id"]] = f
         empty_state["objective_score"] = 85.0
-        empty_state["objective_strict"] = 84.0
+        empty_state["strict_score"] = 84.0
         empty_state["potentials"] = {"typescript": {"review": 50}}
         result = generate_remediation_plan(empty_state, "typescript")
         assert "God module detected" in result

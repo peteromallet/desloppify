@@ -16,6 +16,7 @@ from desloppify.state import (
     resolve_finding_noise_global_budget,
     resolve_finding_noise_settings,
     save_state,
+    suppression_metrics,
 )
 
 
@@ -183,7 +184,9 @@ class TestEmptyState:
         assert s["last_scan"] is None
         assert s["scan_count"] == 0
         assert "config" not in s  # config moved to config.json
-        assert s["score"] == 0
+        assert s["overall_score"] == 0
+        assert s["objective_score"] == 0
+        assert s["strict_score"] == 0
         assert s["stats"] == {}
         assert s["findings"] == {}
         assert "created" in s
@@ -552,3 +555,120 @@ class TestWontfixAutoResolution:
             existing[f["id"]] = f
         suspect = _find_suspect_detectors(existing, {}, False, ran_detectors=None)
         assert "det" in suspect
+
+    def test_merge_potentials_preserves_existing_detector_counts(self):
+        """merge_potentials=True should update only provided detector keys."""
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        st["potentials"] = {"python": {"unused": 10, "smells": 20}}
+
+        merge_scan(
+            st,
+            [],
+            lang="python",
+            potentials={"review": 3},
+            merge_potentials=True,
+            force_resolve=True,
+        )
+
+        pots = st["potentials"]["python"]
+        assert pots["unused"] == 10
+        assert pots["smells"] == 20
+        assert pots["review"] == 3
+
+    def test_zero_active_checks_defaults_objective_to_neutral(self):
+        """When all detector potentials are zero and no assessments exist,
+        objective health should be neutral (100) rather than 0."""
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        merge_scan(
+            st,
+            [],
+            lang="typescript",
+            potentials={"logs": 0, "unused": 0, "subjective_review": 0},
+            force_resolve=True,
+        )
+
+        assert st["objective_score"] == 100.0
+        assert st["strict_score"] == 100.0
+        assert st["overall_score"] == 100.0
+        assert st["dimension_scores"] == {}
+
+    def test_zero_active_checks_with_assessments_keeps_subjective_scoring(self):
+        """Subjective assessments should still drive objective score when present."""
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        st["subjective_assessments"] = {"naming_quality": {"score": 40}}
+        merge_scan(
+            st,
+            [],
+            lang="typescript",
+            potentials={"logs": 0, "unused": 0, "subjective_review": 0},
+            force_resolve=True,
+        )
+
+        # Objective excludes subjective dimensions; overall/strict include them.
+        assert st["objective_score"] == 100.0
+        assert st["overall_score"] < 100.0
+        assert st["strict_score"] < 100.0
+
+
+class TestSuppressionAccounting:
+    def test_merge_scan_records_ignored_metrics_in_history_and_diff(self):
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        findings = [
+            _make_raw_finding("smells::a.py::x", detector="smells", file="a.py"),
+            _make_raw_finding("smells::b.py::y", detector="smells", file="b.py"),
+            _make_raw_finding("logs::c.py::z", detector="logs", file="c.py"),
+        ]
+
+        diff = merge_scan(st, findings, lang="python", ignore=["smells::*"], force_resolve=True)
+
+        assert diff["ignored"] == 2
+        assert diff["raw_findings"] == 3
+        assert diff["suppressed_pct"] == pytest.approx(66.7, abs=0.1)
+
+        hist = st["scan_history"][-1]
+        assert hist["ignored"] == 2
+        assert hist["raw_findings"] == 3
+        assert hist["suppressed_pct"] == pytest.approx(66.7, abs=0.1)
+        assert hist["ignore_patterns"] == 1
+
+    def test_suppression_metrics_aggregates_recent_history(self):
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        merge_scan(
+            st,
+            [
+                _make_raw_finding("smells::a.py::x", detector="smells", file="a.py"),
+                _make_raw_finding("logs::b.py::x", detector="logs", file="b.py"),
+            ],
+            lang="python",
+            ignore=["smells::*"],
+            force_resolve=True,
+        )
+        merge_scan(
+            st,
+            [
+                _make_raw_finding("smells::a.py::x", detector="smells", file="a.py"),
+                _make_raw_finding("logs::b.py::x", detector="logs", file="b.py"),
+                _make_raw_finding("logs::c.py::x", detector="logs", file="c.py"),
+            ],
+            lang="python",
+            ignore=["smells::*"],
+            force_resolve=True,
+        )
+
+        sup = suppression_metrics(st, window=5)
+        assert sup["last_ignored"] == 1
+        assert sup["last_raw_findings"] == 3
+        assert sup["recent_scans"] == 2
+        assert sup["recent_ignored"] == 2
+        assert sup["recent_raw_findings"] == 5
+        assert sup["recent_suppressed_pct"] == 40.0

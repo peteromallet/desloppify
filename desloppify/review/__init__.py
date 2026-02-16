@@ -9,11 +9,13 @@ No LLM calls happen here — this module is pure Python.
 
 from .dimensions import (
     HOLISTIC_DIMENSIONS,
+    HOLISTIC_DIMENSIONS_BY_LANG,
     HOLISTIC_DIMENSION_PROMPTS,
     HOLISTIC_REVIEW_SYSTEM_PROMPT,
     DEFAULT_DIMENSIONS,
     DIMENSION_PROMPTS,
     LANG_GUIDANCE,
+    get_lang_guidance,
     REVIEW_SYSTEM_PROMPT,
 )
 from .context import (
@@ -39,6 +41,8 @@ from .selection import (
     _count_fresh,
     _count_stale,
     LOW_VALUE_NAMES,
+    low_value_pattern,
+    is_low_value_file,
     MIN_REVIEW_LOC,
 )
 from .prepare import (
@@ -64,8 +68,8 @@ from .remediation import (
 
 __all__ = [
     # dimensions
-    "HOLISTIC_DIMENSIONS", "HOLISTIC_DIMENSION_PROMPTS", "HOLISTIC_REVIEW_SYSTEM_PROMPT",
-    "DEFAULT_DIMENSIONS", "DIMENSION_PROMPTS", "LANG_GUIDANCE", "REVIEW_SYSTEM_PROMPT",
+    "HOLISTIC_DIMENSIONS", "HOLISTIC_DIMENSIONS_BY_LANG", "HOLISTIC_DIMENSION_PROMPTS", "HOLISTIC_REVIEW_SYSTEM_PROMPT",
+    "DEFAULT_DIMENSIONS", "DIMENSION_PROMPTS", "LANG_GUIDANCE", "get_lang_guidance", "REVIEW_SYSTEM_PROMPT",
     # context
     "ReviewContext", "build_review_context", "_serialize_context",
     "build_holistic_context", "_file_excerpt", "_extract_imported_names",
@@ -75,7 +79,7 @@ __all__ = [
     # selection
     "select_files_for_review", "hash_file", "_compute_review_priority",
     "_get_file_findings", "_count_fresh", "_count_stale",
-    "LOW_VALUE_NAMES", "MIN_REVIEW_LOC",
+    "LOW_VALUE_NAMES", "low_value_pattern", "is_low_value_file", "MIN_REVIEW_LOC",
     # prepare
     "prepare_review", "prepare_holistic_review", "_build_investigation_batches",
     "_build_file_requests", "_HOLISTIC_WORKFLOW", "_rel_list",

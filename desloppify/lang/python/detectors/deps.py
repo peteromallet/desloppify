@@ -1,14 +1,17 @@
 """Python import graph builder — parses import/from statements, resolves to files."""
 
+from __future__ import annotations
+
 import ast
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from ....utils import PROJECT_ROOT, resolve_path
 from ....detectors.graph import finalize_graph
 
 
-def build_dep_graph(path: Path) -> dict:
+def build_dep_graph(path: Path) -> dict[str, dict[str, Any]]:
     """Build a dependency graph for Python files.
 
     Uses ast.parse for reliable import extraction (handles multi-line imports,

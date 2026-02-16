@@ -40,9 +40,13 @@ desloppify/
 │   ├── base.py         # LangConfig + shared finding helpers (make_*_findings)
 │   │
 │   ├── typescript/     # Everything TypeScript/React
-│   │   ├── __init__.py # TypeScriptConfig + phase runners + config data (signals, rules)
+│   │   ├── __init__.py # TypeScriptConfig assembly
+│   │   ├── phases.py   # Phase runners + config constants (signals, rules)
 │   │   ├── commands.py # detect-subcommand wrappers + command registry
 │   │   ├── extractors.py  # extract_ts_functions, extract_ts_components, detect_passthrough_components
+│   │   ├── move.py     # Move/import-rewrite helpers for `desloppify move`
+│   │   ├── review.py   # Subjective-review language guidance
+│   │   ├── test_coverage.py # Test mapping + quality heuristics
 │   │   ├── detectors/  # TS-specific detector implementations
 │   │   │   ├── smells.py   # TS smell rules + brace-tracked multi-line helpers
 │   │   │   ├── deps.py     # TS import graph builder + dynamic import detection
@@ -50,15 +54,19 @@ desloppify/
 │   │   │   └── ...         # logs, exports, deprecated, react, concerns, patterns, props
 │   │   └── fixers/     # TS auto-fixers (unused imports, dead exports, etc.)
 │   │
-│   ├── python/         # Everything Python
-│   │   ├── __init__.py # PythonConfig + phase runners + config data (signals, rules)
-│   │   ├── commands.py # detect-subcommand wrappers + command registry
-│   │   ├── extractors.py  # extract_py_functions, extract_py_classes, detect_passthrough_functions
-│   │   ├── detectors/  # PY-specific detector implementations
-│   │   │   ├── smells.py   # PY smell rules + indentation-tracked multi-line helpers
-│   │   │   ├── deps.py     # Python import graph builder
-│   │   │   └── unused.py   # ruff-based unused detection
-│   │   └── fixers/     # PY auto-fixers (none yet — structural placeholder)
+│   └── python/         # Everything Python
+│       ├── __init__.py # PythonConfig assembly
+│       ├── phases.py   # Phase runners + config constants (signals, rules)
+│       ├── commands.py # detect-subcommand wrappers + command registry
+│       ├── extractors.py  # extract_py_functions, extract_py_classes, detect_passthrough_functions
+│       ├── move.py     # Move/import-rewrite helpers for `desloppify move`
+│       ├── review.py   # Subjective-review language guidance
+│       ├── test_coverage.py # Test mapping + quality heuristics
+│       ├── detectors/  # PY-specific detector implementations
+│       │   ├── smells.py   # PY smell rules + indentation-tracked multi-line helpers
+│       │   ├── deps.py     # Python import graph builder
+│       │   └── unused.py   # ruff-based unused detection
+│       └── fixers/     # PY auto-fixers (none yet — structural placeholder)
 │   │
 │   └── csharp/         # Everything C#/.NET
 │       ├── __init__.py # CSharpConfig + phase runners + config data
@@ -97,11 +105,13 @@ detect:  LangConfig.detect_commands[name](args) → display
 
 **Extractor**: `extract_*(filepath) → list[FunctionInfo|ClassInfo]` — language-specific parsing that produces shared data types.
 
-**Phase runner**: `_phase_*(path, lang) → list[dict]` — thin orchestrators: extractors → generic algorithms → shared normalization helpers. Config data (signals, rules, thresholds) lives as module-level constants in `__init__.py`.
+**Phase runner**: `_phase_*(path, lang) → list[dict]` — thin orchestrators: extractors → generic algorithms → shared normalization helpers. Config data (signals, rules, thresholds) lives as module-level constants in `phases.py`.
 
 **Cmd wrapper**: `cmd_<name>(args) → None` — CLI display function in `lang/<name>/commands.py`. Each language owns all its cmd wrappers — no generic cmd_* in `detectors/`.
 
-**LangConfig**: Dataclass in `lang/<name>/__init__.py`. Key fields: `phases`, `build_dep_graph`, `detect_commands`, `file_finder`, `extract_functions`, `entry_patterns`, `barrel_names`. Auto-discovered — adding a language requires zero changes to shared code. Validated at registration: each plugin must have `commands.py`, `extractors.py`, `detectors/`, and `fixers/` (each dir with `__init__.py`).
+**LangConfig**: Dataclass in `lang/<name>/__init__.py`. Key fields: `phases`, `build_dep_graph`, `detect_commands`, `file_finder`, `extract_functions`, `detect_markers`, `entry_patterns`, `barrel_names`. Auto-discovered — adding a language requires zero shared-core edits. Validated at registration: each plugin must have `commands.py`, `extractors.py`, `phases.py`, `move.py`, `review.py`, `test_coverage.py`, plus `detectors/`, `fixers/`, and `tests/` (each dir with `__init__.py`), and at least one `tests/test_*.py`. `detect_commands` keys are standardized to lowercase snake_case.
+
+Bootstrap command: `desloppify dev scaffold-lang <name> --extension .ext --marker <root-marker>`.
 
 ## Non-Obvious Behavior
 

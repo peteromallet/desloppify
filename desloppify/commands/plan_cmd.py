@@ -4,7 +4,7 @@ from ..utils import colorize
 from ._helpers import state_path
 
 
-def cmd_plan_output(args):
+def cmd_plan_output(args) -> None:
     """Generate a prioritized markdown plan from state."""
     from ..state import load_state
     from ..plan import generate_plan_md

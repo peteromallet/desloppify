@@ -82,6 +82,16 @@ class TestBroadExcept:
         entries, _ = detect_smells(path)
         assert "broad_except" not in _smell_ids(entries)
 
+    def test_except_base_exception(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            try:
+                pass
+            except BaseException:
+                raise
+        """)
+        entries, _ = detect_smells(path)
+        assert "broad_except" in _smell_ids(entries)
+
 
 class TestMutableDefault:
     def test_list_default(self, tmp_path):

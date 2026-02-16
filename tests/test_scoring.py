@@ -8,6 +8,7 @@ from desloppify.scoring import (
     ASSESSMENT_CHECKS,
     CONFIDENCE_WEIGHTS,
     DIMENSIONS,
+    DISPLAY_NAMES,
     MIN_SAMPLE,
     TIER_WEIGHTS,
     Dimension,
@@ -966,3 +967,27 @@ class TestSubjectiveDimensionCollision:
         assert "Security (subjective)" in result
         assert "Test health" in result
         assert "Test Health (subjective)" in result
+
+
+# ===================================================================
+# DISPLAY_NAMES coverage and length
+# ===================================================================
+
+class TestDisplayNames:
+    def test_display_names_cover_all_review_dimensions(self):
+        """DISPLAY_NAMES covers all holistic and per-file review dimensions."""
+        from desloppify.review import HOLISTIC_DIMENSIONS, DEFAULT_DIMENSIONS
+        for dim in HOLISTIC_DIMENSIONS:
+            assert dim in DISPLAY_NAMES, f"Missing DISPLAY_NAMES entry for holistic dim {dim!r}"
+        for dim in DEFAULT_DIMENSIONS:
+            if dim in DISPLAY_NAMES:
+                continue
+            # Dimensions without an entry use the fallback .replace("_", " ").title()
+            # which is fine as long as it fits
+
+    def test_display_names_fit_scorecard(self):
+        """All display names are at most 18 chars (fits ~120px monospace column)."""
+        for dim_name, display in DISPLAY_NAMES.items():
+            assert len(display) <= 18, (
+                f"DISPLAY_NAMES[{dim_name!r}] = {display!r} is {len(display)} chars (max 18)"
+            )

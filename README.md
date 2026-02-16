@@ -6,7 +6,9 @@ Every scan generates a scorecard badge you can add to your README — here's the
 
 <img src="scorecard.png" width="100%">
 
-## For your agent's consideration
+Adding a new language plugin? See `ADDING_NEW_LANGUAGE.md`.
+
+## For your agent's consideration...
 
 Copy-paste into any AI coding agent (Cursor, Codex, Copilot, etc.):
 
@@ -30,8 +32,110 @@ desloppify itself, tell me and ask if I want you to log an issue. If you need to
 how desloppify works or debug an issue: git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify
 
 If you're Claude Code, also run:
-mkdir -p .claude/skills/desloppify && curl -sL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md -o .claude/skills/desloppify/SKILL.md
+mkdir -p .claude/skills/desloppify && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CLAUDE.md; } > .claude/skills/desloppify/SKILL.md
+
+If you're Codex, also run:
+mkdir -p .agents/skills/desloppify && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CODEX.md; } > .agents/skills/desloppify/SKILL.md
+
+If your Codex build reads $CODEX_HOME/skills, also run:
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/desloppify" && cp .agents/skills/desloppify/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/desloppify/SKILL.md"
 ```
+
+### Agent-specific skill install (core + overlay)
+
+Run exactly one of the following.
+
+#### Claude Code
+
+```bash
+mkdir -p .claude/skills/desloppify && {
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md
+  printf '\n\n'
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CLAUDE.md
+} > .claude/skills/desloppify/SKILL.md
+```
+
+#### Codex (documented path: `.agents/skills`)
+
+```bash
+mkdir -p .agents/skills/desloppify && {
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md
+  printf '\n\n'
+  curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CODEX.md
+} > .agents/skills/desloppify/SKILL.md
+```
+
+Optional compatibility copy for Codex builds that still read `$CODEX_HOME/skills`:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/desloppify" \
+  && cp .agents/skills/desloppify/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/desloppify/SKILL.md"
+```
+
+### Deploy isolated reviewers
+
+#### Claude Code (first-class subagents)
+
+```bash
+mkdir -p .claude/agents && cat > .claude/agents/desloppify-reviewer.md <<'EOF'
+---
+name: desloppify-reviewer
+description: Blind subjective reviewer for desloppify packets.
+---
+You are an isolated reviewer for subjective desloppify scans.
+
+Only use .desloppify/review_packet_blind.json and referenced source files.
+Do not use prior chat context, score history, or narrative summaries.
+Return JSON only:
+{"assessments":{"naming_quality":0,"error_consistency":0,"abstraction_fit":0,"logic_clarity":0,"ai_generated_debt":0},"findings":[]}
+EOF
+```
+
+Use `/agents` in Claude Code and delegate subjective review tasks to `desloppify-reviewer`.
+
+#### Codex (equivalent isolation pattern)
+
+Codex currently uses isolated tasks/worktrees rather than named subagents.
+
+```bash
+REVIEW_DIR="../$(basename "$PWD")-review-$(date +%Y%m%d%H%M%S)"
+git worktree add --detach "$REVIEW_DIR"
+mkdir -p "$REVIEW_DIR/.desloppify"
+cp .desloppify/review_packet_blind.json "$REVIEW_DIR/.desloppify/review_packet_blind.json"
+```
+
+Then run a new Codex thread (or cloud task) from `"$REVIEW_DIR"` for the subjective review.
+
+### Isolated subjective reviews (recommended)
+
+When you want a clean review that is not biased by score history:
+
+1. Prepare review data:
+
+```bash
+desloppify review --prepare --path .
+```
+
+2. Create a blind packet:
+
+```bash
+jq 'del(.narrative, .objective_score, .strict_score, .dimension_scores, .stats, .scan_count, .last_scan)' \
+  .desloppify/query.json > .desloppify/review_packet_blind.json
+```
+
+3. Run the review in an isolated agent context:
+
+- Claude Code: use `/agents` with `desloppify-reviewer`, or a skill with `context: fork`.
+- Codex app/CLI: run a new thread on a dedicated worktree.
+- Codex web: delegate a separate cloud task (each task has its own environment).
+
+### If desloppify looks inconsistent
+
+When an agent sees likely tool bugs, confusing behavior, or documentation mismatch:
+
+1. Open an issue in `peteromallet/desloppify` with repro steps and expected vs actual behavior.
+2. If you have a concrete fix, open a PR linked to that issue.
+3. If unclear whether it is usage error vs tool bug, open the issue first, then follow with a PR if needed.
 
 ## From Vibe Coding to Vibe Engineering
 
@@ -66,12 +170,13 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 | `plan` | Prioritized markdown plan |
 | `tree` | Annotated codebase tree |
 | `viz` | Interactive HTML treemap |
+| `dev scaffold-lang` | Generate a standardized language plugin scaffold |
 
 #### Detectors
 
-**TypeScript/React**: logs, unused, exports, deprecated, large, complexity, gods, single-use, props, passthrough, concerns, deps, dupes, smells, coupling, patterns, naming, cycles, orphaned, react
+**TypeScript/React**: logs, unused, exports, deprecated, large, complexity, gods, single_use, props, passthrough, concerns, deps, dupes, smells, coupling, patterns, naming, cycles, orphaned, react
 
-**Python**: unused, large, complexity, gods, passthrough, smells, dupes, deps, cycles, orphaned, single-use, naming
+**Python**: unused, large, complexity, gods, props, smells, dupes, deps, cycles, orphaned, single_use, naming
 
 **C#/.NET (MVP)**: deps, cycles, orphaned, dupes, large, complexity
 
@@ -92,7 +197,7 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 |------|----------|----------|
 | T1 | Auto-fixable | Unused imports, debug logs |
 | T2 | Quick manual | Unused vars, dead exports |
-| T3 | Needs judgment | Near-dupes, single-use abstractions |
+| T3 | Needs judgment | Near-dupes, single_use abstractions |
 | T4 | Major refactor | God components, mixed concerns |
 
 Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
@@ -121,14 +226,24 @@ Useful hardening knobs:
 
 #### Adding a language
 
-Create `desloppify/lang/<name>/` with `__init__.py`, `commands.py`, `extractors.py`, `detectors/`, `fixers/`. Validated at registration. Zero shared code changes. See `lang/python/` for example.
+Use the scaffold workflow documented in `ADDING_NEW_LANGUAGE.md`:
+
+```bash
+desloppify dev scaffold-lang <name> --extension .ext --marker <root-marker>
+```
+
+Detect command keys are standardized to snake_case. CLI compatibility aliases
+like `single-use` and legacy `passthrough` are still accepted.
+Standard plugin shape: `__init__.py`, `commands.py`, `extractors.py`, `phases.py`,
+`move.py`, `review.py`, `test_coverage.py`, plus `detectors/`, `fixers/`, and `tests/`.
+Validated at registration. Zero shared code changes.
 
 #### Architecture
 
 ```
 detectors/              ← Generic algorithms (zero language knowledge)
 lang/base.py            ← Shared finding helpers
-lang/<name>/            ← Language config + phase runners + extractors + detectors + fixers
+lang/<name>/            ← Language config + phases + extractors + detectors + fixers
 ```
 
 Import direction: `lang/` → `detectors/`. Never the reverse.

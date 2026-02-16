@@ -145,13 +145,21 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
 
     structural: dict[str, dict] = {}
 
-    large_entries, file_count = detect_large_files(path, file_finder=lang.file_finder)
+    large_entries, file_count = detect_large_files(
+        path,
+        file_finder=lang.file_finder,
+        threshold=lang.large_threshold,
+    )
     for e in large_entries:
         add_structural_signal(structural, e["file"], f"large ({e['loc']} LOC)",
                               {"loc": e["loc"]})
 
-    complexity_entries, _ = detect_complexity(path, signals=TS_COMPLEXITY_SIGNALS,
-                                              file_finder=lang.file_finder)
+    complexity_entries, _ = detect_complexity(
+        path,
+        signals=TS_COMPLEXITY_SIGNALS,
+        file_finder=lang.file_finder,
+        threshold=lang.complexity_threshold,
+    )
     for e in complexity_entries:
         add_structural_signal(structural, e["file"], f"complexity score {e['score']}",
                               {"complexity_score": e["score"], "complexity_signals": e["signals"]})
@@ -244,7 +252,8 @@ def _make_boundary_findings(
     results = []
     deduped = 0
     boundary_entries, total_shared = detect_boundary_candidates(
-        path, graph, shared_prefix=shared_prefix, tools_prefix=tools_prefix)
+        path, graph, shared_prefix=shared_prefix, tools_prefix=tools_prefix,
+        skip_basenames={"index.ts", "index.tsx"})
     for e in boundary_entries:
         if rel(e["file"]) in single_use_emitted:
             deduped += 1
@@ -267,6 +276,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     from ...detectors.graph import detect_cycles
     from ...detectors.coupling import detect_coupling_violations, detect_cross_tool_imports
     from ...detectors.orphaned import detect_orphaned_files
+    from .detectors.facade import detect_reexport_facades
     from ...detectors.naming import detect_naming_inconsistencies
     from ...utils import SRC_PATH
     from .detectors.deps import build_dep_graph, build_dynamic_import_targets, ts_alias_resolver
@@ -330,8 +340,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     results.extend(make_orphaned_findings(orphan_entries, log))
 
     # Re-export facades (shared detector)
-    from ...detectors.facade import detect_reexport_facades
-    facade_entries, _ = detect_reexport_facades(graph, lang="typescript")
+    facade_entries, _ = detect_reexport_facades(graph)
     facade_entries = filter_entries(zm, facade_entries, "facade")
     results.extend(make_facade_findings(facade_entries, log))
 
