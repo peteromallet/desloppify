@@ -52,6 +52,18 @@ class TestDetectSingleUseAbstractions:
         entries, total = detect_single_use_abstractions(tmp_path, graph, barrel_names=set())
         assert entries == []
 
+    def test_test_only_importer_is_skipped(self, tmp_path):
+        """Single-use modules imported only from tests are not inlining targets."""
+        target = tmp_path / "helper.py"
+        target.write_text("\n".join(f"line_{i} = {i}" for i in range(50)))
+
+        graph = {
+            str(target): _make_graph_entry({str(tmp_path / "tests" / "test_helper.py")}),
+        }
+        entries, total = detect_single_use_abstractions(tmp_path, graph, barrel_names=set())
+        assert entries == []
+        assert total == 0
+
     def test_barrel_files_skipped(self, tmp_path):
         """Barrel files (e.g., index.ts, __init__.py) should be skipped."""
         target = tmp_path / "index.ts"

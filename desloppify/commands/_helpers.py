@@ -3,46 +3,38 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..state import json_default
-from ..utils import PROJECT_ROOT
+from ..utils import PROJECT_ROOT, colorize
 
 if TYPE_CHECKING:
     from ..lang.base import LangConfig
 
 
 QUERY_FILE = PROJECT_ROOT / ".desloppify" / "query.json"
-EXTRA_ROOT_MARKERS = (
-    "package.json",
-    "pyproject.toml",
-    "setup.py",
-    "setup.cfg",
-    "go.mod",
-    "Cargo.toml",
-)
+LOGGER = logging.getLogger(__name__)
+EXTRA_ROOT_MARKERS = ("package.json", "pyproject.toml", "setup.py", "setup.cfg", "go.mod", "Cargo.toml")
 
 
 def _write_query(data: dict):
-    """Write structured query output to .desloppify/query.json.
-
-    Every query command calls this so the LLM can always Read the file
-    instead of parsing terminal output. Auto-includes config for agent visibility.
-    """
+    """Write structured query output to .desloppify/query.json."""
     if "config" not in data:
         try:
             from ..config import load_config, config_for_query
             data["config"] = config_for_query(load_config())
-        except (OSError, ValueError, json.JSONDecodeError):
-            pass  # Non-fatal — config is a convenience, not required
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            LOGGER.debug("Could not include config in query payload", exc_info=exc)
     try:
         from ..utils import safe_write_text
         safe_write_text(QUERY_FILE, json.dumps(data, indent=2, default=json_default) + "\n")
-        print(f"  \u2192 query.json updated", file=sys.stderr)
+        print("  \u2192 query.json updated", file=sys.stderr)
     except OSError as e:
+        data["query_write_error"] = str(e)
         print(f"  \u26a0 Could not write query.json: {e}", file=sys.stderr)
 
 
@@ -52,13 +44,15 @@ def _lang_config_markers() -> tuple[str, ...]:
     markers = set(EXTRA_ROOT_MARKERS)
     try:
         from ..lang import available_langs, get_lang
-    except Exception:
+    except Exception as exc:
+        LOGGER.debug("Could not load language registry while collecting root markers", exc_info=exc)
         return tuple(sorted(markers))
 
     for lang_name in available_langs():
         try:
             cfg = get_lang(lang_name)
-        except Exception:
+        except Exception as exc:
+            LOGGER.debug("Skipping language while collecting root markers: %s", lang_name, exc_info=exc)
             continue
         for marker in getattr(cfg, "detect_markers", []) or []:
             if not isinstance(marker, str):
@@ -75,12 +69,7 @@ def _looks_like_project_root(path: Path) -> bool:
 
 
 def _resolve_detection_root(args) -> Path:
-    """Best root to auto-detect language from.
-
-    Prefer --path when it points to (or is under) a project root with language
-    config markers. When no marker is found, fall back to the provided path
-    subtree so file-count detection can choose a local language.
-    """
+    """Best root to auto-detect language from."""
     raw_path = getattr(args, "path", None)
     if not raw_path:
         return PROJECT_ROOT
@@ -94,8 +83,6 @@ def _resolve_detection_root(args) -> Path:
     for root in (search_root, *search_root.parents):
         if _looks_like_project_root(root):
             return root
-    # No marker found — prefer the user-provided path subtree so file-count
-    # based detection can still pick the local language.
     return search_root
 
 
@@ -115,7 +102,6 @@ def state_path(args) -> Path | None:
     p = getattr(args, "state", None)
     if p:
         return Path(p)
-    # Per-language state files when --lang is explicit or auto-detected
     lang_name = getattr(args, "lang", None)
     if not lang_name:
         lang_name = _auto_detect_lang_name(args)
@@ -140,8 +126,7 @@ def resolve_lang(args) -> LangConfig | None:
         langs = available_langs()
         langs_str = ", ".join(langs) if langs else "registered language plugins"
         print(colorize(f"  {e}", "red"), file=sys.stderr)
-        print(colorize(f"  Hint: use --lang to select manually (available: {langs_str})", "dim"),
-              file=sys.stderr)
+        print(colorize(f"  Hint: use --lang to select manually (available: {langs_str})", "dim"), file=sys.stderr)
         sys.exit(1)
 
 
@@ -197,3 +182,112 @@ def resolve_lang_settings(config: dict, lang: LangConfig) -> dict[str, object]:
         return lang.normalize_settings({})
     raw = languages.get(lang.name, {})
     return lang.normalize_settings(raw if isinstance(raw, dict) else {})
+
+
+def show_narrative_reminders(
+    narrative: dict | None,
+    *,
+    limit: int = 3,
+    skip_types: set[str] | None = None,
+    header: str = "Reminders:",
+) -> int:
+    """Render top narrative reminders for terminal output."""
+    if not isinstance(narrative, dict):
+        return 0
+    reminders = narrative.get("reminders")
+    if not isinstance(reminders, list) or limit <= 0:
+        return 0
+
+    skip = skip_types or set()
+    shown: list[str] = []
+    for reminder in reminders:
+        if not isinstance(reminder, dict):
+            continue
+        reminder_type = reminder.get("type", "")
+        if isinstance(reminder_type, str) and reminder_type in skip:
+            continue
+        message = reminder.get("message")
+        if not isinstance(message, str):
+            continue
+        text = message.strip()
+        if not text:
+            continue
+        shown.append(text)
+        if len(shown) >= limit:
+            break
+
+    if not shown:
+        return 0
+
+    if header:
+        print(colorize(f"  {header}", "dim"))
+    for text in shown:
+        print(colorize(f"  - {text}", "dim"))
+    print()
+    return len(shown)
+
+
+def show_narrative_plan(
+    narrative: dict | None,
+    *,
+    header: str = "Narrative Plan:",
+    max_risks: int = 2,
+) -> int:
+    """Render high-signal narrative contract fields for operator context."""
+    if not isinstance(narrative, dict):
+        return 0
+
+    lines: list[str] = []
+
+    why_now = narrative.get("why_now")
+    if isinstance(why_now, str) and why_now.strip():
+        lines.append(f"Why now: {why_now.strip()}")
+
+    primary_action = narrative.get("primary_action")
+    if isinstance(primary_action, dict):
+        command = primary_action.get("command")
+        description = primary_action.get("description")
+        if isinstance(command, str) and command.strip():
+            if isinstance(description, str) and description.strip():
+                lines.append(f"Do: `{command.strip()}` — {description.strip()}")
+            else:
+                lines.append(f"Do: `{command.strip()}`")
+
+    verification = narrative.get("verification_step")
+    if isinstance(verification, dict):
+        command = verification.get("command")
+        reason = verification.get("reason")
+        if isinstance(command, str) and command.strip():
+            if isinstance(reason, str) and reason.strip():
+                lines.append(f"Verify: `{command.strip()}` — {reason.strip()}")
+            else:
+                lines.append(f"Verify: `{command.strip()}`")
+
+    risk_flags = narrative.get("risk_flags")
+    if isinstance(risk_flags, list) and max_risks > 0:
+        risk_parts: list[str] = []
+        for risk in risk_flags:
+            if not isinstance(risk, dict):
+                continue
+            message = risk.get("message")
+            if not isinstance(message, str) or not message.strip():
+                continue
+            severity = risk.get("severity")
+            if isinstance(severity, str) and severity.strip():
+                risk_parts.append(f"[{severity.strip()}] {message.strip()}")
+            else:
+                risk_parts.append(message.strip())
+            if len(risk_parts) >= max_risks:
+                break
+        if risk_parts:
+            lines.append("Risks: " + " | ".join(risk_parts))
+
+    if not lines:
+        return 0
+
+    if header:
+        print(colorize(f"  {header}", "dim"))
+    for line in lines:
+        print(colorize(f"  - {line}", "dim"))
+    print()
+    return len(lines)

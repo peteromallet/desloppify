@@ -210,6 +210,46 @@ class TestLoadState:
         s = load_state(p)
         assert s["hello"] == "world"
 
+    def test_migrates_legacy_resolved_status(self, tmp_path):
+        p = tmp_path / "state.json"
+        data = {
+            "version": 1,
+            "findings": {
+                "det::a.py::fn": {
+                    "id": "det::a.py::fn",
+                    "detector": "det",
+                    "file": "a.py",
+                    "tier": 3,
+                    "confidence": "medium",
+                    "summary": "legacy",
+                    "detail": {},
+                    "status": "resolved",
+                    "note": None,
+                    "first_seen": "2026-01-01T00:00:00+00:00",
+                    "last_seen": "2026-01-01T00:00:00+00:00",
+                    "resolved_at": "2026-01-02T00:00:00+00:00",
+                    "reopen_count": 0,
+                }
+            },
+        }
+        p.write_text(json.dumps(data))
+        s = load_state(p)
+        assert s["findings"]["det::a.py::fn"]["status"] == "fixed"
+
+    def test_migrates_subjective_assessment_alias_keys(self, tmp_path):
+        p = tmp_path / "state.json"
+        data = {
+            "version": 1,
+            "findings": {},
+            "subjective_assessments": {
+                "naming": {"score": 75, "source": "per_file", "assessed_at": "2026-01-01T00:00:00+00:00"},
+            },
+        }
+        p.write_text(json.dumps(data))
+        s = load_state(p)
+        assert "naming_quality" in s["subjective_assessments"]
+        assert "naming" not in s["subjective_assessments"]
+
     def test_corrupt_json_tries_backup(self, tmp_path):
         p = tmp_path / "state.json"
         p.write_text("{bad json!!")
@@ -354,6 +394,18 @@ class TestUpsertFindings:
         assert existing["det::a.py::fn"]["reopen_count"] == 1
         assert existing["det::a.py::fn"]["resolved_at"] is None
         assert "Reopened" in existing["det::a.py::fn"]["note"]
+
+    def test_legacy_resolved_status_gets_reopened(self):
+        old = _make_raw_finding("det::a.py::fn", detector="det", file="a.py",
+                                status="resolved")
+        old["resolved_at"] = "2025-03-01T00:00:00+00:00"
+        existing = {"det::a.py::fn": old}
+
+        current = _make_raw_finding("det::a.py::fn", detector="det", file="a.py")
+        _ids, _new, reopened, _by_det, _ign = self._call(existing, [current])
+        assert reopened == 1
+        assert existing["det::a.py::fn"]["status"] == "open"
+        assert existing["det::a.py::fn"]["resolved_at"] is None
 
     def test_fixed_finding_gets_reopened(self):
         old = _make_raw_finding("det::a.py::fn", detector="det", file="a.py",

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import ast
+import logging
 import re
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, find_py_files
+
+LOGGER = logging.getLogger(__name__)
 
 
 # Mutable initializer values
@@ -178,12 +181,14 @@ def _detect_stale_imports(
         try:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during stale-import detection: %s", filepath, exc_info=exc)
             continue
 
         try:
             tree = ast.parse(content)
-        except SyntaxError:
+        except SyntaxError as exc:
+            LOGGER.debug("Skipping unparsable file during stale-import detection: %s", filepath, exc_info=exc)
             continue
 
         for node in ast.walk(tree):
@@ -230,12 +235,14 @@ def detect_global_mutable_config(path: Path) -> tuple[list[dict], int]:
         try:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during mutable-state scan: %s", filepath, exc_info=exc)
             continue
 
         try:
             tree = ast.parse(content)
-        except SyntaxError:
+        except SyntaxError as exc:
+            LOGGER.debug("Skipping unparsable file during mutable-state scan: %s", filepath, exc_info=exc)
             continue
 
         _detect_in_module(filepath, tree, entries)

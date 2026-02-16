@@ -46,3 +46,13 @@ def test_ignores_non_forbidden_relative_import(tmp_path):
     )
     entries, _ = detect_layer_violations(tmp_path, lambda _p: [rel_path])
     assert entries == []
+
+
+def test_ignores_language_plugin_detector_internal_imports(tmp_path):
+    rel_path = _write(
+        tmp_path,
+        "desloppify/lang/python/detectors/smells.py",
+        "from .smells_ast import detect_smells\n",
+    )
+    entries, _ = detect_layer_violations(tmp_path, lambda _p: [rel_path])
+    assert entries == []

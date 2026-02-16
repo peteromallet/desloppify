@@ -13,7 +13,7 @@ from ..zones import Zone
 def cmd_zone(args: argparse.Namespace) -> None:
     """Handle zone subcommands: show, set, clear."""
     action = getattr(args, "zone_action", None)
-    if action == "show":
+    if action in (None, "show"):
         _zone_show(args)
     elif action == "set":
         _zone_set(args)

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from ....utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
+
+LOGGER = logging.getLogger(__name__)
 
 
 def detect_mixed_concerns(path: Path) -> tuple[list[dict[str, Any]], int]:
@@ -62,7 +65,8 @@ def detect_mixed_concerns(path: Path) -> tuple[list[dict[str, Any]], int]:
                     "concerns": concerns,
                     "concern_count": len(concerns),
                 })
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable TSX file during concern scan: %s", filepath, exc_info=exc)
             continue
     return sorted(entries, key=lambda e: -e["concern_count"]), len(files)
 

@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import sys
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -21,50 +22,52 @@ DEFAULT_EXCLUSIONS = frozenset({
 })
 
 # Extra exclusions set via --exclude CLI flag, applied to all file discovery
-_extra_exclusions: tuple[str, ...] = ()
+_EXTRA_EXCLUSIONS_STATE: dict[str, tuple[str, ...]] = {"value": ()}
+# Backward-compatible alias used by tests and older call sites.
+_extra_exclusions: tuple[str, ...] = _EXTRA_EXCLUSIONS_STATE["value"]
 
 
 def set_exclusions(patterns: list[str]):
     """Set global exclusion patterns (called once from CLI at startup)."""
-    global _extra_exclusions
-    _extra_exclusions = tuple(patterns)
+    value = tuple(patterns)
+    _EXTRA_EXCLUSIONS_STATE["value"] = value
+    globals()["_extra_exclusions"] = value
     _find_source_files_cached.cache_clear()
 
 
 def get_exclusions() -> tuple[str, ...]:
     """Return current extra exclusion patterns.
 
-    Use this instead of accessing _extra_exclusions directly —
+    Use this instead of accessing the mutable exclusion state directly —
     from-imports bind to the initial value and become stale after set_exclusions().
     """
-    return _extra_exclusions
+    return _EXTRA_EXCLUSIONS_STATE["value"]
 
 
 # ── File content cache (opt-in, scan-scoped) ─────────────
 
-_file_cache: dict[str, str | None] = {}
-_cache_enabled = False
+_FILE_CACHE: dict[str, str | None] = {}
+_CACHE_FLAGS = {"enabled": False}
+
+
+def is_file_cache_enabled() -> bool:
+    """Whether the scan-scoped file content cache is currently enabled."""
+    return bool(_CACHE_FLAGS["enabled"])
 
 
 def enable_file_cache():
     """Enable scan-scoped file content cache."""
-    global _cache_enabled
-    _cache_enabled = True
-    _file_cache.clear()
+    _CACHE_FLAGS["enabled"] = True
+    _FILE_CACHE.clear()
 
 
 def disable_file_cache():
     """Disable file content cache and free memory."""
-    global _cache_enabled
-    _cache_enabled = False
-    _file_cache.clear()
+    _CACHE_FLAGS["enabled"] = False
+    _FILE_CACHE.clear()
 
 
 # ── Atomic file writes ─────────────────────────────────────
-
-import tempfile
-
-
 def safe_write_text(filepath: str | Path, content: str) -> None:
     """Atomically write text to a file using temp+rename."""
     p = Path(filepath)
@@ -87,15 +90,14 @@ def safe_write_text(filepath: str | Path, content: str) -> None:
 
 def read_file_text(filepath: str) -> str | None:
     """Read a file as text, with optional caching."""
-    if _cache_enabled:
-        if filepath in _file_cache:
-            return _file_cache[filepath]
+    if _CACHE_FLAGS["enabled"] and filepath in _FILE_CACHE:
+        return _FILE_CACHE[filepath]
     try:
         content = Path(filepath).read_text(errors="replace")
     except OSError:
         content = None
-    if _cache_enabled:
-        _file_cache[filepath] = content
+    if _CACHE_FLAGS["enabled"]:
+        _FILE_CACHE[filepath] = content
     return content
 
 
@@ -298,17 +300,19 @@ def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
 @lru_cache(maxsize=16)
 def _find_source_files_cached(path: str, extensions: tuple[str, ...],
                                exclusions: tuple[str, ...] | None = None,
-                               extra_exclusions: tuple[str, ...] = ()) -> tuple[str, ...]:
+                               extra_exclusions: tuple[str, ...] = (),
+                               project_root: str = ".") -> tuple[str, ...]:
     """Cached file discovery using os.walk — cross-platform, prunes during traversal."""
+    project_root_path = Path(project_root)
     root = Path(path)
     if not root.is_absolute():
-        root = PROJECT_ROOT / root
+        root = project_root_path / root
     all_exclusions = (exclusions or ()) + extra_exclusions
     ext_set = set(extensions)
     files: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune excluded directories in-place (prevents descending into them)
-        rel_dir = _normalize_path_separators(_safe_relpath(dirpath, PROJECT_ROOT))
+        rel_dir = _normalize_path_separators(_safe_relpath(dirpath, project_root_path))
         dirnames[:] = sorted(
             d for d in dirnames
             if not _is_excluded_dir(d, rel_dir + "/" + d, all_exclusions)
@@ -316,7 +320,7 @@ def _find_source_files_cached(path: str, extensions: tuple[str, ...],
         for fname in filenames:
             if any(fname.endswith(ext) for ext in ext_set):
                 full = os.path.join(dirpath, fname)
-                rel_file = _normalize_path_separators(_safe_relpath(full, PROJECT_ROOT))
+                rel_file = _normalize_path_separators(_safe_relpath(full, project_root_path))
                 if all_exclusions and any(matches_exclusion(rel_file, ex) for ex in all_exclusions):
                     continue
                 files.append(rel_file)
@@ -326,10 +330,10 @@ def _find_source_files_cached(path: str, extensions: tuple[str, ...],
 def find_source_files(path: str | Path, extensions: list[str],
                       exclusions: list[str] | None = None) -> list[str]:
     """Find all files with given extensions under a path, excluding patterns."""
-    # Pass _extra_exclusions as part of the cache key so changes invalidate cached results
+    # Pass runtime exclusions as part of cache key so updates invalidate cached results.
     return list(_find_source_files_cached(
         str(path), tuple(extensions), tuple(exclusions) if exclusions else None,
-        _extra_exclusions))
+        _EXTRA_EXCLUSIONS_STATE["value"], str(PROJECT_ROOT)))
 
 
 def find_ts_files(path: str | Path) -> list[str]:

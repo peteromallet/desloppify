@@ -4,22 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import utils as _utils_mod
-from ..utils import rel, enable_file_cache, disable_file_cache, read_file_text
-from .context import (
-    build_review_context, _serialize_context,
-    _abs, _dep_graph_lookup, _importer_count,
-)
+from ..utils import rel, enable_file_cache, disable_file_cache, read_file_text, is_file_cache_enabled
+from .context import build_review_context, _serialize_context, _abs, _dep_graph_lookup, _importer_count
 from .context_holistic import build_holistic_context
-from .selection import (
-    select_files_for_review, _get_file_findings, _count_fresh, _count_stale,
-)
-from .dimensions import (
-    DEFAULT_DIMENSIONS, DIMENSION_PROMPTS,
-    HOLISTIC_DIMENSIONS, HOLISTIC_DIMENSIONS_BY_LANG, HOLISTIC_DIMENSION_PROMPTS,
-    REVIEW_SYSTEM_PROMPT, HOLISTIC_REVIEW_SYSTEM_PROMPT,
-    get_lang_guidance,
-)
+from .selection import select_files_for_review, _get_file_findings, _count_fresh, _count_stale
+from .dimensions import DEFAULT_DIMENSIONS, DIMENSION_PROMPTS, HOLISTIC_DIMENSIONS, HOLISTIC_DIMENSIONS_BY_LANG
+from .dimensions import HOLISTIC_DIMENSION_PROMPTS, REVIEW_SYSTEM_PROMPT, HOLISTIC_REVIEW_SYSTEM_PROMPT, get_lang_guidance
+from .policy import build_dimension_policy, normalize_dimension_inputs
 
 
 def _rel_list(s) -> list[str]:
@@ -34,34 +25,43 @@ def prepare_review(path: Path, lang, state: dict, *,
                    force_refresh: bool = False,
                    dimensions: list[str] | None = None,
                    config_dimensions: list[str] | None = None,
+                   allow_custom_dimensions: bool = False,
+                   policy=None,
                    files: list[str] | None = None) -> dict:
-    """Prepare review data for agent consumption. Returns structured dict.
-
-    If *files* is provided, skip file_finder (avoids redundant filesystem walks
-    when the caller already has the file list, e.g. from _setup_lang).
-    """
+    """Prepare review data for agent consumption."""
     all_files = files if files is not None else (
         lang.file_finder(path) if lang.file_finder else []
     )
 
-    # Enable file cache for entire prepare operation — context building,
-    # file selection, and content extraction all read the same files.
-    already_cached = _utils_mod._cache_enabled
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:
         context = build_review_context(path, lang, state, files=all_files)
-        selected = select_files_for_review(lang, path, state,
-                                           max_files=max_files,
-                                           max_age_days=max_age_days,
-                                           force_refresh=force_refresh,
-                                           files=all_files)
+        selected = select_files_for_review(
+            lang, path, state, max_files=max_files, max_age_days=max_age_days, force_refresh=force_refresh, files=all_files
+        )
         file_requests = _build_file_requests(selected, lang, state)
     finally:
         if not already_cached:
             disable_file_cache()
 
-    dims = dimensions or config_dimensions or DEFAULT_DIMENSIONS
+    effective_policy = policy or build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=allow_custom_dimensions,
+    )
+    requested_dims, invalid_requested = normalize_dimension_inputs(
+        dimensions,
+        holistic=False,
+        policy=effective_policy,
+    )
+    configured_dims, invalid_config = normalize_dimension_inputs(
+        config_dimensions,
+        holistic=False,
+        policy=effective_policy,
+    )
+    dims = requested_dims or configured_dims or list(DEFAULT_DIMENSIONS)
     lang_guide = get_lang_guidance(lang.name)
 
     return {
@@ -79,6 +79,10 @@ def prepare_review(path: Path, lang, state: dict, *,
             "stale": _count_stale(state, max_age_days),
             "new": len(file_requests),
         },
+        "invalid_dimensions": {
+            "requested": invalid_requested,
+            "config": invalid_config,
+        },
     }
 
 
@@ -95,7 +99,6 @@ def _build_file_requests(files: list[str], lang, state: dict) -> list[dict]:
         if lang._zone_map is not None:
             zone = lang._zone_map.get(filepath).value
 
-        # Get import neighbors for context
         neighbors: dict = {}
         if lang._dep_graph:
             entry = _dep_graph_lookup(lang._dep_graph, filepath)
@@ -106,6 +109,13 @@ def _build_file_requests(files: list[str], lang, state: dict) -> list[dict]:
                 "importers": _rel_list(importers_raw),
                 "importer_count": _importer_count(entry),
             }
+            has_neighbors = bool(
+                neighbors["imports"]
+                or neighbors["importers"]
+                or neighbors["importer_count"] > 0
+            )
+            if not has_neighbors:
+                neighbors = {}
 
         file_requests.append({
             "file": rpath,
@@ -118,11 +128,9 @@ def _build_file_requests(files: list[str], lang, state: dict) -> list[dict]:
     return file_requests
 
 
-# ── Holistic review preparation ──────────────────────────────────
-
 _HOLISTIC_WORKFLOW = [
     "Read .desloppify/query.json for context, excerpts, and investigation batches",
-    "For each batch: read the listed files, evaluate the batch's dimensions (batches are independent — parallelize)",
+    "For each batch: read listed files and evaluate dimensions (batches are independent — parallelize)",
     "Cross-reference findings with the sibling_behavior and convention data",
     "For simple issues (missing import, wrong name): fix directly in code, then note as resolved",
     "For cross-cutting issues: write to findings.json (format described in system_prompt)",
@@ -133,13 +141,15 @@ _HOLISTIC_WORKFLOW = [
 
 def prepare_holistic_review(path: Path, lang, state: dict, *,
                             dimensions: list[str] | None = None,
+                            allow_custom_dimensions: bool = False,
+                            policy=None,
                             files: list[str] | None = None) -> dict:
     """Prepare holistic review data for agent consumption. Returns structured dict."""
     all_files = files if files is not None else (
         lang.file_finder(path) if lang.file_finder else []
     )
 
-    already_cached = _utils_mod._cache_enabled
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:
@@ -150,7 +160,23 @@ def prepare_holistic_review(path: Path, lang, state: dict, *,
         if not already_cached:
             disable_file_cache()
 
-    dims = dimensions or HOLISTIC_DIMENSIONS_BY_LANG.get(lang.name, HOLISTIC_DIMENSIONS)
+    effective_policy = policy or build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=allow_custom_dimensions,
+    )
+    requested_dims, invalid_requested = normalize_dimension_inputs(
+        dimensions,
+        holistic=True,
+        policy=effective_policy,
+    )
+    default_holistic = HOLISTIC_DIMENSIONS_BY_LANG.get(lang.name, HOLISTIC_DIMENSIONS)
+    default_dims, invalid_default = normalize_dimension_inputs(
+        list(default_holistic),
+        holistic=True,
+        policy=effective_policy,
+    )
+    dims = requested_dims or default_dims or list(HOLISTIC_DIMENSIONS)
     lang_guide = get_lang_guidance(lang.name)
     batches = _build_investigation_batches(context, lang)
 
@@ -159,8 +185,7 @@ def prepare_holistic_review(path: Path, lang, state: dict, *,
         "mode": "holistic",
         "language": lang.name,
         "dimensions": dims,
-        "dimension_prompts": {d: HOLISTIC_DIMENSION_PROMPTS[d]
-                              for d in dims if d in HOLISTIC_DIMENSION_PROMPTS},
+        "dimension_prompts": {d: HOLISTIC_DIMENSION_PROMPTS[d] for d in dims if d in HOLISTIC_DIMENSION_PROMPTS},
         "lang_guidance": lang_guide,
         "holistic_context": context,
         "review_context": _serialize_context(review_ctx),
@@ -168,6 +193,10 @@ def prepare_holistic_review(path: Path, lang, state: dict, *,
         "total_files": context.get("codebase_stats", {}).get("total_files", 0),
         "workflow": _HOLISTIC_WORKFLOW,
         "investigation_batches": batches,
+        "invalid_dimensions": {
+            "requested": invalid_requested,
+            "default": invalid_default,
+        },
     }
 
 
@@ -188,26 +217,18 @@ def _batch_arch_coupling(ctx: dict) -> dict:
     """Batch 1: Architecture & Coupling — god modules, import-time side effects."""
     arch = ctx.get("architecture", {})
     coupling = ctx.get("coupling", {})
-    files = _collect_unique_files([arch.get("god_modules", []),
-                                   coupling.get("module_level_io", [])])
-    return {"name": "Architecture & Coupling",
-            "dimensions": ["cross_module_architecture"],
-            "files_to_read": files,
-            "why": "god modules, import-time side effects"}
+    files = _collect_unique_files([arch.get("god_modules", []), coupling.get("module_level_io", [])])
+    return {"name": "Architecture & Coupling", "dimensions": ["cross_module_architecture"], "files_to_read": files, "why": "god modules, import-time side effects"}
 
 
 def _batch_conventions_errors(ctx: dict) -> dict:
     """Batch 2: Conventions & Errors — sibling behavior outliers, mixed strategies."""
     sibling = ctx.get("conventions", {}).get("sibling_behavior", {})
-    outlier_files = [{"file": o["file"]}
-                     for di in sibling.values() for o in di.get("outliers", [])]
+    outlier_files = [{"file": o["file"]} for di in sibling.values() for o in di.get("outliers", [])]
     error_dirs = ctx.get("errors", {}).get("strategy_by_directory", {})
     mixed = [{"file": d} for d, s in error_dirs.items() if len(s) >= 3]
     files = _collect_unique_files([outlier_files, mixed])
-    return {"name": "Conventions & Errors",
-            "dimensions": ["error_consistency"],
-            "files_to_read": files,
-            "why": "naming drift, behavioral outliers, mixed error strategies"}
+    return {"name": "Conventions & Errors", "dimensions": ["error_consistency"], "files_to_read": files, "why": "naming drift, behavioral outliers, mixed error strategies"}
 
 
 def _batch_abstractions_deps(ctx: dict) -> dict:
@@ -219,10 +240,7 @@ def _batch_abstractions_deps(ctx: dict) -> dict:
             if "/" in token and "." in token:
                 cycle_files.append({"file": token.strip(",'\"")})
     files = _collect_unique_files([util_files, cycle_files])
-    return {"name": "Abstractions & Dependencies",
-            "dimensions": ["abstraction_fitness", "dependency_health"],
-            "files_to_read": files,
-            "why": "util dumping grounds, dep cycles"}
+    return {"name": "Abstractions & Dependencies", "dimensions": ["abstraction_fitness", "dependency_health"], "files_to_read": files, "why": "util dumping grounds, dep cycles"}
 
 
 def _batch_testing_api(ctx: dict) -> dict:
@@ -230,10 +248,7 @@ def _batch_testing_api(ctx: dict) -> dict:
     critical = ctx.get("testing", {}).get("critical_untested", [])
     sync_async = [{"file": f} for f in ctx.get("api_surface", {}).get("sync_async_mix", [])]
     files = _collect_unique_files([critical, sync_async])
-    return {"name": "Testing & API",
-            "dimensions": ["test_strategy", "api_surface_coherence"],
-            "files_to_read": files,
-            "why": "critical untested paths, API inconsistency"}
+    return {"name": "Testing & API", "dimensions": ["test_strategy", "api_surface_coherence"], "files_to_read": files, "why": "critical untested paths, API inconsistency"}
 
 
 def _batch_authorization(ctx: dict) -> dict:
@@ -246,10 +261,7 @@ def _batch_authorization(ctx: dict) -> dict:
     for rpath in auth_ctx.get("service_role_usage", []):
         auth_files.append({"file": rpath})
     files = _collect_unique_files([auth_files])
-    return {"name": "Authorization",
-            "dimensions": ["authorization_consistency"],
-            "files_to_read": files,
-            "why": "auth gaps, service role usage, RLS coverage"}
+    return {"name": "Authorization", "dimensions": ["authorization_consistency"], "files_to_read": files, "why": "auth gaps, service role usage, RLS coverage"}
 
 
 def _batch_ai_debt_migrations(ctx: dict) -> dict:
@@ -266,10 +278,7 @@ def _batch_ai_debt_migrations(ctx: dict) -> dict:
     for entry in migration.get("migration_todos", []):
         debt_files.append({"file": entry.get("file", "")})
     files = _collect_unique_files([debt_files])
-    return {"name": "AI Debt & Migrations",
-            "dimensions": ["ai_generated_debt", "incomplete_migration"],
-            "files_to_read": files,
-            "why": "AI-generated patterns, deprecated markers, migration TODOs"}
+    return {"name": "AI Debt & Migrations", "dimensions": ["ai_generated_debt", "incomplete_migration"], "files_to_read": files, "why": "AI-generated patterns, deprecated markers, migration TODOs"}
 
 
 def _batch_package_organization(ctx: dict) -> dict:
@@ -301,19 +310,11 @@ def _batch_package_organization(ctx: dict) -> dict:
                         rpath = f"{dir_path}/{fname}" if dir_path != "." else fname
                         struct_files.append({"file": rpath})
     files = _collect_unique_files([struct_files])
-    return {"name": "Package Organization",
-            "dimensions": ["package_organization"],
-            "files_to_read": files,
-            "why": "file placement, directory boundaries, architectural layering"}
+    return {"name": "Package Organization", "dimensions": ["package_organization"], "files_to_read": files, "why": "file placement, directory boundaries, architectural layering"}
 
 
 def _build_investigation_batches(holistic_ctx: dict, lang) -> list[dict]:
-    """Derive up to 7 independent, parallelizable investigation batches from context.
-
-    Each batch groups related dimensions and the files an agent should read.
-    Max 15 files per batch, deduplicated. Batches 5-7 only appear when
-    their respective context data is non-empty.
-    """
+    """Derive up to 7 independent investigation batches from holistic context."""
     batches = [
         _batch_arch_coupling(holistic_ctx),
         _batch_conventions_errors(holistic_ctx),

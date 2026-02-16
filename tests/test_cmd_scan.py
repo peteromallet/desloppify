@@ -10,6 +10,7 @@ from desloppify.commands.scan import (
     _effective_include_slow,
     _format_delta,
     _resolve_scan_profile,
+    _show_strict_target_progress,
     _show_diff_summary,
     _show_score_delta,
     _show_post_scan_analysis,
@@ -159,6 +160,55 @@ class TestShowScoreDelta:
         out = capsys.readouterr().out
         assert "Δ non-comparable" in out
         assert "tool code changed" in out
+
+
+# ---------------------------------------------------------------------------
+# _show_strict_target_progress
+# ---------------------------------------------------------------------------
+
+class TestShowStrictTargetProgress:
+    def test_below_default_target(self, capsys):
+        target, gap = _show_strict_target_progress(
+            {"target": 95.0, "current": 90.0, "gap": 5.0, "state": "below"}
+        )
+        out = capsys.readouterr().out
+        assert target == 95
+        assert gap == 5.0
+        assert "Strict target: 95.0/100" in out
+        assert "below target" in out
+
+    def test_above_custom_target(self, capsys):
+        target, gap = _show_strict_target_progress(
+            {"target": 96.0, "current": 98.0, "gap": -2.0, "state": "above"}
+        )
+        out = capsys.readouterr().out
+        assert target == 96
+        assert gap == -2.0
+        assert "Strict target: 96.0/100" in out
+        assert "above target" in out
+
+    def test_invalid_config_falls_back_to_default(self, capsys):
+        target, gap = _show_strict_target_progress(
+            {
+                "target": 95.0,
+                "current": 94.0,
+                "gap": 1.0,
+                "state": "below",
+                "warning": "Invalid config `target_strict_score='not-a-number'`; using 95",
+            }
+        )
+        out = capsys.readouterr().out
+        assert target == 95
+        assert gap == 1.0
+        assert "Invalid config `target_strict_score='not-a-number'`; using 95" in out
+        assert "below target" in out
+
+    def test_unavailable_strict_score(self, capsys):
+        target, gap = _show_strict_target_progress({"target": 95.0, "current": None, "gap": None, "state": "unavailable"})
+        out = capsys.readouterr().out
+        assert target == 95
+        assert gap is None
+        assert "current strict score unavailable" in out
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +417,143 @@ class TestShowPostScanAnalysis:
         _show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "desloppify fix unused-imports" in out
+
+    def test_subjective_run_nudge_when_score_below_90_without_prior_review(self, monkeypatch, capsys):
+        import desloppify.narrative as narrative_mod
+        monkeypatch.setattr(narrative_mod, "compute_narrative",
+                            lambda state, **kw: {"headline": None, "actions": []})
+
+        class FakeLang:
+            name = "python"
+
+        diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
+        state = {
+            "findings": {},
+            "overall_score": 50,
+            "objective_score": 50,
+            "strict_score": 50,
+            "dimension_scores": {
+                "Naming Quality": {
+                    "score": 88.0,
+                    "strict": 88.0,
+                    "detectors": {"subjective_assessment": {"issues": 2}},
+                },
+            },
+        }
+        _show_post_scan_analysis(diff, state, FakeLang())
+        out = capsys.readouterr().out
+        assert "Subjective scores below 90" in out
+        assert "You can run the subjective scoring with `desloppify review --prepare`" in out
+        assert "`desloppify status`" in out
+        assert "`desloppify issues`" in out
+
+    def test_subjective_rerun_nudge_when_score_below_90_with_prior_review(self, monkeypatch, capsys):
+        import desloppify.narrative as narrative_mod
+        monkeypatch.setattr(narrative_mod, "compute_narrative",
+                            lambda state, **kw: {"headline": None, "actions": []})
+
+        class FakeLang:
+            name = "python"
+
+        diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
+        state = {
+            "findings": {},
+            "overall_score": 50,
+            "objective_score": 50,
+            "strict_score": 50,
+            "review_cache": {"files": {"src/a.py": {"reviewed_at": "2026-01-01T00:00:00+00:00"}}},
+            "dimension_scores": {
+                "Naming Quality": {
+                    "score": 88.0,
+                    "strict": 88.0,
+                    "detectors": {"subjective_assessment": {"issues": 2}},
+                },
+            },
+        }
+        _show_post_scan_analysis(diff, state, FakeLang())
+        out = capsys.readouterr().out
+        assert "You can rerun the subjective scoring with `desloppify review --prepare`" in out
+
+    def test_no_subjective_rerun_nudge_when_scores_high(self, monkeypatch, capsys):
+        import desloppify.narrative as narrative_mod
+        monkeypatch.setattr(narrative_mod, "compute_narrative",
+                            lambda state, **kw: {"headline": None, "actions": []})
+
+        class FakeLang:
+            name = "python"
+
+        diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
+        state = {
+            "findings": {},
+            "overall_score": 95,
+            "objective_score": 95,
+            "strict_score": 95,
+            "dimension_scores": {
+                "Naming Quality": {
+                    "score": 95.0,
+                    "strict": 95.0,
+                    "detectors": {"subjective_assessment": {"issues": 0}},
+                },
+            },
+        }
+        _show_post_scan_analysis(diff, state, FakeLang())
+        out = capsys.readouterr().out
+        assert "You can rerun the subjective scoring with `desloppify review --prepare`" not in out
+
+    def test_shows_filtered_narrative_reminders(self, monkeypatch, capsys):
+        import desloppify.narrative as narrative_mod
+        monkeypatch.setattr(
+            narrative_mod,
+            "compute_narrative",
+            lambda state, **kw: {
+                "headline": None,
+                "actions": [],
+                "reminders": [
+                    {"type": "report_scores", "message": "skip this"},
+                    {"type": "review_stale", "message": "Design review is stale — run review prepare"},
+                    {"type": "ignore_suppression_high", "message": "Ignore suppression is high"},
+                ],
+            },
+        )
+
+        class FakeLang:
+            name = "python"
+
+        diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
+        state = {"findings": {}, "overall_score": 90, "objective_score": 90, "strict_score": 90}
+        _show_post_scan_analysis(diff, state, FakeLang())
+        out = capsys.readouterr().out
+        assert "Reminders:" in out
+        assert "Design review is stale" in out
+        assert "Ignore suppression is high" in out
+        assert "skip this" not in out
+
+    def test_shows_narrative_plan_fields_when_available(self, monkeypatch, capsys):
+        import desloppify.narrative as narrative_mod
+        monkeypatch.setattr(
+            narrative_mod,
+            "compute_narrative",
+            lambda state, **kw: {
+                "headline": None,
+                "actions": [],
+                "why_now": "Security work should come first.",
+                "primary_action": {"command": "desloppify show security --status open", "description": "review open security findings"},
+                "verification_step": {"command": "desloppify scan", "reason": "revalidate after changes"},
+                "risk_flags": [{"severity": "high", "message": "40% findings hidden by ignore patterns"}],
+                "reminders": [],
+            },
+        )
+
+        class FakeLang:
+            name = "python"
+
+        diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
+        state = {"findings": {}, "overall_score": 90, "objective_score": 90, "strict_score": 90}
+        _show_post_scan_analysis(diff, state, FakeLang())
+        out = capsys.readouterr().out
+        assert "Narrative Plan:" in out
+        assert "Why now: Security work should come first." in out
+        assert "Verify: `desloppify scan`" in out
 
 
 # ---------------------------------------------------------------------------

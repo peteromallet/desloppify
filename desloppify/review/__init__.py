@@ -15,8 +15,22 @@ from .dimensions import (
     DEFAULT_DIMENSIONS,
     DIMENSION_PROMPTS,
     LANG_GUIDANCE,
+    CUSTOM_DIMENSION_PREFIX,
+    is_custom_dimension,
+    is_known_dimension,
+    normalize_dimension_list,
+    normalize_dimension_name,
     get_lang_guidance,
     REVIEW_SYSTEM_PROMPT,
+)
+from .policy import (
+    DimensionPolicy,
+    append_custom_dimensions,
+    build_dimension_policy,
+    filter_assessments_for_scoring,
+    is_allowed_dimension,
+    normalize_assessment_inputs,
+    normalize_dimension_inputs,
 )
 from .context import (
     ReviewContext,
@@ -69,7 +83,13 @@ from .remediation import (
 __all__ = [
     # dimensions
     "HOLISTIC_DIMENSIONS", "HOLISTIC_DIMENSIONS_BY_LANG", "HOLISTIC_DIMENSION_PROMPTS", "HOLISTIC_REVIEW_SYSTEM_PROMPT",
-    "DEFAULT_DIMENSIONS", "DIMENSION_PROMPTS", "LANG_GUIDANCE", "get_lang_guidance", "REVIEW_SYSTEM_PROMPT",
+    "DEFAULT_DIMENSIONS", "DIMENSION_PROMPTS", "LANG_GUIDANCE",
+    "CUSTOM_DIMENSION_PREFIX", "is_custom_dimension", "is_known_dimension",
+    "normalize_dimension_list", "normalize_dimension_name",
+    "DimensionPolicy", "build_dimension_policy", "is_allowed_dimension",
+    "normalize_dimension_inputs", "normalize_assessment_inputs",
+    "append_custom_dimensions", "filter_assessments_for_scoring",
+    "get_lang_guidance", "REVIEW_SYSTEM_PROMPT",
     # context
     "ReviewContext", "build_review_context", "_serialize_context",
     "build_holistic_context", "_file_excerpt", "_extract_imported_names",

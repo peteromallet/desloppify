@@ -14,11 +14,14 @@ Only competing families produce findings for the scan pipeline.
 """
 
 import json
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, c, find_ts_files, get_area, print_table, rel
+
+LOGGER = logging.getLogger(__name__)
 
 # ── Pattern families ────────────────────────────────────────────
 #
@@ -102,7 +105,8 @@ def _build_census(path: Path) -> tuple[dict[str, dict[str, set[str]]], dict[str,
             area = get_area(filepath)
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during pattern census: %s", filepath, exc_info=exc)
             continue
 
         for family_name, patterns in compiled.items():

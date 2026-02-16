@@ -26,6 +26,7 @@ def fix_unused_params(entries: list[dict], *, dry_run: bool = False) -> list[dic
         by_file[e["file"]].append(e)
 
     results = []
+    skipped_files = 0
 
     for filepath, file_entries in sorted(by_file.items()):
         try:
@@ -90,7 +91,10 @@ def fix_unused_params(entries: list[dict], *, dry_run: bool = False) -> list[dic
                     safe_write_text(filepath, new_content)
         except (OSError, UnicodeDecodeError) as ex:
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
+            skipped_files += 1
 
+    if skipped_files:
+        print(c(f"  Skipped {skipped_files} file(s) due to read/write errors.", "dim"))
     return results
 
 

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import ast
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, find_py_files
+
+LOGGER = logging.getLogger(__name__)
 
 # ── Data structures ───────────────────────────────────────
 
@@ -83,6 +86,21 @@ def _get_str_key(node: ast.expr) -> str | None:
     return None
 
 
+def _read_and_parse_python_file(filepath: str, *, purpose: str) -> tuple[Path, ast.AST] | None:
+    try:
+        file_path = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
+        source = file_path.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        LOGGER.debug("Skipping unreadable file during %s scan: %s", purpose, filepath, exc_info=exc)
+        return None
+    try:
+        tree = ast.parse(source, filename=filepath)
+    except SyntaxError as exc:
+        LOGGER.debug("Skipping unparsable file during %s scan: %s", purpose, filepath, exc_info=exc)
+        return None
+    return file_path, tree
+
+
 # ── Pass 1: Single-scope dict key analysis ────────────────
 
 def detect_dict_key_flow(path: Path) -> tuple[list[dict], int]:
@@ -93,16 +111,10 @@ def detect_dict_key_flow(path: Path) -> tuple[list[dict], int]:
     all_literals: list[dict] = []
 
     for filepath in files:
-        try:
-            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
-            source = p.read_text()
-        except (OSError, UnicodeDecodeError):
+        parsed = _read_and_parse_python_file(filepath, purpose="dict key flow")
+        if parsed is None:
             continue
-
-        try:
-            tree = ast.parse(source, filename=filepath)
-        except SyntaxError:
-            continue
+        _, tree = parsed
 
         visitor = DictKeyVisitor(filepath)
         visitor.visit(tree)
@@ -120,105 +132,119 @@ def _jaccard(a: frozenset, b: frozenset) -> float:
     return len(a & b) / len(a | b)
 
 
+def _extract_schema_literal_nodes(tree: ast.AST, filepath: str) -> list[dict]:
+    literals: list[dict] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        if len(node.keys) < 3:
+            continue
+        if any(k is None for k in node.keys):
+            continue  # Has **spread
+        if not all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in node.keys):
+            continue
+        keys = frozenset(k.value for k in node.keys if isinstance(k, ast.Constant))
+        literals.append({"file": filepath, "line": node.lineno, "keys": keys})
+    return literals
+
+
+def _collect_schema_literals(files: list[str]) -> list[dict]:
+    literals: list[dict] = []
+    for filepath in files:
+        parsed = _read_and_parse_python_file(filepath, purpose="schema drift")
+        if parsed is None:
+            continue
+        _, tree = parsed
+        literals.extend(_extract_schema_literal_nodes(tree, filepath))
+    return literals
+
+
+def _cluster_by_key_similarity(all_literals: list[dict], threshold: float = 0.8) -> list[list[dict]]:
+    clusters: list[list[dict]] = []
+    assigned = [False] * len(all_literals)
+    for i, literal in enumerate(all_literals):
+        if assigned[i]:
+            continue
+        cluster = [literal]
+        assigned[i] = True
+        for j in range(i + 1, len(all_literals)):
+            if assigned[j]:
+                continue
+            if any(_jaccard(member["keys"], all_literals[j]["keys"]) >= threshold for member in cluster):
+                cluster.append(all_literals[j])
+                assigned[j] = True
+        clusters.append(cluster)
+    return clusters
+
+
+def _build_key_frequency(cluster: list[dict]) -> dict[str, int]:
+    key_freq: dict[str, int] = defaultdict(int)
+    for member in cluster:
+        for key in member["keys"]:
+            key_freq[key] += 1
+    return key_freq
+
+
+def _find_close_consensus_key(outlier_key: str, consensus: set[str]) -> str | None:
+    for consensus_key in consensus:
+        distance = _levenshtein(outlier_key, consensus_key)
+        if distance <= 2 or _is_singular_plural(outlier_key, consensus_key):
+            return consensus_key
+    return None
+
+
+def _build_schema_findings(cluster: list[dict]) -> list[dict]:
+    key_freq = _build_key_frequency(cluster)
+    threshold = 0.3 * len(cluster)
+    consensus = {key for key, count in key_freq.items() if count >= threshold}
+    findings: list[dict] = []
+    for member in cluster:
+        outlier_keys = member["keys"] - consensus
+        for outlier_key in outlier_keys:
+            close_match = _find_close_consensus_key(outlier_key, consensus)
+            present = key_freq[outlier_key]
+            tier = 2 if len(cluster) >= 5 else 3
+            confidence = "high" if len(cluster) >= 5 else "medium"
+            suggestion = f' Did you mean "{close_match}"?' if close_match else ""
+            findings.append(
+                {
+                    "file": member["file"],
+                    "kind": "schema_drift",
+                    "key": outlier_key,
+                    "line": member["line"],
+                    "tier": tier,
+                    "confidence": confidence,
+                    "summary": (
+                        f'Schema drift: {len(cluster) - present}/{len(cluster)} dict literals '
+                        f'use different key, but {member["file"]}:{member["line"]} '
+                        f'uses "{outlier_key}".{suggestion}'
+                    ),
+                    "detail": (
+                        f"Cluster of {len(cluster)} similar dict literals. "
+                        f'Key "{outlier_key}" appears in only {present}. '
+                        f"Consensus keys: {sorted(consensus)}"
+                    ),
+                }
+            )
+    return findings
+
+
 def detect_schema_drift(path: Path) -> tuple[list[dict], int]:
     """Cluster dict literals by key similarity, report outlier keys.
 
     Returns (entries, literals_checked).
     """
     files = find_py_files(path)
-    all_literals: list[dict] = []
-
-    for filepath in files:
-        try:
-            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
-            source = p.read_text()
-        except (OSError, UnicodeDecodeError):
-            continue
-        try:
-            tree = ast.parse(source, filename=filepath)
-        except SyntaxError:
-            continue
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            if len(node.keys) < 3:
-                continue
-            if not all(isinstance(k, ast.Constant) and isinstance(k.value, str)
-                       for k in node.keys if k is not None):
-                continue
-            if any(k is None for k in node.keys):
-                continue  # Has **spread
-            keys = frozenset(k.value for k in node.keys if isinstance(k, ast.Constant))
-            all_literals.append({
-                "file": filepath, "line": node.lineno, "keys": keys,
-            })
+    all_literals = _collect_schema_literals(files)
 
     if len(all_literals) < 3:
         return [], len(all_literals)
 
-    # Greedy single-linkage clustering with Jaccard >= 0.8
-    clusters: list[list[dict]] = []
-    assigned = [False] * len(all_literals)
-
-    for i, lit in enumerate(all_literals):
-        if assigned[i]:
-            continue
-        cluster = [lit]
-        assigned[i] = True
-        for j in range(i + 1, len(all_literals)):
-            if assigned[j]:
-                continue
-            # Check similarity against any member in the cluster
-            for member in cluster:
-                if _jaccard(lit["keys"], all_literals[j]["keys"]) >= 0.8:
-                    cluster.append(all_literals[j])
-                    assigned[j] = True
-                    break
-        clusters.append(cluster)
-
-    # Report outlier keys within clusters of size >= 3
+    clusters = _cluster_by_key_similarity(all_literals, threshold=0.8)
     findings: list[dict] = []
     for cluster in clusters:
         if len(cluster) < 3:
             continue
-
-        # Build key frequency
-        key_freq: dict[str, int] = defaultdict(int)
-        for member in cluster:
-            for k in member["keys"]:
-                key_freq[k] += 1
-
-        # Find consensus keys and outliers
-        threshold = 0.3 * len(cluster)
-        consensus = {k for k, v in key_freq.items() if v >= threshold}
-
-        for member in cluster:
-            outlier_keys = member["keys"] - consensus
-            for ok in outlier_keys:
-                # Check if it's close to a consensus key (likely typo)
-                close_match = None
-                for ck in consensus:
-                    dist = _levenshtein(ok, ck)
-                    if dist <= 2 or _is_singular_plural(ok, ck):
-                        close_match = ck
-                        break
-
-                present = key_freq[ok]
-                tier = 2 if len(cluster) >= 5 else 3
-                confidence = "high" if len(cluster) >= 5 else "medium"
-
-                suggestion = f' Did you mean "{close_match}"?' if close_match else ""
-                findings.append({
-                    "file": member["file"], "kind": "schema_drift",
-                    "key": ok, "line": member["line"],
-                    "tier": tier, "confidence": confidence,
-                    "summary": (f'Schema drift: {len(cluster) - present}/{len(cluster)} '
-                                f'dict literals use different key, but '
-                                f'{member["file"]}:{member["line"]} uses "{ok}".{suggestion}'),
-                    "detail": (f"Cluster of {len(cluster)} similar dict literals. "
-                               f'Key "{ok}" appears in only {present}. '
-                               f"Consensus keys: {sorted(consensus)}"),
-                })
+        findings.extend(_build_schema_findings(cluster))
 
     return findings, len(all_literals)

@@ -59,34 +59,10 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
     entries = []
     name_re = re.compile(r"`([^`]+)`")
 
-    for d in diagnostics:
-        code = d.get("code", "")
-        message = d.get("message", "")
-        filepath = d.get("filename", "")
-        if _utils_mod._extra_exclusions and any(_utils_mod.matches_exclusion(filepath, ex) for ex in _utils_mod._extra_exclusions):
-            continue
-        location = d.get("location", {})
-        line = location.get("row", 0)
-
-        # Extract name from message like "`foo` imported but unused"
-        m = name_re.search(message)
-        name = m.group(1) if m else message.split()[0]
-
-        cat = "imports" if code == "F401" else "vars"
-        if category != "all" and cat != category:
-            continue
-
-        # Skip _ prefixed names
-        if name.startswith("_"):
-            continue
-
-        entries.append({
-            "file": filepath,
-            "line": line,
-            "col": location.get("column", 0),
-            "name": name,
-            "category": cat,
-        })
+    for diagnostic in diagnostics:
+        entry = _ruff_entry_from_diagnostic(diagnostic, category, name_re)
+        if entry is not None:
+            entries.append(entry)
 
     return entries
 
@@ -107,31 +83,87 @@ def _try_pyflakes(path: Path, category: str) -> list[dict] | None:
     var_re = re.compile(r"^(.+):(\d+):\d*\s+local variable '([^']+)' is assigned to but never used")
 
     for line in (result.stdout + result.stderr).splitlines():
-        m = import_re.match(line)
-        if m and category in ("all", "imports"):
-            filepath = m.group(1)
-            if _utils_mod._extra_exclusions and any(_utils_mod.matches_exclusion(filepath, ex) for ex in _utils_mod._extra_exclusions):
-                continue
-            entries.append({
-                "file": filepath,
-                "line": int(m.group(2)),
-                "col": 0,
-                "name": m.group(3),
-                "category": "imports",
-            })
-            continue
-
-        m = var_re.match(line)
-        if m and category in ("all", "vars"):
-            filepath = m.group(1)
-            if _utils_mod._extra_exclusions and any(_utils_mod.matches_exclusion(filepath, ex) for ex in _utils_mod._extra_exclusions):
-                continue
-            entries.append({
-                "file": filepath,
-                "line": int(m.group(2)),
-                "col": 0,
-                "name": m.group(3),
-                "category": "vars",
-            })
+        entry = _parse_pyflakes_line(line, category, import_re, var_re)
+        if entry is not None:
+            entries.append(entry)
 
     return entries
+
+
+def _is_excluded(filepath: str) -> bool:
+    """Return True when filepath matches an active exclusion pattern."""
+    patterns = _utils_mod._extra_exclusions
+    if not patterns:
+        return False
+    return any(_utils_mod.matches_exclusion(filepath, ex) for ex in patterns)
+
+
+def _extract_name(message: str, name_re: re.Pattern[str]) -> str:
+    """Extract symbol name from a linter message."""
+    match = name_re.search(message)
+    if match:
+        return match.group(1)
+    return message.split()[0]
+
+
+def _make_entry(filepath: str, line: int, col: int, name: str, category: str) -> dict:
+    """Construct a normalized unused finding payload."""
+    return {
+        "file": filepath,
+        "line": line,
+        "col": col,
+        "name": name,
+        "category": category,
+    }
+
+
+def _ruff_entry_from_diagnostic(
+    diagnostic: dict,
+    category: str,
+    name_re: re.Pattern[str],
+) -> dict | None:
+    """Convert a ruff diagnostic into an entry when it matches requested filters."""
+    filepath = diagnostic.get("filename", "")
+    if _is_excluded(filepath):
+        return None
+
+    cat = "imports" if diagnostic.get("code", "") == "F401" else "vars"
+    if category != "all" and cat != category:
+        return None
+
+    name = _extract_name(diagnostic.get("message", ""), name_re)
+    if name.startswith("_"):
+        return None
+
+    location = diagnostic.get("location", {})
+    return _make_entry(
+        filepath,
+        location.get("row", 0),
+        location.get("column", 0),
+        name,
+        cat,
+    )
+
+
+def _parse_pyflakes_line(
+    line: str,
+    category: str,
+    import_re: re.Pattern[str],
+    var_re: re.Pattern[str],
+) -> dict | None:
+    """Parse one pyflakes output line into an entry, if relevant."""
+    import_match = import_re.match(line)
+    if import_match and category in ("all", "imports"):
+        filepath = import_match.group(1)
+        if _is_excluded(filepath):
+            return None
+        return _make_entry(filepath, int(import_match.group(2)), 0, import_match.group(3), "imports")
+
+    var_match = var_re.match(line)
+    if var_match and category in ("all", "vars"):
+        filepath = var_match.group(1)
+        if _is_excluded(filepath):
+            return None
+        return _make_entry(filepath, int(var_match.group(2)), 0, var_match.group(3), "vars")
+
+    return None

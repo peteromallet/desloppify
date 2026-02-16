@@ -8,13 +8,20 @@ Generates an interactive treemap where:
 - Toggle color mode: cruft score, coupling, LOC
 """
 
-D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
-
 import json
 from collections import defaultdict
 from pathlib import Path
 
+from ._tree_helpers import _aggregate, _print_tree
 from ..utils import PROJECT_ROOT, colorize, rel
+
+D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
+
+__all__ = ["D3_CDN_URL", "_aggregate", "_print_tree"]
+
+
+def _fmt_score(value) -> str:
+    return f"{value:.1f}" if isinstance(value, (int, float)) else "N/A"
 
 
 def _resolve_visualization_lang(path: Path, lang):
@@ -155,15 +162,14 @@ def generate_visualization(path: Path, state: dict | None = None,
         strict_score = get_strict_score(state)
     else:
         overall_score = objective_score = strict_score = None
-    fmt_score = lambda v: f"{v:.1f}" if isinstance(v, (int, float)) else "N/A"
 
     replacements = {"__D3_CDN_URL__": D3_CDN_URL, "__TREE_DATA__": tree_json,
                      "__TOTAL_FILES__": str(total_files), "__TOTAL_LOC__": f"{total_loc:,}",
                      "__TOTAL_FINDINGS__": str(total_findings),
                      "__OPEN_FINDINGS__": str(open_findings),
-                     "__OVERALL_SCORE__": fmt_score(overall_score),
-                     "__OBJECTIVE_SCORE__": fmt_score(objective_score),
-                     "__STRICT_SCORE__": fmt_score(strict_score)}
+                     "__OVERALL_SCORE__": _fmt_score(overall_score),
+                     "__OBJECTIVE_SCORE__": _fmt_score(objective_score),
+                     "__STRICT_SCORE__": _fmt_score(strict_score)}
     html = _get_html_template()
     for placeholder, value in replacements.items():
         html = html.replace(placeholder, value)
@@ -207,76 +213,6 @@ def cmd_viz(args):
     generate_visualization(path, state, output, lang=lang)
     print(colorize(f"\nTreemap written to {output}", "green"))
     print(colorize(f"Open in browser: file://{output.resolve()}", "dim"))
-
-
-# ── Text tree (LLM-readable) ────────────────────────────────
-
-def _aggregate(node: dict) -> dict:
-    """Compute aggregate stats for a tree node."""
-    if "children" not in node:
-        return {
-            "files": 1,
-            "loc": node.get("loc", 0),
-            "findings": node.get("findings_open", 0),
-            "max_coupling": node.get("fan_in", 0) + node.get("fan_out", 0),
-        }
-    agg = {"files": 0, "loc": 0, "findings": 0, "max_coupling": 0}
-    for child in node["children"]:
-        child_agg = _aggregate(child)
-        agg["files"] += child_agg["files"]
-        agg["loc"] += child_agg["loc"]
-        agg["findings"] += child_agg["findings"]
-        agg["max_coupling"] = max(agg["max_coupling"], child_agg["max_coupling"])
-    return agg
-
-
-def _print_tree(node: dict, indent: int, max_depth: int, min_loc: int,
-                sort_by: str, detail: bool, lines: list[str]):
-    """Recursively print annotated tree."""
-    prefix = "  " * indent
-
-    if "children" not in node:
-        # Leaf file
-        loc = node.get("loc", 0)
-        if loc < min_loc:
-            return
-        findings = node.get("findings_open", 0)
-        coupling = node.get("fan_in", 0) + node.get("fan_out", 0)
-        parts = []
-        parts.append(f"{loc:,} LOC")
-        if findings > 0:
-            parts.append(f"⚠{findings}")
-        if coupling > 10:
-            parts.append(f"c:{coupling}")
-        lines.append(f"{prefix}{node['name']}  ({', '.join(parts)})")
-
-        # Detail: show finding summaries under the file
-        if detail and node.get("finding_summaries"):
-            for s in node["finding_summaries"]:
-                lines.append(f"{prefix}  → {s}")
-        return
-
-    # Directory
-    agg = _aggregate(node)
-    if agg["loc"] < min_loc:
-        return
-
-    lines.append(f"{prefix}{node['name']}/  ({agg['files']} files, {agg['loc']:,} LOC, {agg['findings']} findings)")
-
-    if indent >= max_depth:
-        return
-
-    # Sort children
-    children = node["children"]
-    if sort_by == "findings":
-        children = sorted(children, key=lambda c: -_aggregate(c)["findings"])
-    elif sort_by == "coupling":
-        children = sorted(children, key=lambda c: -_aggregate(c)["max_coupling"])
-    else:  # loc (default)
-        children = sorted(children, key=lambda c: -_aggregate(c)["loc"])
-
-    for child in children:
-        _print_tree(child, indent + 1, max_depth, min_loc, sort_by, detail, lines)
 
 
 def generate_tree_text(path: Path, state: dict | None = None, *,

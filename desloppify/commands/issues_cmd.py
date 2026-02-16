@@ -38,34 +38,23 @@ def _list_issues(args):
     print(f"  {'─'*4} {'─'*8} {'─'*28} {'─'*50} {'─'*12}")
 
     for i, f in enumerate(items, 1):
-        detail = f.get("detail", {})
-        dim_key = detail.get("dimension", "unknown")
-        dim = dim_key.replace("_", " ")
-        # Show assessment score if available, otherwise impact label
-        assessment = assessments.get(dim_key)
-        if assessment:
-            score_str = f"{assessment['score']}/100"
-        else:
-            weight, _, _ = finding_weight(f)
-            score_str = impact_label(weight)
+        score_str = _score_for_issue(f, assessments, finding_weight, impact_label)
+        dim = f.get("detail", {}).get("dimension", "unknown").replace("_", " ")
         summary = f.get("summary", "")[:50]
-        investigated = "yes" if detail.get("investigation") else "no"
+        investigated = "yes" if f.get("detail", {}).get("investigation") else "no"
         print(f"  {i:<4} {score_str:<8} {dim:<28} {summary:<50} {investigated}")
 
     uninvestigated = sum(1 for f in items if not f.get("detail", {}).get("investigation"))
     print()
     if uninvestigated:
         print(colorize(f"  {uninvestigated} need investigation.", "dim"))
-    print(colorize(f"  Show details: desloppify issues show 1", "dim"))
+    print(colorize("  Show details: desloppify issues show 1", "dim"))
     print()
 
     _write_query({
         "command": "issues", "action": "list",
         "count": len(items),
-        "items": [{"id": f["id"], "summary": f.get("summary", ""),
-                   "dimension": f.get("detail", {}).get("dimension", ""),
-                   "investigated": bool(f.get("detail", {}).get("investigation"))}
-                  for f in items],
+        "items": [_list_item_payload(f) for f in items],
     })
 
 
@@ -82,12 +71,11 @@ def _show_issue(args):
         print(colorize("\n  No review findings open.\n", "dim"))
         return
 
-    if number < 1 or number > len(items):
-        print(colorize(f"\n  Issue #{number} out of range (1–{len(items)}).\n", "red"),
-              file=sys.stderr)
+    finding = _issue_for_number(items, number)
+    if finding is None:
+        _print_out_of_range(number, len(items))
         return
 
-    finding = items[number - 1]
     lang = resolve_lang(args)
     lang_name = lang.name if lang else finding.get("lang", "unknown")
 
@@ -121,9 +109,9 @@ def _update_issue(args):
         print(colorize("\n  No review findings open.\n", "dim"))
         return
 
-    if number < 1 or number > len(items):
-        print(colorize(f"\n  Issue #{number} out of range (1–{len(items)}).\n", "red"),
-              file=sys.stderr)
+    finding = _issue_for_number(items, number)
+    if finding is None:
+        _print_out_of_range(number, len(items))
         return
 
     file_path = Path(args.file)
@@ -137,7 +125,6 @@ def _update_issue(args):
         print(colorize(f"\n  Could not read file: {e}\n", "red"), file=sys.stderr)
         return
 
-    finding = items[number - 1]
     ok = update_investigation(state, finding["id"], text)
     if not ok:
         print(colorize(f"\n  Could not update issue #{number}.\n", "red"), file=sys.stderr)
@@ -149,3 +136,42 @@ def _update_issue(args):
     print(colorize(f"\n  Investigation saved for issue #{number}.", "green"))
     print(colorize(f"  Fix the issue, then: desloppify --lang {lang_name} resolve fixed \"{finding['id']}\"", "dim"))
     print()
+
+
+def _score_for_issue(
+    finding: dict,
+    assessments: dict,
+    finding_weight_fn,
+    impact_label_fn,
+) -> str:
+    """Format a score column cell for the issues table."""
+    detail = finding.get("detail", {})
+    dim_key = detail.get("dimension", "unknown")
+    assessment = assessments.get(dim_key)
+    if assessment:
+        return f"{assessment['score']}/100"
+    weight, _, _ = finding_weight_fn(finding)
+    return impact_label_fn(weight)
+
+
+def _list_item_payload(finding: dict) -> dict:
+    """Build compact query payload metadata for an issue row."""
+    detail = finding.get("detail", {})
+    return {
+        "id": finding["id"],
+        "summary": finding.get("summary", ""),
+        "dimension": detail.get("dimension", ""),
+        "investigated": bool(detail.get("investigation")),
+    }
+
+
+def _issue_for_number(items: list[dict], number: int) -> dict | None:
+    """Return issue by 1-based index, or None when out of range."""
+    if number < 1 or number > len(items):
+        return None
+    return items[number - 1]
+
+
+def _print_out_of_range(number: int, item_count: int) -> None:
+    """Print a standard out-of-range error for issue indices."""
+    print(colorize(f"\n  Issue #{number} out of range (1–{item_count}).\n", "red"), file=sys.stderr)

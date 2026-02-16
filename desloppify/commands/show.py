@@ -1,17 +1,18 @@
 """show command: dig into findings by file, directory, detector, or pattern."""
 
+from __future__ import annotations
+
 import json
 from collections import defaultdict
 
 from ..utils import colorize
-from ._helpers import state_path, _write_query
+from ._helpers import _write_query, state_path
+from ._show_terminal import render_show_results
 
 
-# Detail keys to display, in order. Each entry is (key, label, formatter).
-# Formatter is either None (use str(value)) or a callable(value) -> str.
 _DETAIL_DISPLAY = [
     ("line", "line", None),
-    ("lines", "lines", lambda v: ", ".join(str(l) for l in v[:5])),
+    ("lines", "lines", lambda v: ", ".join(str(line_no) for line_no in v[:5])),
     ("category", "category", None),
     ("importers", "importers", None),
     ("count", "count", None),
@@ -29,7 +30,7 @@ _DETAIL_DISPLAY = [
     ("pattern_evidence", "evidence", lambda v: ", ".join(
         f"{k}:{len(v.get(k, []))} file(s)" for k in sorted(v.keys())
     )),
-    ("related_files", "related files", lambda v: ", ".join(v[:5]) + (f" +{len(v)-5}" if len(v) > 5 else "")),
+    ("related_files", "related files", lambda v: ", ".join(v[:5]) + (f" +{len(v) - 5}" if len(v) > 5 else "")),
     ("review", "review", lambda v: v[:80]),
     ("majority", "majority", None),
     ("minority", "minority", None),
@@ -40,21 +41,58 @@ _DETAIL_DISPLAY = [
 def _format_detail(detail: dict) -> list[str]:
     """Build display parts from a finding's detail dict."""
     parts = []
-    for key, label, fmt in _DETAIL_DISPLAY:
-        val = detail.get(key)
-        if val is None or val == 0:
-            # Special case: importers=0 is meaningful (unlike count=0)
-            if key == "importers" and val is not None:
-                parts.append(f"{label}: {val}")
+    for key, label, formatter in _DETAIL_DISPLAY:
+        value = detail.get(key)
+        if value is None or value == 0:
+            if key == "importers" and value is not None:
+                parts.append(f"{label}: {value}")
             continue
-        parts.append(f"{label}: {fmt(val) if fmt else val}")
+        parts.append(f"{label}: {formatter(value) if formatter else value}")
 
-    # Special case: dupe pair display
     if detail.get("fn_a"):
-        a, b = detail["fn_a"], detail["fn_b"]
-        parts.append(f"{a['name']}:{a.get('line', '')} ↔ {b['name']}:{b.get('line', '')}")
-
+        left = detail["fn_a"]
+        right = detail["fn_b"]
+        parts.append(f"{left['name']}:{left.get('line', '')} ↔ {right['name']}:{right.get('line', '')}")
     return parts
+
+
+def _resolve_matches(state: dict, args, pattern: str, chronic: bool) -> tuple[list[dict], str, str]:
+    from ..state import match_findings, path_scoped_findings
+
+    if chronic:
+        scoped = path_scoped_findings(state["findings"], state.get("scan_path"))
+        matches = [f for f in scoped.values() if f.get("reopen_count", 0) >= 2 and f["status"] == "open"]
+        return matches, "open", (pattern or "<chronic>")
+
+    status_filter = getattr(args, "status", "open")
+    matches = match_findings(state, pattern, status_filter)
+    scoped_ids = set(path_scoped_findings(state["findings"], state.get("scan_path")).keys())
+    return [f for f in matches if f["id"] in scoped_ids], status_filter, pattern
+
+
+def _write_show_query(args, state: dict, payload: dict) -> None:
+    from ..narrative import compute_narrative
+    from ._helpers import resolve_lang
+
+    lang = resolve_lang(args)
+    narrative = compute_narrative(
+        state,
+        lang=(lang.name if lang else None),
+        command="show",
+        config=getattr(args, "_config", None),
+    )
+    _write_query({"command": "show", **payload, "narrative": narrative})
+
+
+def _write_output_file(output_file: str, matches_count: int, payload: dict) -> None:
+    from ..utils import safe_write_text
+
+    try:
+        safe_write_text(output_file, json.dumps(payload, indent=2) + "\n")
+        print(colorize(f"Wrote {matches_count} findings to {output_file}", "green"))
+    except OSError as exc:
+        print(colorize(f"Could not write to {output_file}: {exc}", "red"))
+        raise SystemExit(1) from exc
 
 
 def cmd_show(args) -> None:
@@ -62,58 +100,40 @@ def cmd_show(args) -> None:
     from ..state import (
         apply_finding_noise_budget,
         load_state,
-        match_findings,
         resolve_finding_noise_settings,
     )
+    from ..utils import check_tool_staleness
 
-    sp = state_path(args)
-    state = load_state(sp)
-
+    state = load_state(state_path(args))
     if not state.get("last_scan"):
         print(colorize("No scans yet. Run: desloppify scan", "yellow"))
         return
 
-    from ..utils import check_tool_staleness
     stale_warning = check_tool_staleness(state)
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
 
-    chronic = getattr(args, "chronic", False)
-    show_code = getattr(args, "code", False)
     pattern = args.pattern
+    chronic = getattr(args, "chronic", False)
+    if not chronic and not pattern:
+        print(colorize("Pattern required (or use --chronic). Try: desloppify show --help", "yellow"))
+        return
 
-    if chronic:
-        from ..state import path_scoped_findings
-        scoped = path_scoped_findings(state["findings"], state.get("scan_path"))
-        matches = [f for f in scoped.values()
-                   if f.get("reopen_count", 0) >= 2 and f["status"] == "open"]
-        status_filter = "open"
-        pattern = pattern or "<chronic>"
-    else:
-        if not pattern:
-            print(colorize("Pattern required (or use --chronic). Try: desloppify show --help", "yellow"))
-            return
-        status_filter = getattr(args, "status", "open")
-        matches = match_findings(state, pattern, status_filter)
-        # Filter to scan path scope
-        from ..state import path_scoped_findings
-        scoped_ids = set(path_scoped_findings(state["findings"], state.get("scan_path")).keys())
-        matches = [f for f in matches if f["id"] in scoped_ids]
-
+    matches, status_filter, pattern = _resolve_matches(state, args, pattern, chronic)
     include_suppressed = getattr(args, "include_suppressed", False)
-
     if not matches:
         print(colorize(f"No {status_filter} findings matching: {pattern}", "yellow"))
         if include_suppressed:
             ignored_by_detector = (state.get("ignore_integrity", {}) or {}).get("ignored_by_detector", {})
             suppressed = _suppressed_match_estimate(pattern, ignored_by_detector)
             if suppressed > 0:
-                print(colorize(
-                    f"  ~{suppressed} matching finding(s) were suppressed by ignore patterns in the last scan.",
-                    "dim",
-                ))
-        _write_query({"command": "show", "query": pattern, "status_filter": status_filter,
-                      "total": 0, "findings": []})
+                print(
+                    colorize(
+                        f"  ~{suppressed} matching finding(s) were suppressed by ignore patterns in the last scan.",
+                        "dim",
+                    )
+                )
+        _write_query({"command": "show", "query": pattern, "status_filter": status_filter, "total": 0, "findings": []})
         return
 
     noise_budget, global_noise_budget, budget_warning = resolve_finding_noise_settings(args._config)
@@ -122,14 +142,6 @@ def cmd_show(args) -> None:
         budget=noise_budget,
         global_budget=global_noise_budget,
     )
-    hidden_total = sum(hidden_by_detector.values())
-
-    # Always write structured query file
-    from ..narrative import compute_narrative
-    from ._helpers import resolve_lang
-    lang = resolve_lang(args)
-    lang_name = lang.name if lang else None
-    narrative = compute_narrative(state, lang=lang_name, command="show")
     payload = _build_show_payload(
         surfaced_matches,
         pattern,
@@ -139,163 +151,86 @@ def cmd_show(args) -> None:
         noise_budget=noise_budget,
         global_noise_budget=global_noise_budget,
     )
-    _write_query({"command": "show", **payload, "narrative": narrative})
+    _write_show_query(args, state, payload)
 
-    # Optional: also write to a custom output file
     output_file = getattr(args, "output", None)
     if output_file:
-        try:
-            from ..utils import safe_write_text
-            safe_write_text(output_file, json.dumps(payload, indent=2) + "\n")
-            print(colorize(f"Wrote {len(surfaced_matches)} findings to {output_file}", "green"))
-        except OSError as e:
-            print(colorize(f"Could not write to {output_file}: {e}", "red"))
+        _write_output_file(output_file, len(surfaced_matches), payload)
         return
 
-    by_file: dict[str, list] = defaultdict(list)
-    for f in surfaced_matches:
-        by_file[f["file"]].append(f)
-
-    from ..plan import CONFIDENCE_ORDER
-    sorted_files = sorted(by_file.items(), key=lambda x: -len(x[1]))
-    top = getattr(args, "top", 20) or 20
-
-    print(colorize(f"\n  {len(surfaced_matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
-    if budget_warning:
-        print(colorize(f"  {budget_warning}\n", "yellow"))
-    if hidden_total:
-        global_label = f", {global_noise_budget} global" if global_noise_budget > 0 else ""
-        hidden_parts = ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
-        print(colorize(f"  Noise budget: {noise_budget}/detector{global_label} ({hidden_total} hidden: {hidden_parts})\n", "dim"))
-
-    shown_files = sorted_files[:top]
-    remaining_files = sorted_files[top:]
-    remaining_findings = sum(len(fs) for _, fs in remaining_files)
-
-    for filepath, findings in shown_files:
-        findings.sort(key=lambda f: (f["tier"], CONFIDENCE_ORDER.get(f["confidence"], 9)))
-        display_path = "Codebase-wide" if filepath == "." else filepath
-        print(colorize(f"  {display_path}", "cyan") + colorize(f"  ({len(findings)} findings)", "dim"))
-
-        for f in findings:
-            status_icon = {"open": "○", "fixed": "✓", "wontfix": "—", "false_positive": "✗",
-                          "auto_resolved": "◌"}.get(f["status"], "?")
-            zone_tag = ""
-            zone = f.get("zone", "production")
-            if zone != "production":
-                zone_tag = colorize(f" [{zone}]", "dim")
-            print(f"    {status_icon} T{f['tier']} [{f['confidence']}] {f['summary']}{zone_tag}")
-
-            detail_parts = _format_detail(f.get("detail", {}))
-            if detail_parts:
-                print(colorize(f"      {' · '.join(detail_parts)}", "dim"))
-            pattern_evidence = f.get("detail", {}).get("pattern_evidence")
-            if isinstance(pattern_evidence, dict) and pattern_evidence:
-                for pattern_name, matches in sorted(pattern_evidence.items()):
-                    if not matches:
-                        continue
-                    file_items = []
-                    for match in matches[:5]:
-                        file_part = match.get("file", "")
-                        line_part = match.get("line")
-                        if file_part and isinstance(line_part, int):
-                            file_items.append(f"{file_part}:{line_part}")
-                        elif file_part:
-                            file_items.append(file_part)
-                    if file_items:
-                        print(colorize(
-                            f"      evidence {pattern_name}: {', '.join(file_items)}"
-                            + (f" +{len(matches)-5}" if len(matches) > 5 else ""),
-                            "dim",
-                        ))
-            if show_code:
-                detail = f.get("detail", {})
-                target_line = detail.get("line") or (detail.get("lines", [None]) or [None])[0]
-                if target_line and f["file"] not in (".", ""):
-                    from ..utils import read_code_snippet
-                    snippet = read_code_snippet(f["file"], target_line)
-                    if snippet:
-                        print(snippet)
-                elif isinstance(pattern_evidence, dict):
-                    from ..utils import read_code_snippet
-                    shown = 0
-                    for _pname, matches in sorted(pattern_evidence.items()):
-                        for match in matches:
-                            file_part = match.get("file")
-                            line_part = match.get("line")
-                            if not file_part or not isinstance(line_part, int):
-                                continue
-                            snippet = read_code_snippet(file_part, line_part)
-                            if snippet:
-                                print(snippet)
-                                shown += 1
-                            if shown >= 3:
-                                break
-                        if shown >= 3:
-                            break
-            if f.get("reopen_count", 0) >= 2:
-                print(colorize(f"      ⟳ reopened {f['reopen_count']} times — fix properly or wontfix", "red"))
-            if f.get("note"):
-                print(colorize(f"      note: {f['note']}", "dim"))
-            print(colorize(f"      {f['id']}", "dim"))
-        print()
-
-    if remaining_findings:
-        print(colorize(f"  ... and {len(remaining_files)} more files ({remaining_findings} findings). Use --top {top + 20} to see more.\n", "dim"))
-
-    by_detector: dict[str, int] = defaultdict(int)
-    by_tier: dict[int, int] = defaultdict(int)
-    for f in surfaced_matches:
-        by_detector[f["detector"]] += 1
-        by_tier[f["tier"]] += 1
-
-    print(colorize("  Summary:", "bold"))
-    print(colorize(f"    By tier:     {', '.join(f'T{t}:{n}' for t, n in sorted(by_tier.items()))}", "dim"))
-    print(colorize(f"    By detector: {', '.join(f'{d}:{n}' for d, n in sorted(by_detector.items(), key=lambda x: -x[1]))}", "dim"))
-    if hidden_total:
-        print(colorize(f"    Hidden:      {', '.join(f'{d}:+{n}' for d, n in hidden_by_detector.items())}", "dim"))
-    print()
+    render_show_results(
+        surfaced_matches,
+        pattern=pattern,
+        status_filter=status_filter,
+        top=(getattr(args, "top", 20) or 20),
+        show_code=getattr(args, "code", False),
+        noise_budget=noise_budget,
+        global_noise_budget=global_noise_budget,
+        budget_warning=budget_warning,
+        hidden_by_detector=hidden_by_detector,
+        format_detail=_format_detail,
+    )
 
 
-def _build_show_payload(matches: list[dict], pattern: str, status_filter: str, *,
-                        total_matches: int | None = None,
-                        hidden_by_detector: dict[str, int] | None = None,
-                        noise_budget: int | None = None,
-                        global_noise_budget: int | None = None) -> dict:
+def _build_show_payload(
+    matches: list[dict],
+    pattern: str,
+    status_filter: str,
+    *,
+    meta: dict | None = None,
+    **legacy_meta,
+) -> dict:
     """Build the structured JSON payload shared by query file and --output."""
+    payload_meta = dict(meta or {})
+    for key, value in legacy_meta.items():
+        payload_meta.setdefault(key, value)
+    payload_meta.setdefault("total_matches", None)
+    payload_meta.setdefault("hidden_by_detector", None)
+    payload_meta.setdefault("noise_budget", None)
+    payload_meta.setdefault("global_noise_budget", None)
+
     by_file: dict[str, list] = defaultdict(list)
     by_detector: dict[str, int] = defaultdict(int)
     by_tier: dict[int, int] = defaultdict(int)
-    for f in matches:
-        by_file[f["file"]].append(f)
-        by_detector[f["detector"]] += 1
-        by_tier[f["tier"]] += 1
+    for finding in matches:
+        by_file[finding["file"]].append(finding)
+        by_detector[finding["detector"]] += 1
+        by_tier[finding["tier"]] += 1
 
     payload = {
         "query": pattern,
         "status_filter": status_filter,
         "total": len(matches),
         "summary": {
-            "by_tier": {f"T{t}": n for t, n in sorted(by_tier.items())},
-            "by_detector": dict(sorted(by_detector.items(), key=lambda x: -x[1])),
+            "by_tier": {f"T{tier}": count for tier, count in sorted(by_tier.items())},
+            "by_detector": dict(sorted(by_detector.items(), key=lambda item: -item[1])),
             "files": len(by_file),
         },
         "by_file": {
-            fp: [{"id": f["id"], "tier": f["tier"], "confidence": f["confidence"],
-                  "summary": f["summary"], "detail": f.get("detail", {})}
-                 for f in fs]
-            for fp, fs in sorted(by_file.items(), key=lambda x: -len(x[1]))
+            filepath: [
+                {
+                    "id": finding["id"],
+                    "tier": finding["tier"],
+                    "confidence": finding["confidence"],
+                    "summary": finding["summary"],
+                    "detail": finding.get("detail", {}),
+                }
+                for finding in file_findings
+            ]
+            for filepath, file_findings in sorted(by_file.items(), key=lambda item: -len(item[1]))
         },
     }
+
+    total_matches = payload_meta["total_matches"]
     if total_matches is not None:
         payload["total_matching"] = total_matches
+    hidden_by_detector = payload_meta["hidden_by_detector"]
     if hidden_by_detector:
-        payload["hidden"] = {
-            "by_detector": hidden_by_detector,
-            "total": sum(hidden_by_detector.values()),
-        }
+        payload["hidden"] = {"by_detector": hidden_by_detector, "total": sum(hidden_by_detector.values())}
+    noise_budget = payload_meta["noise_budget"]
     if noise_budget is not None:
         payload["noise_budget"] = noise_budget
+    global_noise_budget = payload_meta["global_noise_budget"]
     if global_noise_budget is not None:
         payload["noise_global_budget"] = global_noise_budget
     return payload
@@ -305,9 +240,5 @@ def _suppressed_match_estimate(pattern: str, ignored_by_detector: dict) -> int:
     """Estimate suppressed match count from per-detector ignore stats."""
     if not isinstance(ignored_by_detector, dict) or not pattern:
         return 0
-    if pattern in ignored_by_detector:
-        return int(ignored_by_detector.get(pattern, 0) or 0)
-    if "::" in pattern:
-        detector = pattern.split("::", 1)[0]
-        return int(ignored_by_detector.get(detector, 0) or 0)
-    return 0
+    detector = pattern.split("::", 1)[0]
+    return int(ignored_by_detector.get(pattern, ignored_by_detector.get(detector, 0)) or 0)

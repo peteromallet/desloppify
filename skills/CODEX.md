@@ -12,9 +12,11 @@ Codex uses isolated tasks/worktrees for independent review passes.
   "assessments": {
     "naming_quality": 0,
     "error_consistency": 0,
-    "abstraction_fit": 0,
+    "abstraction_fitness": 0,
     "logic_clarity": 0,
-    "ai_generated_debt": 0
+    "ai_generated_debt": 0,
+    "type_safety": 0,
+    "contract_coherence": 0
   },
   "findings": []
 }

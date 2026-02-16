@@ -334,8 +334,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         path, graph, extensions=lang.extensions,
         extra_entry_patterns=lang.entry_patterns,
         extra_barrel_names=lang.barrel_names,
-        dynamic_import_finder=build_dynamic_import_targets,
-        alias_resolver=ts_alias_resolver)
+        dynamic_import_context=(build_dynamic_import_targets, ts_alias_resolver))
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
     results.extend(make_orphaned_findings(orphan_entries, log))
 

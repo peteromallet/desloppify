@@ -1,10 +1,13 @@
 """Bloated prop interface detection (>14 props = prop drilling signal)."""
 
 import json
+import logging
 import re
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, c, find_ts_files, print_table, rel
+
+LOGGER = logging.getLogger(__name__)
 
 
 def detect_prop_interface_bloat(path: Path, *, threshold: int = 14) -> tuple[list[dict], int]:
@@ -61,7 +64,8 @@ def detect_prop_interface_bloat(path: Path, *, threshold: int = 14) -> tuple[lis
                         "line": content[:m.start()].count("\n") + 1,
                         "kind": kind,
                     })
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during prop-bloat scan: %s", filepath, exc_info=exc)
             continue
     return sorted(entries, key=lambda e: -e["prop_count"]), total_interfaces
 

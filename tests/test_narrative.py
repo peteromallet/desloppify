@@ -16,6 +16,7 @@ from desloppify.narrative import (
     _detect_milestone,
     _detect_phase,
     _open_files_by_detector,
+    compute_narrative,
 )
 
 
@@ -771,6 +772,20 @@ class TestComputeReminders:
         )
         reminder_types = [r["type"] for r in reminders]
         assert "dry_run_first" in reminder_types
+
+    def test_reminders_include_metadata_and_rank_high_priority_first(self):
+        state = {"strict_score": 50.0}
+        actions = [{"type": "auto_fix", "count": 3, "command": "desloppify fix unused-imports --dry-run"}]
+        reminders, _ = _compute_reminders(
+            state, "typescript", "middle_grind", {"trend": "growing"},
+            actions, {}, {}, "fix",
+        )
+        reminder_types = [r["type"] for r in reminders]
+        assert "rescan_needed" in reminder_types
+        assert "wontfix_growing" in reminder_types
+        assert reminder_types.index("rescan_needed") < reminder_types.index("wontfix_growing")
+        assert all("priority" in r for r in reminders)
+        assert all("severity" in r for r in reminders)
 
     def test_does_not_mutate_state(self):
         """The reminder_history on state must not be mutated."""
@@ -1734,3 +1749,96 @@ class TestStrategyReviewHint:
         ]
         result = _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
         assert "desloppify issues" not in result["hint"]
+
+
+class TestComputeNarrativeContract:
+    def test_includes_primary_action_verification_and_risks(self):
+        state = {
+            "overall_score": 84.0,
+            "objective_score": 82.0,
+            "strict_score": 78.0,
+            "scan_history": [
+                _history_entry(strict_score=75.0, objective_score=78.0, lang="typescript"),
+                _history_entry(strict_score=78.0, objective_score=82.0, lang="typescript"),
+            ],
+            "dimension_scores": {
+                "Code quality": {
+                    "score": 78.0,
+                    "strict": 72.0,
+                    "tier": 2,
+                    "issues": 4,
+                    "checks": 10,
+                    "detectors": {"smells": {"issues": 4}},
+                },
+            },
+            "stats": {"open": 4, "total": 6},
+            "findings": {
+                "smells::a.ts::foo": {
+                    "id": "smells::a.ts::foo",
+                    "status": "open",
+                    "detector": "smells",
+                    "file": "a.ts",
+                    "tier": 2,
+                    "confidence": "high",
+                    "summary": "smell",
+                },
+                "smells::b.ts::bar": {
+                    "id": "smells::b.ts::bar",
+                    "status": "wontfix",
+                    "detector": "smells",
+                    "file": "b.ts",
+                    "tier": 2,
+                    "confidence": "medium",
+                    "summary": "intentional smell",
+                    "note": "intentional",
+                },
+            },
+            "ignore_integrity": {"ignored": 12, "suppressed_pct": 40.0},
+            "reminder_history": {},
+        }
+
+        narrative = compute_narrative(
+            state,
+            lang="typescript",
+            command="scan",
+            config={"review_max_age_days": 30},
+        )
+        assert "primary_action" in narrative
+        assert "why_now" in narrative
+        assert "verification_step" in narrative
+        assert "risk_flags" in narrative
+        assert narrative["primary_action"] is not None
+        assert narrative["verification_step"] is not None
+        assert narrative["verification_step"]["command"] == "desloppify scan"
+        assert isinstance(narrative["why_now"], str)
+        assert narrative["why_now"] != ""
+        assert isinstance(narrative["risk_flags"], list)
+        risk_types = {f["type"] for f in narrative["risk_flags"]}
+        assert "high_ignore_suppression" in risk_types
+        assert "wontfix_gap" in risk_types
+        assert narrative["strict_target"]["target"] == 95.0
+        assert narrative["strict_target"]["current"] == 78.0
+        assert narrative["strict_target"]["gap"] == 17.0
+        assert narrative["strict_target"]["state"] == "below"
+
+    def test_strict_target_invalid_config_falls_back(self):
+        state = {
+            "strict_score": 91.0,
+            "scan_history": [_history_entry(strict_score=91.0, lang="typescript")],
+            "dimension_scores": {},
+            "stats": {"open": 1, "total": 1},
+            "findings": {},
+            "reminder_history": {},
+        }
+        narrative = compute_narrative(
+            state,
+            lang="typescript",
+            command="scan",
+            config={"target_strict_score": "nope"},
+        )
+        strict_target = narrative["strict_target"]
+        assert strict_target["target"] == 95.0
+        assert strict_target["current"] == 91.0
+        assert strict_target["gap"] == 4.0
+        assert strict_target["state"] == "below"
+        assert "Invalid config `target_strict_score='nope'`" in strict_target["warning"]

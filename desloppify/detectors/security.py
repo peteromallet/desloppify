@@ -6,11 +6,14 @@ specific checks live under ``lang/<name>/detectors/security.py``.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from ..zones import FileZoneMap, Zone
+
+LOGGER = logging.getLogger(__name__)
 
 # ── Secret format patterns (high-confidence format-based detection) ──
 
@@ -129,6 +132,144 @@ def _is_placeholder(value: str) -> bool:
     return False
 
 
+def _detect_secret_format_findings(filepath: str, line_num: int, line: str, is_test: bool) -> list[dict]:
+    findings: list[dict] = []
+    for label, pattern, severity, remediation in _SECRET_FORMAT_PATTERNS:
+        if not pattern.search(line):
+            continue
+        findings.append(
+            make_security_entry(
+                filepath,
+                line_num,
+                "hardcoded_secret_value",
+                f"Hardcoded {label} detected",
+                confidence="medium" if is_test else "high",
+                detail=_security_detail(
+                    check_id="hardcoded_secret_value",
+                    severity=severity,
+                    line=line_num,
+                    content=line,
+                    remediation=remediation,
+                ),
+            )
+        )
+    return findings
+
+
+def _detect_secret_name_findings(filepath: str, line_num: int, line: str, is_test: bool) -> list[dict]:
+    findings: list[dict] = []
+    for match in _SECRET_NAME_RE.finditer(line):
+        var_name = match.group(1)
+        value = match.group(3)
+        if not _SECRET_NAMES.search(var_name):
+            continue
+        if _is_env_lookup(line) or _is_placeholder(value):
+            continue
+        findings.append(
+            make_security_entry(
+                filepath,
+                line_num,
+                "hardcoded_secret_name",
+                f"Hardcoded secret in variable '{var_name}'",
+                confidence="medium" if is_test else "high",
+                detail=_security_detail(
+                    check_id="hardcoded_secret_name",
+                    severity="high",
+                    line=line_num,
+                    content=line,
+                    remediation="Move secret to environment variable or secrets manager",
+                ),
+            )
+        )
+    return findings
+
+
+def _detect_insecure_random_findings(filepath: str, line_num: int, line: str) -> list[dict]:
+    if not (_RANDOM_CALLS.search(line) and _SECURITY_CONTEXT_WORDS.search(line)):
+        return []
+    return [
+        make_security_entry(
+            filepath,
+            line_num,
+            "insecure_random",
+            "Insecure random used in security context",
+            confidence="medium",
+            detail=_security_detail(
+                check_id="insecure_random",
+                severity="medium",
+                line=line_num,
+                content=line,
+                remediation="Use secrets.token_hex() (Python) or crypto.randomUUID() (JS)",
+            ),
+        )
+    ]
+
+
+def _detect_weak_crypto_findings(filepath: str, line_num: int, line: str) -> list[dict]:
+    findings: list[dict] = []
+    for pattern, label, severity, remediation in _WEAK_CRYPTO_PATTERNS:
+        if not pattern.search(line):
+            continue
+        findings.append(
+            make_security_entry(
+                filepath,
+                line_num,
+                "weak_crypto_tls",
+                label,
+                confidence="high",
+                detail=_security_detail(
+                    check_id="weak_crypto_tls",
+                    severity=severity,
+                    line=line_num,
+                    content=line,
+                    remediation=remediation,
+                ),
+            )
+        )
+    return findings
+
+
+def _detect_sensitive_log_findings(filepath: str, line_num: int, line: str) -> list[dict]:
+    if not (_LOG_CALLS.search(line) and _SENSITIVE_IN_LOG.search(line)):
+        return []
+    return [
+        make_security_entry(
+            filepath,
+            line_num,
+            "log_sensitive",
+            "Sensitive data may be logged",
+            confidence="medium",
+            detail=_security_detail(
+                check_id="log_sensitive",
+                severity="medium",
+                line=line_num,
+                content=line,
+                remediation="Remove sensitive data from log statements",
+            ),
+        )
+    ]
+
+
+def _scan_line_for_security_findings(filepath: str, line_num: int, line: str, is_test: bool) -> list[dict]:
+    findings: list[dict] = []
+    findings.extend(_detect_secret_format_findings(filepath, line_num, line, is_test))
+    findings.extend(_detect_secret_name_findings(filepath, line_num, line, is_test))
+    findings.extend(_detect_insecure_random_findings(filepath, line_num, line))
+    findings.extend(_detect_weak_crypto_findings(filepath, line_num, line))
+    findings.extend(_detect_sensitive_log_findings(filepath, line_num, line))
+    return findings
+
+
+def _security_detail(*, check_id: str, severity: str, line: int, content: str, remediation: str) -> dict[str, Any]:
+    return {
+        "kind": check_id,
+        "severity": severity,
+        "line": line,
+        "content": content[:200],
+        "remediation": remediation,
+    }
+
+
 def detect_security_issues(
     files: list[str],
     zone_map: FileZoneMap | None,
@@ -142,15 +283,12 @@ def detect_security_issues(
     scanned = 0
 
     for filepath in files:
-        # Skip zones excluded from security scanning.
-        if zone_map is not None:
-            zone = zone_map.get(filepath)
-            if zone in (Zone.TEST, Zone.CONFIG, Zone.GENERATED, Zone.VENDOR):
-                continue
-
+        if zone_map is not None and zone_map.get(filepath) in (Zone.TEST, Zone.CONFIG, Zone.GENERATED, Zone.VENDOR):
+            continue
         try:
             content = Path(filepath).read_text(errors="replace")
-        except OSError:
+        except OSError as exc:
+            LOGGER.debug("Skipping unreadable file during security scan: %s", filepath, exc_info=exc)
             continue
 
         scanned += 1
@@ -158,79 +296,49 @@ def detect_security_issues(
         is_test = zone_map is not None and zone_map.get(filepath) == Zone.TEST
 
         for line_num, line in enumerate(lines, 1):
-            if _is_comment_line(line) and not any(
-                pat.search(line) for _, pat, _, _ in _SECRET_FORMAT_PATTERNS
-            ):
+            if _is_comment_line(line) and not any(pattern.search(line) for _, pattern, _, _ in _SECRET_FORMAT_PATTERNS):
                 continue
-
-            # Check 1: Secret format patterns
-            for label, pattern, severity, remediation in _SECRET_FORMAT_PATTERNS:
-                m = pattern.search(line)
-                if m:
-                    entries.append(make_security_entry(
-                        filepath, line_num, "hardcoded_secret_value",
-                        f"Hardcoded {label} detected",
-                        severity, "medium" if is_test else "high",
-                        line, remediation,
-                    ))
-
-            # Check 2: Secret variable name + literal value
-            for m in _SECRET_NAME_RE.finditer(line):
-                var_name = m.group(1)
-                value = m.group(3)
-                if not _SECRET_NAMES.search(var_name):
-                    continue
-                if _is_env_lookup(line):
-                    continue
-                if _is_placeholder(value):
-                    continue
-                entries.append(make_security_entry(
-                    filepath, line_num, "hardcoded_secret_name",
-                    f"Hardcoded secret in variable '{var_name}'",
-                    "high", "medium" if is_test else "high",
-                    line, "Move secret to environment variable or secrets manager",
-                ))
-
-            # Check 3: Insecure random near security context
-            if _RANDOM_CALLS.search(line):
-                # Only flag if the random value is ASSIGNED to a security-named variable
-                # (same line only — avoids matching UI session IDs near "session" in context)
-                if _SECURITY_CONTEXT_WORDS.search(line):
-                    entries.append(make_security_entry(
-                        filepath, line_num, "insecure_random",
-                        "Insecure random used in security context",
-                        "medium", "medium",
-                        line, "Use secrets.token_hex() (Python) or crypto.randomUUID() (JS)",
-                    ))
-
-            # Check 4: Weak crypto / TLS
-            for pattern, label, severity, remediation in _WEAK_CRYPTO_PATTERNS:
-                if pattern.search(line):
-                    entries.append(make_security_entry(
-                        filepath, line_num, "weak_crypto_tls",
-                        label, severity, "high",
-                        line, remediation,
-                    ))
-
-            # Check 5: Sensitive data in logs
-            if _LOG_CALLS.search(line) and _SENSITIVE_IN_LOG.search(line):
-                entries.append(make_security_entry(
-                    filepath, line_num, "log_sensitive",
-                    "Sensitive data may be logged",
-                    "medium", "medium",
-                    line, "Remove sensitive data from log statements",
-                ))
+            entries.extend(_scan_line_for_security_findings(filepath, line_num, line, is_test))
 
     return entries, scanned
 
 
 def make_security_entry(
-    filepath: str, line: int, check_id: str,
-    summary: str, severity: str, confidence: str,
-    content: str, remediation: str,
+    filepath: str,
+    line: int,
+    check_id: str,
+    summary: str,
+    *legacy_fields,
+    confidence: str | None = None,
+    detail: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a security finding entry dict."""
+    """Build a security finding entry dict.
+
+    Supports both call shapes:
+    - modern: make_security_entry(..., confidence=..., detail={...})
+    - legacy: make_security_entry(..., severity, confidence, content, remediation)
+    """
     from ..utils import rel
+
+    if detail is None:
+        if len(legacy_fields) != 4:
+            raise TypeError(
+                "make_security_entry() expected 4 legacy fields "
+                "(severity, confidence, content, remediation) when detail is omitted."
+            )
+        severity, legacy_confidence, content, remediation = legacy_fields
+        detail = _security_detail(
+            check_id=check_id,
+            severity=str(severity),
+            line=line,
+            content=str(content),
+            remediation=str(remediation),
+        )
+        confidence = str(legacy_confidence)
+
+    if confidence is None:
+        raise TypeError("make_security_entry() missing required keyword argument: 'confidence'")
+
     rel_path = rel(filepath)
     return {
         "file": filepath,
@@ -238,11 +346,5 @@ def make_security_entry(
         "tier": 2,
         "confidence": confidence,
         "summary": summary,
-        "detail": {
-            "kind": check_id,
-            "severity": severity,
-            "line": line,
-            "content": content[:200],
-            "remediation": remediation,
-        },
+        "detail": detail,
     }

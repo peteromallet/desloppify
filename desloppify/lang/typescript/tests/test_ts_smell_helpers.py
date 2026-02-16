@@ -7,8 +7,6 @@ from desloppify.lang.typescript.detectors._smell_helpers import (
     _track_brace_body,
     _detect_async_no_await,
     _detect_error_no_throw,
-    _detect_empty_if_chains,
-    _detect_dead_useeffects,
     _detect_swallowed_errors,
 )
 from desloppify.lang.typescript.detectors._smell_detectors import (
@@ -17,6 +15,10 @@ from desloppify.lang.typescript.detectors._smell_detectors import (
     _detect_dead_functions,
     _detect_window_globals,
     _detect_catch_return_default,
+)
+from desloppify.lang.typescript.detectors.smells import (
+    _detect_dead_useeffects,
+    _detect_empty_if_chains,
 )
 
 
@@ -368,7 +370,7 @@ class TestDetectCatchReturnDefault:
 class TestDetectMonsterFunctions:
     def test_flags_function_over_150_loc(self):
         body = "\n".join(f"  const x{i} = {i};" for i in range(160))
-        lines = [f"function big() {{", *body.splitlines(), "}"]
+        lines = ["function big() {", *body.splitlines(), "}"]
         counts = _make_counts()
         _detect_monster_functions("test.ts", lines, counts)
         assert len(counts["monster_function"]) == 1

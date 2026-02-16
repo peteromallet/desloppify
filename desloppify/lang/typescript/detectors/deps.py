@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -11,11 +12,10 @@ from typing import Any
 from ....utils import PROJECT_ROOT, c, grep_files, print_table, rel, resolve_path
 from ....detectors.graph import detect_cycles, get_coupling_score, finalize_graph
 
-# Extensions for framework files whose imports should be included in the graph.
-# These files can import .ts/.tsx modules but aren't .ts/.tsx themselves.
+LOGGER = logging.getLogger(__name__)
+
 _FRAMEWORK_EXTENSIONS = (".svelte", ".vue", ".astro")
 
-# Extensions to try when resolving an import specifier to a file on disk.
 _RESOLVE_EXTENSIONS = ("", ".ts", ".tsx", "/index.ts", "/index.tsx")
 
 # ── tsconfig paths resolution ──────────────────────────────
@@ -24,11 +24,7 @@ _tsconfig_cache: dict[str, dict[str, str]] = {}
 
 
 def _load_tsconfig_paths(project_root: Path) -> dict[str, str]:
-    """Parse tsconfig.json compilerOptions.paths into {prefix: directory}.
-
-    Returns e.g. {"@/": "src/", "@components/": "src/components/"}.
-    Falls back to {"@/": "src/"} if no tsconfig found or no paths configured.
-    """
+    """Load tsconfig compilerOptions.paths into {alias_prefix: directory}."""
     key = str(project_root)
     if key in _tsconfig_cache:
         return _tsconfig_cache[key]
@@ -48,7 +44,8 @@ def _parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
         if config_path.is_file():
             try:
                 data = json.loads(config_path.read_text(errors="replace"))
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                LOGGER.debug("Could not parse %s while loading tsconfig paths", config_path, exc_info=exc)
                 continue
             result = _extract_paths(data, project_root)
             if result is not None:
@@ -126,11 +123,7 @@ def _resolve_module(module_path: str, filepath: str,
                     project_root: Path,
                     graph: dict[str, dict[str, Any]],
                     source_resolved: str) -> None:
-    """Resolve an import specifier and add edges to the graph.
-
-    Handles relative imports and tsconfig alias imports. External packages
-    (bare specifiers like 'react') are silently ignored.
-    """
+    """Resolve a module specifier and add graph edges when it resolves to a file."""
     target: Path | None = None
 
     if module_path.startswith("."):
@@ -153,17 +146,13 @@ def _resolve_module(module_path: str, filepath: str,
 
 
 def build_dep_graph(path: Path) -> dict[str, dict[str, Any]]:
-    """Build a dependency graph: for each file, who it imports and who imports it.
-
-    Returns {resolved_path: {"imports": set[str], "importers": set[str], "import_count": int, "importer_count": int}}
-    """
+    """Build dependency graph entries keyed by resolved source path."""
     from ....utils import find_ts_files, find_source_files
 
     graph: dict[str, dict[str, Any]] = defaultdict(lambda: {"imports": set(), "importers": set()})
     module_re = re.compile(r"""from\s+['"]([^'"]+)['"]""")
     tsconfig_paths = _load_tsconfig_paths(PROJECT_ROOT)
 
-    # Scan .ts/.tsx files
     ts_files = find_ts_files(path)
     hits = grep_files(r"from\s+['\"]", ts_files)
 
@@ -176,7 +165,6 @@ def build_dep_graph(path: Path) -> dict[str, dict[str, Any]]:
         _resolve_module(m.group(1), filepath, tsconfig_paths, PROJECT_ROOT,
                         graph, source_resolved)
 
-    # Scan framework files (.svelte, .vue, .astro) for imports into .ts/.tsx modules
     fw_files = find_source_files(path, list(_FRAMEWORK_EXTENSIONS))
     if fw_files:
         fw_hits = grep_files(r"from\s+['\"]", fw_files)

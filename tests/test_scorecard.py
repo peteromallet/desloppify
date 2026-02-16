@@ -6,6 +6,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
+from desloppify.output._scorecard_left_panel import draw_left_panel as draw_left_panel_impl
+from desloppify.output._scorecard_meta import (
+    resolve_package_version as resolve_package_version_impl,
+)
+from desloppify.output._scorecard_meta import resolve_project_name as resolve_project_name_impl
+from desloppify.output._scorecard_right_panel import draw_right_panel as draw_right_panel_impl
 from desloppify.output.scorecard import (
     _SCALE,
     _get_package_version,
@@ -330,3 +336,97 @@ class TestGetPackageVersion:
         monkeypatch.setattr(scorecard.importlib_metadata, "version", _missing)
         monkeypatch.setattr(scorecard, "PROJECT_ROOT", tmp_path)
         assert _get_package_version() == "unknown"
+
+
+# ===========================================================================
+# scorecard helper submodules (direct coverage)
+# ===========================================================================
+
+
+class _StubDraw:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def textbbox(self, _xy, text, font=None):
+        width = len(str(text)) * 6
+        height = 10 if font is None else 12
+        return (0, 0, width, height)
+
+    def textlength(self, text, font=None):
+        return float(len(str(text)) * 6)
+
+    def rounded_rectangle(self, *_args, **_kwargs):
+        self.calls.append("rounded_rectangle")
+
+    def rectangle(self, *_args, **_kwargs):
+        self.calls.append("rectangle")
+
+    def text(self, *_args, **_kwargs):
+        self.calls.append("text")
+
+    def polygon(self, *_args, **_kwargs):
+        self.calls.append("polygon")
+
+
+class TestScorecardSubmodules:
+    def test_meta_resolve_project_name_falls_back_to_directory(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("subprocess.check_output", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError))
+        assert resolve_project_name_impl(tmp_path) == tmp_path.name
+
+    def test_meta_resolve_package_version_reads_pyproject(self, tmp_path):
+        class MissingVersionError(Exception):
+            pass
+
+        def _missing(_name: str) -> str:
+            raise MissingVersionError
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "desloppify"\nversion = "9.9.9"\n',
+            encoding="utf-8",
+        )
+        version = resolve_package_version_impl(
+            tmp_path,
+            version_getter=_missing,
+            package_not_found_error=MissingVersionError,
+        )
+        assert version == "9.9.9"
+
+    def test_left_panel_draw_smoke(self, monkeypatch):
+        from desloppify.output import _scorecard_left_panel as left_panel
+
+        monkeypatch.setattr(left_panel, "_load_font", lambda *a, **k: object())
+        draw = _StubDraw()
+        draw_left_panel_impl(
+            draw,
+            main_score=95.0,
+            strict_score=92.0,
+            project_name="owner/repo",
+            package_version="1.2.3",
+            ignore_warning=None,
+            lp_left=0,
+            lp_right=300,
+            lp_top=0,
+            lp_bot=200,
+            draw_rule_with_ornament_fn=lambda *a, **k: None,
+        )
+        assert "text" in draw.calls
+        assert "rounded_rectangle" in draw.calls
+
+    def test_right_panel_draw_smoke(self, monkeypatch):
+        from desloppify.output import _scorecard_right_panel as right_panel
+
+        monkeypatch.setattr(right_panel, "_load_font", lambda *a, **k: object())
+        draw = _StubDraw()
+        draw_right_panel_impl(
+            draw,
+            active_dims=[
+                ("File health", {"score": 95.0, "strict": 90.0}),
+                ("Code quality", {"score": 88.0, "strict": 85.0}),
+            ],
+            row_h=20,
+            table_x1=0,
+            table_x2=400,
+            table_top=0,
+            table_bot=200,
+        )
+        assert "rounded_rectangle" in draw.calls

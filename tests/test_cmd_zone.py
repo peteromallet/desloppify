@@ -32,13 +32,18 @@ class TestZoneModuleSanity:
 class TestCmdZoneDispatch:
     """cmd_zone dispatches to sub-actions based on zone_action attr."""
 
-    def test_unknown_action_prints_usage(self, capsys):
+    def test_missing_action_defaults_to_show(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "desloppify.commands.zone_cmd._zone_show",
+            lambda args: calls.append("show"),
+        )
+
         class FakeArgs:
             zone_action = None
 
         cmd_zone(FakeArgs())
-        out = capsys.readouterr().out
-        assert "Usage:" in out
+        assert calls == ["show"]
 
     def test_show_action_dispatches(self, monkeypatch):
         calls = []
@@ -78,6 +83,14 @@ class TestCmdZoneDispatch:
 
         cmd_zone(FakeArgs())
         assert calls == ["clear"]
+
+    def test_unknown_action_prints_usage(self, capsys):
+        class FakeArgs:
+            zone_action = "bogus"
+
+        cmd_zone(FakeArgs())
+        out = capsys.readouterr().out
+        assert "Usage:" in out
 
 
 # ---------------------------------------------------------------------------

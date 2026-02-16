@@ -76,165 +76,113 @@ def _template_files(
     marker_repr = repr(markers)
     ext_sample = extensions[0]
     return {
-        "__init__.py": f'''"""Language configuration for {lang_name}."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "from pathlib import Path\n\n"
-        "from .. import register_lang\n"
-        "from ..base import (\n"
-        "    DetectorPhase,\n"
-        "    LangConfig,\n"
-        "    detector_phase_security,\n"
-        "    detector_phase_test_coverage,\n"
-        "    shared_subjective_duplicates_tail,\n"
-        ")\n"
-        "from ...utils import find_source_files\n"
-        "from ...zones import COMMON_ZONE_RULES\n"
-        "from .commands import get_detect_commands\n"
-        "from .extractors import extract_functions\n"
-        "from .phases import _phase_placeholder\n"
-        "from .review import (\n"
-        "    LOW_VALUE_PATTERN,\n"
-        "    MIGRATION_MIXED_EXTENSIONS,\n"
-        "    MIGRATION_PATTERN_PAIRS,\n"
-        "    REVIEW_GUIDANCE,\n"
-        "    api_surface,\n"
-        "    module_patterns,\n"
-        ")\n\n\n"
-        f"{lang_name.upper()}_ZONE_RULES = COMMON_ZONE_RULES\n\n\n"
-        "def _find_files(path: Path) -> list[str]:\n"
-        f"    return find_source_files(path, {ext_repr})\n\n\n"
-        "def _build_dep_graph(path: Path) -> dict:\n"
-        "    from .detectors.deps import build_dep_graph\n\n"
-        "    return build_dep_graph(path)\n\n\n"
-        f'@register_lang("{lang_name}")\n'
-        f"class {class_name}(LangConfig):\n"
-        "    def __init__(self):\n"
-        "        super().__init__(\n"
-        f"            name={lang_name!r},\n"
-        f"            extensions={ext_repr},\n"
-        '            exclusions=["node_modules", ".venv"],\n'
-        f"            default_src={default_src!r},\n"
-        "            build_dep_graph=_build_dep_graph,\n"
-        "            entry_patterns=[],\n"
-        "            barrel_names=set(),\n"
-        "            phases=[\n"
-        "                DetectorPhase(\"Placeholder\", _phase_placeholder),\n"
-        "                detector_phase_test_coverage(),\n"
-        "                detector_phase_security(),\n"
-        "                *shared_subjective_duplicates_tail(),\n"
-        "            ],\n"
-        "            fixers={},\n"
-        "            get_area=lambda filepath: filepath.split(\"/\")[0],\n"
-        "            detect_commands=get_detect_commands(),\n"
-        "            boundaries=[],\n"
-        '            typecheck_cmd="",\n'
-        "            file_finder=_find_files,\n"
-        f"            detect_markers={marker_repr},\n"
-        '            external_test_dirs=["tests", "test"],\n'
-        f"            test_file_extensions={ext_repr},\n"
-        "            review_module_patterns_fn=module_patterns,\n"
-        "            review_api_surface_fn=api_surface,\n"
-        "            review_guidance=REVIEW_GUIDANCE,\n"
-        "            review_low_value_pattern=LOW_VALUE_PATTERN,\n"
-        "            holistic_review_dimensions=[\"cross_module_architecture\", \"test_strategy\"],\n"
-        "            migration_pattern_pairs=MIGRATION_PATTERN_PAIRS,\n"
-        "            migration_mixed_extensions=MIGRATION_MIXED_EXTENSIONS,\n"
-        "            extract_functions=extract_functions,\n"
-        f"            zone_rules={lang_name.upper()}_ZONE_RULES,\n"
-        "        )\n",
-        "phases.py": '''"""Phase runners for language plugin scaffolding."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "from pathlib import Path\n\n"
-        "from ..base import LangConfig\n\n\n"
-        "def _phase_placeholder(_path: Path, _lang: LangConfig) -> tuple[list[dict], dict[str, int]]:\n"
-        '    """Placeholder phase. Replace with real detector orchestration."""\n'
-        "    return [], {}\n",
-        "commands.py": '''"""Detect command registry for language plugin scaffolding."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "from typing import TYPE_CHECKING, Callable\n\n"
-        "from ...utils import c\n\n"
-        "if TYPE_CHECKING:\n"
-        "    import argparse\n\n\n"
-        "def cmd_placeholder(_args: argparse.Namespace) -> None:\n"
-        f"    print(c(\"{lang_name}: placeholder detector command (not implemented)\", \"yellow\"))\n\n\n"
-        "def get_detect_commands() -> dict[str, Callable[..., None]]:\n"
-        '    return {"placeholder": cmd_placeholder}\n',
-        "extractors.py": '''"""Extractors for language plugin scaffolding."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "from pathlib import Path\n\n\n"
-        "def extract_functions(_path: Path) -> list:\n"
-        '    """Return function-like items for duplicate/signature detectors."""\n'
-        "    return []\n",
-        "move.py": '''"""Move helpers for language plugin scaffolding."""\n\n'''
-        "from __future__ import annotations\n\n\n"
-        'VERIFY_HINT = "desloppify detect deps"\n\n\n'
-        "def find_replacements(\n"
-        "    _source_abs: str, _dest_abs: str, _graph: dict\n"
-        ") -> dict[str, list[tuple[str, str]]]:\n"
-        "    return {}\n\n\n"
-        "def find_self_replacements(\n"
-        "    _source_abs: str, _dest_abs: str, _graph: dict\n"
-        ") -> list[tuple[str, str]]:\n"
-        "    return []\n",
-        "review.py": '''"""Review guidance hooks for language plugin scaffolding."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "import re\n\n\n"
-        "REVIEW_GUIDANCE = {\n"
-        '    "patterns": [],\n'
-        '    "auth": [],\n'
-        f'    "naming": "{lang_name} naming guidance placeholder",\n'
-        "}\n\n"
-        "MIGRATION_PATTERN_PAIRS: list[tuple[str, object, object]] = []\n"
-        "MIGRATION_MIXED_EXTENSIONS: set[str] = set()\n"
-        'LOW_VALUE_PATTERN = re.compile(r"$^")\n\n\n'
-        "def module_patterns(_content: str) -> list[str]:\n"
-        "    return []\n\n\n"
-        "def api_surface(_file_contents: dict[str, str]) -> dict:\n"
-        "    return {}\n",
-        "test_coverage.py": '''"""Test coverage hooks for language plugin scaffolding."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "import re\n\n\n"
-        "ASSERT_PATTERNS: list[re.Pattern[str]] = []\n"
-        "MOCK_PATTERNS: list[re.Pattern[str]] = []\n"
-        "SNAPSHOT_PATTERNS: list[re.Pattern[str]] = []\n"
-        'TEST_FUNCTION_RE = re.compile(r"$^")\n'
-        "BARREL_BASENAMES: set[str] = set()\n\n\n"
-        "def has_testable_logic(_filepath: str, _content: str) -> bool:\n"
-        "    return True\n\n\n"
-        "def resolve_import_spec(\n"
-        "    _spec: str, _test_path: str, _production_files: set[str]\n"
-        ") -> str | None:\n"
-        "    return None\n\n\n"
-        "def resolve_barrel_reexports(_filepath: str, _production_files: set[str]) -> set[str]:\n"
-        "    return set()\n\n\n"
-        "def parse_test_import_specs(_content: str) -> list[str]:\n"
-        "    return []\n\n\n"
-        "def map_test_to_source(_test_path: str, _production_set: set[str]) -> str | None:\n"
-        "    return None\n\n\n"
-        "def strip_test_markers(_basename: str) -> str | None:\n"
-        "    return None\n\n\n"
-        "def strip_comments(content: str) -> str:\n"
-        "    return content\n",
+        "__init__.py": f'''"""Language configuration for {lang_name}."""
+from __future__ import annotations
+from pathlib import Path
+from .. import register_lang
+from ..base import DetectorPhase, LangConfig
+from ...utils import find_source_files
+from ...zones import COMMON_ZONE_RULES
+from .commands import get_detect_commands
+from .phases import _phase_placeholder
+def _find_files(path: Path) -> list[str]:
+    return find_source_files(path, {ext_repr})
+def _build_dep_graph(path: Path) -> dict:
+    from .detectors.deps import build_dep_graph
+    return build_dep_graph(path)
+@register_lang("{lang_name}")
+class {class_name}(LangConfig):
+    def __init__(self):
+        super().__init__(
+            name={lang_name!r},
+            extensions={ext_repr},
+            exclusions=["node_modules", ".venv"],
+            default_src={default_src!r},
+            build_dep_graph=_build_dep_graph,
+            entry_patterns=[],
+            barrel_names=set(),
+            phases=[DetectorPhase("Placeholder", _phase_placeholder)],
+            detect_commands=get_detect_commands(),
+            file_finder=_find_files,
+            detect_markers={marker_repr},
+            test_file_extensions={ext_repr},
+            zone_rules=COMMON_ZONE_RULES,
+        )
+''',
+        "phases.py": '''"""Phase runners for language plugin scaffolding."""
+from __future__ import annotations
+from pathlib import Path
+from ..base import LangConfig
+def _phase_placeholder(_path: Path, _lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+    return [], {}
+''',
+        "commands.py": f'''"""Detect command registry for language plugin scaffolding."""
+from __future__ import annotations
+from typing import TYPE_CHECKING, Callable
+from ...utils import c
+if TYPE_CHECKING:
+    import argparse
+def cmd_placeholder(_args: argparse.Namespace) -> None:
+    print(c("{lang_name}: placeholder detector command (not implemented)", "yellow"))
+def get_detect_commands() -> dict[str, Callable[..., None]]:
+    return {{"placeholder": cmd_placeholder}}
+''',
+        "extractors.py": '''"""Extractors for language plugin scaffolding."""
+from __future__ import annotations
+def extract_functions(_path) -> list:
+    return []
+''',
+        "move.py": '''"""Move helpers for language plugin scaffolding."""
+from __future__ import annotations
+VERIFY_HINT = "desloppify detect deps"
+def find_replacements(_source_abs: str, _dest_abs: str, _graph: dict) -> dict[str, list[tuple[str, str]]]:
+    return {}
+def find_self_replacements(_source_abs: str, _dest_abs: str, _graph: dict) -> list[tuple[str, str]]:
+    return []
+''',
+        "review.py": f'''"""Review guidance hooks for language plugin scaffolding."""
+from __future__ import annotations
+REVIEW_GUIDANCE = {{"patterns": [], "auth": [], "naming": "{lang_name} naming guidance placeholder"}}
+def module_patterns(_content: str) -> list[str]:
+    return []
+def api_surface(_file_contents: dict[str, str]) -> dict:
+    return {{}}
+''',
+        "test_coverage.py": '''"""Test coverage hooks for language plugin scaffolding."""
+from __future__ import annotations
+import re
+ASSERT_PATTERNS: list[re.Pattern[str]] = []
+MOCK_PATTERNS: list[re.Pattern[str]] = []
+SNAPSHOT_PATTERNS: list[re.Pattern[str]] = []
+TEST_FUNCTION_RE = re.compile(r"$^")
+BARREL_BASENAMES: set[str] = set()
+def has_testable_logic(_filepath: str, _content: str) -> bool:
+    return True
+def resolve_import_spec(_spec: str, _test_path: str, _production_files: set[str]) -> str | None:
+    return None
+''',
         "detectors/__init__.py": "",
-        "detectors/deps.py": '''"""Dependency graph builder scaffold."""\n\n'''
-        "from __future__ import annotations\n\n"
-        "from pathlib import Path\n\n\n"
-        "def build_dep_graph(_path: Path) -> dict:\n"
-        "    return {}\n",
+        "detectors/deps.py": '''"""Dependency graph builder scaffold."""
+from __future__ import annotations
+from pathlib import Path
+def build_dep_graph(_path: Path) -> dict:
+    return {}
+''',
         "fixers/__init__.py": "",
         "tests/__init__.py": "",
-        "tests/test_init.py": '''"""Scaffold sanity tests for the generated language plugin."""\n\n'''
-        "from __future__ import annotations\n\n"
-        f"from desloppify.lang.{lang_name} import {class_name}\n\n\n"
-        "def test_config_name():\n"
-        f"    cfg = {class_name}()\n"
-        f"    assert cfg.name == {lang_name!r}\n\n\n"
-        "def test_config_extensions_non_empty():\n"
-        f"    cfg = {class_name}()\n"
-        f"    assert {ext_sample!r} in cfg.extensions\n\n\n"
-        "def test_detect_commands_non_empty():\n"
-        f"    cfg = {class_name}()\n"
-        "    assert cfg.detect_commands\n",
+        "tests/test_init.py": f'''"""Scaffold sanity tests for the generated language plugin."""
+from __future__ import annotations
+from desloppify.lang.{lang_name} import {class_name}
+def test_config_name():
+    cfg = {class_name}()
+    assert cfg.name == {lang_name!r}
+def test_config_extensions_non_empty():
+    cfg = {class_name}()
+    assert {ext_sample!r} in cfg.extensions
+def test_detect_commands_non_empty():
+    cfg = {class_name}()
+    assert cfg.detect_commands
+''',
     }
 
 

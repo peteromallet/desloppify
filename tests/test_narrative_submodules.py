@@ -80,7 +80,7 @@ class TestComputeActions:
         )
         sr = [a for a in result if a.get("detector") == "subjective_review"]
         if sr:
-            assert "review" in sr[0]["command"]
+            assert sr[0]["command"] == "desloppify review --prepare"
 
     def test_review_findings_action(self, empty_state):
         from desloppify.narrative.actions import _compute_actions

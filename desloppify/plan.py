@@ -1,8 +1,4 @@
-"""Finding generation (detector → findings), tier assignment, plan output.
-
-Runs all detectors, converts raw results into normalized findings with stable IDs,
-assigns tiers, and generates prioritized plans.
-"""
+"""Finding generation, tier assignment, and markdown planning."""
 
 from __future__ import annotations
 
@@ -30,16 +26,25 @@ def _is_subjective_phase(phase) -> bool:
 
 
 def generate_findings(
-    path: Path, *, include_slow: bool = True, lang=None,
-    zone_overrides: dict[str, str] | None = None,
-    profile: str = "full",
+    path: Path,
+    *,
+    options: dict[str, object] | None = None,
+    lang=None,
+    **legacy_options,
 ) -> tuple[list[dict], dict[str, int]]:
-    """Run all detectors and convert results to normalized findings.
+    """Run all detector phases and return normalized findings + potentials."""
+    opts = dict(options or {})
+    for key, value in legacy_options.items():
+        opts.setdefault(key, value)
+    opts.setdefault("include_slow", True)
+    opts.setdefault("zone_overrides", None)
+    opts.setdefault("profile", "full")
+    include_slow = bool(opts["include_slow"])
+    zone_overrides = opts["zone_overrides"]
+    if zone_overrides is not None and not isinstance(zone_overrides, dict):
+        zone_overrides = None
+    profile = str(opts["profile"])
 
-    Dispatches through the LangConfig phase pipeline.
-    Auto-detects language when none is specified.
-    Returns (findings, potentials) where potentials maps detector names to checked counts.
-    """
     if lang is None:
         from .lang import get_lang, auto_detect_lang, available_langs
         from .utils import PROJECT_ROOT
@@ -50,9 +55,9 @@ def generate_findings(
                 raise ValueError("No language plugins available")
             detected = langs[0]
         lang = get_lang(detected)
-    return _generate_findings_from_lang(path, lang, include_slow=include_slow,
-                                         zone_overrides=zone_overrides,
-                                         profile=profile)
+    return _generate_findings_from_lang(
+        path, lang, include_slow=include_slow, zone_overrides=zone_overrides, profile=profile
+    )
 
 
 def _generate_findings_from_lang(
@@ -61,9 +66,9 @@ def _generate_findings_from_lang(
     profile: str = "full",
 ) -> tuple[list[dict], dict[str, int]]:
     """Run detector phases from a LangConfig."""
-    stderr = lambda msg: print(colorize(msg, "dim"), file=sys.stderr)
+    def stderr(msg: str) -> None:
+        print(colorize(msg, "dim"), file=sys.stderr)
 
-    # Build zone map if language has zone rules
     if lang.zone_rules and lang.file_finder:
         from .zones import FileZoneMap, ZONE_POLICIES
         from .utils import rel
@@ -90,13 +95,11 @@ def _generate_findings_from_lang(
         all_potentials.update(phase_potentials)
         findings += phase_findings
 
-    # Stamp language and zone on all findings
     for f in findings:
         f["lang"] = lang.name
         if lang._zone_map is not None:
             zone = lang._zone_map.get(f.get("file", ""))
             f["zone"] = zone.value
-            # Apply zone policy confidence downgrades
             policy = ZONE_POLICIES.get(zone)
             if policy and f.get("detector") in policy.downgrade_detectors:
                 f["confidence"] = "low"
@@ -114,8 +117,7 @@ def _plan_header(state: dict, stats: dict) -> list[str]:
     strict_score = get_strict_score(state)
     if overall_score is not None and objective_score is not None and strict_score is not None:
         header_score = (
-            f"**Health:** overall {overall_score:.1f}/100 | "
-            f"objective {objective_score:.1f}/100 | "
+            f"**Health:** overall {overall_score:.1f}/100 | objective {objective_score:.1f}/100 | "
             f"strict {strict_score:.1f}/100"
         )
     elif overall_score is not None:
@@ -123,7 +125,6 @@ def _plan_header(state: dict, stats: dict) -> list[str]:
     else:
         header_score = "**Scores unavailable**"
 
-    # Codebase metrics
     metrics = state.get("codebase_metrics", {})
     total_files = sum(m.get("total_files", 0) for m in metrics.values())
     total_loc = sum(m.get("total_loc", 0) for m in metrics.values())
@@ -132,11 +133,8 @@ def _plan_header(state: dict, stats: dict) -> list[str]:
     lines = [
         f"# Desloppify Plan — {date.today().isoformat()}",
         "",
-        f"{header_score} | "
-        f"{stats.get('open', 0)} open | "
-        f"{stats.get('fixed', 0)} fixed | "
-        f"{stats.get('wontfix', 0)} wontfix | "
-        f"{stats.get('auto_resolved', 0)} auto-resolved",
+        f"{header_score} | {stats.get('open', 0)} open | {stats.get('fixed', 0)} fixed | "
+        f"{stats.get('wontfix', 0)} wontfix | {stats.get('auto_resolved', 0)} auto-resolved",
         "",
     ]
     if total_files:
@@ -177,7 +175,6 @@ def _plan_dimension_table(state: dict) -> list[str]:
             f"| {bold}{dim.name}{bold} | T{dim.tier} | "
             f"{checks:,} | {issues} | {score_val:.1f}% | {strict_val:.1f}% | {action} |"
         )
-    # Append subjective dimensions not in static DIMENSIONS
     assessment_dims = [(name, ds) for name, ds in sorted(dim_scores.items())
                        if name not in static_names]
     if assessment_dims:
@@ -216,10 +213,8 @@ def _plan_tier_sections(findings: dict) -> list[str]:
             "",
         ])
 
-        # Sort files by finding count (most findings first)
         sorted_files = sorted(tier_files.items(), key=lambda x: -len(x[1]))
         for filepath, file_findings in sorted_files:
-            # Sort findings within file: high confidence first
             file_findings.sort(key=lambda f: (CONFIDENCE_ORDER.get(f["confidence"], 9), f["id"]))
             lines.append(f"### `{filepath}` ({len(file_findings)} findings)")
             lines.append("")
@@ -240,7 +235,6 @@ def generate_plan_md(state: dict) -> str:
     lines = _plan_header(state, stats)
     lines.extend(_plan_dimension_table(state))
 
-    # Tier breakdown summary
     by_tier = stats.get("by_tier", {})
     for tier_num in [1, 2, 3, 4]:
         ts = by_tier.get(str(tier_num), {})
@@ -252,10 +246,8 @@ def generate_plan_md(state: dict) -> str:
         lines.append(f"- **Tier {tier_num}** ({label}): {t_open} open / {t_total} total ({pct}% addressed)")
     lines.append("")
 
-    # Per-tier open finding sections
     lines.extend(_plan_tier_sections(findings))
 
-    # Addressed findings summary
     addressed = [f for f in findings.values() if f["status"] != "open"]
     if addressed:
         by_status: dict[str, int] = defaultdict(int)
@@ -269,7 +261,6 @@ def generate_plan_md(state: dict) -> str:
         for status, count in sorted(by_status.items()):
             lines.append(f"- **{status}**: {count}")
 
-        # Show wontfix items with their reasons
         wontfix = [f for f in addressed if f["status"] == "wontfix" and f.get("note")]
         if wontfix:
             lines.extend(["", "### Wontfix (with explanations)", ""])
@@ -289,11 +280,7 @@ def get_next_item(state: dict, tier: int | None = None,
 
 def get_next_items(state: dict, tier: int | None = None, count: int = 1,
                    scan_path: str | None = None) -> list[dict]:
-    """Get the N highest-priority open findings.
-
-    Priority: tier (ascending) → confidence (high first) → detail count.
-    When scan_path is set, only returns findings within that path.
-    """
+    """Get N highest-priority open findings (tier, confidence, detail-count)."""
     from .state import path_scoped_findings
     findings = path_scoped_findings(state["findings"], scan_path)
     open_findings = [f for f in findings.values() if f["status"] == "open"]

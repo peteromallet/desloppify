@@ -6,10 +6,13 @@ Uses AST analysis where possible for precision, falls back to regex for simpler 
 from __future__ import annotations
 
 import ast
+import logging
 import re
 from pathlib import Path
 
 from ....zones import FileZoneMap, Zone
+
+LOGGER = logging.getLogger(__name__)
 
 # ── AST visitor for Python security checks ──
 
@@ -233,7 +236,8 @@ def detect_python_security(
 
         try:
             content = Path(filepath).read_text(errors="replace")
-        except OSError:
+        except OSError as exc:
+            LOGGER.debug("Skipping unreadable Python file during security scan: %s", filepath, exc_info=exc)
             continue
 
         scanned += 1
@@ -245,8 +249,8 @@ def detect_python_security(
             visitor = _SecurityVisitor(filepath, lines)
             visitor.visit(tree)
             entries.extend(visitor.entries)
-        except SyntaxError:
-            pass
+        except SyntaxError as exc:
+            LOGGER.debug("Skipping unparsable Python file during security AST checks: %s", filepath, exc_info=exc)
 
         # Regex-based checks
         for line_num, line in enumerate(lines, 1):

@@ -36,8 +36,10 @@ def detect_orphaned_files(
     extensions: list[str],
     extra_entry_patterns: list[str] | None = None,
     extra_barrel_names: set[str] | None = None,
-    dynamic_import_finder: Callable[[Path, list[str]], set[str]] | None = None,
-    alias_resolver: Callable[[str], str] | None = None,
+    dynamic_import_context: tuple[
+        Callable[[Path, list[str]], set[str]] | None,
+        Callable[[str], str] | None,
+    ] | None = None,
 ) -> tuple[list[dict], int]:
     """Find files with zero importers that aren't known entry points.
 
@@ -45,14 +47,18 @@ def detect_orphaned_files(
         extensions: File extensions to consider.
         extra_entry_patterns: Entry-point patterns (substring-matched against relative paths).
         extra_barrel_names: Barrel file names to skip.
-        dynamic_import_finder: Language-specific function to find dynamic import targets.
-            Signature: (path, extensions) -> set of import specifiers.
-            If None, dynamic import checking is skipped.
-        alias_resolver: Resolves import aliases (e.g. @/ -> src/).
-            Signature: (target) -> resolved_target.
+        dynamic_import_context:
+            Optional ``(dynamic_import_finder, alias_resolver)`` tuple.
+            - ``dynamic_import_finder``: ``(path, extensions) -> set[str]``
+            - ``alias_resolver``: ``(target) -> resolved_target``
+            If omitted, dynamic import checking is skipped.
     """
     all_entry_patterns = extra_entry_patterns or []
     all_barrel_names = extra_barrel_names or set()
+    dynamic_import_finder = None
+    alias_resolver = None
+    if dynamic_import_context:
+        dynamic_import_finder, alias_resolver = dynamic_import_context
 
     dynamic_targets = dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
 

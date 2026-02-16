@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ._constants import DETECTOR_TOOLS
+from ..command_vocab import ISSUES, REVIEW_PREPARE, SHOW_WONTFIX
 
 
 def _supported_fixers(state: dict, lang: str | None) -> set[str] | None:
@@ -118,26 +119,31 @@ def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
         if count == 0:
             continue
 
+        guidance = tool_info.get("guidance", "manual fix")
+        tool_meta = {**tool_info, "guidance": guidance}
         impact = _impact_for(det, count)
         priority += 1
 
-        # Override command for subjective_review — point to fix review workflow
+        # Override command for subjective_review — point to canonical review workflow
         if det == "subjective_review":
-            command = "desloppify fix review"
-            description = f"{count} files need design review — run design review with dimension templates"
+            command = REVIEW_PREPARE
+            description = (
+                f"{count} files need design review — "
+                f"run `{REVIEW_PREPARE}` to generate review context"
+            )
         elif det == "review":
-            command = "desloppify issues"
+            command = ISSUES
             s = "s" if count != 1 else ""
             description = (f"{count} review finding{s} need investigation — "
-                          f"run `desloppify issues` to see the work queue")
-            tool_info = {**tool_info, "action_type": "issue_queue"}
+                          f"run `{ISSUES}` to see the work queue")
+            tool_meta = {**tool_meta, "action_type": "issue_queue"}
         else:
             command = f"desloppify show {det} --status open"
-            description = f"{count} {det} findings — {tool_info.get('guidance', 'manual fix')}"
+            description = f"{count} {det} findings — {guidance}"
 
         actions.append({
             "priority": priority,
-            "type": tool_info["action_type"],
+            "type": tool_meta["action_type"],
             "detector": det,
             "count": count,
             "description": description,
@@ -154,7 +160,7 @@ def _compute_actions(by_det: dict[str, int], dim_scores: dict, state: dict,
             "type": "debt_review",
             "detector": None,
             "description": f"{debt['overall_gap']} pts of wontfix debt — review stale decisions",
-            "command": "desloppify show --status wontfix",
+            "command": SHOW_WONTFIX,
             "gap": debt["overall_gap"],
         })
 

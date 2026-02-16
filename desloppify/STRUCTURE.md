@@ -117,6 +117,6 @@ Bootstrap command: `desloppify dev scaffold-lang <name> --extension .ext --marke
 
 - **State scoping**: `merge_scan` only auto-resolves findings matching the scan's `lang` and `scan_path`. A Python scan never touches TS state.
 - **Suspect guard**: If a detector drops from >=5 findings to 0, its disappearances are held (bypass: `--force-resolve`).
-- **Scoring**: Weighted by tier (T4=4x, T1=1x). Strict score excludes wontfix from both numerator and denominator.
+- **Scoring**: Weighted by tier (T4=4x, T1=1x). Strict score treats both `open` and `wontfix` findings as failures.
 - **Finding ID format**: `detector::file::name` — if a detector changes naming, findings lose state continuity.
 - **Cascade effects**: Fixing one category (e.g. dead exports) can create work for the next (unused vars). Score can temporarily drop.

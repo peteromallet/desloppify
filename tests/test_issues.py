@@ -66,18 +66,18 @@ def _per_file_finding(
     evidence_lines: list[str] | None = None,
     suggestion: str = "Rename variables",
 ) -> dict:
-    return _finding(
-        fid,
-        detector="review",
-        file=file,
-        status="open",
-        confidence=confidence,
-        summary=summary,
-        holistic=False,
-        dimension=dimension,
-        suggestion=suggestion,
-        evidence_lines=evidence_lines or ["line 10: x = complicated()"],
-    )
+    payload = {
+        "detector": "review",
+        "file": file,
+        "status": "open",
+        "confidence": confidence,
+        "summary": summary,
+        "holistic": False,
+        "dimension": dimension,
+        "suggestion": suggestion,
+        "evidence_lines": evidence_lines or ["line 10: x = complicated()"],
+    }
+    return _finding(fid, **payload)
 
 
 def _state_with(*findings):

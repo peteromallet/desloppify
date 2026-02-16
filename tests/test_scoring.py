@@ -771,6 +771,20 @@ class TestSubjectiveScoring:
         assert det["pass_rate"] == 0.75
         assert det["weighted_failures"] == pytest.approx(ASSESSMENT_CHECKS * 0.25)
 
+    def test_allowed_subjective_dimensions_filters_unknown(self):
+        assessments = {
+            "naming_quality": {"score": 75},
+            "custom_domain_fit": {"score": 60},
+        }
+        result = compute_dimension_scores(
+            {},
+            {},
+            subjective_assessments=assessments,
+            allowed_subjective_dimensions={"naming_quality"},
+        )
+        assert "Naming Quality" in result
+        assert "Custom Domain Fit" not in result
+
     def test_multiple_assessment_dimensions(self):
         """Two assessments show up independently."""
         assessments = {

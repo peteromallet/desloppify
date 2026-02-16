@@ -12,6 +12,146 @@ _DESTR_MEMBER_RE = re.compile(r"^\s*(\w+)\s*(?:=\s*[^,]+)?\s*,?\s*$")
 _REST_ELEMENT_RE = re.compile(r"\.\.\.\w+")
 
 
+def _process_entry(
+    *,
+    entry: dict,
+    lines: list[str],
+    lines_to_remove: set[int],
+    inline_removals: dict[int, set[str]],
+    removed_names: list[str],
+    skip_reasons: dict[str, int],
+) -> None:
+    name = entry["name"]
+    line_idx = entry["line"] - 1
+    if line_idx < 0 or line_idx >= len(lines):
+        skip_reasons["out_of_range"] += 1
+        return
+
+    stripped = lines[line_idx].strip()
+    if _is_destr_member_line(stripped, name):
+        _process_multiline_member(
+            lines=lines,
+            line_idx=line_idx,
+            name=name,
+            lines_to_remove=lines_to_remove,
+            removed_names=removed_names,
+            skip_reasons=skip_reasons,
+        )
+        return
+
+    if re.match(r"\s*(?:const|let|var)\s*\{", stripped):
+        _process_inline_destructuring(
+            lines=lines,
+            line_idx=line_idx,
+            name=name,
+            inline_removals=inline_removals,
+            removed_names=removed_names,
+            skip_reasons=skip_reasons,
+        )
+        return
+
+    _process_non_destructuring_line(
+        stripped=stripped,
+        line_idx=line_idx,
+        name=name,
+        lines_to_remove=lines_to_remove,
+        removed_names=removed_names,
+        skip_reasons=skip_reasons,
+    )
+
+
+def _process_multiline_member(
+    *,
+    lines: list[str],
+    line_idx: int,
+    name: str,
+    lines_to_remove: set[int],
+    removed_names: list[str],
+    skip_reasons: dict[str, int],
+) -> None:
+    destr_start = _find_destr_open_brace(lines, line_idx)
+    if destr_start is None:
+        skip_reasons["no_destr_context"] += 1
+        return
+    destr_text = _get_destr_text(lines, destr_start, line_idx + 20)
+    if _REST_ELEMENT_RE.search(destr_text):
+        skip_reasons["rest_element"] += 1
+        return
+    lines_to_remove.add(line_idx)
+    removed_names.append(name)
+
+
+def _process_inline_destructuring(
+    *,
+    lines: list[str],
+    line_idx: int,
+    name: str,
+    inline_removals: dict[int, set[str]],
+    removed_names: list[str],
+    skip_reasons: dict[str, int],
+) -> None:
+    destr_text = _collect_full_statement(lines, line_idx)
+    if _REST_ELEMENT_RE.search(destr_text):
+        skip_reasons["rest_element"] += 1
+        return
+    inline_removals[line_idx].add(name)
+    removed_names.append(name)
+
+
+def _process_non_destructuring_line(
+    *,
+    stripped: str,
+    line_idx: int,
+    name: str,
+    lines_to_remove: set[int],
+    removed_names: list[str],
+    skip_reasons: dict[str, int],
+) -> None:
+    if re.match(r"\s*(?:const|let|var)\s*\[", stripped):
+        skip_reasons["array_destructuring"] += 1
+        return
+    if re.search(r"(?:function|=>)\s*\(", stripped) or re.match(r"\s*\(", stripped):
+        skip_reasons["function_param"] += 1
+        return
+    if re.match(r"\s*(?:const|let|var)\s+\w+\s*=", stripped):
+        rhs = stripped.split("=", 1)[1] if "=" in stripped else ""
+        if stripped.rstrip().endswith(";") and "(" not in rhs:
+            lines_to_remove.add(line_idx)
+            removed_names.append(name)
+        else:
+            skip_reasons["standalone_var_with_call"] += 1
+        return
+    skip_reasons["other"] += 1
+
+
+def _apply_inline_removals(lines: list[str], inline_removals: dict[int, set[str]]) -> None:
+    for line_idx, names_to_remove in inline_removals.items():
+        new_line = _remove_names_from_destr(lines, line_idx, names_to_remove)
+        if new_line is not None:
+            lines[line_idx] = new_line
+
+
+def _build_file_result(
+    *,
+    filepath: str,
+    original: str,
+    lines: list[str],
+    lines_to_remove: set[int],
+    removed_names: list[str],
+    dry_run: bool,
+) -> dict | None:
+    new_lines = collapse_blank_lines(lines, lines_to_remove)
+    new_content = "".join(new_lines)
+    if new_content == original:
+        return None
+    lines_removed = len(original.splitlines()) - len(new_content.splitlines())
+    if not dry_run:
+        from ....utils import safe_write_text
+
+        safe_write_text(filepath, new_content)
+    return {"file": filepath, "removed": removed_names, "lines_removed": lines_removed}
+
+
 def fix_unused_vars(entries: list[dict], *, dry_run: bool = False) -> tuple[list[dict], dict[str, int]]:
     """Remove unused names from destructuring patterns.
 
@@ -28,6 +168,7 @@ def fix_unused_vars(entries: list[dict], *, dry_run: bool = False) -> tuple[list
         by_file[e["file"]].append(e)
 
     results = []
+    skipped_files = 0
     skip_reasons: dict[str, int] = defaultdict(int)
 
     for filepath, file_entries in sorted(by_file.items()):
@@ -41,76 +182,32 @@ def fix_unused_vars(entries: list[dict], *, dry_run: bool = False) -> tuple[list
             removed_names: list[str] = []
 
             for e in file_entries:
-                name = e["name"]
-                line_idx = e["line"] - 1
-                if line_idx < 0 or line_idx >= len(lines):
-                    skip_reasons["out_of_range"] += 1
-                    continue
+                _process_entry(
+                    entry=e,
+                    lines=lines,
+                    lines_to_remove=lines_to_remove,
+                    inline_removals=inline_removals,
+                    removed_names=removed_names,
+                    skip_reasons=skip_reasons,
+                )
 
-                src = lines[line_idx]
-                stripped = src.strip()
-
-                # Pattern 1: Multi-line destructuring member
-                if _is_destr_member_line(stripped, name):
-                    destr_start = _find_destr_open_brace(lines, line_idx)
-                    if destr_start is not None:
-                        destr_text = _get_destr_text(lines, destr_start, line_idx + 20)
-                        if _REST_ELEMENT_RE.search(destr_text):
-                            skip_reasons["rest_element"] += 1
-                            continue
-                        lines_to_remove.add(line_idx)
-                        removed_names.append(name)
-                    else:
-                        skip_reasons["no_destr_context"] += 1
-                    continue
-
-                # Pattern 2: Single-line object destructuring
-                if re.match(r"\s*(?:const|let|var)\s*\{", stripped):
-                    destr_text = _collect_full_statement(lines, line_idx)
-                    if _REST_ELEMENT_RE.search(destr_text):
-                        skip_reasons["rest_element"] += 1
-                        continue
-                    inline_removals[line_idx].add(name)
-                    removed_names.append(name)
-                    continue
-
-                # Classify skip reason
-                if re.match(r"\s*(?:const|let|var)\s*\[", stripped):
-                    skip_reasons["array_destructuring"] += 1
-                elif re.search(r"(?:function|=>)\s*\(", stripped) or re.match(r"\s*\(", stripped):
-                    skip_reasons["function_param"] += 1
-                elif re.match(r"\s*(?:const|let|var)\s+\w+\s*=", stripped):
-                    rhs = stripped.split("=", 1)[1] if "=" in stripped else ""
-                    if stripped.rstrip().endswith(";") and "(" not in rhs:
-                        lines_to_remove.add(line_idx)
-                        removed_names.append(name)
-                    else:
-                        skip_reasons["standalone_var_with_call"] += 1
-                else:
-                    skip_reasons["other"] += 1
-
-            # Apply inline removals
-            for line_idx, names_to_remove in inline_removals.items():
-                new_line = _remove_names_from_destr(lines, line_idx, names_to_remove)
-                if new_line is not None:
-                    lines[line_idx] = new_line
-
-            new_lines = collapse_blank_lines(lines, lines_to_remove)
-
-            new_content = "".join(new_lines)
-            if new_content != original:
-                lines_removed = len(original.splitlines()) - len(new_content.splitlines())
-                results.append({
-                    "file": filepath,
-                    "removed": removed_names,
-                    "lines_removed": lines_removed,
-                })
-                if not dry_run:
-                    from ....utils import safe_write_text
-                    safe_write_text(filepath, new_content)
+            _apply_inline_removals(lines, inline_removals)
+            result = _build_file_result(
+                filepath=filepath,
+                original=original,
+                lines=lines,
+                lines_to_remove=lines_to_remove,
+                removed_names=removed_names,
+                dry_run=dry_run,
+            )
+            if result is not None:
+                results.append(result)
         except (OSError, UnicodeDecodeError) as ex:
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
+            skipped_files += 1
 
+    if skipped_files:
+        print(c(f"  Skipped {skipped_files} file(s) due to read/write errors.", "dim"))
     return results, dict(skip_reasons)
 
 

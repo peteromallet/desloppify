@@ -80,8 +80,8 @@ def _get_ts_fixers() -> dict[str, FixerConfig]:
 
     def _lazy_fix(name):
         def f(entries, **kw):
-            from . import fixers as F
-            return getattr(F, name)(entries, **kw)
+            from .fixers import get_fixer
+            return get_fixer(name)(entries, **kw)
         return f
 
     R, DV = "Removed", "Would remove"

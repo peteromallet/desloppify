@@ -6,7 +6,13 @@ import hashlib
 
 from ..state import make_finding, merge_scan, utc_now
 from ..utils import PROJECT_ROOT
-from .dimensions import DIMENSION_PROMPTS, HOLISTIC_DIMENSION_PROMPTS
+from .dimensions import normalize_dimension_name
+from .policy import (
+    append_custom_dimensions,
+    build_dimension_policy,
+    is_allowed_dimension,
+    normalize_assessment_inputs,
+)
 
 
 # Import-integrity tuning for assessment-only score swings.
@@ -34,8 +40,11 @@ def _normalize_assessment_scores(raw: dict | None) -> dict[str, float]:
         return {}
     normalized: dict[str, float] = {}
     for dim_name, value in raw.items():
+        canonical = normalize_dimension_name(str(dim_name))
+        if not canonical:
+            continue
         score = value if isinstance(value, (int, float)) else value.get("score", 0)
-        normalized[dim_name] = float(max(0, min(100, score)))
+        normalized[canonical] = float(max(0, min(100, score)))
     return normalized
 
 
@@ -62,6 +71,7 @@ def validate_assessment_import_integrity(
     mode: str,
     allow_override: bool = False,
     override_note: str | None = None,
+    policy=None,
 ) -> dict:
     """Validate whether an assessment import is plausibly evidence-backed.
 
@@ -80,7 +90,16 @@ def validate_assessment_import_integrity(
     if not previous:
         return {"checked": False, "reason": "no_prior_assessments"}
 
-    incoming = _normalize_assessment_scores(assessments)
+    effective_policy = policy or build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=False,
+    )
+    normalized_assessments, _skipped, _new_custom = normalize_assessment_inputs(
+        assessments,
+        policy=effective_policy,
+    )
+    incoming = _normalize_assessment_scores(normalized_assessments)
     deltas: dict[str, float] = {}
     for dim_name, new_score in incoming.items():
         old_score = previous.get(dim_name, 0.0)
@@ -133,7 +152,10 @@ def _store_assessments(
     assessments: dict,
     source: str,
     provenance: dict | None = None,
-):
+    *,
+    allow_custom_dimensions: bool = False,
+    policy=None,
+) -> dict[str, list[str]]:
     """Store dimension assessments in state.
 
     *assessments*: ``{dim_name: score}`` or ``{dim_name: {score, ...}}``.
@@ -143,9 +165,20 @@ def _store_assessments(
     Per-file assessments don't overwrite holistic.
     """
     store = state.setdefault("subjective_assessments", {})
+    effective_policy = policy or build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=allow_custom_dimensions,
+    )
+    normalized_assessments, skipped, discovered_custom = normalize_assessment_inputs(
+        assessments,
+        policy=effective_policy,
+    )
+    append_custom_dimensions(state, discovered_custom)
     now = utc_now()
+    stored: list[str] = []
 
-    for dim_name, value in assessments.items():
+    for normalized_dim, value in normalized_assessments.items():
         score = value if isinstance(value, (int, float)) else value.get("score", 0)
         score = max(0, min(100, score))
         per_dim_provenance: dict = {}
@@ -163,18 +196,29 @@ def _store_assessments(
                 if value.get(key):
                     per_dim_provenance[key] = value[key]
 
-        existing = store.get(dim_name)
+        existing = store.get(normalized_dim)
         if existing and existing.get("source") == "holistic" and source == "per_file":
             continue  # Don't overwrite holistic with per-file
 
-        entry = {
-            "score": score,
-            "source": source,
-            "assessed_at": now,
-        }
         if per_dim_provenance:
-            entry["provenance"] = per_dim_provenance
-        store[dim_name] = entry
+            store[normalized_dim] = {
+                "score": score,
+                "source": source,
+                "assessed_at": now,
+                "provenance": per_dim_provenance,
+            }
+        else:
+            store[normalized_dim] = {
+                "score": score,
+                "source": source,
+                "assessed_at": now,
+            }
+        stored.append(normalized_dim)
+
+    return {
+        "stored": sorted(set(stored)),
+        "skipped": sorted(set(skipped)),
+    }
 
 
 def _extract_findings_and_assessments(
@@ -196,8 +240,14 @@ def _extract_findings_and_assessments(
 
 # ── Per-file finding import ───────────────────────────────────────
 
-def import_review_findings(findings_data: list[dict] | dict, state: dict,
-                           lang_name: str) -> dict:
+def import_review_findings(
+    findings_data: list[dict] | dict,
+    state: dict,
+    lang_name: str,
+    *,
+    allow_custom_dimensions: bool = False,
+    policy=None,
+) -> dict:
     """Import agent-produced review findings into state.
 
     Accepts either a bare list of findings (legacy) or a dict with
@@ -207,9 +257,22 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
     Returns diff summary.
     """
     findings_list, assessments = _extract_findings_and_assessments(findings_data)
+    effective_policy = policy or build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=allow_custom_dimensions,
+    )
     provenance = _extract_import_provenance(findings_data)
+    assessment_meta = {"stored": [], "skipped": []}
     if assessments:
-        _store_assessments(state, assessments, source="per_file", provenance=provenance)
+        assessment_meta = _store_assessments(
+            state,
+            assessments,
+            source="per_file",
+            provenance=provenance,
+            allow_custom_dimensions=allow_custom_dimensions,
+            policy=effective_policy,
+        )
 
     review_findings = []
     skipped: list[dict] = []
@@ -228,9 +291,10 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
             confidence = "low"
 
         # Validate dimension
-        dimension = f["dimension"]
-        if dimension not in DIMENSION_PROMPTS:
-            skipped.append({"index": idx, "missing": [f"invalid dimension: {dimension}"],
+        raw_dimension = str(f["dimension"])
+        dimension = normalize_dimension_name(raw_dimension)
+        if not is_allowed_dimension(dimension, holistic=False, policy=effective_policy):
+            skipped.append({"index": idx, "missing": [f"invalid dimension: {raw_dimension}"],
                             "identifier": f.get("identifier", "<none>")})
             continue
 
@@ -289,6 +353,10 @@ def import_review_findings(findings_data: list[dict] | dict, state: dict,
     if skipped:
         diff["skipped"] = len(skipped)
         diff["skipped_details"] = skipped
+    if assessment_meta.get("skipped"):
+        diff["assessment_skipped_dimensions"] = assessment_meta["skipped"]
+    if assessment_meta.get("stored"):
+        diff["assessment_dimensions"] = assessment_meta["stored"]
 
     # Update review cache
     _update_review_cache(state, findings_list)
@@ -319,8 +387,14 @@ def _update_review_cache(state: dict, findings_data: list[dict]):
 
 # ── Holistic finding import ──────────────────────────────────────
 
-def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
-                              lang_name: str) -> dict:
+def import_holistic_findings(
+    findings_data: list[dict] | dict,
+    state: dict,
+    lang_name: str,
+    *,
+    allow_custom_dimensions: bool = False,
+    policy=None,
+) -> dict:
     """Import holistic (codebase-wide) findings into state.
 
     Accepts either a bare list of findings (legacy) or a dict with
@@ -333,9 +407,22 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
     from ..scoring import HOLISTIC_POTENTIAL
 
     findings_list, assessments = _extract_findings_and_assessments(findings_data)
+    effective_policy = policy or build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=allow_custom_dimensions,
+    )
     provenance = _extract_import_provenance(findings_data)
+    assessment_meta = {"stored": [], "skipped": []}
     if assessments:
-        _store_assessments(state, assessments, source="holistic", provenance=provenance)
+        assessment_meta = _store_assessments(
+            state,
+            assessments,
+            source="holistic",
+            provenance=provenance,
+            allow_custom_dimensions=allow_custom_dimensions,
+            policy=effective_policy,
+        )
 
     review_findings = []
     skipped: list[dict] = []
@@ -352,9 +439,10 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
         if confidence not in ("high", "medium", "low"):
             confidence = "low"
 
-        dimension = f["dimension"]
-        if dimension not in HOLISTIC_DIMENSION_PROMPTS:
-            skipped.append({"index": idx, "missing": [f"invalid dimension: {dimension}"],
+        raw_dimension = str(f["dimension"])
+        dimension = normalize_dimension_name(raw_dimension)
+        if not is_allowed_dimension(dimension, holistic=True, policy=effective_policy):
+            skipped.append({"index": idx, "missing": [f"invalid dimension: {raw_dimension}"],
                             "identifier": f.get("identifier", "<none>")})
             continue
 
@@ -412,6 +500,10 @@ def import_holistic_findings(findings_data: list[dict] | dict, state: dict,
     if skipped:
         diff["skipped"] = len(skipped)
         diff["skipped_details"] = skipped
+    if assessment_meta.get("skipped"):
+        diff["assessment_skipped_dimensions"] = assessment_meta["skipped"]
+    if assessment_meta.get("stored"):
+        diff["assessment_dimensions"] = assessment_meta["stored"]
 
     _update_holistic_review_cache(state, findings_list)
 
@@ -422,11 +514,16 @@ def _update_holistic_review_cache(state: dict, findings_data: list[dict]):
     """Store holistic review metadata in review_cache."""
     rc = state.setdefault("review_cache", {})
     now = utc_now()
+    policy = build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=False,
+    )
 
     # Count valid findings
     valid = [f for f in findings_data
              if all(k in f for k in ("dimension", "identifier", "summary", "confidence"))
-             and f["dimension"] in HOLISTIC_DIMENSION_PROMPTS]
+             and is_allowed_dimension(normalize_dimension_name(str(f["dimension"])), holistic=True, policy=policy)]
 
     # Use per-file review cache count as the file count at review time.
     # This tracks actual files reviewed (vs the staleness detector which

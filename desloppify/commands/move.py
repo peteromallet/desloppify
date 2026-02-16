@@ -159,7 +159,7 @@ def _safe_write(filepath: str | Path, content: str) -> None:
     try:
         tmp.write_text(content)
         os.replace(str(tmp), str(p))
-    except BaseException:
+    except OSError:
         tmp.unlink(missing_ok=True)
         raise
 
@@ -205,22 +205,27 @@ def _apply_changes(
                 written_files[filepath] = Path(filepath).read_text()
                 _safe_write(filepath, new_contents[filepath])
 
-    except Exception as ex:
+    except (OSError, UnicodeDecodeError, shutil.Error) as ex:
         print(colorize(f"\n  Error during move: {ex}", "red"), file=sys.stderr)
         print(colorize("  Rolling back...", "yellow"), file=sys.stderr)
         # Restore any files we already wrote
+        restore_failed = False
         for fp, original in written_files.items():
             try:
                 _safe_write(fp, original)
             except OSError:
+                restore_failed = True
                 print(colorize(f"  WARNING: Could not restore {rel(fp)}", "red"), file=sys.stderr)
         # Move the file back if it was moved
         if Path(dest_abs).exists() and not Path(source_abs).exists():
             try:
                 shutil.move(dest_abs, source_abs)
             except OSError:
+                restore_failed = True
                 print(colorize(f"  WARNING: Could not move file back to {rel(source_abs)}", "red"),
                       file=sys.stderr)
+        if restore_failed:
+            print(colorize("  Rollback completed with warnings; inspect changed files.", "yellow"), file=sys.stderr)
         raise
 
 
@@ -289,20 +294,11 @@ def cmd_move(args) -> None:
     print()
 
 
-def _cmd_move_dir(args, source_abs: str):
-    """Move a directory (package) and update all import references."""
-    source_path = Path(source_abs)
-    dest_abs = resolve_path(args.dest)
-    dry_run = getattr(args, "dry_run", False)
-
-    if Path(dest_abs).exists():
-        print(colorize(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
-        sys.exit(1)
-
-    # Detect language from explicit --lang first; otherwise infer from contents.
+def _resolve_directory_move_language(args, source_abs: str) -> str:
     lang_name = None
     if getattr(args, "lang", None):
         from ._helpers import resolve_lang
+
         lang = resolve_lang(args)
         if lang:
             lang_name = lang.name
@@ -311,50 +307,51 @@ def _cmd_move_dir(args, source_abs: str):
 
     if not lang_name:
         from ._helpers import resolve_lang
+
         lang = resolve_lang(args)
         if lang:
             lang_name = lang.name
     if not lang_name:
-        print(colorize(
-            f"Cannot detect language from directory contents. Use --lang "
-            f"(supported extensions: {_supported_ext_hint()}).",
-            "red"),
-              file=sys.stderr)
+        print(
+            colorize(
+                f"Cannot detect language from directory contents. Use --lang "
+                f"(supported extensions: {_supported_ext_hint()}).",
+                "red",
+            ),
+            file=sys.stderr,
+        )
         sys.exit(1)
+    return lang_name
 
-    from ..lang import get_lang
-    lang = get_lang(lang_name)
-    move_mod = _load_lang_move_module(lang_name)
 
-    # Find all source files in the directory
-    extensions = list(lang.extensions)
-    source_files = []
+def _collect_directory_source_files(source_path: Path, extensions: list[str], *, lang_name: str, source_abs: str) -> list[str]:
+    source_files: list[str] = []
     for ext in extensions:
         source_files.extend(source_path.rglob(f"*{ext}"))
-    source_files = sorted(str(f.resolve()) for f in source_files if f.is_file())
+    source_files = sorted(str(path.resolve()) for path in source_files if path.is_file())
+    if source_files:
+        return source_files
+    print(colorize(f"No {lang_name} files found in {rel(source_abs)}", "yellow"), file=sys.stderr)
+    sys.exit(1)
 
-    if not source_files:
-        print(colorize(f"No {lang_name} files found in {rel(source_abs)}", "yellow"), file=sys.stderr)
-        sys.exit(1)
 
-    # Build the dep graph once for all files
-    scan_path = Path(resolve_path(lang.default_src))
-    graph = lang.build_dep_graph(scan_path)
-
-    # Compute the file mapping: source_file -> dest_file
-    file_moves: list[tuple[str, str]] = []
+def _build_directory_file_moves(source_files: list[str], source_path: Path, dest_abs: str) -> list[tuple[str, str]]:
+    moves: list[tuple[str, str]] = []
     for src_file in source_files:
         rel_in_dir = Path(src_file).relative_to(source_path)
-        dst_file = str(Path(dest_abs) / rel_in_dir)
-        file_moves.append((src_file, dst_file))
+        moves.append((src_file, str(Path(dest_abs) / rel_in_dir)))
+    return moves
 
-    # Set of files being moved (to detect intra-package imports)
-    moving_files = {src for src, _ in file_moves}
 
-    # Compute all replacements for each file
+def _compute_directory_change_sets(
+    file_moves: list[tuple[str, str]],
+    move_mod,
+    graph: dict,
+) -> tuple[dict[str, list[tuple[str, str]]], dict[str, list[tuple[str, str]]], dict[str, list[tuple[str, str]]]]:
     all_importer_changes: dict[str, list[tuple[str, str]]] = {}
     intra_pkg_changes: dict[str, list[tuple[str, str]]] = {}
     all_self_changes: dict[str, list[tuple[str, str]]] = {}
+    moving_files = {src for src, _ in file_moves}
     intra_filter = getattr(
         move_mod,
         "filter_intra_package_importer_changes",
@@ -367,50 +364,61 @@ def _cmd_move_dir(args, source_abs: str):
     )
 
     for src_file, dst_file in file_moves:
-        importer_changes, self_changes = _compute_replacements(
-            move_mod, src_file, dst_file, graph)
+        importer_changes, self_changes = _compute_replacements(move_mod, src_file, dst_file, graph)
 
         for filepath, replacements in importer_changes.items():
             if filepath in moving_files:
-                intra_changes = intra_filter(
-                    src_file, replacements, moving_files)
-                if intra_changes:
-                    if filepath in intra_pkg_changes:
-                        existing = set(intra_pkg_changes[filepath])
-                        intra_pkg_changes[filepath].extend(
-                            r for r in intra_changes if r not in existing)
-                    else:
-                        intra_pkg_changes[filepath] = list(intra_changes)
-            else:
-                if filepath in all_importer_changes:
-                    existing = set(all_importer_changes[filepath])
-                    all_importer_changes[filepath].extend(r for r in replacements if r not in existing)
+                intra_changes = intra_filter(src_file, replacements, moving_files)
+                if not intra_changes:
+                    continue
+                if filepath in intra_pkg_changes:
+                    existing = set(intra_pkg_changes[filepath])
+                    intra_pkg_changes[filepath].extend(change for change in intra_changes if change not in existing)
                 else:
-                    all_importer_changes[filepath] = list(replacements)
+                    intra_pkg_changes[filepath] = list(intra_changes)
+                continue
+
+            if filepath in all_importer_changes:
+                existing = set(all_importer_changes[filepath])
+                all_importer_changes[filepath].extend(change for change in replacements if change not in existing)
+            else:
+                all_importer_changes[filepath] = list(replacements)
 
         if self_changes:
-            filtered_self = self_filter(
-                src_file, self_changes, moving_files)
+            filtered_self = self_filter(src_file, self_changes, moving_files)
             if filtered_self:
                 all_self_changes[src_file] = filtered_self
 
-    # Report — use trailing sep to avoid matching e.g. source/db_operations for source/db
-    source_prefix = source_abs + os.sep
-    external_changes = {k: v for k, v in all_importer_changes.items()
-                        if not k.startswith(source_prefix)}
+    return all_importer_changes, intra_pkg_changes, all_self_changes
 
+
+def _external_directory_changes(source_abs: str, all_importer_changes: dict[str, list[tuple[str, str]]]) -> dict[str, list[tuple[str, str]]]:
+    source_prefix = source_abs + os.sep
+    return {path: changes for path, changes in all_importer_changes.items() if not path.startswith(source_prefix)}
+
+
+def _print_directory_plan(
+    source_abs: str,
+    dest_abs: str,
+    file_moves: list[tuple[str, str]],
+    external_changes: dict[str, list[tuple[str, str]]],
+    intra_pkg_changes: dict[str, list[tuple[str, str]]],
+    all_self_changes: dict[str, list[tuple[str, str]]],
+) -> None:
     total_changes = len(external_changes) + len(intra_pkg_changes) + len(all_self_changes)
-    total_replacements = (sum(len(r) for r in external_changes.values()) +
-                          sum(len(r) for r in intra_pkg_changes.values()) +
-                          sum(len(r) for r in all_self_changes.values()))
+    total_replacements = (
+        sum(len(items) for items in external_changes.values())
+        + sum(len(items) for items in intra_pkg_changes.values())
+        + sum(len(items) for items in all_self_changes.values())
+    )
 
     print(colorize(f"\n  Move directory: {rel(source_abs)}/ → {rel(dest_abs)}/", "bold"))
     print(colorize(f"  {len(file_moves)} files in package", "dim"))
     print(colorize(f"  {total_replacements} import replacements across {total_changes} files\n", "dim"))
 
     if all_self_changes:
-        print(colorize(f"  Own imports ({sum(len(v) for v in all_self_changes.values())} changes across "
-                f"{len(all_self_changes)} files):", "cyan"))
+        total_self = sum(len(changes) for changes in all_self_changes.values())
+        print(colorize(f"  Own imports ({total_self} changes across {len(all_self_changes)} files):", "cyan"))
         for src_file, changes in sorted(all_self_changes.items()):
             print(f"    {rel(src_file)}:")
             for old, new in changes:
@@ -418,8 +426,8 @@ def _cmd_move_dir(args, source_abs: str):
         print()
 
     if intra_pkg_changes:
-        print(colorize(f"  Intra-package imports ({sum(len(v) for v in intra_pkg_changes.values())} changes "
-                f"across {len(intra_pkg_changes)} files):", "cyan"))
+        total_intra = sum(len(changes) for changes in intra_pkg_changes.values())
+        print(colorize(f"  Intra-package imports ({total_intra} changes across {len(intra_pkg_changes)} files):", "cyan"))
         for filepath, replacements in sorted(intra_pkg_changes.items()):
             print(f"    {rel(filepath)}:")
             for old, new in replacements:
@@ -438,20 +446,29 @@ def _cmd_move_dir(args, source_abs: str):
         print(colorize("  No import references found — only the directory will be moved.", "dim"))
         print()
 
-    if dry_run:
-        print(colorize("  Dry run — no files modified.", "yellow"))
-        return
 
-    # Phase 1: Compute all new contents (no writes yet)
-    all_internal_changes: dict[str, list[tuple[str, str]]] = {}
+def _merge_internal_changes(
+    all_self_changes: dict[str, list[tuple[str, str]]],
+    intra_pkg_changes: dict[str, list[tuple[str, str]]],
+) -> dict[str, list[tuple[str, str]]]:
+    merged: dict[str, list[tuple[str, str]]] = {}
     for src_file, changes in all_self_changes.items():
-        all_internal_changes.setdefault(src_file, []).extend(changes)
+        merged.setdefault(src_file, []).extend(changes)
     for src_file, changes in intra_pkg_changes.items():
-        all_internal_changes.setdefault(src_file, []).extend(changes)
+        merged.setdefault(src_file, []).extend(changes)
+    return merged
 
-    # Phase 2: Execute with rollback on failure
+
+def _apply_directory_move(
+    *,
+    source_abs: str,
+    dest_abs: str,
+    source_path: Path,
+    all_internal_changes: dict[str, list[tuple[str, str]]],
+    external_changes: dict[str, list[tuple[str, str]]],
+) -> None:
     Path(dest_abs).parent.mkdir(parents=True, exist_ok=True)
-    written_files: dict[str, str] = {}  # filepath -> original content
+    written_files: dict[str, str] = {}
     try:
         shutil.move(source_abs, dest_abs)
 
@@ -459,35 +476,91 @@ def _cmd_move_dir(args, source_abs: str):
             rel_in_dir = Path(src_file).relative_to(source_path)
             dest_file = Path(dest_abs) / rel_in_dir
             original = dest_file.read_text()
-            content = original
+            updated = original
             for old_str, new_str in changes:
-                content = content.replace(old_str, new_str)
+                updated = updated.replace(old_str, new_str)
             written_files[str(dest_file)] = original
-            _safe_write(dest_file, content)
+            _safe_write(dest_file, updated)
 
         for filepath, replacements in external_changes.items():
             original = Path(filepath).read_text()
-            content = original
+            updated = original
             for old_str, new_str in replacements:
-                content = content.replace(old_str, new_str)
+                updated = updated.replace(old_str, new_str)
             written_files[filepath] = original
-            _safe_write(filepath, content)
+            _safe_write(filepath, updated)
 
-    except Exception as ex:
+    except (OSError, UnicodeDecodeError, shutil.Error) as ex:
         print(colorize(f"\n  Error during directory move: {ex}", "red"), file=sys.stderr)
         print(colorize("  Rolling back...", "yellow"), file=sys.stderr)
+        restore_failed = False
         for fp, original in written_files.items():
             try:
                 _safe_write(fp, original)
             except OSError:
+                restore_failed = True
                 print(colorize(f"  WARNING: Could not restore {rel(fp)}", "red"), file=sys.stderr)
         if Path(dest_abs).exists() and not Path(source_abs).exists():
             try:
                 shutil.move(dest_abs, source_abs)
             except OSError:
-                print(colorize(f"  WARNING: Could not move directory back to {rel(source_abs)}", "red"),
-                      file=sys.stderr)
+                restore_failed = True
+                print(colorize(f"  WARNING: Could not move directory back to {rel(source_abs)}", "red"), file=sys.stderr)
+        if restore_failed:
+            print(colorize("  Rollback completed with warnings; inspect changed files.", "yellow"), file=sys.stderr)
         raise
+
+
+def _cmd_move_dir(args, source_abs: str):
+    """Move a directory (package) and update all import references."""
+    source_path = Path(source_abs)
+    dest_abs = resolve_path(args.dest)
+    dry_run = getattr(args, "dry_run", False)
+
+    if Path(dest_abs).exists():
+        print(colorize(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
+        sys.exit(1)
+
+    lang_name = _resolve_directory_move_language(args, source_abs)
+    from ..lang import get_lang
+
+    lang = get_lang(lang_name)
+    move_mod = _load_lang_move_module(lang_name)
+    source_files = _collect_directory_source_files(
+        source_path,
+        list(lang.extensions),
+        lang_name=lang_name,
+        source_abs=source_abs,
+    )
+    scan_path = Path(resolve_path(lang.default_src))
+    graph = lang.build_dep_graph(scan_path)
+    file_moves = _build_directory_file_moves(source_files, source_path, dest_abs)
+    all_importer_changes, intra_pkg_changes, all_self_changes = _compute_directory_change_sets(
+        file_moves, move_mod, graph
+    )
+    external_changes = _external_directory_changes(source_abs, all_importer_changes)
+
+    _print_directory_plan(
+        source_abs,
+        dest_abs,
+        file_moves,
+        external_changes,
+        intra_pkg_changes,
+        all_self_changes,
+    )
+
+    if dry_run:
+        print(colorize("  Dry run — no files modified.", "yellow"))
+        return
+
+    all_internal_changes = _merge_internal_changes(all_self_changes, intra_pkg_changes)
+    _apply_directory_move(
+        source_abs=source_abs,
+        dest_abs=dest_abs,
+        source_path=source_path,
+        all_internal_changes=all_internal_changes,
+        external_changes=external_changes,
+    )
 
     print(colorize("  Done.", "green"))
     verify_hint = getattr(move_mod, "VERIFY_HINT", "")

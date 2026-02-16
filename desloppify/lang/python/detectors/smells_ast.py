@@ -1,8 +1,11 @@
 """AST-based Python code smell detectors."""
 
 import ast
+import logging
 import re
 from pathlib import Path
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _detect_ast_smells(filepath: str, content: str, smell_counts: dict[str, list]):
@@ -241,7 +244,12 @@ def _collect_module_constants(filepath: str, content: str,
                 if isinstance(target, ast.Name) and re.match(r"^_?[A-Z][A-Z0-9_]+$", target.id):
                     try:
                         value_repr = ast.dump(node.value)
-                    except (RecursionError, ValueError):
+                    except (RecursionError, ValueError) as exc:
+                        LOGGER.debug(
+                            "Skipping oversized/invalid constant representation in %s",
+                            filepath,
+                            exc_info=exc,
+                        )
                         continue
                     if len(value_repr) > 500:
                         continue  # Skip very large constants
@@ -541,7 +549,8 @@ def _detect_star_import_no_all(filepath: str, content: str, scan_root: Path,
         # Check if target defines __all__
         try:
             target_content = target.read_text()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable star-import target in %s", filepath, exc_info=exc)
             continue
 
         if re.search(r"^__all__\s*=", target_content, re.MULTILINE):

@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import os
-import re
-import subprocess
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 from ..utils import PROJECT_ROOT
-
-# Render at 2x for retina/high-DPI crispness
+from ._scorecard_meta import resolve_package_version, resolve_project_name
 _SCALE = 2
 
 
@@ -96,79 +93,18 @@ def _fmt_score(score: float) -> str:
 
 
 def _get_project_name() -> str:
-    """Get project name from GitHub API, git remote, or directory name.
-
-    Tries `gh` CLI first for the canonical owner/repo (handles renames and
-    transfers). Falls back to parsing the git remote URL, then directory name.
-    """
-    # Try gh CLI for canonical name (handles username renames, repo transfers)
-    try:
-        name = subprocess.check_output(
-            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-            cwd=str(PROJECT_ROOT),
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=5,
-        ).strip()
-        if "/" in name:
-            return name
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-    ):
-        pass
-
-    # Fall back to git remote URL parsing
-    try:
-        url = subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            cwd=str(PROJECT_ROOT),
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=5,
-        ).strip()
-        # SSH: git@github.com:owner/repo.git
-        # HTTPS: https://github.com/owner/repo.git
-        # HTTPS+token: https://TOKEN@github.com/owner/repo.git
-        if url.startswith("git@") and ":" in url:
-            path = url.split(":")[-1]
-        else:
-            path = "/".join(url.split("/")[-2:])
-        return path.removesuffix(".git")
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        IndexError,
-        subprocess.TimeoutExpired,
-    ):
-        return PROJECT_ROOT.name
+    """Get project name from GitHub API, git remote, or directory name."""
+    return resolve_project_name(PROJECT_ROOT)
 
 
 def _get_package_version() -> str:
-    """Get package version for scorecard display.
+    """Get package version for scorecard display."""
+    return resolve_package_version(
+        PROJECT_ROOT,
+        version_getter=importlib_metadata.version,
+        package_not_found_error=importlib_metadata.PackageNotFoundError,
+    )
 
-    Prefers installed package metadata. Falls back to parsing local
-    `pyproject.toml` when running from source without an installed package.
-    """
-    try:
-        return importlib_metadata.version("desloppify")
-    except importlib_metadata.PackageNotFoundError:
-        pass
-
-    pyproject_path = PROJECT_ROOT / "pyproject.toml"
-    try:
-        text = pyproject_path.read_text(encoding="utf-8")
-        match = re.search(r'^\s*version\s*=\s*"([^"]+)"\s*$', text, re.MULTILINE)
-        if match:
-            return match.group(1)
-    except OSError:
-        pass
-
-    return "unknown"
-
-
-# -- Palette used by all drawing functions --
 _BG = (247, 240, 228)
 _BG_SCORE = (240, 232, 217)
 _BG_TABLE = (240, 233, 220)
@@ -180,29 +116,11 @@ _ACCENT = (148, 112, 82)
 _FRAME = (172, 152, 126)
 
 
-def generate_scorecard(state: dict, output_path: str | Path) -> Path:
-    """Render a landscape scorecard PNG from scan state. Returns the output path."""
-    from PIL import Image, ImageDraw  # noqa: deferred — Pillow is optional
-    from ._scorecard_draw import (  # noqa: deferred — avoids circular import
-        _draw_left_panel,
-        _draw_right_panel,
-        _draw_vert_rule_with_ornament,
-    )
-
-    output_path = Path(output_path)
-    dim_scores = state.get("dimension_scores", {})
-    from ..state import get_overall_score, get_strict_score
-    main_score = get_overall_score(state) or 0
-    strict_score = get_strict_score(state) or 0
-
-    project_name = _get_project_name()
-    package_version = _get_package_version()
-    ignore_warning = _scorecard_ignore_warning(state)
-
-    # Layout — landscape (wide), File health first
-    # Exclude unassessed subjective dimensions (score=0, issues=0) — they're placeholders
-    active_dims = [
-        (name, data) for name, data in dim_scores.items()
+def _active_dimensions(dim_scores: dict) -> list[tuple[str, dict]]:
+    """Return score rows to render, sorted with File health first."""
+    rows = [
+        (name, data)
+        for name, data in dim_scores.items()
         if data.get("checks", 0) > 0
         and not (
             "subjective_assessment" in data.get("detectors", {})
@@ -210,57 +128,82 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
             and data.get("issues", 0) == 0
         )
     ]
-    active_dims.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
-    row_count = len(active_dims)
+    rows.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
+    return rows
+
+
+def _compute_layout(row_count: int) -> dict[str, int]:
+    """Compute badge geometry from active row count."""
     row_h = _s(20)
-    W = _s(780)
-    # Divider centered in the gap between left panel and right section
-    # The space between them is from lp_right to table_x1
-    # lp_right = divider_x - _s(9), table_x1 = divider_x + _s(9)
-    # So divider is already centered mathematically at any divider_x
-    # But we need to balance the visual space
+    width = _s(780)
     divider_x = _s(260)
     frame_inset = _s(5)
 
-    # Height driven by 2-column layout
     cols = 2
     rows_per_col = (row_count + cols - 1) // cols
-    rule_gap = _s(4)
-    rows_gap = _s(6)
-    table_content_h = _s(14) + rule_gap + rows_gap + rows_per_col * row_h
+    table_content_h = _s(14) + _s(4) + _s(6) + rows_per_col * row_h
     content_h = max(table_content_h + _s(28), _s(150))
-    H = _s(12) + content_h
+    height = _s(12) + content_h
 
-    img = Image.new("RGB", (W, H), _BG)
-    draw = ImageDraw.Draw(img)
+    return {
+        "row_h": row_h,
+        "width": width,
+        "height": height,
+        "divider_x": divider_x,
+        "frame_inset": frame_inset,
+    }
 
-    # Double frame
-    draw.rectangle((0, 0, W - 1, H - 1), outline=_FRAME, width=_s(2))
+
+def _draw_frame(draw, *, width: int, height: int, frame_inset: int) -> None:
+    """Draw the badge outer frame."""
+    draw.rectangle((0, 0, width - 1, height - 1), outline=_FRAME, width=_s(2))
     draw.rectangle(
-        (frame_inset, frame_inset, W - frame_inset - 1, H - frame_inset - 1),
+        (frame_inset, frame_inset, width - frame_inset - 1, height - frame_inset - 1),
         outline=_BORDER,
         width=1,
     )
 
-    content_top = frame_inset + _s(1)
-    content_bot = H - frame_inset - _s(1)
-    content_mid_y = (content_top + content_bot) // 2
 
-    # Left panel: title + score + project name
-    _draw_left_panel(
-        draw,
-        main_score,
-        strict_score,
-        project_name,
-        package_version,
-        ignore_warning=ignore_warning,
-        lp_left=frame_inset + _s(11),  # Match outer margins
-        lp_right=divider_x - _s(11),  # Match outer margins, center divider
-        lp_top=content_top + _s(4),
-        lp_bot=content_bot - _s(4),
+def _draw_panels(
+    draw,
+    *,
+    active_dims: list[tuple[str, dict]],
+    row_h: int,
+    width: int,
+    height: int,
+    divider_x: int,
+    frame_inset: int,
+    main_score: float,
+    strict_score: float,
+    project_name: str,
+    package_version: str,
+    ignore_warning: str | None,
+) -> None:
+    """Draw left score panel, divider, and right dimension table."""
+    from ._scorecard_left_panel import draw_left_panel
+    from ._scorecard_right_panel import draw_right_panel
+    from ._scorecard_draw import (
+        _draw_rule_with_ornament,
+        _draw_vert_rule_with_ornament,
     )
 
-    # Vertical divider with ornament
+    content_top = frame_inset + _s(1)
+    content_bot = height - frame_inset - _s(1)
+    content_mid_y = (content_top + content_bot) // 2
+
+    draw_left_panel(
+        draw,
+        main_score=main_score,
+        strict_score=strict_score,
+        project_name=project_name,
+        package_version=package_version,
+        ignore_warning=ignore_warning,
+        lp_left=frame_inset + _s(11),
+        lp_right=divider_x - _s(11),
+        lp_top=content_top + _s(4),
+        lp_bot=content_bot - _s(4),
+        draw_rule_with_ornament_fn=_draw_rule_with_ornament,
+    )
     _draw_vert_rule_with_ornament(
         draw,
         divider_x,
@@ -270,18 +213,46 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
         _BORDER,
         _ACCENT,
     )
-
-    # Right panel: dimension table
-    _draw_right_panel(
+    draw_right_panel(
         draw,
-        active_dims,
-        row_h,
-        table_x1=divider_x + _s(11),  # Match outer margins
-        table_x2=W - frame_inset - _s(11),  # Match outer margins
+        active_dims=active_dims,
+        row_h=row_h,
+        table_x1=divider_x + _s(11),
+        table_x2=width - frame_inset - _s(11),
         table_top=content_top + _s(4),
         table_bot=content_bot - _s(4),
     )
 
+
+def generate_scorecard(state: dict, output_path: str | Path) -> Path:
+    """Render a landscape scorecard PNG from scan state. Returns the output path."""
+    from PIL import Image, ImageDraw  # noqa: deferred — Pillow is optional
+    from ..state import get_overall_score, get_strict_score
+
+    output_path = Path(output_path)
+    main_score = get_overall_score(state) or 0
+    strict_score = get_strict_score(state) or 0
+
+    active_dims = _active_dimensions(state.get("dimension_scores", {}))
+    layout = _compute_layout(len(active_dims))
+
+    img = Image.new("RGB", (layout["width"], layout["height"]), _BG)
+    draw = ImageDraw.Draw(img)
+    _draw_frame(draw, width=layout["width"], height=layout["height"], frame_inset=layout["frame_inset"])
+    _draw_panels(
+        draw,
+        active_dims=active_dims,
+        row_h=layout["row_h"],
+        width=layout["width"],
+        height=layout["height"],
+        divider_x=layout["divider_x"],
+        frame_inset=layout["frame_inset"],
+        main_score=main_score,
+        strict_score=strict_score,
+        project_name=_get_project_name(),
+        package_version=_get_package_version(),
+        ignore_warning=_scorecard_ignore_warning(state),
+    )
     img.save(str(output_path), "PNG", optimize=True)
     return output_path
 

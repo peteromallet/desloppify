@@ -6,11 +6,49 @@ which production files have been reviewed, are stale, or have changed since revi
 
 from __future__ import annotations
 
+import hashlib
+import importlib
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 
-from ..review import MIN_REVIEW_LOC, hash_file
-from ..review.selection import is_low_value_file
 from ..utils import rel, read_file_text, resolve_path
+
+# Minimum LOC to be worth a review slot.
+MIN_REVIEW_LOC = 20
+
+# Files with these name patterns have low subjective review value.
+LOW_VALUE_NAMES = re.compile(
+    r"(?:^|/)(?:types|constants|enums|index)\.[a-z]+$"
+)
+
+
+def hash_file(filepath: str) -> str:
+    """Compute a content hash for a file."""
+    try:
+        content = Path(filepath).read_bytes()
+        return hashlib.sha256(content).hexdigest()[:16]
+    except OSError:
+        return ""
+
+
+def _low_value_pattern(lang_name: str | None):
+    if isinstance(lang_name, str):
+        try:
+            lang_mod = importlib.import_module("desloppify.lang")
+            lang = lang_mod.get_lang(lang_name)
+            pattern = getattr(lang, "review_low_value_pattern", None)
+            if isinstance(pattern, re.Pattern):
+                return pattern
+        except Exception:
+            return LOW_VALUE_NAMES
+    return LOW_VALUE_NAMES
+
+
+def is_low_value_file(filepath: str, lang_name: str | None = None) -> bool:
+    """Whether a file path is low-value for subjective review."""
+    pattern = _low_value_pattern(lang_name)
+    return bool(pattern.search(filepath))
 
 
 def detect_review_coverage(
@@ -68,7 +106,7 @@ def detect_review_coverage(
                 "name": "unreviewed",
                 "tier": 4,
                 "confidence": "low",
-                "summary": f"No design review on record — run `desloppify review --prepare`",
+                "summary": "No design review on record — run `desloppify review --prepare`",
                 "detail": {"reason": "unreviewed", "loc": loc},
             })
             continue
@@ -81,7 +119,7 @@ def detect_review_coverage(
                 "name": "changed",
                 "tier": 4,
                 "confidence": "medium",
-                "summary": f"File changed since last review — re-review recommended",
+                "summary": "File changed since last review — re-review recommended",
                 "detail": {"reason": "changed", "loc": loc},
             })
             continue
@@ -113,7 +151,7 @@ def detect_review_coverage(
                     "name": "stale",
                     "tier": 4,
                     "confidence": "low",
-                    "summary": f"Review date unparseable — re-review recommended",
+                    "summary": "Review date unparseable — re-review recommended",
                     "detail": {"reason": "stale", "loc": loc},
                 })
                 continue
@@ -124,7 +162,7 @@ def detect_review_coverage(
                 "name": "unreviewed",
                 "tier": 4,
                 "confidence": "low",
-                "summary": f"No design review on record — run `desloppify review --prepare`",
+                "summary": "No design review on record — run `desloppify review --prepare`",
                 "detail": {"reason": "unreviewed", "loc": loc},
             })
 

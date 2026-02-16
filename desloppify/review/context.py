@@ -7,9 +7,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .. import utils as _utils_mod
 from ..utils import rel, resolve_path, read_file_text, \
-    enable_file_cache, disable_file_cache
+    enable_file_cache, disable_file_cache, is_file_cache_enabled
 
 
 # ── ReviewContext dataclass ───────────────────────────────────────
@@ -131,7 +130,7 @@ def build_review_context(path: Path, lang, state: dict,
     if not files:
         return ctx
 
-    already_cached = _utils_mod._cache_enabled
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:
@@ -221,12 +220,19 @@ def _build_review_context_inner(files: list[str], lang, state: dict,
     ctx.existing_findings = by_file
 
     # 7. Codebase stats
+    total_files = len(file_contents)
     total_loc = sum(len(c.splitlines()) for c in file_contents.values())
     ctx.codebase_stats = {
-        "total_files": len(file_contents),
+        "total_files": total_files,
         "total_loc": total_loc,
-        "avg_file_loc": total_loc // len(file_contents) if file_contents else 0,
+        "avg_file_loc": total_loc // total_files if total_files else 0,
     }
+    stats_files = ctx.codebase_stats["total_files"]
+    stats_loc = ctx.codebase_stats["total_loc"]
+    stats_avg = ctx.codebase_stats["avg_file_loc"]
+    if stats_files == 0 and (stats_loc != 0 or stats_avg != 0):
+        ctx.codebase_stats["total_loc"] = 0
+        ctx.codebase_stats["avg_file_loc"] = 0
 
     # 8. Sibling function conventions — what naming/patterns neighbors in same dir use
     dir_functions: dict[str, Counter] = {}
@@ -264,6 +270,7 @@ def _build_review_context_inner(files: list[str], lang, state: dict,
 
 def _serialize_context(ctx: ReviewContext) -> dict:
     """Convert ReviewContext to a JSON-serializable dict."""
+    metrics = ("total_files", "total_loc", "avg_file_loc")
     d = {
         "naming_vocabulary": ctx.naming_vocabulary,
         "error_conventions": ctx.error_conventions,
@@ -271,7 +278,10 @@ def _serialize_context(ctx: ReviewContext) -> dict:
         "import_graph_summary": ctx.import_graph_summary,
         "zone_distribution": ctx.zone_distribution,
         "existing_findings": ctx.existing_findings,
-        "codebase_stats": ctx.codebase_stats,
+        "codebase_stats": {
+            key: int(ctx.codebase_stats.get(key, 0))
+            for key in metrics
+        },
         "sibling_conventions": ctx.sibling_conventions,
     }
     if ctx.ai_debt_signals:
@@ -529,7 +539,7 @@ def _classify_error_strategy(content: str) -> str | None:
     total = sum(counts.values())
     if total == 0:
         return None
-    dominant = max(counts, key=counts.get)  # type: ignore[arg-type]
+    dominant = max(counts.items(), key=lambda item: item[1])[0]
     # "mixed" if no strategy accounts for >60% of occurrences
     if counts[dominant] / total < 0.6:
         return "mixed"

@@ -222,3 +222,144 @@ class TestDetectorTransparency:
             }
         )
         assert capsys.readouterr().out == ""
+
+
+class TestFocusSuggestion:
+    def test_subjective_focus_uses_run_without_prior_review(self, capsys):
+        dim_scores = {
+            "Naming Quality": {
+                "score": 80.0,
+                "strict": 80.0,
+                "issues": 0,
+                "detectors": {"subjective_assessment": {"issues": 0}},
+            }
+        }
+        _show_focus_suggestion(dim_scores, {"potentials": {}})
+        out = capsys.readouterr().out
+        assert "run subjective review to improve" in out
+        assert "`desloppify review --prepare`" in out
+
+    def test_subjective_focus_uses_rerun_with_prior_review(self, capsys):
+        dim_scores = {
+            "Naming Quality": {
+                "score": 80.0,
+                "strict": 80.0,
+                "issues": 0,
+                "detectors": {"subjective_assessment": {"issues": 0}},
+            }
+        }
+        state = {
+            "potentials": {},
+            "review_cache": {"files": {"src/a.py": {"reviewed_at": "2026-01-01T00:00:00+00:00"}}},
+        }
+        _show_focus_suggestion(dim_scores, state)
+        out = capsys.readouterr().out
+        assert "re-review to improve" in out
+        assert "`desloppify review --prepare`" in out
+
+
+class TestCmdStatusNarrativeReminders:
+    def test_cmd_status_prints_narrative_reminders(self, monkeypatch, capsys):
+        import desloppify.commands.status as status_mod
+        import desloppify.state as state_mod
+        import desloppify.narrative as narrative_mod
+        import desloppify.commands._helpers as helpers_mod
+        import desloppify.utils as utils_mod
+
+        monkeypatch.setattr(status_mod, "state_path", lambda _args: "/tmp/fake.json")
+        monkeypatch.setattr(status_mod, "_write_query", lambda payload: None)
+        monkeypatch.setattr(utils_mod, "check_tool_staleness", lambda _state: None)
+        monkeypatch.setattr(helpers_mod, "resolve_lang", lambda _args: None)
+
+        fake_state = {
+            "last_scan": "2026-02-16T00:00:00+00:00",
+            "scan_count": 1,
+            "stats": {"by_tier": {}},
+            "findings": {},
+            "dimension_scores": {},
+            "codebase_metrics": {},
+            "potentials": {},
+        }
+        monkeypatch.setattr(state_mod, "load_state", lambda _sp: fake_state)
+        monkeypatch.setattr(state_mod, "suppression_metrics", lambda _state: {})
+        monkeypatch.setattr(state_mod, "get_overall_score", lambda _state: 90.0)
+        monkeypatch.setattr(state_mod, "get_objective_score", lambda _state: 90.0)
+        monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 90.0)
+        monkeypatch.setattr(state_mod, "get_strict_all_detected_score", lambda _state: 90.0)
+        monkeypatch.setattr(
+            narrative_mod,
+            "compute_narrative",
+            lambda state, **kw: {
+                "headline": None,
+                "reminders": [
+                    {"type": "report_scores", "message": "skip"},
+                    {"type": "review_stale", "message": "Design review is 45 days old — run: desloppify review --prepare"},
+                ],
+            },
+        )
+
+        class FakeArgs:
+            json = False
+            lang = None
+            path = "."
+            state = None
+            _config = {}
+
+        status_mod.cmd_status(FakeArgs())
+        out = capsys.readouterr().out
+        assert "Reminders:" in out
+        assert "Design review is 45 days old" in out
+        assert "skip" not in out
+
+    def test_cmd_status_prints_narrative_plan_fields(self, monkeypatch, capsys):
+        import desloppify.commands.status as status_mod
+        import desloppify.state as state_mod
+        import desloppify.narrative as narrative_mod
+        import desloppify.commands._helpers as helpers_mod
+        import desloppify.utils as utils_mod
+
+        monkeypatch.setattr(status_mod, "state_path", lambda _args: "/tmp/fake.json")
+        monkeypatch.setattr(status_mod, "_write_query", lambda payload: None)
+        monkeypatch.setattr(utils_mod, "check_tool_staleness", lambda _state: None)
+        monkeypatch.setattr(helpers_mod, "resolve_lang", lambda _args: None)
+
+        fake_state = {
+            "last_scan": "2026-02-16T00:00:00+00:00",
+            "scan_count": 1,
+            "stats": {"by_tier": {}},
+            "findings": {},
+            "dimension_scores": {},
+            "codebase_metrics": {},
+            "potentials": {},
+        }
+        monkeypatch.setattr(state_mod, "load_state", lambda _sp: fake_state)
+        monkeypatch.setattr(state_mod, "suppression_metrics", lambda _state: {})
+        monkeypatch.setattr(state_mod, "get_overall_score", lambda _state: 90.0)
+        monkeypatch.setattr(state_mod, "get_objective_score", lambda _state: 90.0)
+        monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 90.0)
+        monkeypatch.setattr(state_mod, "get_strict_all_detected_score", lambda _state: 90.0)
+        monkeypatch.setattr(
+            narrative_mod,
+            "compute_narrative",
+            lambda state, **kw: {
+                "headline": None,
+                "why_now": "Code quality is the current bottleneck.",
+                "primary_action": {"command": "desloppify next", "description": "work highest-priority issue"},
+                "verification_step": {"command": "desloppify scan", "reason": "validate trend"},
+                "risk_flags": [{"severity": "medium", "message": "Review context is stale"}],
+                "reminders": [],
+            },
+        )
+
+        class FakeArgs:
+            json = False
+            lang = None
+            path = "."
+            state = None
+            _config = {}
+
+        status_mod.cmd_status(FakeArgs())
+        out = capsys.readouterr().out
+        assert "Narrative Plan:" in out
+        assert "Why now: Code quality is the current bottleneck." in out
+        assert "Do: `desloppify next`" in out

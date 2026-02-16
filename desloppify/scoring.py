@@ -1,4 +1,4 @@
-"""Objective dimension-based scoring system.
+"""Dimension-based health scoring.
 
 Groups detectors into dimensions (coherent aspects of code quality),
 computes per-dimension pass rates from potentials, and produces a
@@ -176,6 +176,7 @@ def compute_dimension_scores(
     *,
     strict: bool = False,
     subjective_assessments: dict | None = None,
+    allowed_subjective_dimensions: set[str] | None = None,
     review_assessments: dict | None = None,
 ) -> dict[str, dict]:
     """Compute per-dimension scores from findings and potentials.
@@ -186,6 +187,9 @@ def compute_dimension_scores(
     If *subjective_assessments* is provided, each assessed dimension becomes a
     first-class scoring dimension (tier 4) with score driven by the assessment,
     not by findings.
+
+    If *allowed_subjective_dimensions* is provided, only those assessment
+    dimensions are eligible for scoring.
 
     *review_assessments* is a deprecated alias for *subjective_assessments*.
     """
@@ -229,7 +233,13 @@ def compute_dimension_scores(
             "detectors": detector_detail,
         }
 
-    _append_subjective_dimensions(results, findings, subjective_assessments, failure_set)
+    _append_subjective_dimensions(
+        results,
+        findings,
+        subjective_assessments,
+        failure_set,
+        allowed_dimensions=allowed_subjective_dimensions,
+    )
     return results
 
 
@@ -251,21 +261,41 @@ DISPLAY_NAMES: dict[str, str] = {
     "naming_quality":           "Naming Quality",
     "logic_clarity":            "Logic Clarity",
     "type_safety":              "Type Safety",
-    "contract_coherence":       "Contracts",
+    "contract_coherence":       "Contract Coherence",
 }
 
 
 def _append_subjective_dimensions(
     results: dict, findings: dict,
-    assessments: dict | None, failure_set: set,
+    assessments: dict | None,
+    failure_set: set,
+    *,
+    allowed_dimensions: set[str] | None = None,
 ) -> None:
     """Append subjective review dimensions to results dict (mutates results)."""
-    from .review import DEFAULT_DIMENSIONS
-    assessed = assessments or {}
+    from .review import DEFAULT_DIMENSIONS, normalize_dimension_name
+    assessed_raw = assessments or {}
+    assessed: dict[str, dict | float | int] = {}
+    for dim_name, payload in assessed_raw.items():
+        key = normalize_dimension_name(str(dim_name))
+        if not key:
+            continue
+        assessed[key] = payload
+
+    allowed: set[str] | None = None
+    if allowed_dimensions is not None:
+        allowed = {
+            normalize_dimension_name(str(dim))
+            for dim in allowed_dimensions
+            if normalize_dimension_name(str(dim))
+        }
+
     existing_lower = {k.lower() for k in results}
 
-    all_dims = list(DEFAULT_DIMENSIONS)
+    all_dims = [dim for dim in DEFAULT_DIMENSIONS if allowed is None or dim in allowed]
     for dim_name in assessed:
+        if allowed is not None and dim_name not in allowed:
+            continue
         if dim_name not in DEFAULT_DIMENSIONS:
             all_dims.append(dim_name)
 
@@ -286,7 +316,14 @@ def _append_subjective_dimensions(
             and f.get("detail", {}).get("dimension") == dim_name
         )
 
-        score = max(0, min(100, assessment.get("score", 0))) if assessment else 0.0
+        if assessment:
+            score_value = assessment.get("score", 0) if isinstance(assessment, dict) else assessment
+            try:
+                score = max(0, min(100, float(score_value)))
+            except (TypeError, ValueError):
+                score = 0.0
+        else:
+            score = 0.0
         pass_rate = score / 100.0
 
         results[display] = {
@@ -304,7 +341,7 @@ def _append_subjective_dimensions(
 
 
 def compute_objective_score(dimension_scores: dict) -> float:
-    """Budget-weighted blend of mechanical and subjective dimension scores.
+    """Compute the blended health score from dimension-level scores.
 
     Mechanical dimensions use sample-dampened tier weights.
     Subjective dimensions use tier weights without dampening (they are

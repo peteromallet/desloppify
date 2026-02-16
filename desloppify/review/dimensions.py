@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 # ── Holistic review dimensions ────────────────────────────────────
 
@@ -468,6 +470,55 @@ DIMENSION_PROMPTS = {
         ],
     },
 }
+
+
+_DIMENSION_ALIASES = {
+    "naming": "naming_quality",
+    "contracts": "contract_coherence",
+}
+CUSTOM_DIMENSION_PREFIX = "custom_"
+
+
+def normalize_dimension_name(name: str) -> str:
+    """Normalize a dimension identifier to canonical snake_case."""
+    key = re.sub(r"_+", "_", (name or "").strip().lower().replace("-", "_").replace(" ", "_")).strip("_")
+    if not key:
+        return ""
+    return _DIMENSION_ALIASES.get(key, key)
+
+
+def is_known_dimension(name: str, *, holistic: bool | None = None) -> bool:
+    """Return whether *name* is a registered review dimension.
+
+    holistic=None checks across both per-file and holistic sets.
+    """
+    key = normalize_dimension_name(name)
+    if not key:
+        return False
+    if holistic is True:
+        return key in HOLISTIC_DIMENSION_PROMPTS
+    if holistic is False:
+        return key in DIMENSION_PROMPTS
+    return key in DIMENSION_PROMPTS or key in HOLISTIC_DIMENSION_PROMPTS
+
+
+def is_custom_dimension(name: str) -> bool:
+    """Return True when *name* uses the explicit custom dimension prefix."""
+    return normalize_dimension_name(name).startswith(CUSTOM_DIMENSION_PREFIX)
+
+
+def normalize_dimension_list(
+    raw_dimensions: list[str] | None,
+    *,
+    holistic: bool,
+    allow_custom: bool = False,
+) -> tuple[list[str], list[str]]:
+    """Backward-compatible wrapper around the centralized policy helpers."""
+    from .policy import build_dimension_policy, normalize_dimension_inputs
+
+    policy = build_dimension_policy(allow_custom_dimensions=allow_custom)
+    return normalize_dimension_inputs(raw_dimensions, holistic=holistic, policy=policy)
+
 
 def _collect_lang_guidance() -> dict[str, dict]:
     """Collect review guidance from registered language plugins."""

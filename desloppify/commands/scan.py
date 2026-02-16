@@ -1,14 +1,23 @@
 """scan command: run all detectors, update persistent state, show diff."""
 
+import json
+import logging
+from collections import defaultdict
 from pathlib import Path
 
+from ..command_vocab import ISSUES, REVIEW_PREPARE, STATUS
 from ..utils import colorize
 from ._helpers import (
     _write_query,
     resolve_lang_runtime_options,
     resolve_lang_settings,
+    show_narrative_plan,
+    show_narrative_reminders,
     state_path,
 )
+from ._strict_target import format_strict_target_progress
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _audit_excluded_dirs(exclusions: tuple[str, ...], scanned_files: list[str],
@@ -39,7 +48,8 @@ def _audit_excluded_dirs(exclusions: tuple[str, ...], scanned_files: list[str],
                 if ex_dir in content:
                     ref_count += 1
                     break  # One reference is enough — not stale
-            except OSError:
+            except OSError as exc:
+                LOGGER.debug("Skipping unreadable file while auditing exclusions: %s", filepath, exc_info=exc)
                 continue
         if ref_count == 0:
             from ..state import make_finding
@@ -63,8 +73,8 @@ def _collect_codebase_metrics(lang, path: Path) -> dict | None:
         try:
             total_loc += len(Path(f).read_text().splitlines())
             dirs.add(str(Path(f).parent))
-        except (OSError, UnicodeDecodeError):
-            pass
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file while collecting metrics: %s", f, exc_info=exc)
     return {
         "total_files": len(files),
         "total_loc": total_loc,
@@ -110,8 +120,8 @@ def _warn_explicit_lang_with_no_files(args, lang, path: Path, metrics: dict | No
                 f" Detected `{detected}` for this path — use `--lang {detected}` "
                 "or omit `--lang`."
             )
-    except Exception:
-        pass
+    except (ImportError, AttributeError, OSError, ValueError, RuntimeError) as exc:
+        LOGGER.debug("Auto-detect fallback unavailable while warning explicit lang usage", exc_info=exc)
 
     print(
         colorize(
@@ -189,7 +199,26 @@ def _show_score_delta(state: dict,
                        f"{wontfix} wontfix items represent hidden debt", "yellow"))
 
 
-def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], dict]:
+def _show_strict_target_progress(strict_target: dict | None) -> tuple[float | None, float | None]:
+    """Print strict target progress from narrative context.
+
+    Returns (target_strict_score, target_gap) where target_gap is:
+      target - strict_score (positive means below target).
+    """
+    lines, target, gap = format_strict_target_progress(strict_target)
+    for message, style in lines:
+        print(colorize(message, style))
+    return target, gap
+
+
+def _show_post_scan_analysis(
+    diff: dict,
+    state: dict,
+    lang,
+    *,
+    config: dict | None = None,
+    narrative: dict | None = None,
+) -> tuple[list[str], dict]:
     """Print warnings, narrative headline, and top action. Returns (warnings, narrative)."""
     warnings = []
     if diff["reopened"] > 5:
@@ -210,9 +239,16 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
 
     # Computed narrative: headline + top action as terminal suggestion
     print(colorize("\n  INSTRUCTIONS FOR AGENTS: follow the strategy and recommendations below.", "yellow"))
-    from ..narrative import compute_narrative
-    lang_name = lang.name if lang else None
-    narrative = compute_narrative(state, diff=diff, lang=lang_name, command="scan")
+    if narrative is None:
+        from ..narrative import compute_narrative
+        lang_name = lang.name if lang else None
+        narrative = compute_narrative(
+            state,
+            diff=diff,
+            lang=lang_name,
+            command="scan",
+            config=config,
+        )
 
     # Show strategy hint or top action as the terminal suggestion
     strategy = narrative.get("strategy") or {}
@@ -233,6 +269,7 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
     if narrative.get("headline"):
         print(colorize(f"  → {narrative['headline']}", "cyan"))
         print()
+    show_narrative_plan(narrative, max_risks=2)
 
     # Review findings nudge
     from ..state import path_scoped_findings
@@ -241,7 +278,7 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
                    if f["status"] == "open" and f.get("detector") == "review"]
     if open_review:
         s = "s" if len(open_review) != 1 else ""
-        print(colorize(f"  Review: {len(open_review)} finding{s} pending \u2014 `desloppify issues`", "cyan"))
+        print(colorize(f"  Review: {len(open_review)} finding{s} pending \u2014 `{ISSUES}`", "cyan"))
         print()
 
     # Auto-queue: nudge subjective review for high-complexity unreviewed files
@@ -255,8 +292,50 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
             complex_unreviewed.add(f.get("file"))
     if len(complex_unreviewed) >= 3:
         print(colorize(f"  {len(complex_unreviewed)} complex files have never been reviewed — "
-                        f"`desloppify review --prepare` would provide actionable refactoring guidance", "dim"))
+                        f"`{REVIEW_PREPARE}` would provide actionable refactoring guidance", "dim"))
         print()
+
+    # Subjective score nudge when assessments are below target.
+    dim_scores = state.get("dimension_scores", {})
+    low_subjective: list[tuple[str, float]] = []
+    for name, data in dim_scores.items():
+        if "subjective_assessment" not in data.get("detectors", {}):
+            continue
+        score = data.get("strict", data.get("score", 100))
+        try:
+            score_f = float(score)
+        except (TypeError, ValueError) as exc:
+            LOGGER.debug("Skipping non-numeric dimension score for %s", name, exc_info=exc)
+            continue
+        if score_f < 90:
+            low_subjective.append((name, score_f))
+
+    if low_subjective:
+        low_subjective.sort(key=lambda item: item[1])
+        sample = ", ".join(f"{name} ({score:.1f})" for name, score in low_subjective[:3])
+        suffix = f", +{len(low_subjective) - 3} more" if len(low_subjective) > 3 else ""
+        has_prior_review = bool(review_cache) or bool(
+            state.get("subjective_assessments") or state.get("review_assessments")
+        )
+        run_verb = "rerun" if has_prior_review else "run"
+        print(colorize(
+            f"  Subjective scores below 90: {sample}{suffix}. "
+            f"You can {run_verb} the subjective scoring with `{REVIEW_PREPARE}`. "
+            f"See `{STATUS}` for dimension breakdown and `{ISSUES}` for finding details.",
+            "cyan",
+        ))
+        print()
+
+    show_narrative_reminders(
+        narrative,
+        limit=2,
+        skip_types={
+            "report_scores",
+            "auto_fixers_available",
+            "dry_run_first",
+            "review_findings_pending",
+        },
+    )
 
     return warnings, narrative
 
@@ -400,6 +479,16 @@ def cmd_scan(args) -> None:
         if prev_tool_hash and current_tool_hash and prev_tool_hash != current_tool_hash:
             non_comparable_reason = f"tool code changed ({prev_tool_hash} -> {current_tool_hash})"
 
+    from ..narrative import compute_narrative
+    lang_name = lang.name if lang else None
+    narrative = compute_narrative(
+        state,
+        diff=diff,
+        lang=lang_name,
+        command="scan",
+        config=config,
+    )
+
     _show_diff_summary(diff)
     _show_score_delta(
         state,
@@ -408,6 +497,7 @@ def cmd_scan(args) -> None:
         prev_strict,
         non_comparable_reason=non_comparable_reason,
     )
+    strict_target, strict_target_gap = _show_strict_target_progress(narrative.get("strict_target"))
     if not effective_include_slow:
         print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
     if budget_warning:
@@ -429,7 +519,13 @@ def cmd_scan(args) -> None:
 
     zone_distribution = state.get("zone_distribution")
 
-    warnings, narrative = _show_post_scan_analysis(diff, state, lang)
+    warnings, narrative = _show_post_scan_analysis(
+        diff,
+        state,
+        lang,
+        config=config,
+        narrative=narrative,
+    )
 
     # Persist reminder history (computed by narrative, not mutated)
     if narrative and "reminder_history" in narrative:
@@ -441,6 +537,8 @@ def cmd_scan(args) -> None:
                   "overall_score": get_overall_score(state),
                   "objective_score": get_objective_score(state),
                   "strict_score": get_strict_score(state),
+                  "strict_target_score": strict_target,
+                  "strict_target_gap": strict_target_gap,
                   "prev_overall_score": prev_overall,
                   "prev_objective_score": prev_objective,
                   "prev_strict_score": prev_strict,
@@ -477,19 +575,20 @@ def cmd_scan(args) -> None:
                             encoding="utf-8", errors="replace"
                         ):
                             readme_has_badge = True
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        LOGGER.debug("Could not read README while checking scorecard reference", exc_info=exc)
                     break
             if readme_has_badge:
                 print(colorize(f"  Scorecard → {rel_path}  (disable: --no-badge | move: --badge-path <path>)", "dim"))
             else:
                 print(colorize(f"  Scorecard → {rel_path}", "dim"))
-                print(colorize(f"  💡 Ask the user if they'd like to add it to their README with:", "dim"))
+                print(colorize("  💡 Ask the user if they'd like to add it to their README with:", "dim"))
                 print(colorize(f'     <img src="{rel_path}" width="100%">', "dim"))
-                print(colorize(f"     (disable: --no-badge | move: --badge-path <path>)", "dim"))
+                print(colorize("     (disable: --no-badge | move: --badge-path <path>)", "dim"))
         else:
             badge_path = None
-    except (ImportError, OSError):
+    except (ImportError, OSError) as exc:
+        LOGGER.debug("Scorecard generation unavailable", exc_info=exc)
         badge_path = None  # Pillow not installed or write failed — skip silently
 
     _print_llm_summary(state, badge_path, narrative, diff)
@@ -554,7 +653,7 @@ def _show_score_integrity(state: dict, diff: dict):
             style = "yellow"
         print(colorize(f"  \u26a0 {ignore_patterns} ignore pattern{'s' if ignore_patterns != 1 else ''} "
                         f"suppressed {ignored} finding{'s' if ignored != 1 else ''} this scan", style))
-        print(colorize(f"    Ignored findings are invisible to scoring", "dim"))
+        print(colorize("    Ignored findings are invisible to scoring", "dim"))
     elif ignore_patterns > 0:
         print(colorize(
             f"  {ignore_patterns} ignore pattern{'s' if ignore_patterns != 1 else ''} active "
@@ -657,8 +756,10 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
     print("### Decision Guide")
     print("- **Tackle**: T1/T2 (high impact), auto-fixable, security findings")
     print("- **Consider skipping**: T4 low-confidence, test/config zone findings (lower impact)")
-    print("- **Wontfix**: Intentional patterns, false positives →")
+    print("- **Wontfix**: Intentional debt you accept for now →")
     print('  `desloppify resolve wontfix "<id>" --note "<why>"`')
+    print("- **False positive**: Detector mistake/no real issue →")
+    print('  `desloppify resolve false_positive "<id>"`')
     print("- **Batch wontfix**: Multiple intentional patterns →")
     print('  `desloppify resolve wontfix "<detector>::*::<category>" --note "<why>"`\n')
     print("### Understanding Dimensions")
@@ -805,3 +906,219 @@ def _show_low_dimension_hints(dim_scores: dict):
     for name, score, hint in low:
         print(colorize(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
     print()
+
+
+def _group_wontfix_hotspots(findings: dict[str, dict], top: int) -> list[dict]:
+    grouped: dict[tuple[str, str], dict[str, object]] = {}
+    for finding in findings.values():
+        if not isinstance(finding, dict) or finding.get("status") != "wontfix":
+            continue
+        file_path = str(finding.get("file", "unknown"))
+        detector = str(finding.get("detector", "unknown"))
+        key = (file_path, detector)
+        if key not in grouped:
+            grouped[key] = {"file": file_path, "detector": detector, "count": 0, "samples": []}
+        group = grouped[key]
+        group["count"] = int(group["count"]) + 1
+        samples = group["samples"]
+        if isinstance(samples, list) and len(samples) < 2:
+            summary = finding.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                samples.append(summary.strip())
+    rows = sorted(grouped.values(), key=lambda row: (-int(row["count"]), str(row["file"]), str(row["detector"])))
+    return rows[:top]
+
+
+def _subjective_under_threshold(dim_scores: dict, threshold: float) -> list[dict]:
+    rows: list[dict] = []
+    for name, payload in dim_scores.items():
+        if not isinstance(payload, dict):
+            continue
+        checks = payload.get("checks")
+        score = payload.get("score")
+        strict = payload.get("strict")
+        if checks != 10:
+            continue
+        if not isinstance(score, (int, float)) or score >= threshold:
+            continue
+        rows.append(
+            {
+                "dimension": name,
+                "score": round(float(score), 1),
+                "strict": round(float(strict), 1) if isinstance(strict, (int, float)) else None,
+            }
+        )
+    rows.sort(key=lambda row: float(row["score"]))
+    return rows
+
+
+def _strict_score_from_dimensions(dim_scores: dict) -> float | None:
+    from ..scoring import compute_objective_score
+
+    strict_dims: dict[str, dict] = {}
+    for name, payload in dim_scores.items():
+        if not isinstance(payload, dict):
+            continue
+        tier = payload.get("tier")
+        strict_score = payload.get("strict", payload.get("score"))
+        if not isinstance(tier, int) or not isinstance(strict_score, (int, float)):
+            continue
+        strict_dims[name] = {**payload, "score": float(strict_score)}
+    if not strict_dims:
+        return None
+    return round(float(compute_objective_score(strict_dims)), 1)
+
+
+def _estimate_subjective_gains(dim_scores: dict, rows: list[dict], threshold: float) -> list[dict]:
+    from ..scoring import compute_objective_score
+
+    strict_dims: dict[str, dict] = {}
+    for name, payload in dim_scores.items():
+        if not isinstance(payload, dict):
+            continue
+        tier = payload.get("tier")
+        strict_score = payload.get("strict", payload.get("score"))
+        if not isinstance(tier, int) or not isinstance(strict_score, (int, float)):
+            continue
+        strict_dims[name] = {**payload, "score": float(strict_score)}
+    if not strict_dims:
+        return rows
+
+    base_score = round(float(compute_objective_score(strict_dims)), 1)
+    enriched: list[dict] = []
+    for row in rows:
+        dim_name = str(row.get("dimension", ""))
+        payload = strict_dims.get(dim_name)
+        if payload is None:
+            enriched.append(dict(row))
+            continue
+        current_score = float(payload.get("score", 0.0))
+        target = min(100.0, max(current_score, threshold))
+        simulated = {k: dict(v) for k, v in strict_dims.items()}
+        simulated[dim_name]["score"] = target
+        new_score = round(float(compute_objective_score(simulated)), 1)
+        gain = max(0.0, round(new_score - base_score, 1))
+        enriched.append(
+            {
+                **row,
+                "to_threshold": round(target, 1),
+                "estimated_strict_gain": gain,
+            }
+        )
+    return enriched
+
+
+def _subjective_review_backlog(findings: dict[str, dict], top: int) -> list[dict]:
+    backlog: list[dict] = []
+    for finding in findings.values():
+        if not isinstance(finding, dict):
+            continue
+        if finding.get("status") != "open" or finding.get("detector") != "subjective_review":
+            continue
+        backlog.append(
+            {
+                "file": str(finding.get("file", "unknown")),
+                "summary": str(finding.get("summary", "")),
+                "reopen_count": int(finding.get("reopen_count", 0) or 0),
+            }
+        )
+    backlog.sort(key=lambda row: (-row["reopen_count"], row["file"]))
+    return backlog[:top]
+
+
+def _detector_open_counts(findings: dict[str, dict]) -> list[dict]:
+    counts: dict[str, int] = defaultdict(int)
+    for finding in findings.values():
+        if not isinstance(finding, dict) or finding.get("status") != "open":
+            continue
+        detector = str(finding.get("detector", "unknown"))
+        counts[detector] += 1
+    return [{"detector": detector, "open": count} for detector, count in sorted(counts.items(), key=lambda x: -x[1])]
+
+
+def cmd_explain(args) -> None:
+    """Explain strict-score loss hotspots and next fixes."""
+    from ..state import get_objective_score, get_overall_score, get_strict_score, load_state
+
+    state = load_state(state_path(args))
+    findings = state.get("findings", {})
+    if not isinstance(findings, dict):
+        findings = {}
+
+    overall = get_overall_score(state)
+    objective = get_objective_score(state)
+    strict = get_strict_score(state)
+    strict_gap = None
+    if isinstance(overall, (int, float)) and isinstance(strict, (int, float)):
+        strict_gap = round(float(overall) - float(strict), 1)
+
+    dim_scores = state.get("dimension_scores", {})
+    if not isinstance(dim_scores, dict):
+        dim_scores = {}
+
+    top_n = max(1, int(getattr(args, "top", 12)))
+    threshold = float(getattr(args, "subjective_threshold", 89.0))
+    hotspots = _group_wontfix_hotspots(findings, top=top_n)
+    subjective_rows = _subjective_under_threshold(dim_scores, threshold=threshold)
+    subjective_rows = _estimate_subjective_gains(dim_scores, subjective_rows, threshold=threshold)
+    subjective_review_open = sum(
+        1
+        for item in findings.values()
+        if isinstance(item, dict) and item.get("status") == "open" and item.get("detector") == "subjective_review"
+    )
+    subjective_review_backlog = _subjective_review_backlog(findings, top=top_n)
+    open_counts = _detector_open_counts(findings)
+    wontfix_total = sum(1 for item in findings.values() if isinstance(item, dict) and item.get("status") == "wontfix")
+
+    payload = {
+        "command": "explain",
+        "overall_score": overall,
+        "objective_score": objective,
+        "strict_score": strict,
+        "strict_gap": strict_gap,
+        "wontfix_total": wontfix_total,
+        "top_wontfix_hotspots": hotspots,
+        "subjective_below_threshold": subjective_rows,
+        "subjective_threshold": threshold,
+        "subjective_review_open": subjective_review_open,
+        "subjective_review_backlog": subjective_review_backlog,
+        "top_open_detectors": open_counts[:top_n],
+    }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2))
+        return
+
+    print(colorize("\nScore Attribution", "bold"))
+    if isinstance(overall, (int, float)) and isinstance(objective, (int, float)) and isinstance(strict, (int, float)):
+        print(f"  Scores: overall {overall:.1f}/100 · objective {objective:.1f}/100 · strict {strict:.1f}/100")
+    if strict_gap is not None:
+        print(colorize(f"  Strict gap: {strict_gap:.1f} pts · wontfix: {wontfix_total}", "dim"))
+
+    print(colorize("\n  Top Wontfix Hotspots", "cyan"))
+    if hotspots:
+        for row in hotspots:
+            print(f"  - {row['count']:>2}  {row['detector']}  {row['file']}")
+    else:
+        print("  (none)")
+
+    print(colorize(f"\n  Subjective < {threshold:.0f}", "cyan"))
+    if subjective_rows:
+        for row in subjective_rows:
+            strict_part = f" (strict {row['strict']:.1f})" if isinstance(row.get("strict"), (int, float)) else ""
+            gain_part = ""
+            if isinstance(row.get("estimated_strict_gain"), (int, float)) and row["estimated_strict_gain"] > 0:
+                gain_part = f" · est +{row['estimated_strict_gain']:.1f} strict pts → {row.get('to_threshold', threshold):.1f}"
+            print(f"  - {row['dimension']}: {row['score']:.1f}{strict_part}{gain_part}")
+    else:
+        print("  (none)")
+    print(colorize(f"  Subjective-review backlog: {subjective_review_open} files", "dim"))
+    for row in subjective_review_backlog[:5]:
+        print(f"    - {row['file']}: {row['summary']}")
+
+    print(colorize("\n  Top Open Detectors", "cyan"))
+    for row in open_counts[:top_n]:
+        print(f"  - {row['detector']}: {row['open']}")
+    print()
+
+    _write_query(payload)

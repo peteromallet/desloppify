@@ -35,6 +35,9 @@ class TestDefaultConfig:
         assert cfg["badge_path"] == "scorecard.png"
         assert cfg["finding_noise_budget"] == 10
         assert cfg["finding_noise_global_budget"] == 0
+        assert cfg["target_strict_score"] == 95
+        assert cfg["review_allow_custom_dimensions"] is False
+        assert cfg["review_custom_dimensions"] == []
         assert cfg["languages"] == {}
         assert cfg["exclude"] == []
         assert cfg["ignore"] == []
@@ -96,6 +99,13 @@ class TestLoadSaveConfig:
         assert csharp_cfg.get("corroboration_min_signals") == 3
         assert csharp_cfg.get("high_fanout_threshold") == 8
 
+    def test_invalid_target_strict_score_resets_to_default(self, tmp_path):
+        p = tmp_path / "config.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"target_strict_score": 101}))
+        cfg = load_config(p)
+        assert cfg["target_strict_score"] == 95
+
 
 # ===========================================================================
 # set_config_value
@@ -116,6 +126,11 @@ class TestSetConfigValue:
         cfg = default_config()
         set_config_value(cfg, "finding_noise_global_budget", "50")
         assert cfg["finding_noise_global_budget"] == 50
+
+    def test_set_target_strict_score_int(self):
+        cfg = default_config()
+        set_config_value(cfg, "target_strict_score", "97")
+        assert cfg["target_strict_score"] == 97
 
     def test_set_never(self):
         cfg = default_config()
@@ -163,6 +178,11 @@ class TestSetConfigValue:
         cfg = default_config()
         with pytest.raises(ValueError, match="Cannot set dict"):
             set_config_value(cfg, "zone_overrides", "value")
+
+    def test_target_strict_score_out_of_range_raises(self):
+        cfg = default_config()
+        with pytest.raises(ValueError, match="Expected integer 0-100"):
+            set_config_value(cfg, "target_strict_score", "101")
 
 
 # ===========================================================================

@@ -17,11 +17,11 @@ class Confidence(enum.StrEnum):
 
 class Status(enum.StrEnum):
     OPEN = "open"
-    RESOLVED = "resolved"
+    FIXED = "fixed"
     WONTFIX = "wontfix"
     FALSE_POSITIVE = "false_positive"
-    FIXED = "fixed"
     AUTO_RESOLVED = "auto_resolved"
+    RESOLVED = "resolved"  # Legacy on-disk value; migrated to FIXED on load.
 
 
 class Tier(enum.IntEnum):

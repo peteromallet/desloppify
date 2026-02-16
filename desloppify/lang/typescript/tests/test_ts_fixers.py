@@ -8,17 +8,23 @@ import textwrap
 
 
 # =====================================================================
-# __init__.py — verify re-exports
+# __init__.py — verify lazy fixer loader
 # =====================================================================
 
 
 class TestFixerInit:
-    """Tests for the fixers __init__.py re-exports."""
+    """Tests for the fixers __init__.py loader."""
 
-    def test_all_exports_present(self):
-        """__all__ lists all expected fixer functions."""
+    def test_get_fixer_exported(self):
+        """__all__ only exports the lazy resolver."""
         from desloppify.lang.typescript.fixers import __all__
-        expected = [
+        assert __all__ == ["get_fixer"]
+
+    def test_get_fixer_resolves_known_fixers(self):
+        """Known fixer names resolve to callables."""
+        from desloppify.lang.typescript.fixers import get_fixer
+
+        names = [
             "fix_debug_logs",
             "fix_unused_imports",
             "fix_dead_exports",
@@ -27,22 +33,8 @@ class TestFixerInit:
             "fix_dead_useeffect",
             "fix_empty_if_chain",
         ]
-        assert set(__all__) == set(expected)
-
-    def test_imports_resolve(self):
-        """All exported names can be imported."""
-        from desloppify.lang.typescript.fixers import (
-            fix_debug_logs,
-            fix_unused_imports,
-            fix_dead_exports,
-            fix_unused_vars,
-            fix_unused_params,
-            fix_dead_useeffect,
-            fix_empty_if_chain,
-        )
-        for fn in [fix_debug_logs, fix_unused_imports, fix_dead_exports,
-                    fix_unused_vars, fix_unused_params, fix_dead_useeffect,
-                    fix_empty_if_chain]:
+        for name in names:
+            fn = get_fixer(name)
             assert callable(fn)
 
 
@@ -165,7 +157,7 @@ class TestCommonApplyFixer:
         entries = [{"file": str(ts_file), "target": "line_b"}]
 
         def transform(lines, file_entries):
-            new_lines = [l for l in lines if "line_b" not in l]
+            new_lines = [line for line in lines if "line_b" not in line]
             return new_lines, ["line_b"]
 
         results = apply_fixer(entries, transform, dry_run=False)
@@ -184,7 +176,7 @@ class TestCommonApplyFixer:
         entries = [{"file": str(ts_file), "target": "line_b"}]
 
         def transform(lines, file_entries):
-            new_lines = [l for l in lines if "line_b" not in l]
+            new_lines = [line for line in lines if "line_b" not in line]
             return new_lines, ["line_b"]
 
         results = apply_fixer(entries, transform, dry_run=True)
@@ -214,7 +206,7 @@ class TestCommonApplyFixer:
         entries = [{"file": str(ts_file)}]
 
         def transform(lines, file_entries):
-            return [l for l in lines if "b" not in l], ["b"]
+            return [line for line in lines if "b" not in line], ["b"]
 
         apply_fixer(entries, transform, dry_run=False)
         tmp_files = list(tmp_path.glob("*.tmp"))

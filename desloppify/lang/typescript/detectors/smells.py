@@ -18,9 +18,9 @@ from ._smell_helpers import (
     _ts_match_is_in_string,
     _detect_async_no_await,
     _detect_error_no_throw,
-    _detect_empty_if_chains,
-    _detect_dead_useeffects,
     _detect_swallowed_errors,
+    _strip_ts_comments,
+    scan_code,
 )
 
 
@@ -301,6 +301,129 @@ def _build_ts_line_state(lines: list[str]) -> dict[int, str]:
             j += 1
 
     return state
+
+
+def _detect_empty_if_chains(filepath: str, lines: list[str], smell_counts: dict[str, list[dict]]) -> None:
+    """Find if/else chains where all branches are empty."""
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if not re.match(r"(?:else\s+)?if\s*\(", stripped):
+            index += 1
+            continue
+
+        if re.match(r"(?:else\s+)?if\s*\([^)]*\)\s*\{\s*\}\s*$", stripped):
+            chain_start = index
+            cursor = index + 1
+            while cursor < len(lines):
+                next_stripped = lines[cursor].strip()
+                if re.match(r"else\s+if\s*\([^)]*\)\s*\{\s*\}\s*$", next_stripped):
+                    cursor += 1
+                    continue
+                if re.match(r"(?:\}\s*)?else\s*\{\s*\}\s*$", next_stripped):
+                    cursor += 1
+                    continue
+                break
+            smell_counts["empty_if_chain"].append(
+                {"file": filepath, "line": chain_start + 1, "content": stripped[:100]}
+            )
+            index = cursor
+            continue
+
+        if re.match(r"(?:else\s+)?if\s*\([^)]*\)\s*\{\s*$", stripped):
+            chain_start = index
+            chain_all_empty = True
+            cursor = index
+            while cursor < len(lines):
+                current = lines[cursor].strip()
+                if cursor == chain_start:
+                    if not re.match(r"(?:else\s+)?if\s*\([^)]*\)\s*\{\s*$", current):
+                        chain_all_empty = False
+                        break
+                elif re.match(r"\}\s*else\s+if\s*\([^)]*\)\s*\{\s*$", current):
+                    pass
+                elif re.match(r"\}\s*else\s*\{\s*$", current):
+                    pass
+                elif current == "}":
+                    tail = cursor + 1
+                    while tail < len(lines) and lines[tail].strip() == "":
+                        tail += 1
+                    if tail < len(lines) and re.match(r"else\s", lines[tail].strip()):
+                        cursor = tail
+                        continue
+                    cursor += 1
+                    break
+                elif current == "":
+                    cursor += 1
+                    continue
+                else:
+                    chain_all_empty = False
+                    break
+                cursor += 1
+            if chain_all_empty and cursor > chain_start + 1:
+                smell_counts["empty_if_chain"].append(
+                    {"file": filepath, "line": chain_start + 1, "content": lines[chain_start].strip()[:100]}
+                )
+            index = max(index + 1, cursor)
+            continue
+
+        index += 1
+
+
+def _detect_dead_useeffects(filepath: str, lines: list[str], smell_counts: dict[str, list[dict]]) -> None:
+    """Find useEffect calls with empty/whitespace/comment-only bodies."""
+    for line_no, line in enumerate(lines):
+        stripped = line.strip()
+        if not re.match(r"(?:React\.)?useEffect\s*\(\s*\(\s*\)\s*=>\s*\{", stripped):
+            continue
+
+        paren_depth = 0
+        end_line = None
+        for cursor in range(line_no, min(line_no + 30, len(lines))):
+            for _, ch, in_string in scan_code(lines[cursor]):
+                if in_string:
+                    continue
+                if ch == "(":
+                    paren_depth += 1
+                elif ch == ")":
+                    paren_depth -= 1
+                    if paren_depth <= 0:
+                        end_line = cursor
+                        break
+            if end_line is not None:
+                break
+
+        if end_line is None:
+            continue
+
+        text = "\n".join(lines[line_no:end_line + 1])
+        arrow_pos = text.find("=>")
+        if arrow_pos == -1:
+            continue
+        brace_pos = text.find("{", arrow_pos)
+        if brace_pos == -1:
+            continue
+
+        depth = 0
+        body_end = None
+        for idx, ch, in_string in scan_code(text, brace_pos):
+            if in_string:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    body_end = idx
+                    break
+        if body_end is None:
+            continue
+
+        body = text[brace_pos + 1:body_end]
+        if _strip_ts_comments(body).strip() == "":
+            smell_counts["dead_useeffect"].append(
+                {"file": filepath, "line": line_no + 1, "content": stripped[:100]}
+            )
 
 
 def detect_smells(path: Path) -> tuple[list[dict], int]:

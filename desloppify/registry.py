@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .command_vocab import REVIEW_PREPARE
+
 
 @dataclass(frozen=True)
 class DetectorMeta:
@@ -120,7 +122,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "address design quality findings from AI code review"),
     "subjective_review": DetectorMeta(
         "subjective_review", "subjective review", "Test health", "manual_fix",
-        "run `desloppify fix review` to evaluate files against quality dimensions"),
+        f"run `{REVIEW_PREPARE}` to evaluate files against quality dimensions"),
 }
 
 # ── Canonical display order for terminal output ──────────────

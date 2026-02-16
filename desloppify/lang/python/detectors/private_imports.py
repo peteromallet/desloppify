@@ -29,6 +29,17 @@ def _is_conftest_import(source_file: str, target_file: str) -> bool:
     return os.path.basename(target_file) == "conftest.py"
 
 
+def _is_test_file(filepath: str) -> bool:
+    """True when a file path clearly points to test code."""
+    normalized = filepath.replace("\\", "/")
+    basename = os.path.basename(normalized)
+    if basename.startswith("test_") or basename.endswith("_test.py"):
+        return True
+    markers = ("/tests/", "/test/", "/__tests__/", "/fixtures/")
+    padded = f"/{normalized}/"
+    return any(marker in padded for marker in markers)
+
+
 def detect_private_imports(
     dep_graph: dict,
     zone_map=None,
@@ -48,13 +59,18 @@ def detect_private_imports(
         _ = node
         if not filepath.endswith(".py"):
             continue
+        if _is_test_file(filepath):
+            continue
 
         basename = os.path.basename(filepath)
         is_test = basename.startswith("test_") or basename.endswith("_test.py")
 
         if zone_map is not None:
-            from ....zones import EXCLUDED_ZONES
+            from ....zones import EXCLUDED_ZONES, Zone
+
             zone = zone_map.get(filepath)
+            if zone == Zone.PRODUCTION:
+                zone = zone_map.get(rel(filepath))
             if zone in EXCLUDED_ZONES:
                 continue
 
@@ -136,4 +152,3 @@ def _resolve_import_target(
                 break
 
     return matches
-

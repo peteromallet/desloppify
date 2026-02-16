@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ from desloppify.commands._helpers import (
 )
 from desloppify.cli import (
     DETECTOR_NAMES,
+    _COMMAND_MAP,
     _apply_persisted_exclusions,
     state_path,
     create_parser,
@@ -83,6 +85,20 @@ class TestCreateParser:
         args = parser.parse_args(["status", "--json"])
         assert args.json is True
 
+    def test_explain_command(self, parser):
+        args = parser.parse_args(["explain", "--top", "7"])
+        assert args.command == "explain"
+        assert args.top == 7
+
+    def test_help_me_improve_alias_command(self, parser):
+        args = parser.parse_args(["help-me-improve", "--top", "11"])
+        assert args.command == "help-me-improve"
+        assert args.top == 11
+
+    def test_explain_aliases_route_to_same_handler(self):
+        target = _COMMAND_MAP["explain"]
+        assert _COMMAND_MAP["help-me-improve"] == target
+
     def test_show_command_with_pattern(self, parser):
         args = parser.parse_args(["show", "src/foo.py"])
         assert args.command == "show"
@@ -121,10 +137,16 @@ class TestCreateParser:
         args = parser.parse_args(["resolve", "wontfix", "id1", "--note", "intentional"])
         assert args.note == "intentional"
 
-    def test_ignore_command(self, parser):
-        args = parser.parse_args(["ignore", "smells::*::async_no_await"])
-        assert args.command == "ignore"
-        assert args.pattern == "smells::*::async_no_await"
+    def test_resolve_ignore_status(self, parser):
+        args = parser.parse_args(["resolve", "ignore", "smells::*", "--note", "temporary"])
+        assert args.command == "resolve"
+        assert args.status == "ignore"
+        assert args.patterns == ["smells::*"]
+        assert args.note == "temporary"
+
+    def test_ignore_command_removed(self, parser):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["ignore", "smells::*::async_no_await"])
 
     def test_status_include_suppressed_flag(self, parser):
         args = parser.parse_args(["status", "--include-suppressed"])
@@ -251,6 +273,16 @@ class TestCreateParser:
         assert args.number == 2
         assert args.file == "analysis.md"
 
+    def test_help_command_defaults(self, parser):
+        args = parser.parse_args(["help"])
+        assert args.command == "help"
+        assert args.topic == []
+
+    def test_help_command_nested_topic(self, parser):
+        args = parser.parse_args(["help", "issues", "update"])
+        assert args.command == "help"
+        assert args.topic == ["issues", "update"]
+
     def test_config_command_defaults(self, parser):
         args = parser.parse_args(["config"])
         assert args.command == "config"
@@ -271,6 +303,11 @@ class TestCreateParser:
 
     def test_zone_show(self, parser):
         args = parser.parse_args(["zone", "show"])
+        assert args.command == "zone"
+        assert args.zone_action == "show"
+
+    def test_zone_defaults_to_show(self, parser):
+        args = parser.parse_args(["zone"])
         assert args.command == "zone"
         assert args.zone_action == "show"
 
@@ -331,6 +368,44 @@ class TestCreateParser:
     def test_invalid_resolve_status_raises(self, parser):
         with pytest.raises(SystemExit):
             parser.parse_args(["resolve", "invalid_status", "id1"])
+
+    def test_all_arguments_have_help_text(self, parser):
+        missing: list[str] = []
+
+        def walk(p: argparse.ArgumentParser, prefix: str) -> None:
+            for action in p._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    for name, child in action.choices.items():
+                        walk(child, f"{prefix} {name}")
+                    continue
+                if action.dest == "help":
+                    continue
+                if not action.help:
+                    label = "/".join(action.option_strings) if action.option_strings else action.dest
+                    missing.append(f"{prefix}: {label}")
+
+        walk(parser, "desloppify")
+        assert not missing, "Missing help text:\n" + "\n".join(sorted(missing))
+
+    def test_readme_command_table_includes_cli_commands(self, parser):
+        subparsers = next(
+            action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+        )
+        cli_commands = set(subparsers.choices.keys())
+
+        readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+        in_commands = False
+        readme_commands: set[str] = set()
+        for line in readme.splitlines():
+            if line.strip() == "#### Commands":
+                in_commands = True
+                continue
+            if in_commands and line.startswith("#### "):
+                break
+            if in_commands and line.startswith("| `"):
+                readme_commands.add(line.split("`")[1].split()[0])
+
+        assert cli_commands.issubset(readme_commands)
 
 
 # ===========================================================================

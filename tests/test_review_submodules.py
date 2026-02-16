@@ -292,32 +292,32 @@ class TestStoreAssessments:
     def test_stores_basic(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 80}, "per_file")
-        assert empty_state["subjective_assessments"]["naming"]["score"] == 80
-        assert empty_state["subjective_assessments"]["naming"]["source"] == "per_file"
+        assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 80
+        assert empty_state["subjective_assessments"]["naming_quality"]["source"] == "per_file"
 
     def test_holistic_overwrites_per_file(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 60}, "per_file")
         _store_assessments(empty_state, {"naming": 90}, "holistic")
-        assert empty_state["subjective_assessments"]["naming"]["score"] == 90
+        assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 90
 
     def test_per_file_no_overwrite_holistic(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 90}, "holistic")
         _store_assessments(empty_state, {"naming": 60}, "per_file")
-        assert empty_state["subjective_assessments"]["naming"]["score"] == 90
+        assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 90
 
     def test_clamps_score(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 200}, "per_file")
-        assert empty_state["subjective_assessments"]["naming"]["score"] == 100
+        assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 100
         _store_assessments(empty_state, {"naming": -50}, "holistic")
-        assert empty_state["subjective_assessments"]["naming"]["score"] == 0
+        assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 0
 
     def test_dict_value_format(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": {"score": 75, "extra": "data"}}, "per_file")
-        assert empty_state["subjective_assessments"]["naming"]["score"] == 75
+        assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 75
 
     def test_provenance_is_stored(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
@@ -333,10 +333,34 @@ class TestStoreAssessments:
             "per_file",
             provenance={"tool_version": "2026.02"},
         )
-        prov = empty_state["subjective_assessments"]["naming"]["provenance"]
+        prov = empty_state["subjective_assessments"]["naming_quality"]["provenance"]
         assert prov["reviewer_id"] == "agent-1"
         assert prov["model"] == "gpt-5"
         assert prov["tool_version"] == "2026.02"
+
+    def test_unknown_dimension_skipped_by_default(self, empty_state):
+        from desloppify.review.import_findings import _store_assessments
+        result = _store_assessments(empty_state, {"totally_made_up": 50}, "per_file")
+        assert empty_state["subjective_assessments"] == {}
+        assert result["stored"] == []
+        assert result["skipped"] == ["totally_made_up"]
+
+    def test_custom_dimension_requires_explicit_flag(self, empty_state):
+        from desloppify.review.import_findings import _store_assessments
+
+        blocked = _store_assessments(empty_state, {"custom_domain_fit": 88}, "holistic")
+        assert blocked["stored"] == []
+        assert blocked["skipped"] == ["custom_domain_fit"]
+
+        allowed = _store_assessments(
+            empty_state,
+            {"custom_domain_fit": 88},
+            "holistic",
+            allow_custom_dimensions=True,
+        )
+        assert "custom_domain_fit" in allowed["stored"]
+        assert empty_state["subjective_assessments"]["custom_domain_fit"]["score"] == 88
+        assert "custom_domain_fit" in empty_state["custom_review_dimensions"]
 
 
 class TestAssessmentImportIntegrity:

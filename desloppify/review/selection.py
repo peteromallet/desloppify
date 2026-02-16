@@ -10,7 +10,6 @@ from pathlib import Path
 from ..utils import rel, read_file_text
 from .context import _abs, _dep_graph_lookup, _importer_count
 
-
 # Files with these name patterns have low subjective review value —
 # they're mostly declarations (types, constants, enums) not logic.
 LOW_VALUE_NAMES = re.compile(

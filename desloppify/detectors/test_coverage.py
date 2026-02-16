@@ -7,8 +7,10 @@ moves the score more than testing ten trivial ones.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
+import re
 from pathlib import Path
 
 from .lang_hooks import load_lang_hook_module
@@ -20,6 +22,7 @@ _MIN_LOC = 10
 
 # Max untested modules to report when there are zero tests
 _MAX_NO_TESTS_ENTRIES = 50
+LOGGER = logging.getLogger(__name__)
 
 def detect_test_coverage(
     graph: dict,
@@ -216,13 +219,183 @@ def _no_tests_findings(
     return entries
 
 
-from .test_coverage_mapping import (  # noqa: E402
-    _import_based_mapping,
-    _naming_based_mapping,
-    _transitive_coverage,
-    _analyze_test_quality,
-    _get_test_files_for_prod,
-)
+def _import_based_mapping(
+    graph: dict,
+    test_files: set[str],
+    production_files: set[str],
+    lang_name: str,
+) -> set[str]:
+    from .test_coverage_mapping import _import_based_mapping as impl
+
+    return impl(graph, test_files, production_files, lang_name)
+
+
+def _naming_based_mapping(
+    test_files: set[str],
+    production_files: set[str],
+    lang_name: str,
+) -> set[str]:
+    from .test_coverage_mapping import _naming_based_mapping as impl
+
+    return impl(test_files, production_files, lang_name)
+
+
+def _transitive_coverage(
+    directly_tested: set[str],
+    graph: dict,
+    production_files: set[str],
+) -> set[str]:
+    from .test_coverage_mapping import _transitive_coverage as impl
+
+    return impl(directly_tested, graph, production_files)
+
+
+def _get_test_files_for_prod(
+    prod_file: str,
+    test_files: set[str],
+    graph: dict,
+    lang_name: str,
+) -> list[str]:
+    from .test_coverage_mapping import _get_test_files_for_prod as impl
+
+    return impl(prod_file, test_files, graph, lang_name)
+
+
+def _analyze_test_quality_impl(
+    test_files: set[str],
+    lang_name: str,
+) -> dict[str, dict]:
+    """Analyze test quality per file."""
+    mod = _load_lang_test_coverage_module(lang_name)
+    assert_pats = list(getattr(mod, "ASSERT_PATTERNS", []) or [])
+    trivial_assert_pats = list(getattr(mod, "TRIVIAL_ASSERT_PATTERNS", []) or [])
+    negative_path_pats = list(getattr(mod, "NEGATIVE_PATH_PATTERNS", []) or [])
+    import_line_pats = list(getattr(mod, "IMPORT_LINE_PATTERNS", []) or [])
+    mock_pats = list(getattr(mod, "MOCK_PATTERNS", []) or [])
+    snapshot_pats = list(getattr(mod, "SNAPSHOT_PATTERNS", []) or [])
+    test_func_re = getattr(mod, "TEST_FUNCTION_RE", re.compile(r"$^"))
+    strip_comments = getattr(mod, "strip_comments", None)
+
+    if not hasattr(test_func_re, "findall"):
+        test_func_re = re.compile(r"$^")
+    if not callable(strip_comments):
+        def _identity_strip(text: str) -> str:
+            return text
+
+        strip_comments = _identity_strip
+
+    quality_map: dict[str, dict] = {}
+
+    for test_file in test_files:
+        try:
+            content = Path(test_file).read_text()
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug(
+                "Skipping unreadable test file during quality analysis: %s",
+                test_file,
+                exc_info=exc,
+            )
+            continue
+
+        stripped = strip_comments(content)
+        lines = stripped.splitlines()
+        code_lines = [line for line in lines if line.strip()]
+
+        assertions = sum(1 for line in lines if any(pat.search(line) for pat in assert_pats))
+        trivial_assertions = sum(
+            1 for line in lines if any(pat.search(line) for pat in trivial_assert_pats)
+        )
+        trivial_assertions = min(assertions, trivial_assertions)
+        behavioral_assertions = max(0, assertions - trivial_assertions)
+        negative_path_assertions = sum(
+            1 for line in lines if any(pat.search(line) for pat in negative_path_pats)
+        )
+        mocks = sum(1 for line in lines if any(pat.search(line) for pat in mock_pats))
+        snapshots = sum(1 for line in lines if any(pat.search(line) for pat in snapshot_pats))
+        import_lines = sum(1 for line in lines if any(pat.search(line) for pat in import_line_pats))
+        test_functions = len(test_func_re.findall(stripped))
+        assertions_per_test = (assertions / test_functions) if test_functions else 0.0
+        trivial_assert_ratio = (trivial_assertions / assertions) if assertions else 0.0
+        negative_path_ratio = (
+            negative_path_assertions / assertions if assertions else 0.0
+        )
+        import_density = (
+            import_lines / len(code_lines) if code_lines else 0.0
+        )
+        import_only_likelihood = 0.0
+        if assertions > 0 and behavioral_assertions == 0:
+            import_only_likelihood += 0.45
+        if import_lines > 0:
+            import_only_likelihood += min(0.45, import_density)
+        if test_functions > 0 and assertions_per_test <= 1.0:
+            import_only_likelihood += 0.1
+        import_only_likelihood = min(1.0, import_only_likelihood)
+        is_import_only = import_only_likelihood >= 0.8
+
+        if test_functions == 0:
+            quality = "no_tests"
+        elif assertions == 0:
+            quality = "assertion_free"
+        elif mocks > assertions:
+            quality = "over_mocked"
+        elif snapshots > 0 and snapshots > assertions * 0.5:
+            quality = "snapshot_heavy"
+        elif assertions / test_functions < 1:
+            quality = "smoke"
+        elif assertions / test_functions >= 3:
+            quality = "thorough"
+        else:
+            quality = "adequate"
+
+        base_quality_scores = {
+            "no_tests": 0.0,
+            "assertion_free": 0.05,
+            "smoke": 0.25,
+            "over_mocked": 0.35,
+            "snapshot_heavy": 0.35,
+            "adequate": 0.65,
+            "thorough": 0.85,
+        }
+        quality_score = base_quality_scores.get(quality, 0.5)
+        if trivial_assert_ratio >= 0.75:
+            quality_score -= 0.30
+        elif trivial_assert_ratio >= 0.50:
+            quality_score -= 0.20
+        if is_import_only:
+            quality_score -= 0.25
+        if negative_path_assertions > 0:
+            quality_score += 0.10
+        if assertions_per_test >= 3.0:
+            quality_score += 0.05
+        quality_score = max(0.0, min(1.0, quality_score))
+
+        quality_map[test_file] = {
+            "assertions": assertions,
+            "trivial_assertions": trivial_assertions,
+            "behavioral_assertions": behavioral_assertions,
+            "trivial_assert_ratio": round(trivial_assert_ratio, 3),
+            "negative_path_assertions": negative_path_assertions,
+            "negative_path_ratio": round(negative_path_ratio, 3),
+            "mocks": mocks,
+            "test_functions": test_functions,
+            "snapshots": snapshots,
+            "assertions_per_test": round(assertions_per_test, 3),
+            "import_lines": import_lines,
+            "import_density": round(import_density, 3),
+            "import_only_likelihood": round(import_only_likelihood, 3),
+            "import_only": is_import_only,
+            "quality_score": round(quality_score, 3),
+            "quality": quality,
+        }
+
+    return quality_map
+
+
+def _analyze_test_quality(
+    test_files: set[str],
+    lang_name: str,
+) -> dict[str, dict]:
+    return _analyze_test_quality_impl(test_files, lang_name)
 
 
 # Complexity score threshold for upgrading test coverage tier.

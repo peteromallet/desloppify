@@ -7,11 +7,14 @@ Catches:
 """
 
 import json
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, c, grep_files, print_table, rel
+
+LOGGER = logging.getLogger(__name__)
 
 
 TAG_EXTRACT_RE = re.compile(r"\[([^\]]+)\]")
@@ -108,8 +111,8 @@ def _fix_logs(by_file: dict[str, list]):
             print(c(f"  Failed to fix {filepath}: {e}", "red"))
             try:
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                LOGGER.debug("Could not remove temporary log-fix file %s", tmp, exc_info=cleanup_exc)
     msg = f"Removed {removed} lines across {len(by_file)} files."
     if failed:
         msg += f" ({failed} files failed.)"

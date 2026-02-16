@@ -22,7 +22,7 @@ class Finding(TypedDict):
     confidence: str        # "high" | "medium" | "low"
     summary: str
     detail: dict
-    status: str            # "open" | "resolved" | "wontfix" | "false_positive"
+    status: str            # "open" | "fixed" | "wontfix" | "false_positive"
     note: str | None
     first_seen: str
     last_seen: str
@@ -36,6 +36,7 @@ STATE_DIR = PROJECT_ROOT / ".desloppify"
 STATE_FILE = STATE_DIR / "state.json"
 
 CURRENT_VERSION = 1
+_STRICT_DIMENSION_KEY = "strict"
 
 
 def utc_now() -> str:
@@ -88,6 +89,81 @@ def _migrate_progress_scores(state: dict) -> None:
     state.pop("objective_strict", None)
 
 
+def _int_or_zero(raw: object) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _migrate_legacy_status_counters(container: dict) -> None:
+    """Fold legacy `resolved` counters into canonical `fixed`."""
+    if not isinstance(container, dict):
+        return
+    resolved = _int_or_zero(container.get("resolved", 0))
+    if resolved > 0:
+        container["fixed"] = _int_or_zero(container.get("fixed", 0)) + resolved
+    container.pop("resolved", None)
+
+
+def _migrate_legacy_statuses(state: dict) -> None:
+    """Normalize legacy status vocabulary in loaded state."""
+    findings = state.get("findings", {})
+    if isinstance(findings, dict):
+        for finding in findings.values():
+            if isinstance(finding, dict) and finding.get("status") == "resolved":
+                finding["status"] = "fixed"
+
+    stats = state.get("stats", {})
+    if isinstance(stats, dict):
+        _migrate_legacy_status_counters(stats)
+        by_tier = stats.get("by_tier", {})
+        if isinstance(by_tier, dict):
+            for tier_stats in by_tier.values():
+                _migrate_legacy_status_counters(tier_stats)
+
+    for entry in state.get("scan_history", []):
+        if not isinstance(entry, dict):
+            continue
+        _migrate_legacy_status_counters(entry)
+        entry_stats = entry.get("stats")
+        if isinstance(entry_stats, dict):
+            _migrate_legacy_status_counters(entry_stats)
+            by_tier = entry_stats.get("by_tier", {})
+            if isinstance(by_tier, dict):
+                for tier_stats in by_tier.values():
+                    _migrate_legacy_status_counters(tier_stats)
+
+
+def _migrate_subjective_assessment_keys(state: dict) -> None:
+    """Normalize subjective assessment keys to canonical dimension names."""
+    from .review.dimensions import normalize_dimension_name
+
+    for key in ("subjective_assessments", "review_assessments"):
+        bucket = state.get(key)
+        if not isinstance(bucket, dict):
+            continue
+        normalized: dict = {}
+        for dim_name, payload in bucket.items():
+            canonical = normalize_dimension_name(str(dim_name))
+            if not canonical:
+                continue
+            normalized[canonical] = payload
+        state[key] = normalized
+
+    custom_dims = state.get("custom_review_dimensions")
+    if isinstance(custom_dims, list):
+        seen: set[str] = set()
+        normalized_list: list[str] = []
+        for name in custom_dims:
+            canonical = normalize_dimension_name(str(name))
+            if not canonical or canonical in seen:
+                continue
+            seen.add(canonical)
+            normalized_list.append(canonical)
+        state["custom_review_dimensions"] = normalized_list
+
+
 def load_state(path: Path | None = None) -> dict:
     """Load state from disk, or return empty state.
 
@@ -122,6 +198,8 @@ def load_state(path: Path | None = None) -> dict:
         print(f"  \u26a0 State file version {version} is newer than supported ({CURRENT_VERSION}). "
               f"Some features may not work correctly.", file=sys.stderr)
     _migrate_progress_scores(data)
+    _migrate_legacy_statuses(data)
+    _migrate_subjective_assessment_keys(data)
     return data
 
 
@@ -156,6 +234,7 @@ def save_state(state: dict, path: Path | None = None):
         safe_write_text(p, content)
     except OSError as e:
         print(f"  Warning: Could not save state: {e}", file=sys.stderr)
+        raise
 
 
 
@@ -313,9 +392,17 @@ def apply_finding_noise_budget(findings: list[dict], budget: int = DEFAULT_FINDI
 
 def _weighted_progress(findings: dict) -> tuple[float, float]:
     """Compute weighted addressed% and strict-fixed%. Returns (score, strict_score)."""
+    from .enums import Tier
+    from .scoring import TIER_WEIGHTS
+
     total_w = addressed_w = fixed_w = 0
     for f in findings.values():
-        w = TIER_WEIGHTS.get(f.get("tier", 3), 2)
+        tier_raw = f.get("tier", Tier.JUDGMENT)
+        try:
+            tier = Tier(int(tier_raw))
+        except (TypeError, ValueError):
+            tier = Tier.JUDGMENT
+        w = TIER_WEIGHTS.get(tier, 2)
         total_w += w
         if f["status"] != "open":
             addressed_w += w
@@ -331,6 +418,20 @@ def _is_subjective_dimension(data: dict) -> bool:
     return "subjective_assessment" in data.get("detectors", {})
 
 
+def _filtered_subjective_assessments(state: dict) -> tuple[dict | None, set[str]]:
+    """Normalize and filter subjective assessments to allowed dimensions."""
+    from .review.policy import build_dimension_policy, filter_assessments_for_scoring
+
+    raw = state.get("subjective_assessments") or state.get("review_assessments") or None
+    policy = build_dimension_policy(
+        state=state,
+        config=(state.get("config") if isinstance(state.get("config"), dict) else None),
+        allow_custom_dimensions=False,
+    )
+    filtered = filter_assessments_for_scoring(raw, policy=policy)
+    return filtered, set(policy.allowed_subjective)
+
+
 def _update_objective_health(state: dict, findings: dict):
     """Compute canonical score trio from dimension scoring."""
     pots = state.get("potentials", {})
@@ -340,8 +441,7 @@ def _update_objective_health(state: dict, findings: dict):
     merged = merge_potentials(pots)
     if not merged:
         return
-    subjective_assessments = (state.get("subjective_assessments")
-                              or state.get("review_assessments") or None)
+    subjective_assessments, allowed_subjective_dimensions = _filtered_subjective_assessments(state)
     # If nothing was checked for this scan scope (all detector potentials are zero)
     # and there are no subjective assessments, objective health is effectively
     # "no active checks" — treat as neutral instead of 0%.
@@ -358,17 +458,19 @@ def _update_objective_health(state: dict, findings: dict):
         merged,
         strict=False,
         subjective_assessments=subjective_assessments,
+        allowed_subjective_dimensions=allowed_subjective_dimensions,
     )
     strict_scores = compute_dimension_scores(
         findings,
         merged,
         strict=True,
         subjective_assessments=subjective_assessments,
+        allowed_subjective_dimensions=allowed_subjective_dimensions,
     )
     state["dimension_scores"] = {
         name: {
             "score": lenient_scores[name]["score"],
-            "strict": strict_scores[name]["score"],
+            _STRICT_DIMENSION_KEY: strict_scores[name]["score"],
             "checks": lenient_scores[name]["checks"],
             "issues": lenient_scores[name]["issues"],
             "tier": lenient_scores[name]["tier"],
@@ -394,9 +496,9 @@ def _update_ignore_integrity_warning(state: dict) -> None:
     ignore_patterns = int(integrity.get("ignore_patterns", 0) or 0)
     ignored = int(integrity.get("ignored", 0) or 0)
 
-    warning: dict | None = None
+    score_integrity = state.setdefault("score_integrity", {})
     if ignored > 0 and suppressed_pct >= 50:
-        warning = {
+        score_integrity["ignore_suppression_warning"] = {
             "severity": "high",
             "message": "High ignore suppression — score may overstate code health.",
             "suppressed_pct": suppressed_pct,
@@ -404,7 +506,7 @@ def _update_ignore_integrity_warning(state: dict) -> None:
             "ignore_patterns": ignore_patterns,
         }
     elif ignored > 0 and suppressed_pct >= 30:
-        warning = {
+        score_integrity["ignore_suppression_warning"] = {
             "severity": "medium",
             "message": "Moderate ignore suppression — review ignored findings regularly.",
             "suppressed_pct": suppressed_pct,
@@ -412,19 +514,15 @@ def _update_ignore_integrity_warning(state: dict) -> None:
             "ignore_patterns": ignore_patterns,
         }
     elif ignored > 100 or ignore_patterns > 10:
-        warning = {
+        score_integrity["ignore_suppression_warning"] = {
             "severity": "medium",
             "message": "Broad ignore usage — verify suppression policy is intentional.",
             "suppressed_pct": suppressed_pct,
             "ignored": ignored,
             "ignore_patterns": ignore_patterns,
         }
-
-    score_integrity = state.setdefault("score_integrity", {})
-    if warning is None:
+    else:
         score_integrity.pop("ignore_suppression_warning", None)
-        return
-    score_integrity["ignore_suppression_warning"] = warning
 
 
 def path_scoped_findings(findings: dict, scan_path: str | None) -> dict:
@@ -564,16 +662,13 @@ def get_strict_all_detected_score(state: dict) -> float | None:
                 "zone": "production",
             }
 
-    subjective_assessments = (
-        state.get("subjective_assessments")
-        or state.get("review_assessments")
-        or None
-    )
+    subjective_assessments, allowed_subjective_dimensions = _filtered_subjective_assessments(state)
     strict_scores = compute_dimension_scores(
         all_detected,
         merged,
         strict=True,
         subjective_assessments=subjective_assessments,
+        allowed_subjective_dimensions=allowed_subjective_dimensions,
     )
     return round(compute_objective_score(strict_scores), 1)
 
@@ -758,7 +853,7 @@ def _upsert_findings(
                 old["zone"] = f["zone"]
             if lang and not old.get("lang"):
                 old["lang"] = lang
-            if old["status"] in ("fixed", "auto_resolved"):
+            if old["status"] in ("fixed", "auto_resolved", "resolved"):
                 prev = old["status"]
                 old["reopen_count"] = old.get("reopen_count", 0) + 1
                 old.update(status="open", resolved_at=None,
@@ -862,14 +957,14 @@ def merge_scan(state: dict, current_findings: list[dict], *,
         "suppressed_pct": suppressed_pct,
         "ignore_patterns": len(ignore),
         "dimension_scores": {
-            name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
+            name: {"score": ds["score"], _STRICT_DIMENSION_KEY: ds.get(_STRICT_DIMENSION_KEY, ds["score"])}
             for name, ds in state.get("dimension_scores", {}).items()
         } if state.get("dimension_scores") else None,
     })
     if len(history) > 20:
         state["scan_history"] = history[-20:]
 
-    # Detect chronic reopeners (findings that keep bouncing between resolved and open)
+    # Detect chronic reopeners (findings that keep bouncing between fixed and open)
     chronic = [f for f in existing.values()
                if f.get("reopen_count", 0) >= 2 and f["status"] == "open"]
 

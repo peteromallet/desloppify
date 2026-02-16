@@ -1,5 +1,6 @@
 """Python code smell detection."""
 
+import logging
 import re
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from .smells_ast import (
     _detect_star_import_no_all,
     _detect_vestigial_parameter,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _smell(id: str, label: str, severity: str, pattern: str | None = None) -> dict:
@@ -196,7 +199,8 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
             p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
             lines = content.splitlines()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during Python smell scan: %s", filepath, exc_info=exc)
             continue
 
         # Build set of lines inside multi-line strings to avoid false positives
@@ -292,4 +296,3 @@ def _detect_swallowed_errors(filepath: str, lines: list[str], smell_counts: dict
             smell_counts["swallowed_error"].append({
                 "file": filepath, "line": i + 1, "content": stripped[:100],
             })
-

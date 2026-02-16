@@ -6,8 +6,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from .. import utils as _utils_mod
-from ..utils import rel, resolve_path, read_file_text, enable_file_cache, disable_file_cache
+from ..utils import rel, resolve_path, read_file_text, enable_file_cache, disable_file_cache, is_file_cache_enabled
 from .context import (
     _file_excerpt,
     _importer_count,
@@ -34,7 +33,7 @@ def build_holistic_context(path: Path, lang, state: dict,
     if files is None:
         files = lang.file_finder(path) if lang.file_finder else []
 
-    already_cached = _utils_mod._cache_enabled
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:

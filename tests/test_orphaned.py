@@ -213,7 +213,7 @@ class TestDetectOrphanedFiles:
         with patch("desloppify.detectors.orphaned.rel", side_effect=lambda p: str(Path(p).relative_to(tmp_path))):
             entries, total = detect_orphaned_files(
                 tmp_path, graph, [".py"],
-                dynamic_import_finder=mock_dynamic_finder,
+                dynamic_import_context=(mock_dynamic_finder, None),
             )
 
         assert total == 2
@@ -313,8 +313,7 @@ class TestDetectOrphanedFiles:
         with patch("desloppify.detectors.orphaned.rel", side_effect=lambda p: str(Path(p).relative_to(tmp_path))):
             entries, total = detect_orphaned_files(
                 tmp_path, graph, [".py"],
-                dynamic_import_finder=mock_dynamic_finder,
-                alias_resolver=mock_alias_resolver,
+                dynamic_import_context=(mock_dynamic_finder, mock_alias_resolver),
             )
 
         assert total == 1
@@ -331,7 +330,7 @@ class TestDetectOrphanedFiles:
         with patch("desloppify.detectors.orphaned.rel", side_effect=lambda p: str(Path(p).relative_to(tmp_path))):
             entries, total = detect_orphaned_files(
                 tmp_path, graph, [".py"],
-                dynamic_import_finder=None,
+                dynamic_import_context=None,
             )
 
         assert len(entries) == 1

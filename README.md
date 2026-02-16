@@ -2,7 +2,7 @@
 
 Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports TypeScript, Python, and C#/.NET.
 
-Every scan generates a scorecard badge you can add to your README — here's the one for this repo - the strict score includes the ones you've ignored that haven't been solved:
+Every scan generates a scorecard badge you can add to your README — here's the one for this repo. Strict score counts open + wontfix debt; ignored findings are tracked separately:
 
 <img src="scorecard.png" width="100%">
 
@@ -25,8 +25,9 @@ desloppify next
 Language is auto-detected. To override: desloppify --lang python scan --path .
 (note: --lang goes BEFORE the subcommand)
 
-Fix what it finds, then "desloppify resolve fixed <id>" and rescan. For false positives:
-"desloppify resolve wontfix <id> --note 'reason'" (note is required — don't skip work).
+Fix what it finds, then "desloppify resolve fixed <id>" and rescan.
+For intentional debt: "desloppify resolve wontfix <id> --note 'reason'" (note is required).
+For detector mistakes: "desloppify resolve false_positive <id>".
 Keep going until all issues are resolved. If you notice anything wrong or confusing about
 desloppify itself, tell me and ask if I want you to log an issue. If you need to understand
 how desloppify works or debug an issue: git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify
@@ -36,6 +37,10 @@ mkdir -p .claude/skills/desloppify && { curl -fsSL https://raw.githubusercontent
 
 If you're Codex, also run:
 mkdir -p .agents/skills/desloppify "${CODEX_HOME:-$HOME/.codex}/skills/desloppify" && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/skills/CODEX.md; } | tee .agents/skills/desloppify/SKILL.md > "${CODEX_HOME:-$HOME/.codex}/skills/desloppify/SKILL.md"
+
+If you're using OpenSkills (Cursor/Windsurf/Cline/OpenCode), also run:
+npx -y openskills install peteromallet/desloppify --yes
+npx -y openskills sync --yes
 ```
 
 ## From Vibe Coding to Vibe Engineering
@@ -48,7 +53,7 @@ It handles the mechanical layer automatically: scan, detect, auto-fix what it ca
 
 If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
 
-<img src="desloppify/engineering.png" width="100%">
+<img src="assets/engineering.png" width="100%">
 
 ---
 
@@ -61,17 +66,24 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 |---------|-------------|
 | `scan` | Run all detectors, update state |
 | `status` | Score + per-tier progress |
+| `explain` | Explain strict-score loss hotspots and priorities |
+| `help-me-improve` | Alias for `explain` |
 | `show <pattern>` | Findings by file, directory, detector, or ID |
 | `next [--tier N]` | Highest-priority open finding |
-| `resolve <status> <patterns>` | Mark fixed / wontfix / false_positive |
-| `ignore <pattern>` | Suppress findings matching a pattern |
+| `resolve <status> <patterns>` | Mark fixed / wontfix / false_positive / ignore |
 | `fix <fixer> [--dry-run]` | Auto-fix mechanical issues |
+| `review --prepare` | Generate subjective review packet (`query.json`) |
+| `review --import <file>` | Import subjective review findings |
+| `issues` | Review findings queue (list/show/update) |
+| `zone` | Show/set/clear zone classifications |
+| `config` | Show/set/unset project configuration |
 | `move <src> <dst>` | Move file/directory, update all imports |
 | `detect <name>` | Run a single detector raw |
 | `plan` | Prioritized markdown plan |
 | `tree` | Annotated codebase tree |
 | `viz` | Interactive HTML treemap |
 | `dev scaffold-lang` | Generate a standardized language plugin scaffold |
+| `help [command]` | Show top-level or command-specific help |
 
 #### Detectors
 
@@ -90,7 +102,12 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 | T3 | Needs judgment | Near-dupes, single_use abstractions |
 | T4 | Major refactor | God components, mixed concerns |
 
-Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
+Score is weighted (T4 = 4x T1).
+- Lenient/overall score treats `open` findings as debt.
+- Strict score treats both `open` and `wontfix` findings as debt.
+- `status` also reports `strict_all_detected`, which includes ignored and zone-excluded findings from the latest scan.
+- Default subjective dimensions: `naming_quality`, `error_consistency`, `abstraction_fitness`, `logic_clarity`, `ai_generated_debt`, `type_safety`, `contract_coherence`.
+- Assessment dimensions are normalized to canonical names; unknown keys are ignored unless you opt into explicit `custom_` dimensions.
 
 #### Configuration
 
@@ -104,6 +121,10 @@ Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
 | `--badge-path <path>` | `scorecard.png` | Output path for scorecard image |
 | `DESLOPPIFY_NO_BADGE` | — | Set to `true` to disable badge via env |
 | `DESLOPPIFY_BADGE_PATH` | `scorecard.png` | Badge output path via env |
+
+Project config values (stored in `.desloppify/config.json`) are managed via:
+- `desloppify config show`
+- `desloppify config set target_strict_score 95` (default: `95`, valid range: `0-100`)
 
 #### Adding a language
 

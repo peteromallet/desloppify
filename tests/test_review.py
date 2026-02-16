@@ -1042,6 +1042,12 @@ class TestCLI:
         args = parser.parse_args(["review", "--dimensions", "naming_quality,comment_quality"])
         assert args.dimensions == "naming_quality,comment_quality"
 
+    def test_review_allow_custom_dimensions_flag(self):
+        from desloppify.cli import create_parser
+        parser = create_parser()
+        args = parser.parse_args(["review", "--allow-custom-dimensions"])
+        assert args.allow_custom_dimensions is True
+
 
 # ── New dimension tests ──────────────────────────────────────────
 
@@ -1277,44 +1283,43 @@ class TestFileCache:
     def test_build_context_uses_file_cache(self, mock_lang, empty_state, tmp_path):
         """build_review_context should enable file cache for performance."""
         from desloppify.review import build_review_context
-        from desloppify import utils as _utils_mod
+        from desloppify.utils import is_file_cache_enabled
         f = tmp_path / "foo.ts"
         f.write_text("function getData() {}\nclass Foo {}")
         mock_lang.file_finder = MagicMock(return_value=[str(f)])
 
         # Cache should be disabled before and after
-        assert not _utils_mod._cache_enabled
+        assert not is_file_cache_enabled()
         build_review_context(tmp_path, mock_lang, empty_state)
-        assert not _utils_mod._cache_enabled  # Cleaned up after
+        assert not is_file_cache_enabled()  # Cleaned up after
 
     def test_build_context_reentrant_cache(self, mock_lang, empty_state, tmp_path):
         """build_review_context shouldn't disable cache if caller already enabled it."""
         from desloppify.review import build_review_context
-        from desloppify import utils as _utils_mod
-        from desloppify.utils import enable_file_cache, disable_file_cache
+        from desloppify.utils import enable_file_cache, disable_file_cache, is_file_cache_enabled
         f = tmp_path / "foo.ts"
         f.write_text("function getData() {}\nclass Foo {}")
         mock_lang.file_finder = MagicMock(return_value=[str(f)])
 
         enable_file_cache()
         try:
-            assert _utils_mod._cache_enabled
+            assert is_file_cache_enabled()
             build_review_context(tmp_path, mock_lang, empty_state)
-            assert _utils_mod._cache_enabled  # Still enabled — didn't stomp caller
+            assert is_file_cache_enabled()  # Still enabled — didn't stomp caller
         finally:
             disable_file_cache()
 
     def test_prepare_caches_across_phases(self, mock_lang, empty_state, tmp_path):
         """prepare_review should enable cache for context + selection + extraction."""
         from desloppify.review import prepare_review
-        from desloppify import utils as _utils_mod
+        from desloppify.utils import is_file_cache_enabled
         f = tmp_path / "foo.ts"
         f.write_text("export function getData() { return 42; }\n" * 25)
         mock_lang.file_finder = MagicMock(return_value=[str(f)])
 
-        assert not _utils_mod._cache_enabled
+        assert not is_file_cache_enabled()
         prepare_review(tmp_path, mock_lang, empty_state)
-        assert not _utils_mod._cache_enabled  # Cleaned up after
+        assert not is_file_cache_enabled()  # Cleaned up after
 
 
 # ── Headline bug fix test ────────────────────────────────────────
@@ -1412,6 +1417,40 @@ class TestCmdReviewPrepare:
 
         assert saved["sp"] == "fake_sp"
         assert len(empty_state["findings"]) == 1
+
+    def test_do_prepare_prints_narrative_reminders(self, mock_lang_with_zones, empty_state, tmp_path, capsys):
+        from unittest.mock import MagicMock, patch
+
+        from desloppify.commands.review_cmd import _do_prepare
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "foo.ts").write_text("export function foo() {}\n" * 25)
+        file_list = [str(src / "foo.ts")]
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.max_files = 50
+        args.max_age = 30
+        args.refresh = False
+        args.dimensions = None
+        args._config = {"review_max_age_days": 21, "review_dimensions": []}
+
+        captured_kwargs = {}
+
+        def _fake_narrative(_state, **kwargs):
+            captured_kwargs.update(kwargs)
+            return {"reminders": [{"type": "review_stale", "message": "Design review is stale."}]}
+
+        with patch("desloppify.commands.review_cmd._setup_lang", return_value=file_list), \
+             patch("desloppify.commands._helpers._write_query", lambda _data: None), \
+             patch("desloppify.narrative.compute_narrative", _fake_narrative):
+            _do_prepare(args, empty_state, mock_lang_with_zones, None)
+
+        out = capsys.readouterr().out
+        assert "Reminders:" in out
+        assert "Design review is stale." in out
+        assert captured_kwargs["config"] == {"review_max_age_days": 21, "review_dimensions": []}
 
     def test_do_import_blocks_large_assessment_swing_without_findings(self, empty_state, tmp_path):
         from desloppify.commands.review_cmd import _do_import

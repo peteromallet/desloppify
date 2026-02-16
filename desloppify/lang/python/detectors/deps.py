@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import ast
+import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 from ....utils import PROJECT_ROOT, resolve_path
 from ....detectors.graph import finalize_graph
+
+LOGGER = logging.getLogger(__name__)
 
 
 def build_dep_graph(path: Path) -> dict[str, dict[str, Any]]:
@@ -31,7 +34,8 @@ def build_dep_graph(path: Path) -> dict[str, dict[str, Any]]:
         try:
             content = Path(abs_path).read_text()
             tree = ast.parse(content)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+        except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+            LOGGER.debug("Skipping file during Python dependency graph build: %s", filepath, exc_info=exc)
             continue
 
         source_resolved = resolve_path(filepath)

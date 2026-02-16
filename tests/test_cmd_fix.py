@@ -1,6 +1,6 @@
 """Tests for desloppify.commands.fix_cmd — fix command helpers."""
 
-
+import pytest
 
 from desloppify.lang.base import FixerConfig, FixResult
 from desloppify.commands.fix_cmd import (
@@ -30,6 +30,22 @@ class TestFixModuleSanity:
     def test_skip_reason_labels_is_dict(self):
         assert isinstance(_SKIP_REASON_LABELS, dict)
         assert len(_SKIP_REASON_LABELS) > 0
+
+    def test_fix_review_is_not_special_alias(self, monkeypatch):
+        from types import SimpleNamespace
+        import desloppify.commands.fix_cmd as fix_mod
+
+        called = []
+
+        def _fake_load(_args, fixer_name):
+            called.append(fixer_name)
+            raise SystemExit(1)
+
+        monkeypatch.setattr(fix_mod, "_load_fixer", _fake_load)
+        args = SimpleNamespace(fixer="review", dry_run=True, path=".")
+        with pytest.raises(SystemExit):
+            fix_mod.cmd_fix(args)
+        assert called == ["review"]
 
 
 # ---------------------------------------------------------------------------
@@ -206,3 +222,38 @@ class TestPrintFixRetro:
         out = capsys.readouterr().out
         assert "skipped" in out.lower()
         assert "fixer" in out.lower()  # suggestion about improving fixer
+
+
+class TestFixNarrativeReminders:
+    def test_report_dry_run_uses_fix_dry_run_command_and_prints_reminders(self, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        import desloppify.commands._helpers as helpers_mod
+        import desloppify.commands.fix_cmd as fix_mod
+        import desloppify.narrative as narrative_mod
+
+        captured_kwargs = {}
+
+        monkeypatch.setattr(fix_mod, "_write_query", lambda _payload: None)
+        monkeypatch.setattr(helpers_mod, "resolve_lang", lambda _args: None)
+
+        def _fake_narrative(_state, **kwargs):
+            captured_kwargs.update(kwargs)
+            return {
+                "reminders": [{"type": "review_not_run", "message": "Run subjective review soon."}],
+            }
+
+        monkeypatch.setattr(narrative_mod, "compute_narrative", _fake_narrative)
+
+        args = SimpleNamespace(_preloaded_state={}, _config={"review_max_age_days": 10}, lang=None, path=".")
+        fix_mod._report_dry_run(
+            args,
+            fixer_name="unused-imports",
+            entries=[{"file": "a.ts", "name": "foo"}],
+            results=[{"file": "a.ts", "removed": ["foo"]}],
+            total_items=1,
+        )
+        out = capsys.readouterr().out
+        assert "Run subjective review soon." in out
+        assert captured_kwargs["command"] == "fix_dry_run"
+        assert captured_kwargs["config"] == {"review_max_age_days": 10}

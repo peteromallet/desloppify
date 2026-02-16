@@ -1,8 +1,11 @@
 """Large file detection (LOC threshold)."""
 
+import logging
 from pathlib import Path
 
 from ..utils import PROJECT_ROOT
+
+LOGGER = logging.getLogger(__name__)
 
 
 def detect_large_files(path: Path, file_finder, threshold: int = 500) -> tuple[list[dict], int]:
@@ -23,6 +26,7 @@ def detect_large_files(path: Path, file_finder, threshold: int = 500) -> tuple[l
             loc = len(p.read_text().splitlines())
             if loc > threshold:
                 entries.append({"file": filepath, "loc": loc})
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during large-file scan: %s", filepath, exc_info=exc)
             continue
     return sorted(entries, key=lambda e: -e["loc"]), len(files)

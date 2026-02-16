@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import copy
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from ..state import Finding, make_finding
 from ..utils import PROJECT_ROOT, log, resolve_path
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,7 +92,7 @@ class LangConfig:
     # Keys serve as the valid detector name list.
     detect_commands: dict[str, Callable] = field(default_factory=dict)
 
-    # Function extractor (for duplicate detection). Returns list[FunctionInfo].
+    # Function extractor (for duplicate detection). Returns a list of function info dicts.
     extract_functions: Callable[[Path], list] | None = None
 
     # Coupling boundaries (optional, project-specific)
@@ -356,8 +359,8 @@ def find_external_test_files(path: Path, lang: LangConfig) -> set[str]:
         try:
             d.resolve().relative_to(path.resolve())
             continue  # test_dir is inside scanned path, zone_map already has it
-        except ValueError:
-            pass
+        except ValueError as exc:
+            LOGGER.debug("External test dir is not nested under scan path: %s", d, exc_info=exc)
         for root, _, files in os.walk(d):
             for f in files:
                 if any(f.endswith(e) for e in exts):

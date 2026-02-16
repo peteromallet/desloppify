@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,10 @@ from typing import Any
 from .utils import PROJECT_ROOT, safe_write_text
 
 CONFIG_FILE = PROJECT_ROOT / ".desloppify" / "config.json"
+LOGGER = logging.getLogger(__name__)
+DEFAULT_TARGET_STRICT_SCORE = 95
+MIN_TARGET_STRICT_SCORE = 0
+MAX_TARGET_STRICT_SCORE = 100
 
 
 @dataclass(frozen=True)
@@ -39,6 +44,10 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         "Manual zone overrides {rel_path: zone_name}"),
     "review_dimensions": ConfigKey(list, [],
         "Override default per-file review dimensions (empty = built-in defaults)"),
+    "review_allow_custom_dimensions": ConfigKey(bool, False,
+        "Allow custom review dimensions when names use the custom_ prefix"),
+    "review_custom_dimensions": ConfigKey(list, [],
+        "Allowlisted custom review dimensions (e.g. custom_domain_fit)"),
     "large_files_threshold": ConfigKey(int, 0,
         "Override LOC threshold for large file detection (0 = use language default)"),
     "props_threshold": ConfigKey(int, 0,
@@ -47,9 +56,22 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         "Max findings surfaced per detector in show/scan summaries (0 = unlimited)"),
     "finding_noise_global_budget": ConfigKey(int, 0,
         "Global cap for surfaced findings after per-detector budget (0 = unlimited)"),
+    "target_strict_score": ConfigKey(int, DEFAULT_TARGET_STRICT_SCORE,
+        "Strict score target used for scan progress messaging (0-100)"),
     "languages": ConfigKey(dict, {},
         "Language-specific settings {lang_name: {key: value}}"),
 }
+
+
+def _coerce_target_strict_score(raw: object) -> tuple[int, bool]:
+    """Parse target strict score and validate bounds."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TARGET_STRICT_SCORE, False
+    if value < MIN_TARGET_STRICT_SCORE or value > MAX_TARGET_STRICT_SCORE:
+        return DEFAULT_TARGET_STRICT_SCORE, False
+    return value, True
 
 
 def _legacy_language_key_map() -> dict[str, tuple[str, str]]:
@@ -63,7 +85,8 @@ def _legacy_language_key_map() -> dict[str, tuple[str, str]]:
     for lang_name in available_langs():
         try:
             cfg = get_lang(lang_name)
-        except Exception:
+        except Exception as exc:
+            LOGGER.debug("Skipping language during legacy key map build: %s", lang_name, exc_info=exc)
             continue
         legacy_keys = getattr(cfg, "legacy_setting_keys", {}) or {}
         if not isinstance(legacy_keys, dict):
@@ -106,11 +129,16 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
             config[key] = copy.deepcopy(schema.default)
             changed = True
 
+    target_strict_score, target_valid = _coerce_target_strict_score(config.get("target_strict_score"))
+    if not target_valid:
+        config["target_strict_score"] = target_strict_score
+        changed = True
+
     if changed and p.exists():
         try:
             save_config(config, p)
-        except OSError:
-            pass
+        except OSError as exc:
+            LOGGER.debug("Could not persist migrated config to %s", p, exc_info=exc)
 
     return config
 
@@ -154,6 +182,14 @@ def set_config_value(config: dict, key: str, raw: str) -> None:
             config[key] = 0
         else:
             config[key] = int(raw)
+        if key == "target_strict_score":
+            target_strict_score, target_valid = _coerce_target_strict_score(config[key])
+            if not target_valid:
+                raise ValueError(
+                    f"Expected integer {MIN_TARGET_STRICT_SCORE}-{MAX_TARGET_STRICT_SCORE} "
+                    f"for {key}, got: {raw}"
+                )
+            config[key] = target_strict_score
     elif schema.type is bool:
         if raw.lower() in ("true", "1", "yes"):
             config[key] = True
@@ -251,7 +287,8 @@ def _migrate_from_state_files(config_path: Path) -> dict:
     for sf in state_files:
         try:
             state_data = json.loads(sf.read_text())
-        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+            LOGGER.debug("Skipping unreadable state file during config migration: %s", sf, exc_info=exc)
             continue
 
         old_config = state_data.get("config")
@@ -282,8 +319,8 @@ def _migrate_from_state_files(config_path: Path) -> dict:
             del state_data["config"]
             try:
                 safe_write_text(sf, json.dumps(state_data, indent=2) + "\n")
-            except OSError:
-                pass
+            except OSError as exc:
+                LOGGER.debug("Could not strip embedded config from %s", sf, exc_info=exc)
 
         migrated_any = True
 
@@ -291,7 +328,7 @@ def _migrate_from_state_files(config_path: Path) -> dict:
         _migrate_legacy_language_keys(config)
         try:
             save_config(config, config_path)
-        except OSError:
-            pass
+        except OSError as exc:
+            LOGGER.debug("Could not write migrated config file %s", config_path, exc_info=exc)
 
     return config

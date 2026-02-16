@@ -1,9 +1,12 @@
 """Complexity signal detection: configurable per-language complexity signals."""
 
+import logging
 import re
 from pathlib import Path
 
 from ..utils import PROJECT_ROOT
+
+LOGGER = logging.getLogger(__name__)
 
 
 def detect_complexity(path: Path, signals, file_finder,
@@ -53,6 +56,7 @@ def detect_complexity(path: Path, signals, file_finder,
                     "file": filepath, "loc": loc, "score": score,
                     "signals": file_signals,
                 })
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            LOGGER.debug("Skipping unreadable file during complexity scan: %s", filepath, exc_info=exc)
             continue
     return sorted(entries, key=lambda e: -e["score"]), len(files)

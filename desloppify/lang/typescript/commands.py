@@ -80,8 +80,7 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
     graph = build_dep_graph(Path(args.path))
     entries, _ = detect_orphaned_files(
         Path(args.path), graph, extensions=[".ts", ".tsx"],
-        dynamic_import_finder=build_dynamic_import_targets,
-        alias_resolver=ts_alias_resolver)
+        dynamic_import_context=(build_dynamic_import_targets, ts_alias_resolver))
     if getattr(args, "json", False):
         print(json.dumps({"count": len(entries), "entries": [
             {"file": rel(e["file"]), "loc": e["loc"]} for e in entries

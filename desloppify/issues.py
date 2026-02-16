@@ -9,6 +9,7 @@ Review findings live in state["findings"]. This module provides:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 
@@ -87,7 +88,8 @@ def expire_stale_holistic(state: dict, max_age_days: int = 30) -> list[str]:
 
         try:
             seen_dt = datetime.fromisoformat(last_seen)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            LOGGER.debug("Skipping review finding with invalid last_seen timestamp: %s", fid, exc_info=exc)
             continue
 
         age_days = (now - seen_dt).days
@@ -196,8 +198,8 @@ def render_issue_detail(finding: dict, lang_name: str,
             try:
                 dt = datetime.fromisoformat(investigated_at)
                 date_str = f" ({dt.strftime('%Y-%m-%d')})"
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as exc:
+                LOGGER.debug("Invalid investigated_at timestamp for finding %s", fid, exc_info=exc)
         _w(f"## Investigation{date_str}\n")
         _w(f"{investigation}\n")
 
@@ -221,3 +223,4 @@ def render_issue_detail(finding: dict, lang_name: str,
         _w("```\n")
 
     return "\n".join(lines)
+LOGGER = logging.getLogger(__name__)

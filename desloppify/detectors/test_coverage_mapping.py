@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
 import os
-import re
 from collections import deque
 from pathlib import Path
 
 from .lang_hooks import load_lang_hook_module
 from ..utils import PROJECT_ROOT
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _load_lang_test_coverage_module(lang_name: str | None):
@@ -21,7 +24,9 @@ def _infer_lang_name(test_files: set[str], production_files: set[str]) -> str | 
     paths = list(test_files) + list(production_files)
 
     try:
-        from ..lang import available_langs, get_lang
+        lang_mod = importlib.import_module("desloppify.lang")
+        available_langs = lang_mod.available_langs
+        get_lang = lang_mod.get_lang
     except Exception:
         return None
 
@@ -242,121 +247,9 @@ def _analyze_test_quality(
     lang_name: str,
 ) -> dict[str, dict]:
     """Analyze test quality per file."""
-    mod = _load_lang_test_coverage_module(lang_name)
-    assert_pats = list(getattr(mod, "ASSERT_PATTERNS", []) or [])
-    trivial_assert_pats = list(getattr(mod, "TRIVIAL_ASSERT_PATTERNS", []) or [])
-    negative_path_pats = list(getattr(mod, "NEGATIVE_PATH_PATTERNS", []) or [])
-    import_line_pats = list(getattr(mod, "IMPORT_LINE_PATTERNS", []) or [])
-    mock_pats = list(getattr(mod, "MOCK_PATTERNS", []) or [])
-    snapshot_pats = list(getattr(mod, "SNAPSHOT_PATTERNS", []) or [])
-    test_func_re = getattr(mod, "TEST_FUNCTION_RE", re.compile(r"$^"))
-    strip_comments = getattr(mod, "strip_comments", None)
+    from .test_coverage import _analyze_test_quality_impl
 
-    if not hasattr(test_func_re, "findall"):
-        test_func_re = re.compile(r"$^")
-    if not callable(strip_comments):
-        strip_comments = lambda text: text
-
-    quality_map: dict[str, dict] = {}
-
-    for tf in test_files:
-        try:
-            content = Path(tf).read_text()
-        except (OSError, UnicodeDecodeError):
-            continue
-
-        stripped = strip_comments(content)
-        lines = stripped.splitlines()
-        code_lines = [line for line in lines if line.strip()]
-
-        assertions = sum(1 for line in lines if any(pat.search(line) for pat in assert_pats))
-        trivial_assertions = sum(
-            1 for line in lines if any(pat.search(line) for pat in trivial_assert_pats)
-        )
-        trivial_assertions = min(assertions, trivial_assertions)
-        behavioral_assertions = max(0, assertions - trivial_assertions)
-        negative_path_assertions = sum(
-            1 for line in lines if any(pat.search(line) for pat in negative_path_pats)
-        )
-        mocks = sum(1 for line in lines if any(pat.search(line) for pat in mock_pats))
-        snapshots = sum(1 for line in lines if any(pat.search(line) for pat in snapshot_pats))
-        import_lines = sum(1 for line in lines if any(pat.search(line) for pat in import_line_pats))
-        test_functions = len(test_func_re.findall(stripped))
-        assertions_per_test = (assertions / test_functions) if test_functions else 0.0
-        trivial_assert_ratio = (trivial_assertions / assertions) if assertions else 0.0
-        negative_path_ratio = (
-            negative_path_assertions / assertions if assertions else 0.0
-        )
-        import_density = (
-            import_lines / len(code_lines) if code_lines else 0.0
-        )
-        import_only_likelihood = 0.0
-        if assertions > 0 and behavioral_assertions == 0:
-            import_only_likelihood += 0.45
-        if import_lines > 0:
-            import_only_likelihood += min(0.45, import_density)
-        if test_functions > 0 and assertions_per_test <= 1.0:
-            import_only_likelihood += 0.1
-        import_only_likelihood = min(1.0, import_only_likelihood)
-        is_import_only = import_only_likelihood >= 0.8
-
-        if test_functions == 0:
-            quality = "no_tests"
-        elif assertions == 0:
-            quality = "assertion_free"
-        elif mocks > assertions:
-            quality = "over_mocked"
-        elif snapshots > 0 and snapshots > assertions * 0.5:
-            quality = "snapshot_heavy"
-        elif test_functions > 0 and assertions / test_functions < 1:
-            quality = "smoke"
-        elif assertions / test_functions >= 3:
-            quality = "thorough"
-        else:
-            quality = "adequate"
-
-        base_quality_scores = {
-            "no_tests": 0.0,
-            "assertion_free": 0.05,
-            "smoke": 0.25,
-            "over_mocked": 0.35,
-            "snapshot_heavy": 0.35,
-            "adequate": 0.65,
-            "thorough": 0.85,
-        }
-        quality_score = base_quality_scores.get(quality, 0.5)
-        if trivial_assert_ratio >= 0.75:
-            quality_score -= 0.30
-        elif trivial_assert_ratio >= 0.50:
-            quality_score -= 0.20
-        if is_import_only:
-            quality_score -= 0.25
-        if negative_path_assertions > 0:
-            quality_score += 0.10
-        if assertions_per_test >= 3.0:
-            quality_score += 0.05
-        quality_score = max(0.0, min(1.0, quality_score))
-
-        quality_map[tf] = {
-            "assertions": assertions,
-            "trivial_assertions": trivial_assertions,
-            "behavioral_assertions": behavioral_assertions,
-            "trivial_assert_ratio": round(trivial_assert_ratio, 3),
-            "negative_path_assertions": negative_path_assertions,
-            "negative_path_ratio": round(negative_path_ratio, 3),
-            "mocks": mocks,
-            "test_functions": test_functions,
-            "snapshots": snapshots,
-            "assertions_per_test": round(assertions_per_test, 3),
-            "import_lines": import_lines,
-            "import_density": round(import_density, 3),
-            "import_only_likelihood": round(import_only_likelihood, 3),
-            "import_only": is_import_only,
-            "quality_score": round(quality_score, 3),
-            "quality": quality,
-        }
-
-    return quality_map
+    return _analyze_test_quality_impl(test_files, lang_name)
 
 
 def _get_test_files_for_prod(

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from ....utils import (PROJECT_ROOT, SRC_PATH, c, grep_count_files, grep_files,
                        print_table, rel, resolve_path)
+
+LOGGER = logging.getLogger(__name__)
 
 
 def detect_deprecated(path: Path) -> tuple[list[dict[str, Any]], int]:
@@ -101,8 +104,8 @@ def _extract_deprecated_symbol(filepath: str, lineno: int, content: str) -> tupl
             if m:
                 return m.group(1), "property"
 
-    except (OSError, UnicodeDecodeError):
-        pass
+    except (OSError, UnicodeDecodeError) as exc:
+        LOGGER.debug("Skipping unreadable file while extracting deprecated symbol: %s", filepath, exc_info=exc)
     return None, "unknown"
 
 

@@ -26,5 +26,6 @@ def cmd_plan_output(args) -> None:
             print(colorize(f"Plan written to {output}", "green"))
         except OSError as e:
             print(colorize(f"Could not write plan to {output}: {e}", "red"))
+            raise SystemExit(1) from e
     else:
         print(plan_md)

@@ -7,15 +7,16 @@ from desloppify.detectors.gods import detect_gods
 
 def _make_class(name: str, file: str, loc: int, metrics: dict | None = None,
                 methods: list | None = None, attributes: list | None = None) -> ClassInfo:
-    return ClassInfo(
-        name=name,
-        file=file,
-        line=1,
-        loc=loc,
-        methods=methods or [],
-        attributes=attributes or [],
-        metrics=metrics or {},
-    )
+    payload = {
+        "name": name,
+        "file": file,
+        "line": 1,
+        "loc": loc,
+        "methods": methods or [],
+        "attributes": attributes or [],
+        "metrics": metrics or {},
+    }
+    return ClassInfo(**payload)
 
 
 def _make_rules() -> list[GodRule]:
