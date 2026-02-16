@@ -12,6 +12,9 @@ from ...utils import SRC_PATH, strip_c_style_comments
 TS_IMPORT_RE = re.compile(
     r"""(?:from|import)\s+['\"]([^'\"]+)['\"]""", re.MULTILINE
 )
+TS_REEXPORT_RE = re.compile(
+    r"""^export\s+(?:\{[^}]*\}|\*)\s+from\s+['\"]([^'\"]+)['\"]""", re.MULTILINE
+)
 
 ASSERT_PATTERNS = [
     re.compile(p) for p in [
@@ -143,6 +146,22 @@ def resolve_import_spec(spec: str, test_path: str, production_files: set[str]) -
 def parse_test_import_specs(content: str) -> list[str]:
     """Extract import specs from TypeScript test content."""
     return [m.group(1) for m in TS_IMPORT_RE.finditer(content) if m.group(1)]
+
+
+def resolve_barrel_reexports(filepath: str, production_files: set[str]) -> set[str]:
+    """Resolve one-hop TypeScript barrel re-exports to concrete production files."""
+    try:
+        content = Path(filepath).read_text()
+    except (OSError, UnicodeDecodeError):
+        return set()
+
+    results = set()
+    for match in TS_REEXPORT_RE.finditer(content):
+        spec = match.group(1)
+        resolved = resolve_import_spec(spec, filepath, production_files)
+        if resolved:
+            results.add(resolved)
+    return results
 
 
 def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:

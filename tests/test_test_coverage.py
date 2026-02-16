@@ -9,7 +9,6 @@ import pytest
 from desloppify.detectors.test_coverage import (
     _file_loc,
     _has_testable_logic,
-    _ts_has_testable_logic,
     detect_test_coverage,
 )
 from desloppify.detectors.test_coverage_mapping import (
@@ -19,11 +18,12 @@ from desloppify.detectors.test_coverage_mapping import (
     _naming_based_mapping,
     _parse_test_imports,
     _resolve_barrel_reexports,
-    _resolve_ts_import,
+    _resolve_import,
     _strip_py_comment,
     _strip_test_markers,
     _transitive_coverage,
 )
+from desloppify.lang.typescript.test_coverage import has_testable_logic as ts_has_testable_logic
 from desloppify.zones import FileZoneMap, Zone, ZoneRule
 
 
@@ -661,7 +661,7 @@ class TestNamingBasedMapping:
         assert result == {"src/deep/utils.py"}
 
 
-# ── _resolve_ts_import ───────────────────────────────────
+# ── _resolve_import (TypeScript) ─────────────────────────
 
 
 class TestResolveTsImport:
@@ -669,62 +669,54 @@ class TestResolveTsImport:
         """./utils resolves to sibling file."""
         prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
         test = _write_file(tmp_path, "src/utils.test.ts", "")
-        result = _resolve_ts_import("./utils", test, {prod})
+        result = _resolve_import("./utils", test, {prod}, "typescript")
         assert result == prod
 
     def test_relative_import_parent_dir(self, tmp_path):
         """../utils resolves to parent directory file."""
         prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
         test = _write_file(tmp_path, "src/__tests__/utils.test.ts", "")
-        result = _resolve_ts_import("../utils", test, {prod})
+        result = _resolve_import("../utils", test, {prod}, "typescript")
         assert result == prod
 
     def test_relative_import_deep(self, tmp_path):
         """../../lib/helpers resolves multi-level relative path."""
         prod = _write_file(tmp_path, "lib/helpers.ts", "export const x = 1;\n")
         test = _write_file(tmp_path, "src/__tests__/sub/test.ts", "")
-        result = _resolve_ts_import("../../../lib/helpers", test, {prod})
+        result = _resolve_import("../../../lib/helpers", test, {prod}, "typescript")
         assert result == prod
 
     def test_alias_at_slash(self, tmp_path, monkeypatch):
         """@/components/Button resolves via SRC_PATH."""
-        import desloppify.detectors.test_coverage_mapping as tc
-        orig = tc.SRC_PATH
-        monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
-        try:
-            prod = _write_file(tmp_path, "src/components/Button.tsx", "export default function Button() {}\n")
-            result = _resolve_ts_import("@/components/Button", "/any/test.ts", {prod})
-            assert result == prod
-        finally:
-            monkeypatch.setattr(tc, "SRC_PATH", orig)
+        import desloppify.lang.typescript.test_coverage as ts_cov
+        monkeypatch.setattr(ts_cov, "SRC_PATH", tmp_path / "src")
+        prod = _write_file(tmp_path, "src/components/Button.tsx", "export default function Button() {}\n")
+        result = _resolve_import("@/components/Button", "/any/test.ts", {prod}, "typescript")
+        assert result == prod
 
     def test_alias_tilde(self, tmp_path, monkeypatch):
         """~/utils resolves via SRC_PATH."""
-        import desloppify.detectors.test_coverage_mapping as tc
-        orig = tc.SRC_PATH
-        monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
-        try:
-            prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
-            result = _resolve_ts_import("~/utils", "/any/test.ts", {prod})
-            assert result == prod
-        finally:
-            monkeypatch.setattr(tc, "SRC_PATH", orig)
+        import desloppify.lang.typescript.test_coverage as ts_cov
+        monkeypatch.setattr(ts_cov, "SRC_PATH", tmp_path / "src")
+        prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        result = _resolve_import("~/utils", "/any/test.ts", {prod}, "typescript")
+        assert result == prod
 
     def test_index_ts_extension_probing(self, tmp_path):
         """Bare directory import resolves to index.ts."""
         prod = _write_file(tmp_path, "src/components/index.ts", "export * from './Button';\n")
         test = _write_file(tmp_path, "src/components.test.ts", "")
-        result = _resolve_ts_import("./components", test, {prod})
+        result = _resolve_import("./components", test, {prod}, "typescript")
         assert result == prod
 
     def test_nonexistent_returns_none(self, tmp_path):
         test = _write_file(tmp_path, "src/test.ts", "")
-        result = _resolve_ts_import("./nonexistent", test, set())
+        result = _resolve_import("./nonexistent", test, set(), "typescript")
         assert result is None
 
     def test_non_relative_returns_none(self):
         """Bare module specifiers (like 'react') return None."""
-        result = _resolve_ts_import("react", "/test.ts", set())
+        result = _resolve_import("react", "/test.ts", set(), "typescript")
         assert result is None
 
 
@@ -1212,8 +1204,7 @@ class TestHasTestableLogic:
             "}\n"
         )
         f = _write_file(tmp_path, "declarations.d.ts", content)
-        # .d.ts extension catches this, but also test the content parser
-        assert _ts_has_testable_logic(content) is False
+        assert ts_has_testable_logic(str(f), content) is False
 
     # ── TypeScript multiline imports ──
 

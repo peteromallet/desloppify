@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.detectors.layer_violation import detect_layer_violations
+from desloppify.lang.python.detectors.layer_violation import detect_layer_violations
 
 
 def _write(root: Path, rel_path: str, content: str) -> str:
