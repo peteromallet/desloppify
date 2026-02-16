@@ -400,6 +400,33 @@ class TestResolveLang:
         assert lang is not None
         assert lang.name == "typescript"
 
+    def test_auto_detect_prefers_path_subtree_when_no_markers(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        root = tmp_path / "project"
+        root.mkdir()
+
+        # No marker files anywhere in this repo-style tree.
+        ts_dir = root / "web"
+        ts_dir.mkdir()
+        for i in range(3):
+            (ts_dir / f"view_{i}.ts").write_text("export const x = 1\n")
+
+        py_dir = root / "scripts"
+        py_dir.mkdir()
+        for i in range(2):
+            (py_dir / f"job_{i}.py").write_text("print('x')\n")
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", root)
+        monkeypatch.setattr("desloppify.utils.PROJECT_ROOT", root)
+
+        # Path points to python subtree; detection should use this subtree first,
+        # not the entire repo where TypeScript files are more numerous.
+        args = SimpleNamespace(lang=None, path=str(py_dir))
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
     def test_lang_config_markers_include_plugin_markers(self, monkeypatch):
         from desloppify.commands import _helpers as helpers_mod
 

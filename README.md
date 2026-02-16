@@ -119,7 +119,7 @@ desloppify review --prepare --path .
 2. Create a blind packet:
 
 ```bash
-jq 'del(.narrative, .objective_score, .objective_strict, .dimension_scores, .stats, .scan_count, .last_scan)' \
+jq 'del(.narrative, .objective_score, .strict_score, .dimension_scores, .stats, .scan_count, .last_scan)' \
   .desloppify/query.json > .desloppify/review_packet_blind.json
 ```
 

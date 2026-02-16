@@ -4,8 +4,8 @@ from __future__ import annotations
 
 
 def _history_strict(entry: dict) -> float | None:
-    """Strict score from history entry (supports old/new keys)."""
-    return entry.get("strict_score", entry.get("objective_strict"))
+    """Strict score from history entry."""
+    return entry.get("strict_score")
 
 
 def _detect_phase(history: list[dict], strict_score: float | None) -> str:

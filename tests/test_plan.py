@@ -40,17 +40,17 @@ def _finding(fid, *, detector="det", file="a.py", tier=1,
     }
 
 
-def _state(findings_list=None, *, score=0, stats=None,
-           objective_score=None, objective_strict=None,
+def _state(findings_list=None, *, overall_score=None, objective_score=None,
+           strict_score=None, stats=None,
            dimension_scores=None, codebase_metrics=None):
     """Build a minimal state dict."""
     findings = {}
     for f in (findings_list or []):
         findings[f["id"]] = f
     return {
-        "score": score,
+        "overall_score": overall_score,
         "objective_score": objective_score,
-        "objective_strict": objective_strict,
+        "strict_score": strict_score,
         "stats": stats or {},
         "findings": findings,
         "dimension_scores": dimension_scores or {},
@@ -83,15 +83,15 @@ class TestPlanHeader:
         assert date.today().isoformat() in header
 
     def test_objective_score_format(self):
-        st = _state(objective_score=87.5, objective_strict=82.3)
+        st = _state(overall_score=90.0, objective_score=87.5, strict_score=82.3)
         lines = _plan_header(st, {})
         score_line = lines[2]
         assert "87.5" in score_line
         assert "82.3" in score_line
         assert "Health:" in score_line
 
-    def test_fallback_score_when_no_objective(self):
-        st = _state(score=42)
+    def test_fallback_score_when_only_overall(self):
+        st = _state(overall_score=42)
         lines = _plan_header(st, {})
         score_line = lines[2]
         assert "Score: 42.0/100" in score_line

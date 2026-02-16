@@ -957,7 +957,7 @@ def _state_with_holistic_findings(*findings_args):
     state = _empty_state()
     state["potentials"] = {"python": {"review": HOLISTIC_POTENTIAL}}
     state["objective_score"] = 45.0
-    state["objective_strict"] = 38.0
+    state["strict_score"] = 38.0
     for fid, conf, dim, summary in findings_args:
         state["findings"][fid] = {
             "id": fid,
