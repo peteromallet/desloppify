@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 
 QUERY_FILE = PROJECT_ROOT / ".desloppify" / "query.json"
-LANG_CONFIG_MARKERS = (
+EXTRA_ROOT_MARKERS = (
     "package.json",
     "pyproject.toml",
     "setup.py",
@@ -45,9 +46,32 @@ def _write_query(data: dict):
         print(f"  \u26a0 Could not write query.json: {e}", file=sys.stderr)
 
 
+@lru_cache(maxsize=1)
+def _lang_config_markers() -> tuple[str, ...]:
+    """Collect project-root marker files from language plugins + fallback markers."""
+    markers = set(EXTRA_ROOT_MARKERS)
+    try:
+        from ..lang import available_langs, get_lang
+    except Exception:
+        return tuple(sorted(markers))
+
+    for lang_name in available_langs():
+        try:
+            cfg = get_lang(lang_name)
+        except Exception:
+            continue
+        for marker in getattr(cfg, "detect_markers", []) or []:
+            if not isinstance(marker, str):
+                continue
+            cleaned = marker.strip()
+            if cleaned:
+                markers.add(cleaned)
+    return tuple(sorted(markers))
+
+
 def _looks_like_project_root(path: Path) -> bool:
     """Return True when a directory contains language config markers."""
-    return any((path / marker).exists() for marker in LANG_CONFIG_MARKERS)
+    return any((path / marker).exists() for marker in _lang_config_markers())
 
 
 def _resolve_detection_root(args) -> Path:

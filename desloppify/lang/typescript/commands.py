@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -10,7 +11,7 @@ from ...utils import c, display_entries, find_ts_files, print_table, rel, SRC_PA
 if TYPE_CHECKING:
     import argparse
 
-from . import TS_COMPLEXITY_SIGNALS, TS_GOD_RULES, TS_SKIP_NAMES, TS_SKIP_DIRS
+from .phases import TS_COMPLEXITY_SIGNALS, TS_GOD_RULES, TS_SKIP_NAMES, TS_SKIP_DIRS
 from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_single_use,
                              make_cmd_passthrough, make_cmd_naming, make_cmd_smells,
                              make_cmd_facade)
@@ -31,12 +32,32 @@ def _detect_facades(graph):
     return detect_reexport_facades(graph)
 
 
-cmd_large = make_cmd_large(find_ts_files, default_threshold=500)
-cmd_complexity = make_cmd_complexity(find_ts_files, TS_COMPLEXITY_SIGNALS)
-cmd_single_use = make_cmd_single_use(_build_dep_graph, barrel_names={"index.ts", "index.tsx"})
-cmd_passthrough = make_cmd_passthrough(
+_cmd_large_impl = make_cmd_large(find_ts_files, default_threshold=500)
+_cmd_complexity_impl = make_cmd_complexity(find_ts_files, TS_COMPLEXITY_SIGNALS)
+_cmd_single_use_impl = make_cmd_single_use(_build_dep_graph, barrel_names={"index.ts", "index.tsx"})
+_cmd_passthrough_impl = make_cmd_passthrough(
     _detect_passthrough, noun="component", name_key="component", total_key="total_props")
-cmd_naming = make_cmd_naming(find_ts_files, skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS)
+_cmd_naming_impl = make_cmd_naming(find_ts_files, skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS)
+
+
+def cmd_large(args: argparse.Namespace) -> None:
+    _cmd_large_impl(args)
+
+
+def cmd_complexity(args: argparse.Namespace) -> None:
+    _cmd_complexity_impl(args)
+
+
+def cmd_single_use(args: argparse.Namespace) -> None:
+    _cmd_single_use_impl(args)
+
+
+def cmd_passthrough(args: argparse.Namespace) -> None:
+    _cmd_passthrough_impl(args)
+
+
+def cmd_naming(args: argparse.Namespace) -> None:
+    _cmd_naming_impl(args)
 
 
 def cmd_gods(args: argparse.Namespace) -> None:
@@ -127,10 +148,65 @@ def _detect_ts_smells(path):
     from .detectors.smells import detect_smells
     return detect_smells(path)
 
-cmd_smells = make_cmd_smells(_detect_ts_smells)
+_cmd_smells_impl = make_cmd_smells(_detect_ts_smells)
 
 
-cmd_facade = make_cmd_facade(_build_dep_graph, detect_facades_fn=_detect_facades)
+def cmd_smells(args: argparse.Namespace) -> None:
+    _cmd_smells_impl(args)
+
+
+_cmd_facade_impl = make_cmd_facade(_build_dep_graph, detect_facades_fn=_detect_facades)
+
+
+def cmd_facade(args: argparse.Namespace) -> None:
+    _cmd_facade_impl(args)
+
+
+def _run_detector_cmd(args, module_path: str, fn_name: str) -> None:
+    """Dispatch to a detector module command while keeping registry ownership here."""
+    mod = importlib.import_module(module_path, package=__package__)
+    fn = getattr(mod, fn_name)
+    fn(args)
+
+
+def cmd_logs(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.logs", "cmd_logs")
+
+
+def cmd_unused(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.unused", "cmd_unused")
+
+
+def cmd_exports(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.exports", "cmd_exports")
+
+
+def cmd_deprecated(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.deprecated", "cmd_deprecated")
+
+
+def cmd_props(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.props", "cmd_props")
+
+
+def cmd_concerns(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.concerns", "cmd_concerns")
+
+
+def cmd_deps(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.deps", "cmd_deps")
+
+
+def cmd_cycles(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.deps", "cmd_cycles")
+
+
+def cmd_patterns(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.patterns", "cmd_patterns")
+
+
+def cmd_react(args: argparse.Namespace) -> None:
+    _run_detector_cmd(args, ".detectors.react", "cmd_react")
 
 
 def cmd_coupling(args: argparse.Namespace) -> None:
@@ -191,15 +267,6 @@ def cmd_coupling(args: argparse.Namespace) -> None:
 
 def get_detect_commands() -> dict[str, Callable[..., None]]:
     """Build the TypeScript detector command registry."""
-    from .detectors.logs import cmd_logs
-    from .detectors.unused import cmd_unused
-    from .detectors.exports import cmd_exports
-    from .detectors.deprecated import cmd_deprecated
-    from .detectors.props import cmd_props
-    from .detectors.concerns import cmd_concerns
-    from .detectors.deps import cmd_deps, cmd_cycles
-    from .detectors.patterns import cmd_patterns
-    from .detectors.react import cmd_react
     return {
         "logs":        cmd_logs,
         "unused":      cmd_unused,
@@ -208,7 +275,7 @@ def get_detect_commands() -> dict[str, Callable[..., None]]:
         "large":       cmd_large,
         "complexity":  cmd_complexity,
         "gods":        cmd_gods,
-        "single-use":  cmd_single_use,
+        "single_use":  cmd_single_use,
         "props":       cmd_props,
         "passthrough": cmd_passthrough,
         "concerns":    cmd_concerns,

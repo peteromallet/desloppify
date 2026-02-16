@@ -486,6 +486,40 @@ class TestWontfixAutoResolution:
         assert pots["smells"] == 20
         assert pots["review"] == 3
 
+    def test_zero_active_checks_defaults_objective_to_neutral(self):
+        """When all detector potentials are zero and no assessments exist,
+        objective health should be neutral (100) rather than 0."""
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        merge_scan(
+            st,
+            [],
+            lang="typescript",
+            potentials={"logs": 0, "unused": 0, "subjective_review": 0},
+            force_resolve=True,
+        )
+
+        assert st["objective_score"] == 100.0
+        assert st["objective_strict"] == 100.0
+        assert st["dimension_scores"] == {}
+
+    def test_zero_active_checks_with_assessments_keeps_subjective_scoring(self):
+        """Subjective assessments should still drive objective score when present."""
+        from desloppify.state import merge_scan
+
+        st = _empty_state()
+        st["subjective_assessments"] = {"naming_quality": {"score": 40}}
+        merge_scan(
+            st,
+            [],
+            lang="typescript",
+            potentials={"logs": 0, "unused": 0, "subjective_review": 0},
+            force_resolve=True,
+        )
+
+        assert st["objective_score"] < 100.0
+
 
 class TestSuppressionAccounting:
     def test_merge_scan_records_ignored_metrics_in_history_and_diff(self):

@@ -56,7 +56,18 @@ def _detect_lang_from_dir(source_dir: str) -> str | None:
 
 
 def _resolve_lang_for_move(source_abs: str, args) -> str | None:
-    """Resolve language for a move operation, from extension or --lang flag."""
+    """Resolve language for a move operation.
+
+    Explicit ``--lang`` takes priority. Otherwise, infer from file extension and
+    finally fall back to auto-detection.
+    """
+    explicit_lang = getattr(args, "lang", None)
+    if explicit_lang:
+        from ._helpers import resolve_lang
+        lang = resolve_lang(args)
+        if lang:
+            return lang.name
+
     lang_name = _detect_lang_from_ext(source_abs)
     if not lang_name:
         from ._helpers import resolve_lang
@@ -289,8 +300,16 @@ def _cmd_move_dir(args, source_abs: str):
         print(colorize(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
         sys.exit(1)
 
-    # Detect language from directory contents or --lang
-    lang_name = _detect_lang_from_dir(source_abs)
+    # Detect language from explicit --lang first; otherwise infer from contents.
+    lang_name = None
+    if getattr(args, "lang", None):
+        from ._helpers import resolve_lang
+        lang = resolve_lang(args)
+        if lang:
+            lang_name = lang.name
+    else:
+        lang_name = _detect_lang_from_dir(source_abs)
+
     if not lang_name:
         from ._helpers import resolve_lang
         lang = resolve_lang(args)

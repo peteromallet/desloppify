@@ -15,6 +15,7 @@ class _FakeArgs:
         self.path = path
         self.lang = lang
         self.state_dir = None
+        self._config = {"zone_overrides": {"pkg/file.py": "test"}}
 
 
 def _make_prepare_result(total_candidates=3, dims=None):
@@ -148,6 +149,21 @@ class TestFixReviewQueryData:
             _cmd_fix_review(args)
         call_kwargs = mock_prep.call_args
         assert call_kwargs.kwargs.get("files") == found
+
+    def test_setup_lang_uses_config_not_state(self):
+        args = _FakeArgs()
+        mock_lang = MagicMock()
+        mock_lang.name = "python"
+        loaded_state = {"zone_overrides": {"wrong": "value"}}
+        with patch(_P_LANG, return_value=mock_lang), \
+             patch(_P_SP, return_value="/tmp/state.json"), \
+             patch(_P_LOAD, return_value=loaded_state), \
+             patch(_P_SETUP, return_value=[]) as mock_setup, \
+             patch(_P_PREP, return_value=_make_prepare_result()), \
+             patch(_P_WQ):
+            _cmd_fix_review(args)
+        setup_args = mock_setup.call_args.args
+        assert setup_args[2] is args._config
 
 
 class TestFixReviewInterception:

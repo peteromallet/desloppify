@@ -65,7 +65,7 @@ def _cmd_fix_review(args):
     state = load_state(sp)
     path = Path(args.path)
 
-    found_files = _setup_lang(lang, path, state)
+    found_files = _setup_lang(lang, path, args._config)
     data = prepare_review(path, lang, state, files=found_files or None)
 
     if data["total_candidates"] == 0:

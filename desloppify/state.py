@@ -167,6 +167,16 @@ def _update_objective_health(state: dict, findings: dict):
         return
     subjective_assessments = (state.get("subjective_assessments")
                               or state.get("review_assessments") or None)
+    # If nothing was checked for this scan scope (all detector potentials are zero)
+    # and there are no subjective assessments, objective health is effectively
+    # "no active checks" — treat as neutral instead of 0%.
+    has_active_checks = any((count or 0) > 0 for count in merged.values())
+    if not has_active_checks and not subjective_assessments:
+        state["dimension_scores"] = {}
+        state["objective_score"] = 100.0
+        state["objective_strict"] = 100.0
+        return
+
     ds = compute_dimension_scores(findings, merged, strict=False,
                                    subjective_assessments=subjective_assessments)
     ss = compute_dimension_scores(findings, merged, strict=True,

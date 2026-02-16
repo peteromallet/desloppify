@@ -41,6 +41,7 @@ examples:
   desloppify ignore "smells::*::async_no_await"
   desloppify detect logs --top 10
   desloppify detect dupes --threshold 0.9
+  desloppify dev scaffold-lang go --extension .go --marker go.mod --default-src .
   desloppify move src/shared/hooks/useFoo.ts src/shared/hooks/video/useFoo.ts --dry-run
   desloppify move scripts/foo/bar.py scripts/foo/baz/bar.py
 """
@@ -212,6 +213,40 @@ def create_parser() -> argparse.ArgumentParser:
     c_unset = config_sub.add_parser("unset", help="Reset a config key to default")
     c_unset.add_argument("config_key", type=str, help="Config key name")
 
+    p_dev = sub.add_parser("dev", help="Developer utilities")
+    dev_sub = p_dev.add_subparsers(dest="dev_action", required=True)
+    d_scaffold = dev_sub.add_parser("scaffold-lang", help="Generate a standardized language plugin scaffold")
+    d_scaffold.add_argument("name", type=str, help="Language name (snake_case)")
+    d_scaffold.add_argument(
+        "--extension",
+        action="append",
+        default=None,
+        metavar="EXT",
+        help="Source file extension (repeatable, e.g. --extension .go --extension .gomod)",
+    )
+    d_scaffold.add_argument(
+        "--marker",
+        action="append",
+        default=None,
+        metavar="FILE",
+        help="Project-root detection marker file (repeatable)",
+    )
+    d_scaffold.add_argument(
+        "--default-src",
+        type=str,
+        default="src",
+        metavar="DIR",
+        help="Default source directory for scans (default: src)",
+    )
+    d_scaffold.add_argument("--force", action="store_true", help="Overwrite existing scaffold files")
+    d_scaffold.add_argument(
+        "--no-wire-pyproject",
+        dest="wire_pyproject",
+        action="store_false",
+        help="Do not edit pyproject.toml testpaths/exclude arrays",
+    )
+    d_scaffold.set_defaults(wire_pyproject=True)
+
     return parser
 
 
@@ -281,6 +316,7 @@ def main() -> None:
         "review": (".commands.review_cmd", "cmd_review"),
         "issues": (".commands.issues_cmd", "cmd_issues"),
         "config": (".commands.config_cmd", "cmd_config"),
+        "dev": (".commands.dev_cmd", "cmd_dev"),
     }
 
     module_path, func_name = _COMMAND_MAP[args.command]

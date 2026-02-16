@@ -10,7 +10,7 @@ from ...utils import c, display_entries, find_py_files, print_table, rel
 if TYPE_CHECKING:
     import argparse
 
-from . import PY_COMPLEXITY_SIGNALS, PY_GOD_RULES, PY_SKIP_NAMES, PY_ENTRY_PATTERNS
+from .phases import PY_COMPLEXITY_SIGNALS, PY_GOD_RULES, PY_SKIP_NAMES, PY_ENTRY_PATTERNS
 from ..commands_base import (make_cmd_large, make_cmd_complexity, make_cmd_single_use,
                              make_cmd_passthrough, make_cmd_naming, make_cmd_smells,
                              make_cmd_facade)
@@ -31,12 +31,32 @@ def _detect_facades(graph):
     return detect_reexport_facades(graph)
 
 
-cmd_large = make_cmd_large(find_py_files, default_threshold=300)
-cmd_complexity = make_cmd_complexity(find_py_files, PY_COMPLEXITY_SIGNALS, default_threshold=25)
-cmd_single_use = make_cmd_single_use(_build_dep_graph, barrel_names={"__init__.py"})
-cmd_passthrough = make_cmd_passthrough(
+_cmd_large_impl = make_cmd_large(find_py_files, default_threshold=300)
+_cmd_complexity_impl = make_cmd_complexity(find_py_files, PY_COMPLEXITY_SIGNALS, default_threshold=25)
+_cmd_single_use_impl = make_cmd_single_use(_build_dep_graph, barrel_names={"__init__.py"})
+_cmd_passthrough_impl = make_cmd_passthrough(
     _detect_passthrough, noun="function", name_key="function", total_key="total_params")
-cmd_naming = make_cmd_naming(find_py_files, skip_names=PY_SKIP_NAMES)
+_cmd_naming_impl = make_cmd_naming(find_py_files, skip_names=PY_SKIP_NAMES)
+
+
+def cmd_large(args: argparse.Namespace) -> None:
+    _cmd_large_impl(args)
+
+
+def cmd_complexity(args: argparse.Namespace) -> None:
+    _cmd_complexity_impl(args)
+
+
+def cmd_single_use(args: argparse.Namespace) -> None:
+    _cmd_single_use_impl(args)
+
+
+def cmd_passthrough(args: argparse.Namespace) -> None:
+    _cmd_passthrough_impl(args)
+
+
+def cmd_naming(args: argparse.Namespace) -> None:
+    _cmd_naming_impl(args)
 
 
 def cmd_gods(args: argparse.Namespace) -> None:
@@ -127,10 +147,18 @@ def _detect_py_smells(path):
     from .detectors.smells import detect_smells
     return detect_smells(path)
 
-cmd_smells = make_cmd_smells(_detect_py_smells)
+_cmd_smells_impl = make_cmd_smells(_detect_py_smells)
 
 
-cmd_facade = make_cmd_facade(_build_dep_graph, detect_facades_fn=_detect_facades)
+def cmd_smells(args: argparse.Namespace) -> None:
+    _cmd_smells_impl(args)
+
+
+_cmd_facade_impl = make_cmd_facade(_build_dep_graph, detect_facades_fn=_detect_facades)
+
+
+def cmd_facade(args: argparse.Namespace) -> None:
+    _cmd_facade_impl(args)
 
 
 def cmd_dupes(args: argparse.Namespace) -> None:
@@ -169,13 +197,13 @@ def get_detect_commands() -> dict[str, Callable[..., None]]:
         "large":       cmd_large,
         "complexity":  cmd_complexity,
         "gods":        cmd_gods,
-        "passthrough": cmd_passthrough,
+        "props":       cmd_passthrough,
         "smells":      cmd_smells,
         "dupes":       cmd_dupes,
         "deps":        cmd_deps,
         "cycles":      cmd_cycles,
         "orphaned":    cmd_orphaned,
-        "single-use":  cmd_single_use,
+        "single_use":  cmd_single_use,
         "naming":      cmd_naming,
         "facade":      cmd_facade,
     }

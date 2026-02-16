@@ -9,6 +9,7 @@ import pytest
 
 from desloppify.output.visualize import (
     D3_CDN_URL,
+    _load_cmd_context,
     _aggregate,
     _build_tree,
     _print_tree,
@@ -381,3 +382,50 @@ class TestConstants:
     def test_d3_cdn_url_is_https(self):
         assert D3_CDN_URL.startswith("https://")
         assert "d3" in D3_CDN_URL
+
+
+# ===========================================================================
+# _load_cmd_context
+# ===========================================================================
+
+class TestLoadCmdContext:
+    def test_uses_preloaded_state_when_available(self, monkeypatch):
+        from types import SimpleNamespace
+
+        sentinel_state = {"findings": {"x": 1}}
+
+        monkeypatch.setattr("desloppify.commands._helpers.resolve_lang", lambda _a: None)
+        calls = []
+        monkeypatch.setattr("desloppify.state.load_state", lambda _sp: calls.append(_sp) or {})
+
+        args = SimpleNamespace(
+            path=".",
+            state=None,
+            _preloaded_state=sentinel_state,
+            _state_path=Path("/tmp/state-python.json"),
+            lang=None,
+        )
+        _, _, state = _load_cmd_context(args)
+
+        assert state is sentinel_state
+        assert calls == []
+
+    def test_falls_back_to_state_path_from_cli_main(self, monkeypatch):
+        from types import SimpleNamespace
+
+        sentinel_path = Path("/tmp/state-typescript.json")
+        monkeypatch.setattr("desloppify.commands._helpers.resolve_lang", lambda _a: None)
+        calls = []
+        monkeypatch.setattr("desloppify.state.load_state", lambda sp: calls.append(sp) or {"ok": True})
+
+        args = SimpleNamespace(
+            path=".",
+            state=None,
+            _preloaded_state=None,
+            _state_path=sentinel_path,
+            lang=None,
+        )
+        _, _, state = _load_cmd_context(args)
+
+        assert state == {"ok": True}
+        assert calls == [sentinel_path]

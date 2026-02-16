@@ -165,6 +165,52 @@ class TestCreateParser:
         args = parser.parse_args(["viz"])
         assert args.command == "viz"
 
+    def test_review_command_defaults(self, parser):
+        args = parser.parse_args(["review"])
+        assert args.command == "review"
+        assert args.prepare is False
+        assert args.import_file is None
+
+    def test_review_prepare_flag(self, parser):
+        args = parser.parse_args(["review", "--prepare"])
+        assert args.prepare is True
+
+    def test_issues_command_defaults(self, parser):
+        args = parser.parse_args(["issues"])
+        assert args.command == "issues"
+        assert args.issues_action is None
+
+    def test_issues_show_subcommand(self, parser):
+        args = parser.parse_args(["issues", "show", "3"])
+        assert args.command == "issues"
+        assert args.issues_action == "show"
+        assert args.number == 3
+
+    def test_issues_update_subcommand(self, parser):
+        args = parser.parse_args(["issues", "update", "2", "--file", "analysis.md"])
+        assert args.command == "issues"
+        assert args.issues_action == "update"
+        assert args.number == 2
+        assert args.file == "analysis.md"
+
+    def test_config_command_defaults(self, parser):
+        args = parser.parse_args(["config"])
+        assert args.command == "config"
+        assert args.config_action is None
+
+    def test_config_set_subcommand(self, parser):
+        args = parser.parse_args(["config", "set", "review_max_age_days", "14"])
+        assert args.command == "config"
+        assert args.config_action == "set"
+        assert args.config_key == "review_max_age_days"
+        assert args.config_value == "14"
+
+    def test_config_unset_subcommand(self, parser):
+        args = parser.parse_args(["config", "unset", "review_max_age_days"])
+        assert args.command == "config"
+        assert args.config_action == "unset"
+        assert args.config_key == "review_max_age_days"
+
     def test_zone_show(self, parser):
         args = parser.parse_args(["zone", "show"])
         assert args.command == "zone"
@@ -180,6 +226,40 @@ class TestCreateParser:
         args = parser.parse_args(["zone", "clear", "src/foo.py"])
         assert args.zone_action == "clear"
         assert args.zone_path == "src/foo.py"
+
+    def test_dev_scaffold_lang(self, parser):
+        args = parser.parse_args(
+            [
+                "dev",
+                "scaffold-lang",
+                "ruby",
+                "--extension",
+                ".rb",
+                "--extension",
+                ".rake",
+                "--marker",
+                "Gemfile",
+                "--default-src",
+                "lib",
+                "--force",
+            ]
+        )
+        assert args.command == "dev"
+        assert args.dev_action == "scaffold-lang"
+        assert args.name == "ruby"
+        assert args.extension == [".rb", ".rake"]
+        assert args.marker == ["Gemfile"]
+        assert args.default_src == "lib"
+        assert args.force is True
+        assert args.wire_pyproject is True
+
+    def test_dev_scaffold_lang_no_wire_pyproject(self, parser):
+        args = parser.parse_args(["dev", "scaffold-lang", "go", "--extension", ".go", "--no-wire-pyproject"])
+        assert args.wire_pyproject is False
+
+    def test_dev_requires_action(self, parser):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["dev"])
 
     def test_scan_badge_options(self, parser):
         args = parser.parse_args(["scan", "--no-badge", "--badge-path", "custom.png"])
@@ -319,6 +399,42 @@ class TestResolveLang:
         lang = resolve_lang(args)
         assert lang is not None
         assert lang.name == "typescript"
+
+    def test_lang_config_markers_include_plugin_markers(self, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        class DummyCfg:
+            detect_markers = ["deno.json", "custom.lock"]
+
+        helpers_mod._lang_config_markers.cache_clear()
+        monkeypatch.setattr("desloppify.lang.available_langs", lambda: ["dummy"])
+        monkeypatch.setattr("desloppify.lang.get_lang", lambda _name: DummyCfg())
+
+        markers = helpers_mod._lang_config_markers()
+        assert "deno.json" in markers
+        assert "custom.lock" in markers
+
+        helpers_mod._lang_config_markers.cache_clear()
+
+    def test_resolve_detection_root_uses_plugin_marker(self, tmp_path, monkeypatch):
+        from desloppify.commands import _helpers as helpers_mod
+
+        cwd_root = tmp_path / "cwd_project"
+        cwd_root.mkdir()
+        (cwd_root / "pyproject.toml").write_text("[tool.pytest]\n")
+
+        target_root = tmp_path / "target_project"
+        target_root.mkdir()
+        (target_root / "deno.json").write_text("{}\n")
+        target_src = target_root / "src"
+        target_src.mkdir()
+
+        monkeypatch.setattr(helpers_mod, "PROJECT_ROOT", cwd_root)
+        monkeypatch.setattr(helpers_mod, "_lang_config_markers", lambda: ("deno.json",))
+
+        args = SimpleNamespace(path=str(target_src))
+        resolved = helpers_mod._resolve_detection_root(args)
+        assert resolved == target_root
 
 
 # ===========================================================================

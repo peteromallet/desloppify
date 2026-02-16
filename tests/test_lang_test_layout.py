@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
-from desloppify.lang.python import PythonConfig
+from desloppify.lang import available_langs, get_lang
 from desloppify.utils import PROJECT_ROOT, compute_tool_hash, rel
 from desloppify.zones import FileZoneMap, Zone
 
@@ -15,39 +15,48 @@ def _load_pyproject() -> dict:
     return tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
 
 
+def _lang_test_rel_path(lang: str) -> str:
+    return f"desloppify/lang/{lang}/tests"
+
+
+def _lang_test_exclude(lang: str) -> str:
+    return f"desloppify.lang.{lang}.tests*"
+
+
 def test_pyproject_discovers_lang_test_paths():
     data = _load_pyproject()
     testpaths = data["tool"]["pytest"]["ini_options"]["testpaths"]
     assert "tests" in testpaths
-    assert "desloppify/lang/python/tests" in testpaths
-    assert "desloppify/lang/typescript/tests" in testpaths
+    for lang in available_langs():
+        assert _lang_test_rel_path(lang) in testpaths
 
 
 def test_pyproject_excludes_lang_tests_from_packages():
     data = _load_pyproject()
     excludes = data["tool"]["setuptools"]["packages"]["find"]["exclude"]
-    assert "desloppify.lang.python.tests*" in excludes
-    assert "desloppify.lang.typescript.tests*" in excludes
+    for lang in available_langs():
+        assert _lang_test_exclude(lang) in excludes
 
 
-def test_no_lang_specific_test_prefixes_in_top_level_tests():
-    top = PROJECT_ROOT / "tests"
-    assert list(top.glob("test_py_*.py")) == []
-    assert list(top.glob("test_ts_*.py")) == []
+def test_each_lang_has_colocated_tests_package():
+    for lang in available_langs():
+        test_dir = PROJECT_ROOT / _lang_test_rel_path(lang)
+        assert test_dir.is_dir(), f"missing tests dir for {lang}: {test_dir}"
+        init_file = test_dir / "__init__.py"
+        assert init_file.is_file(), f"missing tests/__init__.py for {lang}"
 
 
 def test_colocated_lang_tests_are_classified_as_test_zone():
-    cfg = PythonConfig()
-    files = sorted(str(p) for p in (
-        list((PROJECT_ROOT / "desloppify/lang/python/tests").glob("test_*.py")) +
-        list((PROJECT_ROOT / "desloppify/lang/typescript/tests").glob("test_*.py")) +
-        list((PROJECT_ROOT / "desloppify/lang/python/tests").glob("__init__.py")) +
-        list((PROJECT_ROOT / "desloppify/lang/typescript/tests").glob("__init__.py"))
-    ))
-    assert files, "expected colocated language test files"
+    for lang in available_langs():
+        cfg = get_lang(lang)
+        test_dir = PROJECT_ROOT / _lang_test_rel_path(lang)
+        files = sorted(str(p) for p in test_dir.glob("test_*.py"))
+        files += [str(test_dir / "__init__.py")]
+        files = [f for f in files if Path(f).exists()]
+        assert files, f"expected colocated language test files for {lang}"
 
-    zm = FileZoneMap(files, cfg.zone_rules, rel_fn=rel)
-    assert all(zm.get(f) == Zone.TEST for f in files)
+        zm = FileZoneMap(files, cfg.zone_rules, rel_fn=rel)
+        assert all(zm.get(f) == Zone.TEST for f in files), f"{lang} tests not in test zone"
 
 
 def test_compute_tool_hash_ignores_colocated_tests(tmp_path):
@@ -71,3 +80,4 @@ def test_compute_tool_hash_ignores_colocated_tests(tmp_path):
         runtime_file.write_text("x = 2\n")
         after_runtime_edit = compute_tool_hash()
         assert after_runtime_edit != base
+

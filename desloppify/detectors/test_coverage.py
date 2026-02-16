@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import math
 import os
-import importlib
 from pathlib import Path
 
+from .lang_hooks import load_lang_hook_module
 from ..utils import PROJECT_ROOT
 from ..zones import FileZoneMap, Zone
 
@@ -33,7 +33,7 @@ def detect_test_coverage(
     Args:
         graph: dep graph from lang.build_dep_graph — {filepath: {"imports": set, "importer_count": int, ...}}
         zone_map: FileZoneMap from lang._zone_map
-        lang_name: "python" or "typescript"
+        lang_name: language plugin name (for loading language-specific coverage hooks)
         extra_test_files: test files outside the scanned path (e.g. PROJECT_ROOT/tests/)
         complexity_map: {filepath: complexity_score} from structural phase — files above
             _COMPLEXITY_TIER_UPGRADE threshold get their tier upgraded to 2
@@ -146,10 +146,7 @@ def _has_testable_logic(filepath: str, lang_name: str) -> bool:
 
 def _load_lang_test_coverage_module(lang_name: str):
     """Load language-specific test coverage helpers from ``lang/<name>/test_coverage.py``."""
-    try:
-        return importlib.import_module(f"..lang.{lang_name}.test_coverage", __package__)
-    except Exception:
-        return object()
+    return load_lang_hook_module(lang_name, "test_coverage") or object()
 
 
 def _no_tests_findings(

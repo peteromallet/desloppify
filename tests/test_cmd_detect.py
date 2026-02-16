@@ -156,3 +156,47 @@ class TestCmdDetect:
 
         cmd_detect(FakeArgs())
         assert captured_args[0].threshold == 200
+
+    def test_hyphen_alias_resolves_to_underscore_key(self, monkeypatch):
+        """Hyphenated detector input resolves to underscore command key."""
+        import desloppify.commands._helpers as cli_mod
+
+        calls = []
+
+        class FakeLang:
+            name = "python"
+            detect_commands = {"single_use": lambda a: calls.append("single_use")}
+            large_threshold = 300
+
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
+
+        class FakeArgs:
+            detector = "single-use"
+            lang = "python"
+            path = "."
+            threshold = None
+
+        cmd_detect(FakeArgs())
+        assert calls == ["single_use"]
+
+    def test_passthrough_alias_maps_to_props_when_passthrough_missing(self, monkeypatch):
+        """Legacy passthrough input resolves to props for languages without passthrough key."""
+        import desloppify.commands._helpers as cli_mod
+
+        calls = []
+
+        class FakeLang:
+            name = "python"
+            detect_commands = {"props": lambda a: calls.append("props")}
+            large_threshold = 300
+
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: FakeLang())
+
+        class FakeArgs:
+            detector = "passthrough"
+            lang = "python"
+            path = "."
+            threshold = None
+
+        cmd_detect(FakeArgs())
+        assert calls == ["props"]

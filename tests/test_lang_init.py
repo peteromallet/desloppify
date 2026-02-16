@@ -7,7 +7,7 @@ import pytest
 
 import desloppify.lang as lang_mod
 from desloppify.lang import _registry, auto_detect_lang, available_langs, get_lang, register_lang
-from desloppify.lang.base import LangConfig
+from desloppify.lang.base import DetectorPhase, LangConfig
 
 
 # ── register_lang ────────────────────────────────────────────
@@ -163,3 +163,158 @@ def test_typescript_config_has_file_finder():
     cfg = get_lang("typescript")
     assert cfg.file_finder is not None
     assert callable(cfg.file_finder)
+
+
+# ── structural validation ────────────────────────────────────
+
+
+def _write_lang_layout(
+    root: Path,
+    *,
+    missing_files: set[str] | None = None,
+    missing_dirs: set[str] | None = None,
+    missing_dir_inits: set[str] | None = None,
+    include_tests: bool = True,
+):
+    missing_files = missing_files or set()
+    missing_dirs = missing_dirs or set()
+    missing_dir_inits = missing_dir_inits or set()
+
+    for filename in lang_mod.REQUIRED_FILES:
+        if filename in missing_files:
+            continue
+        (root / filename).write_text("\n")
+
+    for dirname in lang_mod.REQUIRED_DIRS:
+        if dirname in missing_dirs:
+            continue
+        d = root / dirname
+        d.mkdir(parents=True, exist_ok=True)
+        if dirname not in missing_dir_inits:
+            (d / "__init__.py").write_text("\n")
+        if dirname == "tests" and include_tests:
+            (d / "test_smoke.py").write_text("def test_smoke():\n    assert True\n")
+
+
+def test_validate_lang_structure_missing_file(tmp_path):
+    lang_dir = tmp_path / "dummy_lang"
+    lang_dir.mkdir()
+    _write_lang_layout(lang_dir, missing_files={"commands.py"})
+
+    with pytest.raises(ValueError, match="missing required file: commands.py"):
+        lang_mod._validate_lang_structure(lang_dir, "dummy")
+
+
+def test_validate_lang_structure_missing_dir(tmp_path):
+    lang_dir = tmp_path / "dummy_lang"
+    lang_dir.mkdir()
+    _write_lang_layout(lang_dir, missing_dirs={"detectors"})
+
+    with pytest.raises(ValueError, match=r"missing required directory: detectors/"):
+        lang_mod._validate_lang_structure(lang_dir, "dummy")
+
+
+def test_validate_lang_structure_missing_dir_init(tmp_path):
+    lang_dir = tmp_path / "dummy_lang"
+    lang_dir.mkdir()
+    _write_lang_layout(lang_dir, missing_dir_inits={"fixers"})
+
+    with pytest.raises(ValueError, match=r"missing fixers/__init__\.py"):
+        lang_mod._validate_lang_structure(lang_dir, "dummy")
+
+
+def test_validate_lang_structure_missing_tests_file(tmp_path):
+    lang_dir = tmp_path / "dummy_lang"
+    lang_dir.mkdir()
+    _write_lang_layout(lang_dir, include_tests=False)
+
+    with pytest.raises(ValueError, match=r"tests directory must contain at least one test_\*\.py file"):
+        lang_mod._validate_lang_structure(lang_dir, "dummy")
+
+
+def test_validate_lang_structure_valid(tmp_path):
+    lang_dir = tmp_path / "dummy_lang"
+    lang_dir.mkdir()
+    _write_lang_layout(lang_dir)
+
+    lang_mod._validate_lang_structure(lang_dir, "dummy")
+
+
+def test_get_lang_rejects_invalid_contract():
+    class BadConfig(LangConfig):
+        def __init__(self):
+            super().__init__(
+                name="_bad_contract",
+                extensions=[".bad"],
+                exclusions=[],
+                default_src=".",
+                build_dep_graph=lambda _p: {},
+                entry_patterns=[],
+                barrel_names=set(),
+                phases=[],  # invalid: empty
+                fixers={},
+                detect_commands={},  # invalid: empty
+                extract_functions=None,  # invalid: not callable
+                file_finder=None,  # invalid: not callable
+                detect_markers=["bad.toml"],
+                zone_rules=[],
+            )
+
+    _registry["_bad_contract"] = BadConfig
+    try:
+        with pytest.raises(ValueError, match="invalid LangConfig contract"):
+            get_lang("_bad_contract")
+    finally:
+        _registry.pop("_bad_contract", None)
+
+
+def test_get_lang_rejects_non_snake_case_detect_command_key():
+    class BadKeyConfig(LangConfig):
+        def __init__(self):
+            super().__init__(
+                name="_bad_key",
+                extensions=[".bad"],
+                exclusions=[],
+                default_src=".",
+                build_dep_graph=lambda _p: {},
+                entry_patterns=[],
+                barrel_names=set(),
+                phases=[DetectorPhase("phase", lambda _p, _l: ([], {}))],
+                fixers={},
+                detect_commands={"single-use": lambda _a: None},
+                extract_functions=lambda _p: [],
+                file_finder=lambda _p: [],
+                detect_markers=["bad.toml"],
+                zone_rules=[object()],
+            )
+
+    _registry["_bad_key"] = BadKeyConfig
+    try:
+        with pytest.raises(ValueError, match="snake_case"):
+            get_lang("_bad_key")
+    finally:
+        _registry.pop("_bad_key", None)
+
+
+def test_load_all_surfaces_import_failures(monkeypatch):
+    import importlib
+
+    original_registry = dict(_registry)
+    real_import_module = importlib.import_module
+
+    def fake_import_module(name, package=None):
+        if name == ".python":
+            raise ImportError("simulated import failure")
+        return real_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(lang_mod, "_load_attempted", False)
+    monkeypatch.setattr(lang_mod, "_load_errors", {})
+    _registry.clear()
+
+    try:
+        with pytest.raises(ImportError, match="Language plugin import failures"):
+            lang_mod._load_all()
+    finally:
+        _registry.clear()
+        _registry.update(original_registry)

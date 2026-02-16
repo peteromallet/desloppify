@@ -3,10 +3,12 @@
 from pathlib import Path
 
 from desloppify.commands.move import (
+    _cmd_move_dir,
     _dedup,
     _detect_lang_from_ext,
     _detect_lang_from_dir,
     _resolve_dest,
+    _resolve_lang_for_move,
     _safe_write,
 )
 
@@ -131,6 +133,70 @@ class TestResolveDest:
         source = "src/foo.ts"
         result = _resolve_dest(source, str(tmp_path) + "/")
         assert result.endswith("foo.ts")
+
+
+# ---------------------------------------------------------------------------
+# Language resolution precedence
+# ---------------------------------------------------------------------------
+
+class TestResolveLangPrecedence:
+    """Explicit --lang should override auto-detection heuristics."""
+
+    def test_explicit_lang_overrides_extension_detection(self, monkeypatch):
+        class FakeArgs:
+            lang = "python"
+            path = "."
+
+        monkeypatch.setattr(
+            "desloppify.commands._helpers.resolve_lang",
+            lambda _args: type("L", (), {"name": "python"})(),
+        )
+        result = _resolve_lang_for_move("/tmp/example.ts", FakeArgs())
+        assert result == "python"
+
+    def test_directory_move_prefers_explicit_lang(self, tmp_path, monkeypatch):
+        source_dir = tmp_path / "pkg"
+        source_dir.mkdir()
+        (source_dir / "mod.py").write_text("import os\n")
+        dest_dir = tmp_path / "pkg_new"
+
+        captured = []
+
+        class FakeLang:
+            extensions = [".py"]
+            default_src = "."
+
+            @staticmethod
+            def build_dep_graph(_path):
+                return {}
+
+        class FakeMoveMod:
+            @staticmethod
+            def find_replacements(_source, _dest, _graph):
+                return {}
+
+            @staticmethod
+            def find_self_replacements(_source, _dest, _graph):
+                return []
+
+        monkeypatch.setattr("desloppify.commands.move._detect_lang_from_dir", lambda _p: "typescript")
+        monkeypatch.setattr(
+            "desloppify.commands._helpers.resolve_lang",
+            lambda _args: type("L", (), {"name": "python"})(),
+        )
+        monkeypatch.setattr(
+            "desloppify.lang.get_lang",
+            lambda name: captured.append(name) or FakeLang(),
+        )
+        monkeypatch.setattr("desloppify.commands.move._load_lang_move_module", lambda _n: FakeMoveMod())
+
+        class FakeArgs:
+            dest = str(dest_dir)
+            dry_run = True
+            lang = "python"
+
+        _cmd_move_dir(FakeArgs(), str(source_dir))
+        assert captured == ["python"]
 
 
 # ---------------------------------------------------------------------------

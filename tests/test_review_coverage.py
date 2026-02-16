@@ -456,6 +456,11 @@ class TestPhaseIntegration:
 class TestHolisticStalenessInCoverage:
     """Holistic staleness entries emitted by detect_holistic_review_staleness."""
 
+    def test_zero_files_emits_nothing(self):
+        from desloppify.detectors.review_coverage import detect_holistic_review_staleness
+        entries = detect_holistic_review_staleness({}, total_files=0)
+        assert entries == []
+
     def test_no_holistic_cache_emits_unreviewed(self):
         from desloppify.detectors.review_coverage import detect_holistic_review_staleness
         entries = detect_holistic_review_staleness({}, total_files=50)

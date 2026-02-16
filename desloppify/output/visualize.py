@@ -172,13 +172,20 @@ def generate_visualization(path: Path, state: dict | None = None,
 def _load_cmd_context(args):
     """Load lang config and state from CLI args."""
     from ..state import load_state
-    from ..commands._helpers import resolve_lang
+    from ..commands._helpers import resolve_lang, state_path
     lang = resolve_lang(args)
-    state = None
-    try:
-        state = load_state(Path(args.state) if getattr(args, "state", None) else None)
-    except (OSError, json.JSONDecodeError):
-        pass
+
+    # Prefer state preloaded by CLI main() so per-language state routing stays consistent
+    # across all commands (including tree/viz).
+    state = getattr(args, "_preloaded_state", None)
+    if state is None:
+        sp = getattr(args, "_state_path", None)
+        if sp is None:
+            sp = Path(args.state) if getattr(args, "state", None) else state_path(args)
+        try:
+            state = load_state(sp)
+        except (OSError, json.JSONDecodeError):
+            state = None
     return Path(args.path), lang, state
 
 

@@ -168,12 +168,13 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 | `plan` | Prioritized markdown plan |
 | `tree` | Annotated codebase tree |
 | `viz` | Interactive HTML treemap |
+| `dev scaffold-lang` | Generate a standardized language plugin scaffold |
 
 #### Detectors
 
-**TypeScript/React**: logs, unused, exports, deprecated, large, complexity, gods, single-use, props, passthrough, concerns, deps, dupes, smells, coupling, patterns, naming, cycles, orphaned, react
+**TypeScript/React**: logs, unused, exports, deprecated, large, complexity, gods, single_use, props, passthrough, concerns, deps, dupes, smells, coupling, patterns, naming, cycles, orphaned, react
 
-**Python**: unused, large, complexity, gods, passthrough, smells, dupes, deps, cycles, orphaned, single-use, naming
+**Python**: unused, large, complexity, gods, props, smells, dupes, deps, cycles, orphaned, single_use, naming
 
 #### Tiers & scoring
 
@@ -181,7 +182,7 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 |------|----------|----------|
 | T1 | Auto-fixable | Unused imports, debug logs |
 | T2 | Quick manual | Unused vars, dead exports |
-| T3 | Needs judgment | Near-dupes, single-use abstractions |
+| T3 | Needs judgment | Near-dupes, single_use abstractions |
 | T4 | Major refactor | God components, mixed concerns |
 
 Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
@@ -201,14 +202,24 @@ Score is weighted (T4 = 4x T1). Strict score excludes wontfix.
 
 #### Adding a language
 
-Create `desloppify/lang/<name>/` with `__init__.py`, `commands.py`, `extractors.py`, `detectors/`, `fixers/`. Validated at registration. Zero shared code changes. See `lang/python/` for example.
+Use the scaffold workflow documented in `ADDING_NEW_LANGUAGE.md`:
+
+```bash
+desloppify dev scaffold-lang <name> --extension .ext --marker <root-marker>
+```
+
+Detect command keys are standardized to snake_case. CLI compatibility aliases
+like `single-use` and legacy `passthrough` are still accepted.
+Standard plugin shape: `__init__.py`, `commands.py`, `extractors.py`, `phases.py`,
+`move.py`, `review.py`, `test_coverage.py`, plus `detectors/`, `fixers/`, and `tests/`.
+Validated at registration. Zero shared code changes.
 
 #### Architecture
 
 ```
 detectors/              ← Generic algorithms (zero language knowledge)
 lang/base.py            ← Shared finding helpers
-lang/<name>/            ← Language config + phase runners + extractors + detectors + fixers
+lang/<name>/            ← Language config + phases + extractors + detectors + fixers
 ```
 
 Import direction: `lang/` → `detectors/`. Never the reverse.

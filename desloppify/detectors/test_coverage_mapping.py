@@ -2,35 +2,34 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 import re
 from collections import deque
 from pathlib import Path
 
+from .lang_hooks import load_lang_hook_module
 from ..utils import PROJECT_ROOT
 
 
-def _load_lang_test_coverage_module(lang_name: str):
+def _load_lang_test_coverage_module(lang_name: str | None):
     """Load language-specific test coverage helpers from ``lang/<name>/test_coverage.py``."""
-    try:
-        return importlib.import_module(f"..lang.{lang_name}.test_coverage", __package__)
-    except Exception:
-        return object()
+    return load_lang_hook_module(lang_name, "test_coverage") or object()
 
 
-def _infer_lang_name(test_files: set[str], production_files: set[str]) -> str:
+def _infer_lang_name(test_files: set[str], production_files: set[str]) -> str | None:
     """Infer language from known file extensions when explicit lang is unavailable."""
     paths = list(test_files) + list(production_files)
 
     try:
         from ..lang import available_langs, get_lang
     except Exception:
-        return "python"
+        return None
 
     best_lang = None
     best_count = -1
     langs = available_langs()
+    if not langs:
+        return None
     for lang_name in langs:
         try:
             exts = tuple(get_lang(lang_name).extensions)
@@ -43,9 +42,9 @@ def _infer_lang_name(test_files: set[str], production_files: set[str]) -> str:
             best_lang = lang_name
             best_count = count
 
-    if best_lang is not None:
+    if best_lang is not None and best_count > 0:
         return best_lang
-    return langs[0] if langs else "python"
+    return None
 
 
 def _import_based_mapping(
@@ -100,7 +99,7 @@ def _resolve_import(
     spec: str,
     test_path: str,
     production_files: set[str],
-    lang_name: str,
+    lang_name: str | None,
 ) -> str | None:
     mod = _load_lang_test_coverage_module(lang_name)
     resolver = getattr(mod, "resolve_import_spec", None)
@@ -112,9 +111,11 @@ def _resolve_import(
 def _resolve_barrel_reexports(
     filepath: str,
     production_files: set[str],
-    lang_name: str = "typescript",
+    lang_name: str | None = None,
 ) -> set[str]:
     """Resolve one-hop re-exports using language-specific helpers."""
+    if lang_name is None:
+        lang_name = _infer_lang_name({filepath}, production_files)
     mod = _load_lang_test_coverage_module(lang_name)
     resolver = getattr(mod, "resolve_barrel_reexports", None)
     if callable(resolver):
@@ -238,18 +239,9 @@ def _transitive_coverage(
 
 def _strip_py_comment(line: str) -> str:
     """Strip Python # comments while respecting string literals."""
-    in_str = None
-    for i, ch in enumerate(line):
-        if in_str:
-            if ch == "\\" and i + 1 < len(line):
-                continue
-            if ch == in_str:
-                in_str = None
-        elif ch in ('"', "'"):
-            in_str = ch
-        elif ch == "#" and not in_str:
-            return line[:i]
-    return line
+    from ..lang.python.test_coverage import _strip_py_comment as py_strip_py_comment
+
+    return py_strip_py_comment(line)
 
 
 def _analyze_test_quality(

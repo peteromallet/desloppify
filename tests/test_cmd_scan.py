@@ -10,6 +10,7 @@ from desloppify.commands.scan import (
     _show_post_scan_analysis,
     _show_dimension_deltas,
     _show_detector_progress,
+    _warn_explicit_lang_with_no_files,
     cmd_scan,
 )
 
@@ -29,6 +30,7 @@ class TestScanModuleSanity:
         assert callable(_collect_codebase_metrics)
         assert callable(_format_delta)
         assert callable(_show_diff_summary)
+        assert callable(_warn_explicit_lang_with_no_files)
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +190,53 @@ class TestCollectCodebaseMetrics:
         assert result["total_files"] == 3
         assert result["total_loc"] == 6  # 2 + 1 + 3
         assert result["total_directories"] == 2  # tmp_path and sub
+
+
+# ---------------------------------------------------------------------------
+# _warn_explicit_lang_with_no_files
+# ---------------------------------------------------------------------------
+
+class TestWarnExplicitLangWithNoFiles:
+    def test_warns_for_explicit_lang_when_zero_files(self, monkeypatch, capsys, tmp_path):
+        class FakeArgs:
+            lang = "typescript"
+
+        class FakeLang:
+            name = "typescript"
+
+        import desloppify.lang as lang_mod
+        monkeypatch.setattr(lang_mod, "auto_detect_lang", lambda _root: "python")
+
+        _warn_explicit_lang_with_no_files(
+            FakeArgs(), FakeLang(), tmp_path, {"total_files": 0}
+        )
+        out = capsys.readouterr().out
+        assert "No typescript source files found" in out
+        assert "--lang python" in out
+
+    def test_no_warning_when_not_explicit(self, capsys, tmp_path):
+        class FakeArgs:
+            lang = None
+
+        class FakeLang:
+            name = "typescript"
+
+        _warn_explicit_lang_with_no_files(
+            FakeArgs(), FakeLang(), tmp_path, {"total_files": 0}
+        )
+        assert capsys.readouterr().out == ""
+
+    def test_no_warning_when_files_present(self, capsys, tmp_path):
+        class FakeArgs:
+            lang = "typescript"
+
+        class FakeLang:
+            name = "typescript"
+
+        _warn_explicit_lang_with_no_files(
+            FakeArgs(), FakeLang(), tmp_path, {"total_files": 5}
+        )
+        assert capsys.readouterr().out == ""
 
 
 # ---------------------------------------------------------------------------

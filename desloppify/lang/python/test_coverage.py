@@ -26,7 +26,7 @@ MOCK_PATTERNS = [
     ]
 ]
 SNAPSHOT_PATTERNS: list[re.Pattern[str]] = []
-TEST_FUNCTION_RE = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)\s*\(")
+TEST_FUNCTION_RE = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)\s*\(", re.MULTILINE)
 
 # Python has no barrel-file expansion in coverage mapping.
 BARREL_BASENAMES: set[str] = set()
@@ -40,6 +40,11 @@ def has_testable_logic(_filepath: str, content: str) -> bool:
 def resolve_import_spec(_spec: str, _test_path: str, _production_files: set[str]) -> str | None:
     """Python import spec resolution is module-name based, handled elsewhere."""
     return None
+
+
+def resolve_barrel_reexports(_filepath: str, _production_files: set[str]) -> set[str]:
+    """Python has no barrel-file re-export expansion for coverage mapping."""
+    return set()
 
 
 def parse_test_import_specs(content: str) -> list[str]:

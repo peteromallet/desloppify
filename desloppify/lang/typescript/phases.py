@@ -145,13 +145,21 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
 
     structural: dict[str, dict] = {}
 
-    large_entries, file_count = detect_large_files(path, file_finder=lang.file_finder)
+    large_entries, file_count = detect_large_files(
+        path,
+        file_finder=lang.file_finder,
+        threshold=lang.large_threshold,
+    )
     for e in large_entries:
         add_structural_signal(structural, e["file"], f"large ({e['loc']} LOC)",
                               {"loc": e["loc"]})
 
-    complexity_entries, _ = detect_complexity(path, signals=TS_COMPLEXITY_SIGNALS,
-                                              file_finder=lang.file_finder)
+    complexity_entries, _ = detect_complexity(
+        path,
+        signals=TS_COMPLEXITY_SIGNALS,
+        file_finder=lang.file_finder,
+        threshold=lang.complexity_threshold,
+    )
     for e in complexity_entries:
         add_structural_signal(structural, e["file"], f"complexity score {e['score']}",
                               {"complexity_score": e["score"], "complexity_signals": e["signals"]})

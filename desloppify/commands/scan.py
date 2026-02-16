@@ -67,6 +67,36 @@ def _collect_codebase_metrics(lang, path: Path) -> dict | None:
     }
 
 
+def _warn_explicit_lang_with_no_files(args, lang, path: Path, metrics: dict | None) -> None:
+    """Warn when user explicitly selected a language but scan found zero files."""
+    explicit_lang = getattr(args, "lang", None)
+    if not explicit_lang or not lang or not metrics:
+        return
+    if metrics.get("total_files", 0) > 0:
+        return
+
+    suggestion = " Omit `--lang` to auto-detect."
+    try:
+        from ..lang import auto_detect_lang
+
+        root = path if path.is_dir() else path.parent
+        detected = auto_detect_lang(root)
+        if detected and detected != lang.name:
+            suggestion = (
+                f" Detected `{detected}` for this path — use `--lang {detected}` "
+                "or omit `--lang`."
+            )
+    except Exception:
+        pass
+
+    print(
+        colorize(
+            f"  ⚠ No {lang.name} source files found under `{path}`.{suggestion}",
+            "yellow",
+        )
+    )
+
+
 def _show_diff_summary(diff: dict):
     """Print the +new / -resolved / reopened one-liner."""
     diff_parts = []
@@ -250,6 +280,7 @@ def cmd_scan(args) -> None:
         disable_file_cache()
 
     codebase_metrics = _collect_codebase_metrics(lang, path)
+    _warn_explicit_lang_with_no_files(args, lang, path, codebase_metrics)
 
     from ..utils import rel, get_exclusions, PROJECT_ROOT
 

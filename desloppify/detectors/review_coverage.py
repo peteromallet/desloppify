@@ -26,7 +26,7 @@ def detect_review_coverage(
         files: list of file paths from file_finder
         zone_map: FileZoneMap (or None)
         review_cache: dict of {rel_path: {content_hash, reviewed_at, finding_count}}
-        lang_name: "python" or "typescript"
+        lang_name: language plugin name (for low-value pattern matching)
         max_age_days: reviews older than this are flagged as stale
 
     Returns:
@@ -143,6 +143,10 @@ def detect_holistic_review_staleness(
     - Stale (>max_age_days) → holistic_stale
     - File count drifted >20% since review → holistic_stale
     """
+    # No production files in scope means holistic review is not applicable.
+    if total_files <= 0:
+        return []
+
     holistic = review_cache.get("holistic")
     if not holistic:
         return [{
