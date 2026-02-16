@@ -271,6 +271,8 @@ def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
     """Check if a directory should be pruned during traversal."""
     if name in DEFAULT_EXCLUSIONS or name.endswith(".egg-info"):
         return True
+    if name.startswith(".venv") or name.startswith("venv"):
+        return True
     if extra and any(matches_exclusion(rel_path, ex) or ex == name for ex in extra):
         return True
     return False

@@ -174,3 +174,25 @@ class TestDetectDuplicates:
         entries, total = detect_duplicates(fns, threshold=0.8)
         assert len(entries) == 2
         assert entries[0]["similarity"] >= entries[1]["similarity"]
+
+    def test_prunes_near_dupes_when_length_upper_bound_cannot_meet_threshold(self, monkeypatch):
+        """Skip expensive matcher work when length-only upper bound cannot reach threshold."""
+        short_body = "\n".join("x" for _ in range(20))
+        long_body = "\n".join(("x" * 200) for _ in range(20))
+        fns = [
+            _make_fn("short_fn", "a.py", short_body, loc=20),
+            _make_fn("long_fn", "b.py", long_body, loc=20),
+        ]
+
+        class _ShouldNotInstantiate:
+            def __init__(self, *_args, **_kwargs):
+                raise AssertionError("SequenceMatcher should not be created for pruned pairs")
+
+        monkeypatch.setattr(
+            "desloppify.detectors.dupes.difflib.SequenceMatcher",
+            _ShouldNotInstantiate,
+        )
+
+        entries, total = detect_duplicates(fns, threshold=0.8)
+        assert entries == []
+        assert total == 2
