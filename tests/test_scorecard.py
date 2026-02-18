@@ -309,9 +309,9 @@ class TestGetPackageVersion:
         monkeypatch.setattr(
             scorecard.importlib_metadata,
             "version",
-            lambda name: "0.4.0",
+            lambda name: "0.6.0",
         )
-        assert _get_package_version() == "0.4.0"
+        assert _get_package_version() == "0.6.0"
 
     def test_falls_back_to_pyproject_version(self, monkeypatch, tmp_path):
         from desloppify.output import scorecard
@@ -322,10 +322,10 @@ class TestGetPackageVersion:
         monkeypatch.setattr(scorecard.importlib_metadata, "version", _missing)
         monkeypatch.setattr(scorecard, "PROJECT_ROOT", tmp_path)
         (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname = "desloppify"\nversion = "0.4.0"\n',
+            '[project]\nname = "desloppify"\nversion = "0.6.0"\n',
             encoding="utf-8",
         )
-        assert _get_package_version() == "0.4.0"
+        assert _get_package_version() == "0.6.0"
 
     def test_returns_unknown_when_unavailable(self, monkeypatch, tmp_path):
         from desloppify.output import scorecard
