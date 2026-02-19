@@ -13,17 +13,47 @@ from desloppify.engine.detectors import large as large_detector_mod
 from desloppify.engine.detectors import orphaned as orphaned_detector_mod
 from desloppify.engine.detectors import single_use as single_use_detector_mod
 from desloppify.engine.detectors.base import ComplexitySignal, GodRule
-from desloppify.utils import log
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages.framework.base import LangConfig, add_structural_signal, make_cycle_findings, make_facade_findings, make_orphaned_findings, make_passthrough_findings, make_single_use_findings, make_unused_findings, merge_structural_signals
-from desloppify.languages.python.detectors import coupling_contracts as coupling_contracts_detector_mod
+from desloppify.languages.framework.base.structural import (
+    add_structural_signal,
+    merge_structural_signals,
+)
+from desloppify.languages.framework.base.types import LangConfig
+from desloppify.languages.framework.finding_factories import (
+    make_cycle_findings,
+    make_facade_findings,
+    make_orphaned_findings,
+    make_passthrough_findings,
+    make_single_use_findings,
+    make_unused_findings,
+)
+from desloppify.languages.python.detectors import (
+    coupling_contracts as coupling_contracts_detector_mod,
+)
 from desloppify.languages.python.detectors import deps as deps_detector_mod
 from desloppify.languages.python.detectors import facade as facade_detector_mod
-from desloppify.languages.python.detectors import responsibility_cohesion as cohesion_detector_mod
+from desloppify.languages.python.detectors import (
+    responsibility_cohesion as cohesion_detector_mod,
+)
 from desloppify.languages.python.detectors import unused as unused_detector_mod
-from desloppify.languages.python.detectors.complexity import compute_long_functions, compute_max_params, compute_nesting_depth
-from desloppify.languages.python.extractors import detect_passthrough_functions, extract_py_classes
-from desloppify.languages.python.phases_quality import phase_dict_keys, phase_layer_violation, phase_mutable_state, phase_smells
+from desloppify.languages.python.detectors.complexity import (
+    compute_long_functions,
+    compute_max_params,
+    compute_nesting_depth,
+)
+from desloppify.languages.python.extractors import detect_passthrough_functions
+from desloppify.languages.python.extractors_classes import extract_py_classes
+from desloppify.languages.python.phases_quality import (
+    phase_dict_keys as _phase_dict_keys,
+)
+from desloppify.languages.python.phases_quality import (
+    phase_layer_violation as _phase_layer_violation,
+)
+from desloppify.languages.python.phases_quality import (
+    phase_mutable_state as _phase_mutable_state,
+)
+from desloppify.languages.python.phases_quality import phase_smells as _phase_smells
+from desloppify.utils import log
 
 # ── Config data (single source of truth) ──────────────────
 
@@ -94,14 +124,6 @@ PY_ENTRY_PATTERNS = [
     "/extractors/",  # Extractor modules (loaded dynamically)
     "__init__.py",  # Package init files (barrels, not orphans)
 ]
-
-
-# ── Phase runners ──────────────────────────────────────────
-
-_phase_smells = phase_smells
-_phase_mutable_state = phase_mutable_state
-_phase_layer_violation = phase_layer_violation
-_phase_dict_keys = phase_dict_keys
 
 
 def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
@@ -204,8 +226,10 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         path,
         graph,
         extensions=lang.extensions,
-        extra_entry_patterns=lang.entry_patterns,
-        extra_barrel_names=lang.barrel_names,
+        options=orphaned_detector_mod.OrphanedDetectionOptions(
+            extra_entry_patterns=lang.entry_patterns,
+            extra_barrel_names=lang.barrel_names,
+        ),
     )
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
     results.extend(make_orphaned_findings(orphan_entries, log))
@@ -296,3 +320,18 @@ def _phase_responsibility_cohesion(
     return results, {
         "responsibility_cohesion": adjust_potential(lang.zone_map, candidates)
     }
+
+__all__ = [
+    "PY_COMPLEXITY_SIGNALS",
+    "PY_ENTRY_PATTERNS",
+    "PY_GOD_RULES",
+    "PY_SKIP_NAMES",
+    "_phase_coupling",
+    "_phase_dict_keys",
+    "_phase_layer_violation",
+    "_phase_mutable_state",
+    "_phase_responsibility_cohesion",
+    "_phase_smells",
+    "_phase_structural",
+    "_phase_unused",
+]

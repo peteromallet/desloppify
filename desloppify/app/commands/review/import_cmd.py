@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from desloppify.intelligence.narrative.core import NarrativeContext
+
 
 def subjective_at_target_dimensions(
     state_or_dim_scores: dict,
@@ -65,7 +67,7 @@ def do_import(
     save_state_fn(state, sp)
 
     lang_name = lang.name
-    narrative = compute_narrative_fn(state, lang=lang_name, command="review")
+    narrative = compute_narrative_fn(state, NarrativeContext(lang=lang_name, command="review"))
 
     print(colorize_fn(f"\n  {label} imported:", "bold"))
     print(

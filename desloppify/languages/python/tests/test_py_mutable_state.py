@@ -3,7 +3,9 @@
 import textwrap
 from pathlib import Path
 
-from desloppify.languages.python.detectors.mutable_state import detect_global_mutable_config
+from desloppify.languages.python.detectors.mutable_state import (
+    detect_global_mutable_config,
+)
 
 
 def _write_py(tmp_path: Path, code: str, filename: str = "mod.py") -> Path:

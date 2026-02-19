@@ -44,43 +44,6 @@ def _is_low_value_file(
         return bool(pattern.search(filepath))
     return bool(_LOW_VALUE_NAMES.search(filepath))
 
-# Minimum LOC to be worth a review slot.
-MIN_REVIEW_LOC = 20
-
-# Files with these name patterns have low subjective review value.
-LOW_VALUE_NAMES = re.compile(
-    r"(?:^|/)(?:types|constants|enums|index)\.[a-z]+$"
-)
-
-
-def hash_file(filepath: str) -> str:
-    """Compute a content hash for a file."""
-    try:
-        content = Path(filepath).read_bytes()
-        return hashlib.sha256(content).hexdigest()[:16]
-    except OSError:
-        return ""
-
-
-def _low_value_pattern(lang_name: str | None):
-    if isinstance(lang_name, str):
-        try:
-            lang_mod = importlib.import_module("desloppify.languages")
-            lang = lang_mod.get_lang(lang_name)
-            pattern = getattr(lang, "review_low_value_pattern", None)
-            if isinstance(pattern, re.Pattern):
-                return pattern
-        except Exception:
-            return LOW_VALUE_NAMES
-    return LOW_VALUE_NAMES
-
-
-def is_low_value_file(filepath: str, lang_name: str | None = None) -> bool:
-    """Whether a file path is low-value for subjective review."""
-    pattern = _low_value_pattern(lang_name)
-    return bool(pattern.search(filepath))
-
-
 def detect_review_coverage(
     files: list[str],
     zone_map,

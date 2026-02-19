@@ -7,10 +7,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from desloppify.languages.framework.base import LangConfig
+from desloppify.engine.planning.common import is_subjective_phase
+from desloppify.languages.framework.base.types import LangConfig
 from desloppify.languages.framework.runtime import LangRun, make_lang_run
 from desloppify.utils import colorize
-from desloppify.engine.planning.common import is_subjective_phase
 
 
 @dataclass
@@ -126,32 +126,10 @@ def generate_findings(
     lang: LangConfig | LangRun | None = None,
     *,
     options: PlanScanOptions | None = None,
-    **legacy_kwargs: object,
 ) -> tuple[list[dict], dict[str, int]]:
     """Run all detectors and convert results to normalized findings."""
     utils_mod = importlib.import_module("desloppify.utils")
-    include_slow = legacy_kwargs.pop("include_slow", None)
-    zone_overrides = legacy_kwargs.pop("zone_overrides", None)
-    profile = legacy_kwargs.pop("profile", None)
-    if legacy_kwargs:
-        unknown = next(iter(legacy_kwargs))
-        raise TypeError(
-            f"generate_findings() got an unexpected keyword argument '{unknown}'"
-        )
-
-    resolved_options = PlanScanOptions(
-        include_slow=options.include_slow if options is not None else True,
-        zone_overrides=options.zone_overrides if options is not None else None,
-        profile=options.profile if options is not None else "full",
-    )
-    if include_slow is not None:
-        resolved_options.include_slow = bool(include_slow)
-    if zone_overrides is not None:
-        resolved_options.zone_overrides = (
-            zone_overrides if isinstance(zone_overrides, dict) else None
-        )
-    if profile is not None and isinstance(profile, str):
-        resolved_options.profile = profile
+    resolved_options = options or PlanScanOptions()
 
     resolved_lang = _resolve_lang(lang, utils_mod.PROJECT_ROOT)
     runtime_lang = make_lang_run(resolved_lang)

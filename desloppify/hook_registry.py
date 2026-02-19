@@ -31,13 +31,13 @@ def get_lang_hook(lang_name: str | None, hook_name: str) -> object | None:
     if hook is not None:
         return hook
 
-    module_name = f"{__package__}.lang.{lang_name}"
+    module_name = f"desloppify.languages.{lang_name}"
     module = sys.modules.get(module_name)
 
     # Lazy-load only the requested language package.
     if module is None:
         try:
-            importlib.import_module(f".lang.{lang_name}", __package__)
+            importlib.import_module(module_name)
         except (ImportError, ValueError, TypeError, RuntimeError, OSError) as exc:
             _LOGGER.debug(
                 "Unable to import language hook package %s: %s", lang_name, exc

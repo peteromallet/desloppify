@@ -12,7 +12,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.engine.policy.zones_data import CONFIG_SKIP_DETECTORS, SCRIPT_SKIP_DETECTORS, SKIP_ALL_DETECTORS, TEST_SKIP_DETECTORS
+from desloppify.engine.policy.zones_data import (
+    CONFIG_SKIP_DETECTORS,
+    SCRIPT_SKIP_DETECTORS,
+    SKIP_ALL_DETECTORS,
+    TEST_SKIP_DETECTORS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +236,7 @@ def adjust_potential(zone_map, total: int) -> int:
     """Subtract non-production files from a potential count.
 
     Uses the zone map's own file list — no need to pass files separately.
-    No-op if zone_map is None (backward compat).
+    No-op if zone_map is None.
     """
     if zone_map is None:
         return total

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from desloppify import state as state_mod
-from desloppify.intelligence.integrity import review as subjective_review_integrity_mod
 from desloppify.app.commands.helpers.score import coerce_target_score
-from desloppify.app.commands.scan.scan_reporting_subjective_common import SubjectiveFollowup, flatten_cli_keys, render_subjective_scores
-from desloppify.app.commands.scan.scan_reporting_subjective_integrity import subjective_integrity_followup, subjective_integrity_notice_lines
+from desloppify.app.commands.scan.scan_reporting_subjective_common import (
+    SubjectiveFollowup,
+    flatten_cli_keys,
+    render_subjective_scores,
+)
+from desloppify.app.commands.scan.scan_reporting_subjective_integrity import (
+    subjective_integrity_followup,
+    subjective_integrity_notice_lines,
+)
+from desloppify.intelligence.integrity import review as subjective_review_integrity_mod
 
 
 def _subjective_reset_command(state: dict) -> str:

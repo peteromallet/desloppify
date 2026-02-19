@@ -4,7 +4,25 @@ from __future__ import annotations
 
 import argparse
 
-from desloppify.app.cli_support.parser_groups import _add_config_parser, _add_detect_parser, _add_dev_parser, _add_fix_parser, _add_ignore_parser, _add_issues_parser, _add_move_parser, _add_next_parser, _add_plan_parser, _add_resolve_parser, _add_review_parser, _add_scan_parser, _add_show_parser, _add_status_parser, _add_tree_parser, _add_viz_parser, _add_zone_parser
+from desloppify.app.cli_support.parser_groups import (
+    _add_config_parser,
+    _add_detect_parser,
+    _add_dev_parser,
+    _add_fix_parser,
+    _add_ignore_parser,
+    _add_issues_parser,
+    _add_move_parser,
+    _add_next_parser,
+    _add_plan_parser,
+    _add_resolve_parser,
+    _add_review_parser,
+    _add_scan_parser,
+    _add_show_parser,
+    _add_status_parser,
+    _add_tree_parser,
+    _add_viz_parser,
+    _add_zone_parser,
+)
 
 USAGE_EXAMPLES = """
 workflow:
@@ -97,9 +115,4 @@ def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.Ar
     return parser
 
 
-def build_parser(*, langs: list[str], detector_names: list[str]) -> argparse.ArgumentParser:
-    """Backward-compatible alias for ``create_parser``."""
-    return create_parser(langs=langs, detector_names=detector_names)
-
-
-__all__ = ["USAGE_EXAMPLES", "build_parser", "create_parser"]
+__all__ = ["USAGE_EXAMPLES", "create_parser"]

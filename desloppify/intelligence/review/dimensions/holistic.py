@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence.review.dimensions.data import load_holistic_dimensions
+from desloppify.intelligence.review.dimensions.data import load_dimensions
 
 (
     HOLISTIC_DIMENSIONS,
     HOLISTIC_DIMENSION_PROMPTS,
     HOLISTIC_REVIEW_SYSTEM_PROMPT,
-) = load_holistic_dimensions()
+) = load_dimensions()

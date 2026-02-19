@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import ast
 
-from desloppify.languages.python.detectors.dict_keys import _BULK_READ_METHODS, _CONFIG_NAMES, TrackedDict, _get_name, _get_str_key, _is_singular_plural, _levenshtein
+from desloppify.languages.python.detectors.dict_keys import (
+    _BULK_READ_METHODS,
+    _CONFIG_NAMES,
+    TrackedDict,
+    _get_name,
+    _get_str_key,
+    _is_singular_plural,
+    _levenshtein,
+)
 
 
 def _mark_returned_or_passed(visitor: DictKeyVisitor, node: ast.expr) -> None:

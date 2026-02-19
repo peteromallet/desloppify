@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from desloppify.app.output.scorecard_parts.theme import BG_ROW_ALT, BG_TABLE, BORDER, TEXT, fmt_score, load_font, scale, score_color
+from desloppify.app.output.scorecard_parts.theme import (
+    BG_ROW_ALT,
+    BG_TABLE,
+    BORDER,
+    TEXT,
+    fmt_score,
+    load_font,
+    scale,
+    score_color,
+)
 
 
 def _truncate_name(draw, name: str, max_name_w: int, font_row) -> str:

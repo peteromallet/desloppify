@@ -6,12 +6,12 @@ import os
 from pathlib import Path
 from textwrap import dedent
 
-from desloppify.core import registry as registry_mod
 from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
 from desloppify.app.output.scorecard_parts import projection as scorecard_projection_mod
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core import registry as registry_mod
 from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE
+from desloppify.utils import PROJECT_ROOT
 
 
 def _is_agent_environment() -> bool:

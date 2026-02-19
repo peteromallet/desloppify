@@ -4,19 +4,22 @@ from __future__ import annotations
 
 from desloppify import state as state_mod
 from desloppify import utils as utils_mod
-from desloppify.intelligence.narrative import compute_narrative
-from desloppify.app.output.scorecard_parts.projection import scorecard_dimensions_payload
-from desloppify.utils import colorize
-from desloppify.engine.work_queue_internal.core import QueueBuildOptions, build_work_queue
 from desloppify.app.commands import next_output as next_output_mod
 from desloppify.app.commands import next_render as next_render_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
-
-_write_query = write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
 from desloppify.app.commands.helpers.state import require_completed_scan
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_dimensions_payload,
+)
+from desloppify.engine.work_queue_internal.core import (
+    QueueBuildOptions,
+    build_work_queue,
+)
+from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
+from desloppify.utils import colorize
 
 
 def _scorecard_subjective(
@@ -101,7 +104,10 @@ def _get_items(args, state: dict, config: dict) -> None:
 
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None
-    narrative = compute_narrative(state, lang=lang_name, command="next")
+    narrative = compute_narrative(
+        state,
+        context=NarrativeContext(lang=lang_name, command="next"),
+    )
 
     payload = next_output_mod.build_query_payload(
         queue, items, command="next", narrative=narrative
@@ -116,7 +122,7 @@ def _get_items(args, state: dict, config: dict) -> None:
     payload["subjective_measures"] = [
         row for row in payload["scorecard_dimensions"] if row.get("subjective")
     ]
-    _write_query(payload)
+    write_query(payload)
 
     output_file = getattr(args, "output", None)
     if output_file:

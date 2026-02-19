@@ -7,8 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
 from desloppify.languages.typescript.fixers.common import collapse_blank_lines
+from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
 
 _DESTR_MEMBER_RE = re.compile(r"^\s*(\w+)\s*(?:=\s*[^,]+)?\s*,?\s*$")
 _REST_ELEMENT_RE = re.compile(r"\.\.\.\w+")
@@ -121,7 +121,6 @@ def fix_unused_vars(
         by_file[e["file"]].append(e)
 
     results = []
-    skipped_files = 0
     skip_reasons: dict[str, int] = defaultdict(int)
     skipped_files: list[tuple[str, str]] = []
 
@@ -170,7 +169,6 @@ def fix_unused_vars(
         except (OSError, UnicodeDecodeError) as ex:
             skipped_files.append((filepath, str(ex)))
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
-            skipped_files += 1
 
     if skipped_files:
         log_best_effort_failure(

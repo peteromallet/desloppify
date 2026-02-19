@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# NOTE: This module intentionally remains high-LOC; it keeps TypeScript plugin
+# orchestration centralized to preserve language-plugin simplicity.
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -17,12 +19,24 @@ from desloppify.engine.detectors import orphaned as orphaned_detector_mod
 from desloppify.engine.detectors import signature as signature_detector_mod
 from desloppify.engine.detectors import single_use as single_use_detector_mod
 from desloppify.engine.detectors.base import ComplexitySignal, GodRule
-from desloppify.state import make_finding
-from desloppify.utils import SRC_PATH, log, rel
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages.framework.base import LangConfig, add_structural_signal, make_cycle_findings, make_facade_findings, make_orphaned_findings, make_single_use_findings, make_smell_findings, make_unused_findings, merge_structural_signals
+from desloppify.languages.framework.base.structural import (
+    add_structural_signal,
+    merge_structural_signals,
+)
+from desloppify.languages.framework.base.types import LangConfig
+from desloppify.languages.framework.finding_factories import (
+    make_cycle_findings,
+    make_facade_findings,
+    make_orphaned_findings,
+    make_single_use_findings,
+    make_smell_findings,
+    make_unused_findings,
+)
 from desloppify.languages.typescript.detectors import concerns as concerns_detector_mod
-from desloppify.languages.typescript.detectors import deprecated as deprecated_detector_mod
+from desloppify.languages.typescript.detectors import (
+    deprecated as deprecated_detector_mod,
+)
 from desloppify.languages.typescript.detectors import deps as deps_detector_mod
 from desloppify.languages.typescript.detectors import exports as exports_detector_mod
 from desloppify.languages.typescript.detectors import facade as facade_detector_mod
@@ -32,7 +46,12 @@ from desloppify.languages.typescript.detectors import props as props_detector_mo
 from desloppify.languages.typescript.detectors import react as react_detector_mod
 from desloppify.languages.typescript.detectors import smells as smells_detector_mod
 from desloppify.languages.typescript.detectors import unused as unused_detector_mod
-from desloppify.languages.typescript.extractors import detect_passthrough_components, extract_ts_components
+from desloppify.languages.typescript.extractors_components import (
+    detect_passthrough_components,
+    extract_ts_components,
+)
+from desloppify.state import make_finding
+from desloppify.utils import SRC_PATH, log, rel
 
 # ── Helper computations for complexity signals ─────────────
 
@@ -462,10 +481,12 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         path,
         graph,
         extensions=lang.extensions,
-        extra_entry_patterns=lang.entry_patterns,
-        extra_barrel_names=lang.barrel_names,
-        dynamic_import_finder=deps_detector_mod.build_dynamic_import_targets,
-        alias_resolver=deps_detector_mod.ts_alias_resolver,
+        options=orphaned_detector_mod.OrphanedDetectionOptions(
+            extra_entry_patterns=lang.entry_patterns,
+            extra_barrel_names=lang.barrel_names,
+            dynamic_import_finder=deps_detector_mod.build_dynamic_import_targets,
+            alias_resolver=deps_detector_mod.ts_alias_resolver,
+        ),
     )
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
     results.extend(make_orphaned_findings(orphan_entries, log))

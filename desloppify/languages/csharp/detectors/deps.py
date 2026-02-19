@@ -13,9 +13,16 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 
-from desloppify.engine.detectors.graph import detect_cycles, finalize_graph, get_coupling_score
+from desloppify.engine.detectors.graph import (
+    detect_cycles,
+    finalize_graph,
+    get_coupling_score,
+)
+from desloppify.languages.csharp.extractors import (
+    CSHARP_FILE_EXCLUSIONS,
+    find_csharp_files,
+)
 from desloppify.utils import c, print_table, rel, resolve_path
-from desloppify.languages.csharp.extractors import CSHARP_FILE_EXCLUSIONS, find_csharp_files
 
 logger = logging.getLogger(__name__)
 

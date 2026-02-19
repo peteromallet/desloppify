@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 
-from desloppify.utils import rel
 from desloppify.languages._shared.review_dimensions import HOLISTIC_REVIEW_DIMENSIONS
+from desloppify.utils import rel
 
 REVIEW_GUIDANCE = {
     "patterns": [
@@ -57,14 +57,18 @@ def module_patterns(content: str) -> list[str]:
     return out
 
 
-def api_surface(file_contents: dict[str, str]) -> dict[str, list[str]]:
+def api_surface(
+    file_contents: dict[str, str],
+    rel_fn: object = None,
+) -> dict[str, list[str]]:
     """Compute TypeScript API-surface consistency context."""
+    _rel = rel_fn if callable(rel_fn) else rel
     sync_async_mix: list[str] = []
     for filepath, content in file_contents.items():
         has_sync = bool(re.search(r"\bexport\s+function\s+\w+", content))
         has_async = bool(re.search(r"\bexport\s+async\s+function\s+\w+", content))
         if has_sync and has_async:
-            sync_async_mix.append(rel(filepath))
+            sync_async_mix.append(_rel(filepath))
     if not sync_async_mix:
         return {}
     return {"sync_async_mix": sync_async_mix[:20]}

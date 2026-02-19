@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from desloppify.engine.state_internal.schema import DimensionScore, Finding, StateModel, StateStats
+from desloppify.engine.state_internal.schema import (
+    DimensionScore,
+    Finding,
+    StateModel,
+    StateStats,
+)
 
 
 class PlanState(TypedDict, total=False):

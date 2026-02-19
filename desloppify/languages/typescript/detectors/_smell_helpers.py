@@ -11,12 +11,22 @@ from __future__ import annotations
 import re
 from collections.abc import Generator
 
+from desloppify.languages.typescript.detectors._smell_effects import (
+    detect_dead_useeffects as _detect_dead_useeffects_impl,
+)
+from desloppify.languages.typescript.detectors._smell_effects import (
+    detect_empty_if_chains as _detect_empty_if_chains_impl,
+)
+from desloppify.languages.typescript.detectors._smell_effects import (
+    detect_error_no_throw as _detect_error_no_throw_impl,
+)
+from desloppify.languages.typescript.detectors._smell_effects import (
+    detect_swallowed_errors as _detect_swallowed_errors_impl,
+)
+from desloppify.languages.typescript.detectors._smell_effects import (
+    track_brace_body as _track_brace_body_impl,
+)
 from desloppify.utils import strip_c_style_comments
-from desloppify.languages.typescript.detectors._smell_effects import detect_dead_useeffects as _detect_dead_useeffects_impl
-from desloppify.languages.typescript.detectors._smell_effects import detect_empty_if_chains as _detect_empty_if_chains_impl
-from desloppify.languages.typescript.detectors._smell_effects import detect_error_no_throw as _detect_error_no_throw_impl
-from desloppify.languages.typescript.detectors._smell_effects import detect_swallowed_errors as _detect_swallowed_errors_impl
-from desloppify.languages.typescript.detectors._smell_effects import track_brace_body as _track_brace_body_impl
 
 
 def scan_code(

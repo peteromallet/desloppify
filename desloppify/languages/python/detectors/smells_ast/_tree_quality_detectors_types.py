@@ -6,6 +6,7 @@ import ast
 
 from desloppify.languages.python.detectors.smells_ast._shared import _iter_nodes
 
+
 def _detect_optional_param_sprawl(
     filepath: str,
     tree: ast.Module,

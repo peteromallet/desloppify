@@ -5,25 +5,41 @@ from __future__ import annotations
 import importlib
 
 from desloppify.engine.planning.common import CONFIDENCE_ORDER
-from desloppify.engine.work_queue_internal.helpers import is_review_finding as _is_review_finding
-from desloppify.engine.work_queue_internal.helpers import is_subjective_finding as _is_subjective_finding
-from desloppify.engine.work_queue_internal.helpers import primary_command_for_finding as _primary_command_for_finding
-from desloppify.engine.work_queue_internal.helpers import review_finding_weight as _review_finding_weight
-from desloppify.engine.work_queue_internal.helpers import scope_matches as _scope_matches
+from desloppify.engine.work_queue_internal.helpers import (
+    is_review_finding as _is_review_finding,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    is_subjective_finding as _is_subjective_finding,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    primary_command_for_finding as _primary_command_for_finding,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    review_finding_weight as _review_finding_weight,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    scope_matches as _scope_matches,
+)
 from desloppify.engine.work_queue_internal.helpers import slugify as _slugify
-from desloppify.engine.work_queue_internal.helpers import status_matches as _status_matches
-from desloppify.engine.work_queue_internal.helpers import subjective_strict_scores as _subjective_strict_scores
-from desloppify.engine.work_queue_internal.helpers import supported_fixers_for_item as _supported_fixers_for_item
+from desloppify.engine.work_queue_internal.helpers import (
+    status_matches as _status_matches,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    subjective_strict_scores as _subjective_strict_scores,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    supported_fixers_for_item as _supported_fixers_for_item,
+)
 
 
-def _subjective_score_value(item: dict) -> float:
+def subjective_score_value(item: dict) -> float:
     if item.get("kind") == "subjective_dimension":
         detail = item.get("detail", {})
         return float(detail.get("strict_score", item.get("subjective_score", 100.0)))
     return float(item.get("subjective_score", 100.0))
 
 
-def _build_finding_items(
+def build_finding_items(
     state: dict,
     *,
     scan_path: str | None,
@@ -82,7 +98,7 @@ def _build_finding_items(
     return out
 
 
-def _item_sort_key(item: dict) -> tuple:
+def item_sort_key(item: dict) -> tuple:
     if item.get("is_review"):
         # Review queue is always highest priority in `next`.
         return (
@@ -96,7 +112,7 @@ def _item_sort_key(item: dict) -> tuple:
         return (
             int(item.get("effective_tier", 4)),
             1,  # Subjective items sort after mechanical items within T4.
-            _subjective_score_value(item),
+            subjective_score_value(item),
             item.get("id", ""),
         )
 
@@ -110,7 +126,7 @@ def _item_sort_key(item: dict) -> tuple:
     )
 
 
-def _item_explain(item: dict) -> dict:
+def item_explain(item: dict) -> dict:
     effective_tier = int(item.get("effective_tier", item.get("tier", 3)))
     if item.get("is_review"):
         return {
@@ -135,7 +151,7 @@ def _item_explain(item: dict) -> dict:
         return {
             "kind": "subjective_dimension",
             "effective_tier": effective_tier,
-            "subjective_score": _subjective_score_value(item),
+            "subjective_score": subjective_score_value(item),
             "policy": (
                 "Subjective dimensions are always queued as T4 and do not outrank "
                 "mechanical T1/T2/T3 items."
@@ -165,11 +181,11 @@ def _item_explain(item: dict) -> dict:
             "Subjective findings are forced to T4 and do not outrank "
             "mechanical T1/T2/T3 items."
         )
-        explain["subjective_score"] = _subjective_score_value(item)
+        explain["subjective_score"] = subjective_score_value(item)
     return explain
 
 
-def _tier_counts(items: list[dict]) -> dict[int, int]:
+def tier_counts(items: list[dict]) -> dict[int, int]:
     counts = {1: 0, 2: 0, 3: 0, 4: 0}
     for item in items:
         tier = int(item.get("effective_tier", item.get("tier", 3)))
@@ -177,7 +193,7 @@ def _tier_counts(items: list[dict]) -> dict[int, int]:
     return counts
 
 
-def _choose_fallback_tier(requested_tier: int, counts: dict[int, int]) -> int | None:
+def choose_fallback_tier(requested_tier: int, counts: dict[int, int]) -> int | None:
     available = [tier for tier, count in counts.items() if count > 0]
     if not available:
         return None
@@ -207,18 +223,5 @@ __all__ = [
     "item_sort_key",
     "tier_counts",
     "subjective_score_value",
-    "_build_finding_items",
-    "_choose_fallback_tier",
-    "_item_explain",
-    "_item_sort_key",
-    "_subjective_score_value",
-    "_tier_counts",
     "group_queue_items",
 ]
-
-build_finding_items = _build_finding_items
-choose_fallback_tier = _choose_fallback_tier
-item_explain = _item_explain
-item_sort_key = _item_sort_key
-subjective_score_value = _subjective_score_value
-tier_counts = _tier_counts

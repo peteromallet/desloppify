@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 
-def format_strict_target_progress(strict_target: dict | None) -> tuple[list[tuple[str, str]], float | None, float | None]:
+def format_strict_target_progress(
+    strict_target: dict | None,
+) -> tuple[list[tuple[str, str]], float | None, float | None]:
     """Return display lines and numeric values for strict target progress.
 
     Returns:
@@ -24,16 +26,23 @@ def format_strict_target_progress(strict_target: dict | None) -> tuple[list[tupl
     current = strict_target.get("current")
     gap = strict_target.get("gap")
     state = strict_target.get("state")
-    if not isinstance(target, (int, float)):
+    if not isinstance(target, int | float):
         return lines, None, None
     target_f = float(target)
 
-    if not isinstance(current, (int, float)):
-        lines.append((f"  Strict target: {target_f:.1f}/100 · current strict score unavailable", "dim"))
+    if not isinstance(current, int | float):
+        lines.append(
+            (
+                f"  Strict target: {target_f:.1f}/100 · current strict score unavailable",
+                "dim",
+            )
+        )
         return lines, target_f, None
 
     current_f = float(current)
-    gap_f = float(gap) if isinstance(gap, (int, float)) else round(target_f - current_f, 1)
+    gap_f = (
+        float(gap) if isinstance(gap, int | float) else round(target_f - current_f, 1)
+    )
     if state == "below":
         lines.append((
             f"  Strict target: {target_f:.1f}/100 · currently {current_f:.1f}/100 ({gap_f:.1f} below target)",

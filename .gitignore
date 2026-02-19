@@ -13,6 +13,8 @@ review_refresh_import.json
 reviewed_files_import.json
 subjective_*.json
 review_findings.json
+review_batch_*.json
+findings.json
 scorecard.png
 .pytest*
 .tmp*

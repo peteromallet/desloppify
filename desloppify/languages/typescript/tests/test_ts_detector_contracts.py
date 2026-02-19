@@ -7,13 +7,15 @@ from unittest.mock import patch
 
 from desloppify.languages.typescript.detectors.contracts import (
     DetectorResult,
-    as_legacy_tuple,
 )
 from desloppify.languages.typescript.detectors.deprecated import (
     detect_deprecated,
     detect_deprecated_result,
 )
-from desloppify.languages.typescript.detectors.logs import detect_logs, detect_logs_result
+from desloppify.languages.typescript.detectors.logs import (
+    detect_logs,
+    detect_logs_result,
+)
 from desloppify.languages.typescript.detectors.patterns import (
     detect_pattern_anomalies,
     detect_pattern_anomalies_result,
@@ -81,7 +83,6 @@ def test_detector_result_tuple_order_and_legacy_adapter():
     )
     tuple_view = result.as_tuple()
     assert tuple_view == (entries, 5)
-    assert as_legacy_tuple(result) == tuple_view
 
 
 def test_detector_result_as_tuple_returns_live_entries_alias():

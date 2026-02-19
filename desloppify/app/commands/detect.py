@@ -6,28 +6,17 @@ import argparse
 import sys
 
 from desloppify import languages as lang_api
-from desloppify.languages import runtime as lang_runtime
-from desloppify.utils import colorize
 from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.runtime_options import resolve_lang_runtime_options
-
-DETECTOR_ALIASES: dict[str, str] = {
-    "single-use": "single_use",
-    "singleuse": "single_use",
-    "passthrough": "props",
-}
+from desloppify.languages import runtime as lang_runtime
+from desloppify.utils import colorize
 
 
 def _resolve_detector_key(
     detector: str, detect_commands: dict[str, object]
 ) -> str | None:
-    """Resolve detector aliases to a command key.
-
-    Canonical command keys should use underscores (e.g. ``single_use``), but
-    we also accept compatibility aliases (e.g. ``single-use`` and legacy
-    ``passthrough`` when only ``props`` exists).
-    """
+    """Resolve detector input to a command key."""
     detector = detector.strip()
     if detector in detect_commands:
         return detector
@@ -35,10 +24,6 @@ def _resolve_detector_key(
     normalized = detector.lower().replace("-", "_")
     if normalized in detect_commands:
         return normalized
-
-    alias_target = DETECTOR_ALIASES.get(detector) or DETECTOR_ALIASES.get(normalized)
-    if alias_target and alias_target in detect_commands:
-        return alias_target
 
     denormalized = detector.lower().replace("_", "-")
     if denormalized in detect_commands:
@@ -84,8 +69,10 @@ def cmd_detect(args: argparse.Namespace) -> None:
     lang_options = resolve_lang_runtime_options(args, lang_cfg)
     lang = lang_runtime.make_lang_run(
         lang_cfg,
-        runtime_settings=lang_settings,
-        runtime_options=lang_options,
+        overrides=lang_runtime.LangRunOverrides(
+            runtime_settings=lang_settings,
+            runtime_options=lang_options,
+        ),
     )
     args.lang_runtime_options = dict(lang_options)
     try:

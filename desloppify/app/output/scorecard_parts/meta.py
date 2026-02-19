@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 
 def resolve_project_name(project_root: Path) -> str:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from desloppify.languages import get_lang
+
 
 def _add_detect_parser(sub, detector_names: list[str]) -> None:
     p_detect = sub.add_parser(
@@ -179,6 +181,52 @@ def _add_config_parser(sub) -> None:
     c_unset.add_argument("config_key", type=str, help="Config key name")
 
 
+def _fixer_help_lines(langs: list[str]) -> list[str]:
+    fixer_help_lines: list[str] = []
+    for lang_name in langs:
+        try:
+            fixer_names = sorted(get_lang(lang_name).fixers.keys())
+        except (ImportError, ValueError, TypeError, AttributeError):
+            fixer_names = []
+        fixer_list = ", ".join(fixer_names) if fixer_names else "none yet"
+        fixer_help_lines.append(f"fixers ({lang_name}): {fixer_list}")
+    fixer_help_lines.append("special: review — prepare structured review data")
+    return fixer_help_lines
+
+
+def _add_fix_parser(sub, langs: list[str]) -> None:
+    p_fix = sub.add_parser(
+        "fix",
+        help="Auto-fix mechanical issues",
+        epilog="\n".join(_fixer_help_lines(langs)),
+    )
+    p_fix.add_argument("fixer", type=str, help="What to fix")
+    p_fix.add_argument("--path", type=str, default=None)
+    p_fix.add_argument("--state", type=str, default=None)
+    p_fix.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would change without modifying files",
+    )
+
+
+def _add_plan_parser(sub) -> None:
+    p_plan = sub.add_parser(
+        "plan", help="Generate prioritized markdown plan from state"
+    )
+    p_plan.add_argument("--state", type=str, default=None)
+    p_plan.add_argument(
+        "--output", type=str, metavar="FILE", help="Write to file instead of stdout"
+    )
+
+
+def _add_viz_parser(sub) -> None:
+    p_viz = sub.add_parser("viz", help="Generate interactive HTML treemap")
+    p_viz.add_argument("--path", type=str, default=None)
+    p_viz.add_argument("--output", type=str, default=None)
+    p_viz.add_argument("--state", type=str, default=None)
+
+
 def _add_dev_parser(sub) -> None:
     p_dev = sub.add_parser("dev", help="Developer utilities")
     dev_sub = p_dev.add_subparsers(dest="dev_action", required=True)
@@ -223,8 +271,11 @@ __all__ = [
     "_add_config_parser",
     "_add_detect_parser",
     "_add_dev_parser",
+    "_add_fix_parser",
     "_add_issues_parser",
     "_add_move_parser",
+    "_add_plan_parser",
     "_add_review_parser",
+    "_add_viz_parser",
     "_add_zone_parser",
 ]

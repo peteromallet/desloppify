@@ -1,0 +1,22 @@
+{
+  "dimension_prompts": {
+    "abstraction_fitness": {
+      "description": "TypeScript abstraction fitness: type and interface layers should improve safety and design clarity, not add ceremony or pass-through indirection.",
+      "look_for": [
+        "Functions/components that only forward props or args without behavior, validation, or translation",
+        "Interfaces/types with one implementation and no polymorphic usage pressure",
+        "Large option objects passed through multiple layers with only a small subset used locally",
+        "Generic helper abstractions with one concrete type usage in practice",
+        "Cross-feature chains of wrappers that pass data unchanged between controller/service/helper layers",
+        "Widespread one-implementation interface ecosystems that add naming ceremony without substitution value"
+      ],
+      "skip": [
+        "React/Next.js framework composition patterns required by routing or lifecycle boundaries",
+        "Wrappers that intentionally add auth, telemetry, caching, feature flags, or retries",
+        "Public API typing shells that isolate external SDK volatility",
+        "Intentional barrel/facade exports that define stable package entry points"
+      ]
+    }
+  },
+  "system_prompt_append": "TypeScript anchor checks: prop-drilling wrappers, single-implementation interfaces, generic surfaces used in only one concrete path, and recurring wrapper chains across feature boundaries."
+}

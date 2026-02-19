@@ -6,8 +6,11 @@ import logging
 import re
 from pathlib import Path
 
+from desloppify.languages.typescript.detectors._smell_helpers import (
+    _strip_ts_comments,
+    scan_code,
+)
 from desloppify.utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
-from desloppify.languages.typescript.detectors._smell_helpers import _strip_ts_comments, scan_code
 
 MAX_EFFECT_BODY = 1000  # max characters to scan for brace-matching a useEffect callback
 MAX_FUNC_SCAN = 2000  # max lines to scan for function body extent

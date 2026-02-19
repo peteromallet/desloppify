@@ -431,7 +431,7 @@ This section is important because C# support is not isolated to `lang/csharp/`.
 
 ### Shared phase helpers and contracts
 
-`desloppify/languages/framework/base.py`:
+`desloppify/languages/framework/base/` (notably `types.py` and `shared_phases.py`):
 
 - Defines `LangConfig` contract C# must satisfy
 - Runs shared phase logic for:
@@ -497,19 +497,19 @@ This section is important because C# support is not isolated to `lang/csharp/`.
 
 C# module tests are in:
 
-- `tests/test_csharp_init.py`
-- `tests/test_csharp_commands.py`
-- `tests/test_csharp_extractors.py`
-- `tests/test_csharp_deps.py`
-- `tests/test_csharp_scan.py`
-- `tests/test_test_coverage_csharp.py`
+- `desloppify/tests/lang/csharp/test_csharp_init.py`
+- `desloppify/tests/lang/csharp/test_csharp_commands.py`
+- `desloppify/tests/lang/csharp/test_csharp_extractors.py`
+- `desloppify/tests/lang/csharp/test_csharp_deps.py`
+- `desloppify/tests/lang/csharp/test_csharp_scan.py`
+- `desloppify/tests/lang/csharp/test_test_coverage_csharp.py`
 
 Fixtures are in:
 
-- `tests/fixtures/csharp/simple_app/`
-- `tests/fixtures/csharp/multi_project/`
-- `tests/fixtures/csharp/cyclic/`
-- `tests/fixtures/csharp/signal_rich/`
+- `desloppify/tests/fixtures/csharp/simple_app/`
+- `desloppify/tests/fixtures/csharp/multi_project/`
+- `desloppify/tests/fixtures/csharp/cyclic/`
+- `desloppify/tests/fixtures/csharp/signal_rich/`
 
 Fixture intent:
 
@@ -537,7 +537,7 @@ If you want to grow C# support, these are the safest places:
 4. Add C# move rewrite support by implementing C# replacement helpers and wiring `_compute_replacements(...)`.
 5. Add C# fixers by creating real entries in `fixers/` and registering them in `CSharpConfig.fixers`.
 
-When adding behavior, always add tests in `tests/test_csharp_*.py` and, if needed, a focused fixture under `tests/fixtures/csharp/`.
+When adding behavior, always add tests in `desloppify/tests/lang/csharp/test_csharp_*.py` and, if needed, a focused fixture under `desloppify/tests/fixtures/csharp/`.
 
 ## Troubleshooting notes
 

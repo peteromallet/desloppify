@@ -156,12 +156,13 @@ def validate_system_prompt(value: object, *, context: str) -> str:
     return value
 
 
-def parse_per_file_payload(
+def parse_dimensions_payload(
     payload: dict,
     *,
     context_prefix: str,
 ) -> tuple[list[str], dict[str, dict[str, object]], str]:
-    """Validate and parse per-file review dimensions payload."""
+    """Validate and parse a unified review dimensions payload."""
+    dims_key = "default_dimensions"
     validate_payload_keys(
         payload,
         required={"dimension_prompts", "system_prompt"},
@@ -170,10 +171,10 @@ def parse_per_file_payload(
     )
 
     dims: list[str] = []
-    if "default_dimensions" in payload:
+    if dims_key in payload:
         dims = validate_dimensions_list(
-            payload.get("default_dimensions"),
-            context=f"{context_prefix}.default_dimensions",
+            payload.get(dims_key),
+            context=f"{context_prefix}.{dims_key}",
         )
     prompts = validate_dimension_prompts(
         payload.get("dimension_prompts"),
@@ -199,64 +200,14 @@ def parse_per_file_payload(
     missing = [dim for dim in dims if dim not in prompts]
     if missing:
         raise ValueError(
-            f"{context_prefix}.default_dimensions missing prompts: {sorted(missing)}"
-        )
-
-    return dims, prompts, system_prompt
-
-
-def parse_holistic_payload(
-    payload: dict,
-    *,
-    context_prefix: str,
-) -> tuple[list[str], dict[str, dict[str, object]], str]:
-    """Validate and parse holistic review dimensions payload."""
-    validate_payload_keys(
-        payload,
-        required={"dimension_prompts", "system_prompt"},
-        optional={"holistic_dimensions"},
-        context=context_prefix,
-    )
-
-    dims: list[str] = []
-    if "holistic_dimensions" in payload:
-        dims = validate_dimensions_list(
-            payload.get("holistic_dimensions"),
-            context=f"{context_prefix}.holistic_dimensions",
-        )
-    prompts = validate_dimension_prompts(
-        payload.get("dimension_prompts"),
-        context=f"{context_prefix}.dimension_prompts",
-    )
-    system_prompt = validate_system_prompt(
-        payload.get("system_prompt"),
-        context=f"{context_prefix}.system_prompt",
-    )
-
-    for dim_name, entry in prompts.items():
-        meta = entry.get("meta")
-        if isinstance(meta, dict) and meta.get("enabled_by_default") is True:
-            if dim_name not in dims:
-                dims.append(dim_name)
-
-    if not dims:
-        raise ValueError(
-            f"{context_prefix} must define at least one holistic dimension "
-            "(either via holistic_dimensions or dimension_prompts.*.meta.enabled_by_default)"
-        )
-
-    missing = [dim for dim in dims if dim not in prompts]
-    if missing:
-        raise ValueError(
-            f"{context_prefix}.holistic_dimensions missing prompts: {sorted(missing)}"
+            f"{context_prefix}.{dims_key} missing prompts: {sorted(missing)}"
         )
 
     return dims, prompts, system_prompt
 
 
 __all__ = [
-    "parse_holistic_payload",
-    "parse_per_file_payload",
+    "parse_dimensions_payload",
     "validate_dimension_prompts",
     "validate_prompt_meta",
     "validate_dimensions_list",

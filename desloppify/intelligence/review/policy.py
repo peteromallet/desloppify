@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.intelligence.review.dimensions import DIMENSION_PROMPTS, HOLISTIC_DIMENSION_PROMPTS, is_custom_dimension, is_known_dimension, normalize_dimension_name
+from desloppify.intelligence.review.dimensions import (
+    DIMENSION_PROMPTS,
+    HOLISTIC_DIMENSION_PROMPTS,
+    is_custom_dimension,
+    is_known_dimension,
+    normalize_dimension_name,
+)
 
 
 @dataclass(frozen=True)

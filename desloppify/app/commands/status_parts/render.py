@@ -5,24 +5,31 @@ from __future__ import annotations
 from collections import defaultdict
 
 from desloppify import state as state_mod
-from desloppify.app.output.scorecard_parts.projection import scorecard_subjective_entries
-from desloppify.core.registry import dimension_action_type
-from desloppify.scoring import DIMENSIONS, compute_health_breakdown, compute_score_impact, merge_potentials
-from desloppify.utils import colorize, get_area, print_table
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.rendering import print_ranked_actions
 from desloppify.app.commands.helpers.subjective import print_subjective_followup
-from desloppify.app.commands.scan import scan_reporting_dimensions as reporting_dimensions_mod
-from desloppify.app.commands.status_parts.summary import print_scan_completeness
-from desloppify.app.commands.status_parts.summary import print_scan_metrics
-from desloppify.app.commands.status_parts.summary import score_summary_lines
+from desloppify.app.commands.scan import (
+    scan_reporting_dimensions as reporting_dimensions_mod,
+)
+from desloppify.app.commands.status_parts.summary import (
+    print_scan_completeness,
+    print_scan_metrics,
+    score_summary_lines,
+)
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_subjective_entries,
+)
+from desloppify.core.registry import dimension_action_type
+from desloppify.scoring import (
+    DIMENSIONS,
+    compute_health_breakdown,
+    compute_score_impact,
+    merge_potentials,
+)
+from desloppify.utils import colorize, get_area, print_table
 
-_print_scan_completeness = print_scan_completeness
-_print_scan_metrics = print_scan_metrics
-_score_summary_lines = score_summary_lines
 
-
-def _show_tier_progress_table(by_tier: dict) -> None:
+def show_tier_progress_table(by_tier: dict) -> None:
     """Fallback display when dimension scores are unavailable."""
     rows = []
     for tier_num in [1, 2, 3, 4]:
@@ -60,7 +67,7 @@ def _status_next_command(narrative: dict) -> str:
     return actions[0]["command"] if actions else "desloppify next --count 20"
 
 
-def _write_status_query(
+def write_status_query(
     *,
     state: dict,
     stats: dict,
@@ -101,7 +108,7 @@ def _write_status_query(
     )
 
 
-def _show_ignore_summary(ignores: list[str], suppression: dict) -> None:
+def show_ignore_summary(ignores: list[str], suppression: dict) -> None:
     """Show ignore list plus suppression accountability from recent scans."""
     print(colorize(f"\n  Ignore list ({len(ignores)}):", "dim"))
     for p in ignores[:10]:
@@ -143,7 +150,7 @@ def _scorecard_subjective_entries(state: dict, dim_scores: dict) -> list[dict]:
     )
 
 
-def _show_dimension_table(state: dict, dim_scores: dict):
+def show_dimension_table(state: dict, dim_scores: dict) -> None:
     """Show dimension health table with dual scores and progress bars."""
     print()
     bar_len = 20
@@ -242,7 +249,7 @@ def _show_dimension_table(state: dict, dim_scores: dict):
     print()
 
 
-def _show_focus_suggestion(dim_scores: dict, state: dict):
+def show_focus_suggestion(dim_scores: dict, state: dict) -> None:
     """Show the lowest-scoring dimension as the focus area."""
     lowest_kind = None
     lowest_name = ""
@@ -311,7 +318,7 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
             print()
 
 
-def _show_subjective_followup(
+def show_subjective_followup(
     state: dict, dim_scores: dict, *, target_strict_score: float
 ) -> None:
     """Show concrete subjective follow-up commands when applicable."""
@@ -333,7 +340,7 @@ def _show_subjective_followup(
         print()
 
 
-def _show_agent_plan(narrative: dict) -> None:
+def show_agent_plan(narrative: dict) -> None:
     """Show concise action plan derived from narrative.actions."""
     actions = narrative.get("actions", [])
     if not actions:
@@ -352,7 +359,7 @@ def _show_agent_plan(narrative: dict) -> None:
         print()
 
 
-def _show_structural_areas(state: dict):
+def show_structural_areas(state: dict):
     """Show structural debt grouped by area when T3/T4 debt is significant."""
     findings = state_mod.path_scoped_findings(
         state.get("findings", {}), state.get("scan_path")
@@ -425,7 +432,7 @@ def _show_structural_areas(state: dict):
     print()
 
 
-def _show_review_summary(state: dict):
+def show_review_summary(state: dict):
     """Show review findings summary if any exist."""
     findings = state.get("findings", {})
     review_open = [
@@ -466,27 +473,4 @@ __all__ = [
     "show_subjective_followup",
     "show_tier_progress_table",
     "write_status_query",
-    "_print_scan_completeness",
-    "_print_scan_metrics",
-    "_score_summary_lines",
-    "_show_agent_plan",
-    "_show_dimension_table",
-    "_show_focus_suggestion",
-    "_show_ignore_summary",
-    "_show_review_summary",
-    "_show_structural_areas",
-    "_show_subjective_followup",
-    "_show_tier_progress_table",
-    "_write_status_query",
 ]
-
-
-show_agent_plan = _show_agent_plan
-show_dimension_table = _show_dimension_table
-show_focus_suggestion = _show_focus_suggestion
-show_ignore_summary = _show_ignore_summary
-show_review_summary = _show_review_summary
-show_structural_areas = _show_structural_areas
-show_subjective_followup = _show_subjective_followup
-show_tier_progress_table = _show_tier_progress_table
-write_status_query = _write_status_query

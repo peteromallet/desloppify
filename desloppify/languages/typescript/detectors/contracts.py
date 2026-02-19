@@ -17,13 +17,8 @@ class DetectorResult(Generic[TEntry]):
     population_size: int
 
     def as_tuple(self) -> tuple[list[TEntry], int]:
-        """Backwards-compatible tuple view used by existing callers."""
+        """Tuple view used by detector wrappers."""
         return self.entries, self.population_size
 
 
-def as_legacy_tuple(result: DetectorResult[TEntry]) -> tuple[list[TEntry], int]:
-    """Explicit adapter for legacy tuple-returning detector entrypoints."""
-    return result.entries, result.population_size
-
-
-__all__ = ["DetectorResult", "as_legacy_tuple"]
+__all__ = ["DetectorResult"]

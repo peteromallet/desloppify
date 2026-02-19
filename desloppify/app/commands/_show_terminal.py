@@ -167,9 +167,9 @@ def show_fix_dry_run_samples(entries: list[dict], results: list[dict]) -> None:
     print(colorize("\n  ── Sample changes (before → after) ──", "cyan"))
     for result in random.sample(results, min(5, len(results))):
         _print_fix_file_sample(result, entries)
-    skipped = sum(len(r["removed"]) for r in results)
-    if len(entries) > skipped:
-        print(colorize(f"\n  Note: {len(entries) - skipped} of {len(entries)} entries were skipped (complex patterns, rest elements, etc.)", "dim"))
+    removed_count = sum(len(r["removed"]) for r in results)
+    if len(entries) > removed_count:
+        print(colorize(f"\n  Note: {len(entries) - removed_count} of {len(entries)} entries were skipped (complex patterns, rest elements, etc.)", "dim"))
     print()
 
 

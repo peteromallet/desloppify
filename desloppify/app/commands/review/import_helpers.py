@@ -58,7 +58,13 @@ def _validate_assessment_feedback(findings_data: dict[str, Any]) -> list[str]:
     return sorted(missing)
 
 
-def load_import_findings_data(import_file: str, *, colorize_fn) -> dict[str, Any]:
+def load_import_findings_data(
+    import_file: str,
+    *,
+    colorize_fn,
+    assessment_override: bool = False,
+    assessment_note: str | None = None,
+) -> dict[str, Any]:
     """Load and normalize review import payload to object format."""
     findings_path = Path(import_file)
     if not findings_path.exists():
@@ -74,6 +80,17 @@ def load_import_findings_data(import_file: str, *, colorize_fn) -> dict[str, Any
         if "findings" in findings_data:
             missing_feedback = _validate_assessment_feedback(findings_data)
             if missing_feedback:
+                if assessment_override:
+                    if not isinstance(assessment_note, str) or not assessment_note.strip():
+                        print(
+                            colorize_fn(
+                                "  Error: --assessment-override requires --assessment-note",
+                                "red",
+                            ),
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
+                    return findings_data
                 print(
                     colorize_fn(
                         "  Error: assessments below 100 must include explicit feedback "

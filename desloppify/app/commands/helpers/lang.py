@@ -3,20 +3,35 @@
 from __future__ import annotations
 
 import logging
-import sys
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from desloppify import languages as lang_api
-from desloppify.utils import PROJECT_ROOT, colorize
+from desloppify.utils import PROJECT_ROOT
 
 if TYPE_CHECKING:
-    from desloppify.languages.framework.base import LangConfig
+    from desloppify.languages.framework.base.types import LangConfig
 
 
 logger = logging.getLogger(__name__)
+
+
+class LangResolutionError(SystemExit):
+    """Raised when language resolution fails with a user-facing message.
+
+    Inherits from SystemExit so that callers which don't catch it explicitly
+    will still terminate with a non-zero exit code, matching the previous
+    sys.exit(1) behaviour.  The CLI top-level catches it to print a clean
+    error without a traceback.
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(1)
+
+
 EXTRA_ROOT_MARKERS = (
     "package.json",
     "pyproject.toml",
@@ -107,14 +122,9 @@ def resolve_lang(args) -> LangConfig | None:
     except ValueError as exc:
         langs = lang_api.available_langs()
         langs_str = ", ".join(langs) if langs else "registered language plugins"
-        print(colorize(f"  {exc}", "red"), file=sys.stderr)
-        print(
-            colorize(
-                f"  Hint: use --lang to select manually (available: {langs_str})", "dim"
-            ),
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise LangResolutionError(
+            f"{exc}\n  Hint: use --lang to select manually (available: {langs_str})"
+        ) from exc
 
 
 def resolve_lang_settings(config: dict, lang: LangConfig) -> dict[str, object]:

@@ -2,7 +2,7 @@
 
 Enforces configurable import direction rules between packages.
 When no explicit config is provided, applies a sensible default:
-  - detectors/ may not import from lang/ (shared detectors must be language-agnostic)
+  - engine/detectors/ may not import from languages/ (shared detectors must be language-agnostic)
 """
 
 from __future__ import annotations
@@ -19,18 +19,18 @@ logger = logging.getLogger(__name__)
 # These apply when no explicit config is provided.
 _DEFAULT_RULES: list[tuple[str, str, str]] = [
     (
-        "desloppify/detectors/",
-        "lang/",
+        "desloppify/engine/detectors/",
+        "languages/",
         "Shared detector imports from language plugin — breaks language-agnosticity",
     ),
     (
-        "desloppify/detectors/",
-        "review/",
+        "desloppify/engine/detectors/",
+        "intelligence/review/",
         "Shared detector imports from review layer — breaks layer separation",
     ),
     (
-        "desloppify/narrative/",
-        "commands/",
+        "desloppify/intelligence/narrative/",
+        "app/commands/",
         "Narrative module imports from command layer — breaks separation of concerns",
     ),
 ]

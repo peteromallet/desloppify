@@ -1,7 +1,10 @@
-"""Mutable process-wide runtime state shared by utility helpers."""
+"""Runtime state model for exclusions and in-memory caches."""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -75,19 +78,66 @@ class SourceFileCache:
         self.values.clear()
 
 
-EXCLUSION_CONFIG = ExclusionConfig()
-FILE_TEXT_CACHE = FileTextCache()
-CACHE_ENABLED = CacheEnabledFlag()
-SOURCE_FILE_CACHE = SourceFileCache(max_entries=16)
+@dataclass
+class RuntimeContext:
+    """Mutable runtime container for exclusion and cache state."""
+
+    exclusion_config: ExclusionConfig = field(default_factory=ExclusionConfig)
+    file_text_cache: FileTextCache = field(default_factory=FileTextCache)
+    cache_enabled: CacheEnabledFlag = field(default_factory=CacheEnabledFlag)
+    source_file_cache: SourceFileCache = field(
+        default_factory=lambda: SourceFileCache(max_entries=16)
+    )
+
+
+_PROCESS_RUNTIME_CONTEXT = RuntimeContext()
+_RUNTIME_CONTEXT: ContextVar[RuntimeContext | None] = ContextVar(
+    "desloppify_runtime_context",
+    default=None,
+)
+
+
+def make_runtime_context(*, source_file_cache_max_entries: int = 16) -> RuntimeContext:
+    """Create an isolated runtime context."""
+    return RuntimeContext(
+        source_file_cache=SourceFileCache(max_entries=source_file_cache_max_entries)
+    )
+
+
+def current_runtime_context() -> RuntimeContext:
+    """Return the active runtime context (or process fallback)."""
+    runtime = _RUNTIME_CONTEXT.get()
+    if runtime is not None:
+        return runtime
+    return _PROCESS_RUNTIME_CONTEXT
+
+
+@contextmanager
+def runtime_scope(runtime: RuntimeContext | None = None):
+    """Run code with an isolated runtime context."""
+    active = runtime or make_runtime_context()
+    token = _RUNTIME_CONTEXT.set(active)
+    try:
+        yield active
+    finally:
+        _RUNTIME_CONTEXT.reset(token)
+
+
+def set_process_runtime_context(runtime: RuntimeContext | None = None) -> RuntimeContext:
+    """Replace process fallback runtime context (primarily for tests)."""
+    global _PROCESS_RUNTIME_CONTEXT
+    _PROCESS_RUNTIME_CONTEXT = runtime or make_runtime_context()
+    return _PROCESS_RUNTIME_CONTEXT
 
 
 __all__ = [
-    "CACHE_ENABLED",
-    "EXCLUSION_CONFIG",
-    "FILE_TEXT_CACHE",
-    "SOURCE_FILE_CACHE",
     "CacheEnabledFlag",
     "ExclusionConfig",
     "FileTextCache",
+    "RuntimeContext",
     "SourceFileCache",
+    "current_runtime_context",
+    "make_runtime_context",
+    "runtime_scope",
+    "set_process_runtime_context",
 ]

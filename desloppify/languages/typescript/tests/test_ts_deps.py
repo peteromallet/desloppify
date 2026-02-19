@@ -209,8 +209,10 @@ class TestBuildDepGraph:
             tmp_path,
             graph,
             extensions=[".ts", ".tsx"],
-            extra_entry_patterns=[],
-            extra_barrel_names=set(),
+            options=orphaned_detector_mod.OrphanedDetectionOptions(
+                extra_entry_patterns=[],
+                extra_barrel_names=set(),
+            ),
         )
         orphan_files = {entry["file"] for entry in orphans}
         assert utils_key not in orphan_files
@@ -505,8 +507,10 @@ class TestFrameworkFiles:
             tmp_path,
             graph,
             extensions=[".ts", ".tsx"],
-            extra_entry_patterns=[],
-            extra_barrel_names=set(),
+            options=orphaned_detector_mod.OrphanedDetectionOptions(
+                extra_entry_patterns=[],
+                extra_barrel_names=set(),
+            ),
         )
         # The .svelte file should not appear in orphans (filtered by extensions)
         orphan_files = {e["file"] for e in orphans}

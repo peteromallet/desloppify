@@ -4,7 +4,6 @@ Review findings live in state["findings"]. This module provides:
 - Listing/sorting open review findings by impact
 - Storing investigation notes on findings
 - Expiring stale holistic findings during scan
-- Compatibility wrappers for issue rendering helpers
 """
 
 from __future__ import annotations
@@ -12,17 +11,15 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from desloppify.core.issues_render import finding_weight, render_issue_detail
+from desloppify.core.issues_render import finding_weight
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "finding_weight",
     "impact_label",
     "list_open_review_findings",
     "update_investigation",
     "expire_stale_holistic",
-    "render_issue_detail",
 ]
 
 

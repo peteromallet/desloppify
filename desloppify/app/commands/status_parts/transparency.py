@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Mapping
+from collections.abc import Mapping
 
+from desloppify.engine.policy.zones import EXCLUDED_ZONE_VALUES
 from desloppify.state import path_scoped_findings
 from desloppify.utils import colorize, print_table
-from desloppify.engine.policy.zones import EXCLUDED_ZONE_VALUES
 
 
 def show_ignore_summary(
@@ -15,12 +15,9 @@ def show_ignore_summary(
     suppression: Mapping[str, object],
     *,
     options: Mapping[str, object] | None = None,
-    **legacy_options,
 ) -> None:
     """Show ignore list plus suppression accountability from recent scans."""
     opts: dict[str, object] = dict(options or {})
-    for key, value in legacy_options.items():
-        opts.setdefault(key, value)
     opts.setdefault("ignore_meta", {})
     opts.setdefault("score_integrity", {})
     opts.setdefault("include_suppressed", False)

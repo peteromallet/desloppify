@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.engine.detectors.graph import finalize_graph
-from desloppify.utils import PROJECT_ROOT, resolve_path
 from desloppify.languages.dart.extractors import find_dart_files
 from desloppify.languages.dart.pubspec import read_package_name
+from desloppify.utils import PROJECT_ROOT, resolve_path
 
 _DART_DIRECTIVE_RE = re.compile(
     r"""(?m)^\s*(?:import|export|part)\s+['"]([^'"]+)['"]"""

@@ -6,31 +6,39 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from desloppify import utils as _utils_mod
-from desloppify.utils import disable_file_cache, enable_file_cache, read_file_text, rel, resolve_path
-from desloppify.intelligence.review.context_internal.patterns import CLASS_NAME_RE as _CLASS_NAME_RE
-from desloppify.intelligence.review.context_internal.patterns import ERROR_PATTERNS as _ERROR_PATTERNS
-from desloppify.intelligence.review.context_internal.patterns import FROM_IMPORT_RE as _FROM_IMPORT_RE
-from desloppify.intelligence.review.context_internal.patterns import FUNC_NAME_RE as _FUNC_NAME_RE
-from desloppify.intelligence.review.context_internal.patterns import NAME_PREFIX_RE as _NAME_PREFIX_RE
-from desloppify.intelligence.review.context_internal.patterns import default_review_module_patterns as _default_review_module_patterns
-from desloppify.intelligence.review.context_internal.patterns import extract_imported_names as _extract_imported_names
 from desloppify.intelligence.review.context_internal.models import ReviewContext
+from desloppify.intelligence.review.context_internal.patterns import (
+    CLASS_NAME_RE,
+    ERROR_PATTERNS,
+    FUNC_NAME_RE,
+    NAME_PREFIX_RE,
+    default_review_module_patterns,
+)
 from desloppify.intelligence.review.context_signals.ai import gather_ai_debt_signals
 from desloppify.intelligence.review.context_signals.auth import gather_auth_context
-from desloppify.intelligence.review.context_signals.migration import classify_error_strategy
+from desloppify.intelligence.review.context_signals.migration import (
+    classify_error_strategy,
+)
+from desloppify.utils import (
+    disable_file_cache,
+    enable_file_cache,
+    is_file_cache_enabled,
+    read_file_text,
+    rel,
+    resolve_path,
+)
 
 # ── Shared helpers ────────────────────────────────────────────────
 
 
-def _abs(filepath: str) -> str:
+def abs_path(filepath: str) -> str:
     """Resolve filepath to absolute using resolve_path."""
     return resolve_path(filepath)
 
 
-def _file_excerpt(filepath: str, max_lines: int = 30) -> str | None:
+def file_excerpt(filepath: str, max_lines: int = 30) -> str | None:
     """Read first *max_lines* of a file, returning the text or None."""
-    content = read_file_text(_abs(filepath))
+    content = read_file_text(abs_path(filepath))
     if content is None:
         return None
     lines = content.splitlines(keepends=True)
@@ -39,10 +47,10 @@ def _file_excerpt(filepath: str, max_lines: int = 30) -> str | None:
     return "".join(lines[:max_lines]) + f"\n... ({len(lines) - max_lines} more lines)"
 
 
-def _dep_graph_lookup(graph: dict, filepath: str) -> dict:
+def dep_graph_lookup(graph: dict, filepath: str) -> dict:
     """Look up a file in the dep graph, trying absolute and relative keys."""
-    abs_path = resolve_path(filepath)
-    entry = graph.get(abs_path)
+    resolved = resolve_path(filepath)
+    entry = graph.get(resolved)
     if entry is not None:
         return entry
     # Try relative path
@@ -53,7 +61,7 @@ def _dep_graph_lookup(graph: dict, filepath: str) -> dict:
     return {}
 
 
-def _importer_count(entry: dict) -> int:
+def importer_count(entry: dict) -> int:
     """Extract importer count from a dep graph entry."""
     importers = entry.get("importers", set())
     if isinstance(importers, set):
@@ -81,7 +89,7 @@ def build_review_context(
     if not files:
         return ctx
 
-    already_cached = bool(_utils_mod._cache_enabled)
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:
@@ -101,7 +109,7 @@ def _build_review_context_inner(
     # Pre-read all file contents once (cache will store them)
     file_contents: dict[str, str] = {}
     for filepath in files:
-        content = read_file_text(_abs(filepath))
+        content = read_file_text(abs_path(filepath))
         if content is not None:
             file_contents[filepath] = content
 
@@ -109,9 +117,9 @@ def _build_review_context_inner(
     prefix_counter: Counter = Counter()
     total_names = 0
     for content in file_contents.values():
-        for name in _FUNC_NAME_RE.findall(content) + _CLASS_NAME_RE.findall(content):
+        for name in FUNC_NAME_RE.findall(content) + CLASS_NAME_RE.findall(content):
             total_names += 1
-            match = _NAME_PREFIX_RE.match(name)
+            match = NAME_PREFIX_RE.match(name)
             if match:
                 prefix_counter[match.group(1)] += 1
     ctx.naming_vocabulary = {
@@ -122,7 +130,7 @@ def _build_review_context_inner(
     # 2. Error handling conventions — scan for patterns
     error_counts: Counter = Counter()
     for content in file_contents.values():
-        for pattern_name, pattern in _ERROR_PATTERNS.items():
+        for pattern_name, pattern in ERROR_PATTERNS.items():
             if pattern.search(content):
                 error_counts[pattern_name] += 1
     ctx.error_conventions = dict(error_counts)
@@ -131,7 +139,7 @@ def _build_review_context_inner(
     dir_patterns: dict[str, Counter] = {}
     module_pattern_fn = getattr(lang, "review_module_patterns_fn", None)
     if not callable(module_pattern_fn):
-        module_pattern_fn = _default_review_module_patterns
+        module_pattern_fn = default_review_module_patterns
     for filepath, content in file_contents.items():
         parts = Path(filepath).parts
         if len(parts) < 2:
@@ -140,7 +148,7 @@ def _build_review_context_inner(
         counter = dir_patterns.setdefault(dir_name, Counter())
         pattern_names = module_pattern_fn(content)
         if not isinstance(pattern_names, list | tuple | set):
-            pattern_names = _default_review_module_patterns(content)
+            pattern_names = default_review_module_patterns(content)
         for pattern_name in pattern_names:
             counter[pattern_name] += 1
         if re.search(r"\bclass\s+\w+", content):
@@ -156,9 +164,9 @@ def _build_review_context_inner(
         graph = lang.dep_graph
         importer_counts = {}
         for filepath, entry in graph.items():
-            importer_count = _importer_count(entry)
-            if importer_count > 0:
-                importer_counts[rel(filepath)] = importer_count
+            count = importer_count(entry)
+            if count > 0:
+                importer_counts[rel(filepath)] = count
         top = sorted(importer_counts.items(), key=lambda item: -item[1])[:20]
         ctx.import_graph_summary = {"top_imported": dict(top)}
 
@@ -198,8 +206,8 @@ def _build_review_context_inner(
             continue
         dir_name = parts[-2] + "/"
         counter = dir_functions.setdefault(dir_name, Counter())
-        for name in _FUNC_NAME_RE.findall(content):
-            match = _NAME_PREFIX_RE.match(name)
+        for name in FUNC_NAME_RE.findall(content):
+            match = NAME_PREFIX_RE.match(name)
             if match:
                 counter[match.group(1)] += 1
     ctx.sibling_conventions = {
@@ -225,7 +233,7 @@ def _build_review_context_inner(
     return ctx
 
 
-def _serialize_context(ctx: ReviewContext) -> dict:
+def serialize_context(ctx: ReviewContext) -> dict:
     """Convert ReviewContext to a JSON-serializable dict."""
     metrics = ("total_files", "total_loc", "avg_file_loc")
     out = {
@@ -250,48 +258,12 @@ def _serialize_context(ctx: ReviewContext) -> dict:
     return out
 
 
-def file_excerpt(filepath: str, max_lines: int = 30) -> str | None:
-    """Public wrapper for excerpt generation."""
-    return _file_excerpt(filepath, max_lines=max_lines)
-
-
-def importer_count(entry: dict) -> int:
-    """Public wrapper for importer-count extraction."""
-    return _importer_count(entry)
-
-
-def abs_path(filepath: str) -> str:
-    """Public wrapper for absolute-path resolution."""
-    return _abs(filepath)
-
-
-def dep_graph_lookup(graph: dict, filepath: str) -> dict:
-    """Public wrapper for dep-graph lookup."""
-    return _dep_graph_lookup(graph, filepath)
-
-
-def serialize_context(ctx: ReviewContext) -> dict:
-    """Public wrapper for JSON-safe context serialization."""
-    return _serialize_context(ctx)
-
-
 __all__ = [
     "ReviewContext",
     "abs_path",
     "build_review_context",
-    "dep_graph_lookup",
-    "serialize_context",
-    "_serialize_context",
     "file_excerpt",
-    "_file_excerpt",
-    "_dep_graph_lookup",
+    "dep_graph_lookup",
     "importer_count",
-    "_importer_count",
-    "_abs",
-    "_FUNC_NAME_RE",
-    "_CLASS_NAME_RE",
-    "_ERROR_PATTERNS",
-    "_NAME_PREFIX_RE",
-    "_FROM_IMPORT_RE",
-    "_extract_imported_names",
+    "serialize_context",
 ]

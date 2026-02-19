@@ -61,23 +61,35 @@ desloppify review --import file.json       # import review results
 
 Score = 40% mechanical + 60% subjective. Subjective starts at 0% until reviewed.
 
-1. `desloppify review --prepare` — writes review data to `query.json`
-2. Launch an isolated reviewer (Claude subagent, or Codex fresh thread/worktree/cloud task) to read `query.json` (or `review_packet_blind.json`), review files, and write assessments:
+1. `desloppify review --prepare` — writes dimension definitions and codebase context
+   to `query.json`.
+
+2. **Launch parallel subagents** — one message, multiple Task calls. Split the
+   dimensions across agents however makes sense. Give each agent:
+   - The codebase path and the dimensions to score
+   - What each dimension means (from `query.json`'s `dimension_prompts`)
+   - The output format (below)
+   - Nothing else — let them decide what to read and how
+
+3. Merge `assessments` (average multi-agent scores) and `findings`, then import:
+   ```bash
+   desloppify review --import findings.json
+   ```
+
+   Required output format per agent:
    ```json
    {
-     "assessments": {
-       "naming_quality": 75,
-       "error_consistency": 75,
-       "abstraction_fitness": 75,
-       "logic_clarity": 75,
-       "ai_generated_debt": 75,
-       "type_safety": 75,
-       "contract_coherence": 75
-     },
-     "findings": []
+     "assessments": { "naming_quality": 75.0, "logic_clarity": 82.0 },
+     "findings": [{
+       "dimension": "naming_quality",
+       "identifier": "short_id",
+       "summary": "one line",
+       "related_files": ["path/to/file.py"],
+       "evidence": ["specific observation"],
+       "suggestion": "concrete action"
+     }]
    }
    ```
-3. `desloppify review --import review_output.json`
 
 Need a clean subjective rerun from zero? Run `desloppify scan --path src/ --reset-subjective` before preparing/importing fresh review data.
 

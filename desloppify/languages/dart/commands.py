@@ -4,11 +4,20 @@ from __future__ import annotations
 
 import argparse
 
-from desloppify.languages._shared.scaffold_detect_commands import make_cmd_cycles, make_cmd_deps, make_cmd_dupes, make_cmd_orphaned
-from desloppify.languages.framework.commands_base import make_cmd_complexity, make_cmd_large, make_get_detect_commands
+from desloppify.languages._shared.scaffold_detect_commands import (
+    make_cmd_cycles,
+    make_cmd_deps,
+    make_cmd_dupes,
+    make_cmd_orphaned,
+)
 from desloppify.languages.dart.detectors.deps import build_dep_graph
 from desloppify.languages.dart.extractors import extract_functions, find_dart_files
 from desloppify.languages.dart.phases import DART_COMPLEXITY_SIGNALS
+from desloppify.languages.framework.commands_base import (
+    make_cmd_complexity,
+    make_cmd_large,
+    make_get_detect_commands,
+)
 
 _cmd_large_impl = make_cmd_large(find_dart_files, default_threshold=500)
 _cmd_complexity_impl = make_cmd_complexity(

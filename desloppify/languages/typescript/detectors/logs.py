@@ -15,12 +15,17 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import c, find_ts_files, grep_files, print_table, rel, resolve_path
-from desloppify.languages.typescript.detectors.contracts import DetectorResult, as_legacy_tuple
+from desloppify.languages.typescript.detectors.contracts import DetectorResult
+from desloppify.utils import (
+    c,
+    find_ts_files,
+    grep_files,
+    print_table,
+    rel,
+    resolve_path,
+)
 
 logger = logging.getLogger(__name__)
-
-LOGGER = logging.getLogger(__name__)
 
 
 TAG_EXTRACT_RE = re.compile(r"\[([^\]]+)\]")
@@ -32,8 +37,8 @@ _PAT2 = r"console\.(log|warn|info|debug)\s*\(\s*`\$\{\w*(TAG|DEBUG|LOG)\w*\}"
 
 
 def detect_logs(path: Path) -> tuple[list[dict], int]:
-    """Backwards-compatible logs detector entrypoint."""
-    return as_legacy_tuple(detect_logs_result(path))
+    """Logs detector entrypoint."""
+    return detect_logs_result(path).as_tuple()
 
 
 def detect_logs_result(path: Path) -> DetectorResult[dict]:

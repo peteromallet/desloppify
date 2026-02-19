@@ -5,17 +5,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from desloppify.engine.work_queue_internal import issues as issues_mod
-from desloppify.engine.planning import core as plan_mod
 from desloppify import state as state_mod
 from desloppify import utils as utils_mod
-from desloppify.languages.framework.runtime import make_lang_run
-from desloppify.utils import colorize
 from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.runtime_options import resolve_lang_runtime_options
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
-from desloppify.app.commands.scan.scan_helpers import _audit_excluded_dirs, _collect_codebase_metrics, _effective_include_slow, _resolve_scan_profile, _warn_explicit_lang_with_no_files
+from desloppify.app.commands.scan.scan_helpers import (
+    _audit_excluded_dirs,
+    _collect_codebase_metrics,
+    _effective_include_slow,
+    _resolve_scan_profile,
+    _warn_explicit_lang_with_no_files,
+)
+from desloppify.engine.planning import core as plan_mod
+from desloppify.engine.planning.scan import PlanScanOptions
+from desloppify.engine.work_queue_internal import issues as issues_mod
+from desloppify.languages.framework.runtime import LangRunOverrides, make_lang_run
+from desloppify.utils import colorize
 
 _WONTFIX_DECAY_SCANS_DEFAULT = 20
 _STRUCTURAL_COMPLEXITY_GROWTH_THRESHOLD = 10
@@ -85,12 +92,14 @@ def _configure_lang_runtime(
     lang_settings = resolve_lang_settings(config, lang)
     runtime_lang = make_lang_run(
         lang,
-        review_cache=state.get("review_cache", {}),
-        review_max_age_days=config.get("review_max_age_days", 30),
-        runtime_settings=lang_settings,
-        runtime_options=lang_options,
-        large_threshold_override=config.get("large_files_threshold", 0),
-        props_threshold_override=config.get("props_threshold", 0),
+        overrides=LangRunOverrides(
+            review_cache=state.get("review_cache", {}),
+            review_max_age_days=config.get("review_max_age_days", 30),
+            runtime_settings=lang_settings,
+            runtime_options=lang_options,
+            large_threshold_override=config.get("large_files_threshold", 0),
+            props_threshold_override=config.get("props_threshold", 0),
+        ),
     )
 
     state.setdefault("lang_capabilities", {})[runtime_lang.name] = {
@@ -330,10 +339,12 @@ def run_scan_generation(runtime: ScanRuntime) -> tuple[list[dict], dict, dict | 
     try:
         findings, potentials = plan_mod.generate_findings(
             runtime.path,
-            include_slow=runtime.effective_include_slow,
             lang=runtime.lang,
-            zone_overrides=runtime.zone_overrides,
-            profile=runtime.profile,
+            options=PlanScanOptions(
+                include_slow=runtime.effective_include_slow,
+                zone_overrides=runtime.zone_overrides,
+                profile=runtime.profile,
+            ),
         )
     finally:
         utils_mod.disable_file_cache()
@@ -390,15 +401,17 @@ def merge_scan_results(
     diff = state_mod.merge_scan(
         runtime.state,
         findings,
-        lang=runtime.lang.name if runtime.lang else None,
-        scan_path=scan_path_rel,
-        force_resolve=getattr(runtime.args, "force_resolve", False),
-        exclude=utils_mod.get_exclusions(),
-        potentials=potentials,
-        codebase_metrics=codebase_metrics,
-        include_slow=runtime.effective_include_slow,
-        ignore=runtime.config.get("ignore", []),
-        subjective_integrity_target=target_score,
+        options=state_mod.MergeScanOptions(
+            lang=runtime.lang.name if runtime.lang else None,
+            scan_path=scan_path_rel,
+            force_resolve=getattr(runtime.args, "force_resolve", False),
+            exclude=utils_mod.get_exclusions(),
+            potentials=potentials,
+            codebase_metrics=codebase_metrics,
+            include_slow=runtime.effective_include_slow,
+            ignore=runtime.config.get("ignore", []),
+            subjective_integrity_target=target_score,
+        ),
     )
 
     issues_mod.expire_stale_holistic(

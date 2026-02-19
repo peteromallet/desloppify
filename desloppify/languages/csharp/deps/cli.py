@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from desloppify.engine.detectors.graph import detect_cycles, get_coupling_score
@@ -15,8 +16,6 @@ def cmd_deps(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
     if getattr(args, "file", None):
         coupling = get_coupling_score(args.file, graph)
         if getattr(args, "json", False):
-            import json
-
             print(json.dumps({"file": rel(args.file), **coupling}, indent=2))
             return
         print(c(f"\nDependency info: {rel(args.file)}\n", "bold"))
@@ -27,8 +26,6 @@ def cmd_deps(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
 
     by_importers = sorted(graph.items(), key=lambda kv: (-kv[1].get("importer_count", 0), rel(kv[0])))
     if getattr(args, "json", False):
-        import json
-
         top = by_importers[: getattr(args, "top", 20)]
         print(
             json.dumps(
@@ -62,8 +59,6 @@ def cmd_cycles(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
     cycles, _ = detect_cycles(graph)
 
     if getattr(args, "json", False):
-        import json
-
         print(
             json.dumps(
                 {

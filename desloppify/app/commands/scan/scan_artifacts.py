@@ -5,11 +5,19 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+from desloppify.app.commands.scan.scan_workflow import (
+    ScanMergeResult,
+    ScanNoiseSnapshot,
+)
 from desloppify.core.config import config_for_query
 from desloppify.scoring import compute_health_breakdown
-from desloppify.state import get_objective_score, get_overall_score, get_strict_score, get_verified_strict_score
+from desloppify.state import (
+    get_objective_score,
+    get_overall_score,
+    get_strict_score,
+    get_verified_strict_score,
+)
 from desloppify.utils import PROJECT_ROOT, colorize
-from desloppify.app.commands.scan.scan_workflow import ScanMergeResult, ScanNoiseSnapshot
 
 
 def build_scan_query_payload(

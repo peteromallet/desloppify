@@ -19,25 +19,6 @@ class OrphanedDetectionOptions:
     alias_resolver: Callable[[str], str] | None = None
 
 
-def _resolve_orphaned_options(
-    options: OrphanedDetectionOptions | None,
-    legacy_options: dict[str, object],
-) -> OrphanedDetectionOptions:
-    if options is None:
-        resolved = OrphanedDetectionOptions()
-    else:
-        resolved = OrphanedDetectionOptions(
-            extra_entry_patterns=options.extra_entry_patterns,
-            extra_barrel_names=options.extra_barrel_names,
-            dynamic_import_finder=options.dynamic_import_finder,
-            alias_resolver=options.alias_resolver,
-        )
-    for key, value in legacy_options.items():
-        if hasattr(resolved, key):
-            setattr(resolved, key, value)
-    return resolved
-
-
 def _is_dynamically_imported(
     filepath: str,
     dynamic_targets: set[str],
@@ -68,7 +49,6 @@ def detect_orphaned_files(
     graph: dict,
     extensions: list[str],
     options: OrphanedDetectionOptions | None = None,
-    **legacy_options: object,
 ) -> tuple[list[dict], int]:
     """Find files with zero importers that aren't known entry points.
 
@@ -82,7 +62,7 @@ def detect_orphaned_files(
             - ``alias_resolver``: ``(target) -> resolved_target``
             If omitted, dynamic import checking is skipped.
     """
-    resolved_options = _resolve_orphaned_options(options, legacy_options)
+    resolved_options = options or OrphanedDetectionOptions()
     all_entry_patterns = resolved_options.extra_entry_patterns or []
     all_barrel_names = resolved_options.extra_barrel_names or set()
     dynamic_import_finder = resolved_options.dynamic_import_finder

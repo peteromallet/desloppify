@@ -2,17 +2,36 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence import narrative as narrative_mod
-from desloppify.core import registry as registry_mod
 from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
-from desloppify.app.output.scorecard_parts.projection import dimension_cli_key as _projection_dimension_cli_key
-from desloppify.app.output.scorecard_parts.projection import scorecard_dimension_cli_keys as _projection_scorecard_dimension_cli_keys
-from desloppify.app.output.scorecard_parts.projection import scorecard_dimension_rows as _projection_scorecard_dimension_rows
-from desloppify.utils import colorize
 from desloppify.app.commands.scan import scan_reporting_breakdown as breakdown_mod
 from desloppify.app.commands.scan import scan_reporting_progress as progress_mod
-from desloppify.app.commands.scan import scan_reporting_subjective_paths as subjective_paths_mod
+from desloppify.app.commands.scan.scan_reporting_subjective_common import (
+    SubjectiveFollowup,
+    flatten_cli_keys,
+    subjective_rerun_command,
+)
+from desloppify.app.commands.scan.scan_reporting_subjective_integrity import (
+    subjective_entries_for_dimension_keys,
+    subjective_integrity_followup,
+    subjective_integrity_notice_lines,
+)
+from desloppify.app.commands.scan.scan_reporting_subjective_output import (
+    build_subjective_followup,
+    show_subjective_paths,
+)
+from desloppify.app.output.scorecard_parts.projection import (
+    dimension_cli_key as _projection_dimension_cli_key,
+)
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_dimension_cli_keys as _projection_scorecard_dimension_cli_keys,
+)
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_dimension_rows as _projection_scorecard_dimension_rows,
+)
+from desloppify.core import registry as registry_mod
+from desloppify.intelligence import narrative as narrative_mod
+from desloppify.utils import colorize
 
 
 def _show_detector_progress(state: dict):
@@ -63,6 +82,9 @@ def scorecard_dimension_entries(
                 or (score == 0.0 and issues == 0 and checks == 0)
             )
         )
+        not_scanned = bool(
+            not is_subjective and data.get("not_scanned")
+        )
         entries.append(
             {
                 "name": name,
@@ -72,6 +94,7 @@ def scorecard_dimension_entries(
                 "checks": checks,
                 "subjective": is_subjective,
                 "placeholder": placeholder,
+                "not_scanned": not_scanned,
                 "cli_keys": _projection_scorecard_dimension_cli_keys(name, data),
             }
         )
@@ -86,6 +109,13 @@ def _show_scorecard_subjective_measures(state: dict) -> None:
 
     print(colorize("  Scorecard dimensions (matches scorecard.png):", "dim"))
     for entry in entries:
+        if entry.get("not_scanned"):
+            print(
+                "  "
+                + f"{entry['name']:<18} "
+                + colorize("─── skipped ───────────────────  (run without --skip-slow)", "yellow")
+            )
+            continue
         bar = _dimension_bar(entry["score"])
         placeholder = (
             colorize("  [unassessed]", "yellow") if entry.get("placeholder") else ""
@@ -132,16 +162,6 @@ def scorecard_subjective_entries(
     return entries
 
 
-# Re-export subjective helper APIs from dedicated module.
-SubjectiveFollowup = subjective_paths_mod.SubjectiveFollowup
-flatten_cli_keys = subjective_paths_mod.flatten_cli_keys
-build_subjective_followup = subjective_paths_mod.build_subjective_followup
-subjective_rerun_command = subjective_paths_mod.subjective_rerun_command
-subjective_entries_for_dimension_keys = subjective_paths_mod.subjective_entries_for_dimension_keys
-subjective_integrity_followup = subjective_paths_mod.subjective_integrity_followup
-subjective_integrity_notice_lines = subjective_paths_mod.subjective_integrity_notice_lines
-
-
 def _show_dimension_deltas(prev: dict, current: dict):
     """Show which dimensions changed between scans (health and strict)."""
     return breakdown_mod.show_dimension_deltas(
@@ -174,7 +194,7 @@ def _show_subjective_paths(
     target_strict_score: float | None = None,
 ) -> None:
     """Show explicit subjective-score improvement paths (coverage vs quality)."""
-    return subjective_paths_mod.show_subjective_paths(
+    return show_subjective_paths(
         state,
         dim_scores,
         colorize_fn=colorize,

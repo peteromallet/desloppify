@@ -7,8 +7,18 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from desloppify.utils import SRC_PATH, c, find_source_files, find_ts_files, grep_files, grep_files_containing, print_table, rel, resolve_path
 from desloppify.languages.typescript.detectors.deps import _FRAMEWORK_EXTENSIONS
+from desloppify.utils import (
+    SRC_PATH,
+    c,
+    find_source_files,
+    find_ts_files,
+    grep_files,
+    grep_files_containing,
+    print_table,
+    rel,
+    resolve_path,
+)
 
 EXPORT_DECL_RE = re.compile(
     r"^export\s+(?:declare\s+)?(?:const|let|function|class|type|interface|enum)\s+(\w+)",

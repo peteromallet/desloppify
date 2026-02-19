@@ -8,8 +8,8 @@ from pathlib import Path
 from types import ModuleType
 
 from desloppify import languages as lang_mod
-from desloppify.utils import colorize
 from desloppify.app.commands.helpers.lang import resolve_lang
+from desloppify.utils import colorize
 
 
 def _build_ext_to_lang_map() -> dict[str, str]:
@@ -82,16 +82,12 @@ def load_lang_move_module(lang_name: str) -> ModuleType:
 
 
 def resolve_move_verify_hint(move_mod: ModuleType) -> str:
-    """Return a move-module verification hint via modern or legacy API."""
+    """Return a move-module verification hint."""
     get_verify_hint = getattr(move_mod, "get_verify_hint", None)
     if callable(get_verify_hint):
         hint = get_verify_hint()
         if isinstance(hint, str):
             return hint.strip()
-
-    legacy_hint = getattr(move_mod, "VERIFY_HINT", "")
-    if isinstance(legacy_hint, str):
-        return legacy_hint.strip()
     return ""
 
 

@@ -1,15 +1,34 @@
 """Shared fixer utilities: bracket tracking, body extraction, fixer template."""
 
 import logging
+import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
 from desloppify.languages.typescript.detectors._smell_helpers import scan_code
+from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
 
 logger = logging.getLogger(__name__)
+
+_CHAR_DEPTH_DELTA: dict[str, tuple[str, int]] = {
+    "(": ("parens", 1),
+    ")": ("parens", -1),
+    "{": ("braces", 1),
+    "}": ("braces", -1),
+    "[": ("brackets", 1),
+    "]": ("brackets", -1),
+}
+
+
+def _group_entries(entries: list[dict], file_key: str) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for entry in entries:
+        filepath = entry.get(file_key)
+        if not isinstance(filepath, str) or not filepath:
+            continue
+        grouped.setdefault(filepath, []).append(entry)
+    return grouped
 
 
 def find_balanced_end(
@@ -109,7 +128,6 @@ def apply_fixer(
         except (OSError, UnicodeDecodeError) as ex:
             skipped_files.append((filepath, str(ex)))
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
-            skipped_files += 1
 
     if skipped_files:
         log_best_effort_failure(

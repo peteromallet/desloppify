@@ -5,10 +5,9 @@ from __future__ import annotations
 import importlib
 from copy import deepcopy
 
-from desloppify.intelligence.integrity.subjective import matches_target_score
 from desloppify.engine.state_internal.filtering import path_scoped_findings
-from desloppify.engine.state_internal.migrations import _migrate_progress_scores
 from desloppify.engine.state_internal.schema import ensure_state_defaults
+from desloppify.intelligence.integrity.subjective import matches_target_score
 
 _EMPTY_COUNTERS = ("open", "fixed", "auto_resolved", "wontfix", "false_positive")
 _SUBJECTIVE_TARGET_RESET_THRESHOLD = 2
@@ -29,7 +28,7 @@ def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str,
     return counters, tier_stats
 
 
-def _coerce_subjective_score(value: object) -> float:
+def _coerce_subjective_score(value: dict | float | int | str | None) -> float:
     """Normalize a subjective assessment score payload to a 0-100 float."""
     raw = value.get("score", 0) if isinstance(value, dict) else value
     try:
@@ -164,7 +163,6 @@ def _update_objective_health(
     state["objective_score"] = bundle.objective_score
     state["strict_score"] = bundle.strict_score
     state["verified_strict_score"] = bundle.verified_strict_score
-    _migrate_progress_scores(state)
 
 
 def _recompute_stats(

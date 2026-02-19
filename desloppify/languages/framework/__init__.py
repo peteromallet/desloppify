@@ -9,7 +9,7 @@ This package contains framework code used by all language plugins:
 
 from __future__ import annotations
 
-from .base import (
+from .base.types import (
     BoundaryRule,
     DetectorPhase,
     FixerConfig,
@@ -31,4 +31,3 @@ __all__ = [
     "get_lang",
     "make_lang_config",
 ]
-

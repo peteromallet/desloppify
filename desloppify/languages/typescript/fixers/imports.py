@@ -1,8 +1,13 @@
 """Unused import fixer: removes unused symbols from import statements."""
 
+import re
 from collections import defaultdict
 
-from desloppify.languages.typescript.fixers.common import apply_fixer, process_unused_import_lines
+from desloppify.languages.typescript.fixers.common import (
+    _collect_import_statement,
+    _is_import_complete,
+    apply_fixer,
+)
 
 
 def fix_unused_imports(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
@@ -71,17 +76,6 @@ def _process_file_lines(
     return result, removed_symbols
 
 
-def _collect_import_statement(lines: list[str], start: int) -> tuple[list[str], int]:
-    import_lines = [lines[start]]
-    idx = start
-    while not _is_import_complete("".join(import_lines)):
-        idx += 1
-        if idx >= len(lines):
-            break
-        import_lines.append(lines[idx])
-    return import_lines, idx
-
-
 def _process_import_statement(
     import_lines: list[str],
     *,
@@ -114,22 +108,6 @@ def _process_import_statement(
     if not removed_from_stmt:
         return import_lines, set()
     return [cleaned], removed_from_stmt
-
-
-def _is_import_complete(text: str) -> bool:
-    """Check if an import statement is complete."""
-    stripped = text.strip()
-    if stripped.endswith(";"):
-        return True
-    if "from " in stripped and (
-        "'" in stripped.split("from ")[-1] or '"' in stripped.split("from ")[-1]
-    ):
-        after_from = stripped.split("from ", 1)[-1].strip()
-        if (after_from.startswith("'") and after_from.count("'") >= 2) or (
-            after_from.startswith('"') and after_from.count('"') >= 2
-        ):
-            return True
-    return False
 
 
 def _normalize_binding_name(token: str) -> str:

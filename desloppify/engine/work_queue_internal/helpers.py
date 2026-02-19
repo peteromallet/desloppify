@@ -6,18 +6,18 @@ import importlib
 import re
 from fnmatch import fnmatch
 
-_ALL_STATUSES = {"open", "fixed", "wontfix", "false_positive", "auto_resolved", "all"}
+ALL_STATUSES = {"open", "fixed", "wontfix", "false_positive", "auto_resolved", "all"}
 ATTEST_EXAMPLE = (
     "I have actually improved [WHAT YOU IMPROVED EXPLICITLY] enough "
     "to honestly justify a score of [SCORE], and I am not gaming the score."
 )
 
 
-def _status_matches(item_status: str, status_filter: str) -> bool:
+def status_matches(item_status: str, status_filter: str) -> bool:
     return status_filter == "all" or item_status == status_filter
 
 
-def _is_subjective_finding(item: dict) -> bool:
+def is_subjective_finding(item: dict) -> bool:
     detector = item.get("detector")
     if detector in {"subjective_assessment"}:
         return True
@@ -26,11 +26,11 @@ def _is_subjective_finding(item: dict) -> bool:
     return False
 
 
-def _is_review_finding(item: dict) -> bool:
+def is_review_finding(item: dict) -> bool:
     return item.get("detector") == "review"
 
 
-def _review_finding_weight(item: dict) -> float:
+def review_finding_weight(item: dict) -> float:
     """Return review issue weight aligned with issues list ordering."""
     confidence = str(item.get("confidence", "low")).lower()
     weight_by_confidence = {
@@ -44,7 +44,7 @@ def _review_finding_weight(item: dict) -> float:
     return float(weight)
 
 
-def _scope_matches(item: dict, scope: str | None) -> bool:
+def scope_matches(item: dict, scope: str | None) -> bool:
     """Apply show-style pattern matching against a queue item."""
     if not scope:
         return True
@@ -80,7 +80,7 @@ def _scope_matches(item: dict, scope: str | None) -> bool:
     )
 
 
-def _slugify(text: str) -> str:
+def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", text.lower()).strip("_")
 
 
@@ -93,7 +93,7 @@ def _canonical_subjective_dimension_key(display_name: str) -> str:
     for dim_key, label in scoring_mod.DISPLAY_NAMES.items():
         if str(label).lower() == target:
             return str(dim_key)
-    return _slugify(cleaned)
+    return slugify(cleaned)
 
 
 def _subjective_dimension_aliases(display_name: str) -> set[str]:
@@ -103,13 +103,13 @@ def _subjective_dimension_aliases(display_name: str) -> set[str]:
     return {
         cleaned.lower(),
         cleaned.replace(" ", "_").lower(),
-        _slugify(cleaned),
+        slugify(cleaned),
         canonical.lower(),
-        _slugify(canonical),
+        slugify(canonical),
     }
 
 
-def _supported_fixers_for_item(state: dict, item: dict) -> set[str] | None:
+def supported_fixers_for_item(state: dict, item: dict) -> set[str] | None:
     """Return supported fixers for an item's language when known."""
     lang = str(item.get("lang", "") or "").strip()
     if not lang:
@@ -129,7 +129,7 @@ def _supported_fixers_for_item(state: dict, item: dict) -> set[str] | None:
     return {fixer for fixer in fixers if isinstance(fixer, str)}
 
 
-def _primary_command_for_finding(
+def primary_command_for_finding(
     item: dict, *, supported_fixers: set[str] | None = None
 ) -> str:
     registry_mod = importlib.import_module("desloppify.core.registry")
@@ -156,7 +156,7 @@ def _primary_command_for_finding(
     return f'desloppify resolve fixed "{item.get("id", "")}" --note "<what you did>" --attest "{ATTEST_EXAMPLE}"'
 
 
-def _subjective_strict_scores(state: dict) -> dict[str, float]:
+def subjective_strict_scores(state: dict) -> dict[str, float]:
     dim_scores = state.get("dimension_scores", {}) or {}
     if not dim_scores:
         return {}
@@ -180,15 +180,15 @@ def _subjective_strict_scores(state: dict) -> dict[str, float]:
             if not key:
                 continue
             aliases.add(key)
-            aliases.add(_slugify(key))
+            aliases.add(slugify(key))
         aliases.add(dim_key.lower())
-        aliases.add(_slugify(dim_key))
+        aliases.add(slugify(dim_key))
         for alias in aliases:
             scores[alias] = strict_val
     return scores
 
 
-def _build_subjective_items(
+def build_subjective_items(
     state: dict, findings: dict, *, threshold: float = 100.0
 ) -> list[dict]:
     """Create synthetic subjective work items (always tier 4)."""
@@ -243,7 +243,7 @@ def _build_subjective_items(
             if str(key).strip()
         ]
         aliases.update(cli_keys)
-        aliases.update(_slugify(key) for key in cli_keys)
+        aliases.update(slugify(key) for key in cli_keys)
         open_review = sum(review_open_by_dim.get(alias, 0) for alias in aliases)
         is_unassessed = bool(entry.get("placeholder")) or (
             name in unassessed_dims
@@ -263,7 +263,7 @@ def _build_subjective_items(
         summary = f"Subjective dimension below target: {name} ({strict_val:.1f}%)"
         items.append(
             {
-                "id": f"subjective::{_slugify(dim_key)}",
+                "id": f"subjective::{slugify(dim_key)}",
                 "detector": "subjective_assessment",
                 "file": ".",
                 "tier": 4,
@@ -285,18 +285,6 @@ def _build_subjective_items(
         )
     return items
 
-
-ALL_STATUSES = _ALL_STATUSES
-build_subjective_items = _build_subjective_items
-is_review_finding = _is_review_finding
-is_subjective_finding = _is_subjective_finding
-primary_command_for_finding = _primary_command_for_finding
-review_finding_weight = _review_finding_weight
-scope_matches = _scope_matches
-slugify = _slugify
-status_matches = _status_matches
-subjective_strict_scores = _subjective_strict_scores
-supported_fixers_for_item = _supported_fixers_for_item
 
 __all__ = [
     "ALL_STATUSES",

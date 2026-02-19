@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from desloppify import scoring as scoring_mod
-from desloppify.intelligence.integrity import subjective as subjective_integrity_mod
 from desloppify.app.commands.helpers.score import coerce_target_score
-from desloppify.app.commands.scan.scan_reporting_subjective_common import coerce_notice_count, coerce_str_keys, render_subjective_names, subjective_rerun_command
+from desloppify.app.commands.scan.scan_reporting_subjective_common import (
+    coerce_notice_count,
+    coerce_str_keys,
+    render_subjective_names,
+    subjective_rerun_command,
+)
+from desloppify.intelligence.integrity import subjective as subjective_integrity_mod
 
 
 def _subjective_display_name_from_key(dimension_key: str) -> str:

@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from desloppify.engine.scoring_internal.policy.core import CONFIDENCE_WEIGHTS, FAILURE_STATUSES_BY_MODE, HOLISTIC_MULTIPLIER, SCORING_MODES, ScoreMode, detector_policy
+from desloppify.engine.scoring_internal.policy.core import (
+    CONFIDENCE_WEIGHTS,
+    FAILURE_STATUSES_BY_MODE,
+    HOLISTIC_MULTIPLIER,
+    SCORING_MODES,
+    ScoreMode,
+    detector_policy,
+)
 
 
 def merge_potentials(potentials_by_lang: dict) -> dict[str, int]:
@@ -101,7 +108,7 @@ def _file_based_failures_by_mode(
     return out
 
 
-def _detector_stats_by_mode(
+def detector_stats_by_mode(
     detector: str,
     findings: dict,
     potential: int,
@@ -143,7 +150,7 @@ def _detector_stats_by_mode(
     return out
 
 
-def _detector_pass_rate(
+def detector_pass_rate(
     detector: str,
     findings: dict,
     potential: int,
@@ -156,16 +163,11 @@ def _detector_pass_rate(
     Zero potential -> (1.0, 0, 0.0).
     """
     mode: ScoreMode = "strict" if strict else "lenient"
-    return _detector_stats_by_mode(detector, findings, potential)[mode]
+    return detector_stats_by_mode(detector, findings, potential)[mode]
 
 
 __all__ = [
     "detector_pass_rate",
     "detector_stats_by_mode",
-    "_detector_pass_rate",
-    "_detector_stats_by_mode",
     "merge_potentials",
 ]
-
-detector_pass_rate = _detector_pass_rate
-detector_stats_by_mode = _detector_stats_by_mode

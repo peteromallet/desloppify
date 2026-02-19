@@ -4,9 +4,19 @@ from __future__ import annotations
 
 import ast
 
-from desloppify.languages.python.detectors.smells_ast._shared import _is_docstring, _is_log_or_print, _is_return_none, _is_trivial_if, _iter_nodes
-from desloppify.languages.python.detectors.smells_ast._tree_quality_detectors_types import _detect_annotation_quality as _detect_annotation_quality
-from desloppify.languages.python.detectors.smells_ast._tree_quality_detectors_types import _detect_optional_param_sprawl as _detect_optional_param_sprawl
+from desloppify.languages.python.detectors.smells_ast._shared import (
+    _is_docstring,
+    _is_log_or_print,
+    _is_return_none,
+    _is_trivial_if,
+    _iter_nodes,
+)
+from desloppify.languages.python.detectors.smells_ast._tree_quality_detectors_types import (
+    _detect_annotation_quality as _detect_annotation_quality,
+)
+from desloppify.languages.python.detectors.smells_ast._tree_quality_detectors_types import (
+    _detect_optional_param_sprawl as _detect_optional_param_sprawl,
+)
 
 __all__ = [
     "_detect_annotation_quality",

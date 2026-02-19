@@ -8,9 +8,22 @@ import re
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
+from desloppify.languages.typescript.detectors._smell_detectors import (
+    _detect_catch_return_default,
+    _detect_dead_functions,
+    _detect_monster_functions,
+    _detect_switch_no_default,
+    _detect_window_globals,
+)
+from desloppify.languages.typescript.detectors._smell_helpers import (
+    _detect_async_no_await,
+    _detect_error_no_throw,
+    _detect_swallowed_errors,
+    _strip_ts_comments,
+    _ts_match_is_in_string,
+    scan_code,
+)
 from desloppify.utils import PROJECT_ROOT, find_ts_files
-from desloppify.languages.typescript.detectors._smell_detectors import _detect_catch_return_default, _detect_dead_functions, _detect_monster_functions, _detect_switch_no_default, _detect_window_globals
-from desloppify.languages.typescript.detectors._smell_helpers import _detect_async_no_await, _detect_dead_useeffects, _detect_empty_if_chains, _detect_error_no_throw, _detect_swallowed_errors, _ts_match_is_in_string
 
 logger = logging.getLogger(__name__)
 

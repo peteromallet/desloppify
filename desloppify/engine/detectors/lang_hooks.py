@@ -9,7 +9,7 @@ from types import ModuleType
 
 @lru_cache(maxsize=256)
 def _import_lang_module(lang_name: str, module_name: str) -> ModuleType:
-    return importlib.import_module(f"..lang.{lang_name}.{module_name}", __package__)
+    return importlib.import_module(f"desloppify.languages.{lang_name}.{module_name}")
 
 
 def load_lang_hook_module(lang_name: str | None, module_name: str) -> ModuleType | None:
@@ -18,5 +18,5 @@ def load_lang_hook_module(lang_name: str | None, module_name: str) -> ModuleType
         return None
     try:
         return _import_lang_module(lang_name, module_name)
-    except Exception:
+    except (ImportError, ValueError, TypeError, RuntimeError, OSError):
         return None

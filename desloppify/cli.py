@@ -7,14 +7,14 @@ import sys
 
 from desloppify import utils as utils_mod
 from desloppify.app.cli_support.parser import create_parser as _create_parser
-from desloppify.app.commands.helpers.lang import resolve_lang
+from desloppify.app.commands.helpers.lang import LangResolutionError, resolve_lang
 from desloppify.app.commands.helpers.runtime import CommandRuntime
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.app.commands.registry import COMMAND_HANDLERS
 from desloppify.core.config import load_config
-from desloppify.languages import available_langs
-from desloppify.app.output import visualize as _visualize_module
 from desloppify.core.registry import detector_names as _detector_names
+from desloppify.core.runtime_state import runtime_scope
+from desloppify.languages import available_langs
 from desloppify.state import load_state
 from desloppify.utils import DEFAULT_PATH, PROJECT_ROOT
 
@@ -22,7 +22,7 @@ DETECTOR_NAMES = _detector_names()
 logger = logging.getLogger(__name__)
 
 def create_parser():
-    """Compatibility wrapper returning the top-level argparse parser."""
+    """Return the top-level argparse parser."""
     return _create_parser(langs=available_langs(), detector_names=DETECTOR_NAMES)
 
 
@@ -74,6 +74,15 @@ def _resolve_handler(command: str):
     return COMMAND_HANDLERS[command]
 
 
+def _handle_help_command(args, parser) -> None:
+    """Handle explicit help command when present in parser config."""
+    topic = list(getattr(args, "topic", []) or [])
+    try:
+        parser.parse_args([*topic, "--help"])
+    except SystemExit:
+        return
+
+
 def main() -> None:
     # Ensure Unicode output works on Windows terminals (cp1252 etc.)
     for stream in (sys.stdout, sys.stderr):
@@ -92,12 +101,18 @@ def main() -> None:
         _handle_help_command(args, parser)
         return
 
-    _resolve_default_path(args)
-    _load_shared_runtime(args)
-
-    handler = _resolve_handler(args.command)
     try:
-        handler(args)
+        with runtime_scope():
+            _resolve_default_path(args)
+            _load_shared_runtime(args)
+
+            handler = _resolve_handler(args.command)
+            handler(args)
+    except LangResolutionError as exc:
+        from desloppify.utils import colorize
+
+        print(colorize(f"  {exc.message}", "red"), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         sys.exit(1)

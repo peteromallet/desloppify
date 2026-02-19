@@ -5,10 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.engine.detectors.base import ComplexitySignal
-from desloppify.utils import log
-from desloppify.languages._shared.phases_common import run_coupling_phase, run_structural_phase
-from desloppify.languages.framework.base import LangConfig
+from desloppify.languages._shared.phases_common import (
+    run_coupling_phase,
+    run_structural_phase,
+)
 from desloppify.languages.dart.detectors.deps import build_dep_graph
+from desloppify.languages.framework.base.types import LangConfig
+from desloppify.utils import log
 
 DART_COMPLEXITY_SIGNALS = [
     ComplexitySignal(

@@ -6,16 +6,33 @@ import argparse
 import json
 
 from desloppify import state as state_mod
-from desloppify.intelligence.narrative import compute_narrative
-from desloppify.app.output.scorecard_parts.projection import scorecard_dimensions_payload
-from desloppify.scoring import compute_health_breakdown
-from desloppify.utils import check_tool_staleness, colorize
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
 from desloppify.app.commands.helpers.state import require_completed_scan
-from desloppify.app.commands.scan import scan_reporting_dimensions as reporting_dimensions_mod
-from desloppify.app.commands.status_parts.render import print_scan_completeness, print_scan_metrics, score_summary_lines, show_agent_plan, show_dimension_table, show_focus_suggestion, show_ignore_summary, show_review_summary, show_structural_areas, show_subjective_followup, show_tier_progress_table, write_status_query
+from desloppify.app.commands.scan import (
+    scan_reporting_dimensions as reporting_dimensions_mod,
+)
+from desloppify.app.commands.status_parts.render import (
+    print_scan_completeness,
+    print_scan_metrics,
+    score_summary_lines,
+    show_agent_plan,
+    show_dimension_table,
+    show_focus_suggestion,
+    show_ignore_summary,
+    show_review_summary,
+    show_structural_areas,
+    show_subjective_followup,
+    show_tier_progress_table,
+    write_status_query,
+)
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_dimensions_payload,
+)
+from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
+from desloppify.scoring import compute_health_breakdown
+from desloppify.utils import check_tool_staleness, colorize
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -62,7 +79,10 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None
-    narrative = compute_narrative(state, lang=lang_name, command="status")
+    narrative = compute_narrative(
+        state,
+        context=NarrativeContext(lang=lang_name, command="status"),
+    )
     ignores = config.get("ignore", [])
 
     for line, style in score_summary_lines(
@@ -151,21 +171,7 @@ def _status_json_payload(
         "last_scan": state.get("last_scan"),
     }
 
-
-# Backward-compatible exports for existing tests and call sites.
-_show_dimension_table = show_dimension_table
-_show_focus_suggestion = show_focus_suggestion
-_show_ignore_summary = show_ignore_summary
-_show_structural_areas = show_structural_areas
-_show_subjective_followup = show_subjective_followup
-
-
 __all__ = [
-    "_show_dimension_table",
-    "_show_focus_suggestion",
-    "_show_ignore_summary",
-    "_show_structural_areas",
-    "_show_subjective_followup",
     "cmd_status",
     "show_dimension_table",
     "show_focus_suggestion",

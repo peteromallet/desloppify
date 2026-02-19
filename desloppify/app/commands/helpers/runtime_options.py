@@ -26,17 +26,12 @@ def parse_lang_opt_assignments(raw_values: list[str] | None) -> dict[str, str]:
 
 
 def resolve_lang_runtime_options(args, lang) -> dict[str, object]:
-    """Resolve runtime options from generic --lang-opt and legacy aliases."""
+    """Resolve runtime options from generic --lang-opt inputs."""
     try:
         options = parse_lang_opt_assignments(getattr(args, "lang_opt", None))
     except ValueError as exc:
         print(colorize(f"  {exc}", "red"), file=sys.stderr)
         sys.exit(2)
-
-    for arg_name, option_key in (lang.runtime_option_aliases or {}).items():
-        value = getattr(args, arg_name, None)
-        if value not in (None, ""):
-            options[option_key] = value
 
     try:
         return lang.normalize_runtime_options(options, strict=True)

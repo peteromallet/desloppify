@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from desloppify.engine.work_queue_internal.core import QueueBuildOptions, build_work_queue
 from desloppify.engine.planning.types import PlanItem, PlanState
+from desloppify.engine.work_queue_internal.core import (
+    QueueBuildOptions,
+    build_work_queue,
+)
 
 
 def get_next_items(

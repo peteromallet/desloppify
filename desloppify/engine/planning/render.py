@@ -118,8 +118,7 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
     ]
     scorecard_subjective_names = {name for name, _ in scorecard_subjective_rows}
 
-    # Keep backward compatibility for custom dimensions that do not appear in
-    # scorecard.png by showing them in the main table section.
+    # Show custom dimensions not present in scorecard.png in the main table.
     custom_non_subjective_rows: list[tuple[str, dict]] = []
     for name, ds in sorted(dim_scores.items(), key=lambda item: str(item[0]).lower()):
         if name in rendered_names or not isinstance(ds, dict):

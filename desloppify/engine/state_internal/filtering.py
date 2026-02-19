@@ -5,8 +5,13 @@ from __future__ import annotations
 import fnmatch
 import importlib
 
+from desloppify.engine.state_internal.schema import (
+    Finding,
+    ensure_state_defaults,
+    utc_now,
+    validate_state_invariants,
+)
 from desloppify.utils import rel
-from desloppify.engine.state_internal.schema import Finding, ensure_state_defaults, utc_now, validate_state_invariants
 
 
 def path_scoped_findings(

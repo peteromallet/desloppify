@@ -7,19 +7,42 @@ import importlib
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
 
 from desloppify.engine.detectors import coupling as coupling_detector_mod
 from desloppify.engine.detectors import dupes as dupes_detector_mod
 from desloppify.engine.detectors import gods as gods_detector_mod
 from desloppify.engine.detectors import orphaned as orphaned_detector_mod
-from desloppify.utils import SRC_PATH, c, display_entries, find_ts_files, print_table, rel
-from desloppify.languages.framework.commands_base import make_cmd_complexity, make_cmd_facade, make_cmd_large, make_cmd_naming, make_cmd_passthrough, make_cmd_single_use, make_cmd_smells
+from desloppify.languages.framework.commands_base import (
+    make_cmd_complexity,
+    make_cmd_facade,
+    make_cmd_large,
+    make_cmd_naming,
+    make_cmd_passthrough,
+    make_cmd_single_use,
+    make_cmd_smells,
+)
 from desloppify.languages.typescript.detectors import deps as deps_detector_mod
 from desloppify.languages.typescript.detectors import facade as facade_detector_mod
 from desloppify.languages.typescript.detectors import smells as smells_detector_mod
-from desloppify.languages.typescript.extractors import detect_passthrough_components, extract_ts_components, extract_ts_functions
-from desloppify.languages.typescript.phases import TS_COMPLEXITY_SIGNALS, TS_GOD_RULES, TS_SKIP_DIRS, TS_SKIP_NAMES
+from desloppify.languages.typescript.extractors import extract_ts_functions
+from desloppify.languages.typescript.extractors_components import (
+    detect_passthrough_components,
+    extract_ts_components,
+)
+from desloppify.languages.typescript.phases import (
+    TS_COMPLEXITY_SIGNALS,
+    TS_GOD_RULES,
+    TS_SKIP_DIRS,
+    TS_SKIP_NAMES,
+)
+from desloppify.utils import (
+    SRC_PATH,
+    c,
+    display_entries,
+    find_ts_files,
+    print_table,
+    rel,
+)
 
 cmd_large = make_cmd_large(find_ts_files, default_threshold=500)
 cmd_complexity = make_cmd_complexity(find_ts_files, TS_COMPLEXITY_SIGNALS)
@@ -63,8 +86,10 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
         Path(args.path),
         graph,
         extensions=[".ts", ".tsx"],
-        dynamic_import_finder=deps_detector_mod.build_dynamic_import_targets,
-        alias_resolver=deps_detector_mod.ts_alias_resolver,
+        options=orphaned_detector_mod.OrphanedDetectionOptions(
+            dynamic_import_finder=deps_detector_mod.build_dynamic_import_targets,
+            alias_resolver=deps_detector_mod.ts_alias_resolver,
+        ),
     )
     if getattr(args, "json", False):
         print(

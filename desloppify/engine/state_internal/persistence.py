@@ -8,10 +8,16 @@ import shutil
 import sys
 from pathlib import Path
 
-from desloppify.utils import safe_write_text
-from desloppify.engine.state_internal.migrations import _migrate_progress_scores
-from desloppify.engine.state_internal.schema import CURRENT_VERSION, STATE_FILE, _empty_state, ensure_state_defaults, json_default, validate_state_invariants
+from desloppify.engine.state_internal.schema import (
+    CURRENT_VERSION,
+    STATE_FILE,
+    empty_state,
+    ensure_state_defaults,
+    json_default,
+    validate_state_invariants,
+)
 from desloppify.engine.state_internal.scoring import _recompute_stats
+from desloppify.utils import safe_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +30,6 @@ def _load_json(path: Path) -> dict[str, object]:
 
 
 def _normalize_loaded_state(data: dict[str, object]) -> dict[str, object]:
-    _migrate_progress_scores(data)
     normalized = ensure_state_defaults(data)
     validate_state_invariants(normalized)
     return normalized
@@ -34,7 +39,7 @@ def load_state(path: Path | None = None) -> dict[str, object]:
     """Load state from disk, or return empty state on missing/corruption."""
     state_path = path or STATE_FILE
     if not state_path.exists():
-        return _empty_state()
+        return empty_state()
 
     try:
         data = _load_json(state_path)
@@ -70,7 +75,7 @@ def load_state(path: Path | None = None) -> dict[str, object]:
             logger.debug(
                 "Corrupted state file retained at original path: %s", state_path
             )
-        return _empty_state()
+        return empty_state()
 
     version = data.get("version", 1)
     if version > CURRENT_VERSION:

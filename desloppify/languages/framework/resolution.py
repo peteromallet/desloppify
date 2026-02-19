@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.languages.framework import registry_state
-from desloppify.languages.framework.base import LangConfig
+from desloppify.languages.framework.base.types import LangConfig
 from desloppify.languages.framework.contract_validation import validate_lang_contract
 from desloppify.languages.framework.discovery import load_all
 

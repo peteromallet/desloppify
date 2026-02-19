@@ -9,7 +9,10 @@ from pathlib import Path
 
 from desloppify.engine.detectors.dupes import detect_duplicates
 from desloppify.engine.detectors.graph import detect_cycles
-from desloppify.engine.detectors.orphaned import detect_orphaned_files
+from desloppify.engine.detectors.orphaned import (
+    OrphanedDetectionOptions,
+    detect_orphaned_files,
+)
 from desloppify.utils import c, print_table, rel
 
 
@@ -104,8 +107,10 @@ def make_cmd_orphaned(
             Path(args.path),
             graph,
             extensions=extensions,
-            extra_entry_patterns=extra_entry_patterns,
-            extra_barrel_names=extra_barrel_names,
+            options=OrphanedDetectionOptions(
+                extra_entry_patterns=extra_entry_patterns,
+                extra_barrel_names=extra_barrel_names,
+            ),
         )
 
         if getattr(args, "json", False):

@@ -5,25 +5,60 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from desloppify.hook_registry import register_lang_hooks
-from desloppify.utils import find_py_files
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
+from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base import DetectorPhase, LangConfig, detector_phase_security, detector_phase_test_coverage, phase_private_imports, shared_subjective_duplicates_tail
+from desloppify.languages.framework.base.phase_builders import (
+    detector_phase_security,
+    detector_phase_test_coverage,
+    shared_subjective_duplicates_tail,
+)
+from desloppify.languages.framework.base.shared_phases import phase_private_imports
+from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages.python import test_coverage as py_test_coverage_hooks
 from desloppify.languages.python.commands import get_detect_commands
 from desloppify.languages.python.detectors.deps import build_dep_graph
-from desloppify.languages.python.detectors.private_imports import detect_private_imports as detect_python_private_imports
+from desloppify.languages.python.detectors.private_imports import (
+    detect_private_imports as detect_python_private_imports,
+)
 from desloppify.languages.python.detectors.security import detect_python_security
 from desloppify.languages.python.extractors import extract_py_functions
-from desloppify.languages.python.phases import PY_COMPLEXITY_SIGNALS, PY_ENTRY_PATTERNS, PY_GOD_RULES, PY_SKIP_NAMES, _phase_coupling, _phase_dict_keys, _phase_layer_violation, _phase_mutable_state, _phase_responsibility_cohesion, _phase_smells, _phase_structural, _phase_unused
-from desloppify.languages.python.review import HOLISTIC_REVIEW_DIMENSIONS as PY_HOLISTIC_REVIEW_DIMENSIONS
+from desloppify.languages.python.phases import (
+    PY_COMPLEXITY_SIGNALS as PY_COMPLEXITY_SIGNALS,
+)
+from desloppify.languages.python.phases import (
+    PY_ENTRY_PATTERNS,
+    _phase_coupling,
+    _phase_dict_keys,
+    _phase_layer_violation,
+    _phase_mutable_state,
+    _phase_responsibility_cohesion,
+    _phase_smells,
+    _phase_structural,
+    _phase_unused,
+)
+from desloppify.languages.python.phases import (
+    PY_GOD_RULES as PY_GOD_RULES,
+)
+from desloppify.languages.python.phases import (
+    PY_SKIP_NAMES as PY_SKIP_NAMES,
+)
+from desloppify.languages.python.review import (
+    HOLISTIC_REVIEW_DIMENSIONS as PY_HOLISTIC_REVIEW_DIMENSIONS,
+)
 from desloppify.languages.python.review import LOW_VALUE_PATTERN as PY_LOW_VALUE_PATTERN
-from desloppify.languages.python.review import MIGRATION_MIXED_EXTENSIONS as PY_MIGRATION_MIXED_EXTENSIONS
-from desloppify.languages.python.review import MIGRATION_PATTERN_PAIRS as PY_MIGRATION_PATTERN_PAIRS
+from desloppify.languages.python.review import (
+    MIGRATION_MIXED_EXTENSIONS as PY_MIGRATION_MIXED_EXTENSIONS,
+)
+from desloppify.languages.python.review import (
+    MIGRATION_PATTERN_PAIRS as PY_MIGRATION_PATTERN_PAIRS,
+)
 from desloppify.languages.python.review import REVIEW_GUIDANCE as PY_REVIEW_GUIDANCE
 from desloppify.languages.python.review import api_surface as py_review_api_surface
-from desloppify.languages.python.review import module_patterns as py_review_module_patterns
+from desloppify.languages.python.review import (
+    module_patterns as py_review_module_patterns,
+)
+from desloppify.utils import find_py_files
 
 # ── Zone classification rules (order matters — first match wins) ──
 

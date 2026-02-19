@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 
 from desloppify.engine.detectors.graph import finalize_graph
+from desloppify.languages.csharp.detectors import deps as _deps_detector_mod
+from desloppify.languages.csharp.extractors import (
+    CSHARP_FILE_EXCLUSIONS,
+    find_csharp_files,
+)
 from desloppify.utils import rel, resolve_path
-from desloppify.languages.csharp.extractors import CSHARP_FILE_EXCLUSIONS, find_csharp_files
 
 _USING_RE = re.compile(r"(?m)^\s*(?:global\s+)?using\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;")
 _USING_ALIAS_RE = re.compile(
@@ -100,49 +103,7 @@ def _resolve_project_ref_path(raw_ref: str, base_dirs: tuple[Path, ...]) -> Path
 
 
 def _parse_project_assets_references(csproj_file: Path) -> set[Path]:
-    assets_file = csproj_file.parent / "obj" / "project.assets.json"
-    if not assets_file.exists():
-        return set()
-    try:
-        payload = json.loads(assets_file.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return set()
-    if not isinstance(payload, dict):
-        return set()
-
-    refs: set[Path] = set()
-    base_dirs = (csproj_file.parent, assets_file.parent)
-
-    libraries = payload.get("libraries")
-    if isinstance(libraries, dict):
-        for lib_meta in libraries.values():
-            if not isinstance(lib_meta, dict):
-                continue
-            if str(lib_meta.get("type", "")).lower() != "project":
-                continue
-            for key in ("path", "msbuildProject"):
-                raw_ref = lib_meta.get(key)
-                if not isinstance(raw_ref, str):
-                    continue
-                resolved = _resolve_project_ref_path(raw_ref, base_dirs)
-                if resolved is not None:
-                    refs.add(resolved)
-
-    dep_groups = payload.get("projectFileDependencyGroups")
-    if isinstance(dep_groups, dict):
-        for deps in dep_groups.values():
-            if not isinstance(deps, list):
-                continue
-            for dep in deps:
-                if not isinstance(dep, str):
-                    continue
-                dep_token = dep.split(maxsplit=1)[0]
-                resolved = _resolve_project_ref_path(dep_token, base_dirs)
-                if resolved is not None:
-                    refs.add(resolved)
-
-    refs.discard(csproj_file.resolve(strict=False))
-    return refs
+    return _deps_detector_mod._parse_project_assets_references(csproj_file)
 
 
 def _map_file_to_project(cs_files: list[str], projects: list[Path]) -> dict[str, Path]:
@@ -177,22 +138,7 @@ def _is_entrypoint_file(filepath: Path, content: str) -> bool:
 
 
 def _parse_file_metadata(filepath: str) -> tuple[str | None, set[str], bool]:
-    abs_path = Path(resolve_path(filepath))
-    try:
-        content = abs_path.read_text()
-    except (OSError, UnicodeDecodeError):
-        return None, set(), False
-
-    namespace = None
-    ns_match = _NAMESPACE_RE.search(content)
-    if ns_match:
-        namespace = ns_match.group(1)
-
-    usings: set[str] = set()
-    usings.update(_USING_RE.findall(content))
-    usings.update(_USING_ALIAS_RE.findall(content))
-    usings.update(_USING_STATIC_RE.findall(content))
-    return namespace, usings, _is_entrypoint_file(abs_path, content)
+    return _deps_detector_mod._parse_file_metadata(filepath)
 
 
 def _expand_namespace_matches(using_ns: str, namespace_to_files: dict[str, set[str]]) -> set[str]:

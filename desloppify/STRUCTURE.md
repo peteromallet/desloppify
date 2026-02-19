@@ -72,15 +72,25 @@ desloppify/
 │       │   └── unused.py   # ruff-based unused detection
 │       └── fixers/     # PY auto-fixers (none yet — structural placeholder)
 │   │
-│   └── csharp/         # Everything C#/.NET
-│       ├── __init__.py # CSharpConfig + phase runners + config data
-│       ├── commands.py # detect-subcommand wrappers + command registry
-│       ├── extractors.py  # extract_csharp_functions, extract_csharp_classes
-│       ├── phases.py   # C# phase orchestration
-│       ├── detectors/  # C#-specific detector implementations
-│       │   ├── deps.py     # C# dependency graph builder (using + project refs)
-│       │   └── security.py # C# security checks
-│       └── fixers/     # C# auto-fixers (none yet — structural placeholder)
+│   ├── csharp/         # Everything C#/.NET
+│   │   ├── __init__.py # CSharpConfig + phase runners + config data
+│   │   ├── commands.py # detect-subcommand wrappers + command registry
+│   │   ├── extractors.py  # extract_csharp_functions, extract_csharp_classes
+│   │   ├── phases.py   # C# phase orchestration
+│   │   ├── detectors/  # C#-specific detector implementations
+│   │   │   ├── deps.py     # C# dependency graph builder (using + project refs)
+│   │   │   └── security.py # C# security checks
+│   │   └── fixers/     # C# auto-fixers (none yet — structural placeholder)
+│   ├── dart/           # Everything Dart/Flutter
+│   │   ├── __init__.py # DartConfig + phase runners
+│   │   ├── phases.py   # Dart phase orchestration
+│   │   ├── detectors/  # Dart-specific detectors
+│   │   └── fixers/     # Dart auto-fixers (none yet)
+│   └── gdscript/       # Everything GDScript (Godot)
+│       ├── __init__.py # GDScriptConfig + phase runners
+│       ├── phases.py   # GDScript phase orchestration
+│       ├── detectors/  # GDScript-specific detectors
+│       └── fixers/     # GDScript auto-fixers (none yet)
 │
 ```
 
@@ -88,7 +98,7 @@ desloppify/
 
 ```
 Layer 1: engine/detectors/ Generic algorithms. Data-in, data-out. Zero language imports.
-Layer 2: languages/framework/base.py Shared finding helpers. Normalize raw results → tiered findings.
+Layer 2: languages/framework/base/ Shared contracts/helpers. Normalize raw results → tiered findings.
 Layer 3: languages/<name>/ Language orchestration. Config + phase runners + extractors + CLI wrappers.
 ```
 
@@ -129,10 +139,10 @@ Bootstrap command: `desloppify dev scaffold-lang <name> --extension .ext --marke
   - `app/cli_support/parser.py`
 - Behavioral logic belongs in delegated modules:
   - review flow: `app/commands/review/prepare.py`, `app/commands/review/batches.py`, `app/commands/review/import_cmd.py`, `app/commands/review/runtime.py`
-  - scan reporting flow: `app/commands/scan/scan_reporting_progress.py`, `app/commands/scan/scan_reporting_breakdown.py`, `app/commands/scan/scan_reporting_subjective_paths.py`
+  - scan reporting flow: `app/commands/scan/scan_reporting_progress.py`, `app/commands/scan/scan_reporting_breakdown.py`, `app/commands/scan/scan_reporting_subjective_common.py`, `app/commands/scan/scan_reporting_subjective_integrity.py`, `app/commands/scan/scan_reporting_subjective_output.py`
   - subjective reporting internals: `app/commands/scan/scan_reporting_subjective_common.py`, `app/commands/scan/scan_reporting_subjective_integrity.py`, `app/commands/scan/scan_reporting_subjective_output.py`
   - parser group construction: `app/cli_support/parser_groups.py`
-- Compatibility wrappers in entry modules are acceptable when tests/patch points depend on legacy function names.
+- Compatibility wrappers are not allowed; use canonical helper modules and update tests/patch points to match.
 
 ## Allowed Dynamic Import Zones
 

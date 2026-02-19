@@ -5,24 +5,49 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from desloppify.hook_registry import register_lang_hooks
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
+from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base import DetectorPhase, LangConfig, LangValueSpec, detector_phase_security, detector_phase_test_coverage, shared_subjective_duplicates_tail
 from desloppify.languages.csharp import move as csharp_move_helpers
 from desloppify.languages.csharp import test_coverage as csharp_test_coverage_hooks
 from desloppify.languages.csharp.commands import get_detect_commands
-from desloppify.languages.csharp.detectors.deps import build_dep_graph as build_csharp_dep_graph
+from desloppify.languages.csharp.detectors.deps import (
+    build_dep_graph as build_csharp_dep_graph,
+)
 from desloppify.languages.csharp.detectors.security import detect_csharp_security
-from desloppify.languages.csharp.extractors import CSHARP_FILE_EXCLUSIONS, extract_csharp_functions, find_csharp_files
+from desloppify.languages.csharp.extractors import (
+    CSHARP_FILE_EXCLUSIONS,
+    extract_csharp_functions,
+    find_csharp_files,
+)
 from desloppify.languages.csharp.phases import _phase_coupling, _phase_structural
-from desloppify.languages.csharp.review import HOLISTIC_REVIEW_DIMENSIONS as CSHARP_HOLISTIC_REVIEW_DIMENSIONS
-from desloppify.languages.csharp.review import LOW_VALUE_PATTERN as CSHARP_LOW_VALUE_PATTERN
-from desloppify.languages.csharp.review import MIGRATION_MIXED_EXTENSIONS as CSHARP_MIGRATION_MIXED_EXTENSIONS
-from desloppify.languages.csharp.review import MIGRATION_PATTERN_PAIRS as CSHARP_MIGRATION_PATTERN_PAIRS
+from desloppify.languages.csharp.review import (
+    HOLISTIC_REVIEW_DIMENSIONS as CSHARP_HOLISTIC_REVIEW_DIMENSIONS,
+)
+from desloppify.languages.csharp.review import (
+    LOW_VALUE_PATTERN as CSHARP_LOW_VALUE_PATTERN,
+)
+from desloppify.languages.csharp.review import (
+    MIGRATION_MIXED_EXTENSIONS as CSHARP_MIGRATION_MIXED_EXTENSIONS,
+)
+from desloppify.languages.csharp.review import (
+    MIGRATION_PATTERN_PAIRS as CSHARP_MIGRATION_PATTERN_PAIRS,
+)
 from desloppify.languages.csharp.review import REVIEW_GUIDANCE as CSHARP_REVIEW_GUIDANCE
 from desloppify.languages.csharp.review import api_surface as csharp_review_api_surface
-from desloppify.languages.csharp.review import module_patterns as csharp_review_module_patterns
+from desloppify.languages.csharp.review import (
+    module_patterns as csharp_review_module_patterns,
+)
+from desloppify.languages.framework.base.phase_builders import (
+    detector_phase_security,
+    detector_phase_test_coverage,
+    shared_subjective_duplicates_tail,
+)
+from desloppify.languages.framework.base.types import (
+    DetectorPhase,
+    LangConfig,
+    LangValueSpec,
+)
 
 _CSHARP_MOVE_HELPERS = (
     csharp_move_helpers.find_replacements,
@@ -123,10 +148,6 @@ class CSharpConfig(LangConfig):
                     5,
                     "Import-count threshold treated as high fan-out for confidence corroboration",
                 ),
-            },
-            legacy_setting_keys={
-                "csharp_corroboration_min_signals": "corroboration_min_signals",
-                "csharp_high_fanout_threshold": "high_fanout_threshold",
             },
             runtime_option_specs={
                 "roslyn_cmd": LangValueSpec(

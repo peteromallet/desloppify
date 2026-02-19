@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.languages.framework.base import LangConfig
-from desloppify.utils import log
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
+from desloppify.languages.framework.base.types import LangConfig
+from desloppify.utils import log
 
 
 def _phase_mutable_state(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    from desloppify.languages.python.detectors.mutable_state import detect_global_mutable_config
+    from desloppify.languages.python.detectors.mutable_state import (
+        detect_global_mutable_config,
+    )
     from desloppify.state import make_finding
 
     entries, total_files = detect_global_mutable_config(path)
@@ -35,7 +37,9 @@ def _phase_mutable_state(path: Path, lang: LangConfig) -> tuple[list[dict], dict
 
 
 def _phase_layer_violation(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    from desloppify.languages.python.detectors.layer_violation import detect_layer_violations
+    from desloppify.languages.python.detectors.layer_violation import (
+        detect_layer_violations,
+    )
     from desloppify.state import make_finding
 
     entries, total_files = detect_layer_violations(path, lang.file_finder)
@@ -63,7 +67,10 @@ def _phase_layer_violation(path: Path, lang: LangConfig) -> tuple[list[dict], di
 
 
 def _phase_dict_keys(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    from desloppify.languages.python.detectors.dict_keys import detect_dict_key_flow, detect_schema_drift
+    from desloppify.languages.python.detectors.dict_keys import (
+        detect_dict_key_flow,
+        detect_schema_drift,
+    )
     from desloppify.state import make_finding
 
     flow_entries, files_checked = detect_dict_key_flow(path)

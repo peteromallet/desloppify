@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
+from pathlib import Path
 
 from desloppify.intelligence.narrative._constants import STRUCTURAL_MERGE
 from desloppify.intelligence.narrative.action_engine import compute_actions
 from desloppify.intelligence.narrative.action_models import ActionContext
 from desloppify.intelligence.narrative.action_tools import compute_tools
-from desloppify.intelligence.narrative.dimensions import _analyze_debt, _analyze_dimensions
+from desloppify.intelligence.narrative.dimensions import (
+    _analyze_debt,
+    _analyze_dimensions,
+)
 from desloppify.intelligence.narrative.headline import _compute_headline
 from desloppify.intelligence.narrative.phase import _detect_milestone, _detect_phase
 from desloppify.intelligence.narrative.reminders import _compute_reminders
@@ -58,7 +62,7 @@ def _resolve_target_strict_score(config: dict | None) -> tuple[int, str | None]:
 def _compute_strict_target(strict_score: float | None, config: dict | None) -> dict:
     """Build strict-target context for command rendering and agents."""
     target, warning = _resolve_target_strict_score(config)
-    if not isinstance(strict_score, (int, float)):
+    if not isinstance(strict_score, int | float):
         return {
             "target": float(target),
             "current": None,
@@ -113,13 +117,40 @@ def _count_open_by_detector(findings: dict) -> dict[str, int]:
     return by_det
 
 
+def _resolve_badge_path(project_root: Path) -> tuple[str, Path]:
+    """Resolve badge path from config, defaulting to root-level scorecard.png."""
+    default_rel = "scorecard.png"
+    config = {}
+    try:
+        config_mod = importlib.import_module("desloppify.core.config")
+        config = config_mod.load_config()
+    except Exception:
+        config = {}
+
+    raw_path = default_rel
+    if isinstance(config, dict):
+        configured = config.get("badge_path")
+        if isinstance(configured, str) and configured.strip():
+            raw_path = configured.strip()
+
+    path = Path(raw_path)
+    is_root_anchored = bool(path.root)
+    if not path.is_absolute() and not is_root_anchored:
+        return raw_path, project_root / path
+
+    try:
+        rel_path = str(path.relative_to(project_root))
+    except ValueError:
+        rel_path = str(path)
+    return rel_path, path
+
+
 def _compute_badge_status() -> dict:
-    """Check if assets/scorecard.png exists and whether README references it."""
+    """Check configured scorecard path and whether README references it."""
     utils_mod = importlib.import_module("desloppify.utils")
     project_root = utils_mod.PROJECT_ROOT
 
-    scorecard_rel = "assets/scorecard.png"
-    scorecard_path = project_root / scorecard_rel
+    scorecard_rel, scorecard_path = _resolve_badge_path(project_root)
     generated = scorecard_path.exists()
 
     in_readme = False
@@ -137,7 +168,9 @@ def _compute_badge_status() -> dict:
 
     recommendation = None
     if generated and not in_readme:
-        recommendation = 'Add to README: <img src="assets/scorecard.png" width="100%">'
+        recommendation = (
+            f'Add to README: <img src="{scorecard_rel}" width="100%">'
+        )
 
     return {
         "generated": generated,
@@ -243,42 +276,6 @@ class NarrativeContext:
     command: str | None = None
     config: dict | None = None
 
-    @classmethod
-    def from_legacy_kwargs(cls, legacy_kwargs: dict[str, object]) -> NarrativeContext:
-        """Build context from legacy keyword arguments."""
-        if not legacy_kwargs:
-            return cls()
-
-        allowed = {"diff", "lang", "command", "config"}
-        unknown = sorted(set(legacy_kwargs) - allowed)
-        if unknown:
-            unknown_text = ", ".join(unknown)
-            raise TypeError(f"Unexpected narrative option(s): {unknown_text}")
-
-        diff = legacy_kwargs.get("diff")
-        lang = legacy_kwargs.get("lang")
-        command = legacy_kwargs.get("command")
-        config = legacy_kwargs.get("config")
-
-        return cls(
-            diff=diff if isinstance(diff, dict) else None,
-            lang=lang if isinstance(lang, str) else None,
-            command=command if isinstance(command, str) else None,
-            config=config if isinstance(config, dict) else None,
-        )
-
-
-def _resolve_narrative_context(
-    context: NarrativeContext | None,
-    legacy_kwargs: dict[str, object],
-) -> NarrativeContext:
-    if context is not None and legacy_kwargs:
-        raise ValueError(
-            "Pass either context=NarrativeContext(...) or legacy keyword arguments, not both."
-        )
-    return context or NarrativeContext.from_legacy_kwargs(legacy_kwargs)
-
-
 def _history_for_lang(raw_history: list[dict], lang: str | None) -> list[dict]:
     if not lang:
         return raw_history
@@ -300,7 +297,6 @@ def _score_snapshot(state: dict) -> tuple[float | None, float | None]:
 def compute_narrative(
     state: dict,
     context: NarrativeContext | None = None,
-    **legacy_kwargs: object,
 ) -> dict[str, object]:
     """Compute structured narrative context from state data.
 
@@ -309,14 +305,8 @@ def compute_narrative(
     primary_action, why_now, verification_step, risk_flags, reminders,
     strict_target.
 
-    Args:
-        state: Current state dict.
-        diff: Scan diff (only present after a scan).
-        lang: Language plugin name.
-        command: The command that triggered this (e.g. "scan", "fix", "resolve").
-        config: Project config dict (optional; loaded from disk if not provided).
     """
-    resolved_context = _resolve_narrative_context(context, legacy_kwargs)
+    resolved_context = context or NarrativeContext()
 
     diff = resolved_context.diff
     lang = resolved_context.lang

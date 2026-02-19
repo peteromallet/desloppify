@@ -4,23 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from desloppify.state import utc_now
 from desloppify.intelligence.review.dimensions import normalize_dimension_name
-
-_LEGACY_SCALAR_DIMENSION_ALIASES = {
-    "naming": "naming_quality",
-    "abstraction": "abstraction_fitness",
-    "abstraction_fit": "abstraction_fitness",
-    "errors": "error_consistency",
-    "error": "error_consistency",
-    "logic": "logic_clarity",
-    "ai": "ai_generated_debt",
-    "ai_debt": "ai_generated_debt",
-    "contracts": "contract_coherence",
-    "contract": "contract_coherence",
-    "types": "type_safety",
-    "typing": "type_safety",
-}
+from desloppify.state import utc_now
 
 
 def store_assessments(
@@ -48,10 +33,6 @@ def store_assessments(
         dimension_key = normalize_dimension_name(str(dimension_name))
         if not dimension_key:
             continue
-        if not isinstance(value, dict):
-            dimension_key = _LEGACY_SCALAR_DIMENSION_ALIASES.get(
-                dimension_key, dimension_key
-            )
 
         existing = store.get(dimension_key)
         if existing and existing.get("source") == "holistic" and source == "per_file":

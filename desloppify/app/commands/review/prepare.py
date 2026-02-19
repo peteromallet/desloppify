@@ -38,13 +38,18 @@ def do_prepare(
     lang_run, found_files = setup_lang_fn(lang, path, config)
 
     lang_name = lang_run.name
-    narrative = narrative_mod.compute_narrative(state, lang=lang_name, command="review")
+    narrative = narrative_mod.compute_narrative(
+        state,
+        context=narrative_mod.NarrativeContext(lang=lang_name, command="review"),
+    )
     data = review_mod.prepare_holistic_review(
         path,
         lang_run,
         state,
-        dimensions=dimensions,
-        files=found_files or None,
+        options=review_mod.HolisticReviewPrepareOptions(
+            dimensions=dimensions,
+            files=found_files or None,
+        ),
     )
     data["config"] = _redacted_review_config(config)
     data["narrative"] = narrative

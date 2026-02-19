@@ -4,19 +4,33 @@ from __future__ import annotations
 
 from desloppify import scoring as scoring_mod
 from desloppify import utils as utils_mod
-from desloppify.app.output.scorecard_parts.projection import scorecard_subjective_entries
-from desloppify.intelligence.integrity.review import is_holistic_subjective_finding, subjective_review_open_breakdown, unassessed_subjective_dimensions
-from desloppify.utils import colorize
-from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE, group_queue_items
 from desloppify.app.commands.helpers.subjective import print_subjective_followup
-from desloppify.app.commands.scan.scan_reporting_dimensions import build_subjective_followup
+from desloppify.app.commands.scan.scan_reporting_subjective_output import (
+    build_subjective_followup,
+)
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_subjective_entries,
+)
+from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE, group_queue_items
+from desloppify.intelligence.integrity.review import (
+    is_holistic_subjective_finding,
+    subjective_review_open_breakdown,
+    unassessed_subjective_dimensions,
+)
+from desloppify.utils import colorize
 
 
 def scorecard_subjective(
     state_or_dim_scores: dict,
     dim_scores: dict | None = None,
 ) -> list[dict]:
-    """Return scorecard-aligned subjective entries for current dimension scores."""
+    """Return scorecard-aligned subjective entries for current dimension scores.
+
+    Supports two calling conventions:
+    - scorecard_subjective(state, dim_scores): full state + explicit dim_scores
+    - scorecard_subjective(dim_scores): shorthand when only dim_scores are available;
+      a synthetic state dict is fabricated from dim_scores for compatibility.
+    """
     state = state_or_dim_scores
     if dim_scores is None:
         dim_scores = state_or_dim_scores

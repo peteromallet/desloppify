@@ -10,13 +10,8 @@ from desloppify.core.fallbacks import restore_files_best_effort, warn_best_effor
 from desloppify.utils import colorize, rel, safe_write_text
 
 
-def safe_write(filepath: str | Path, content: str) -> None:
-    """Atomic write: write to temp file then rename."""
-    safe_write_text(filepath, content)
-
-
 def _rollback_written_files(written_files: dict[str, str]) -> None:
-    failed = restore_files_best_effort(written_files, safe_write)
+    failed = restore_files_best_effort(written_files, safe_write_text)
     for filepath in failed:
         warn_best_effort(f"Could not restore {rel(filepath)}")
 
@@ -57,12 +52,12 @@ def apply_file_move(
 
         if dest_abs in new_contents:
             written_files[dest_abs] = Path(dest_abs).read_text()
-            safe_write(dest_abs, new_contents[dest_abs])
+            safe_write_text(dest_abs, new_contents[dest_abs])
 
         for filepath in importer_changes:
             if filepath in new_contents:
                 written_files[filepath] = Path(filepath).read_text()
-                safe_write(filepath, new_contents[filepath])
+                safe_write_text(filepath, new_contents[filepath])
 
     except (OSError, UnicodeDecodeError, shutil.Error) as ex:
         print(colorize(f"\n  Error during move: {ex}", "red"), file=sys.stderr)
@@ -93,7 +88,7 @@ def apply_directory_move(
             for old_str, new_str in changes:
                 content = content.replace(old_str, new_str)
             written_files[str(dest_file)] = original
-            safe_write(dest_file, content)
+            safe_write_text(dest_file, content)
 
         for filepath, replacements in external_changes.items():
             original = Path(filepath).read_text()
@@ -101,7 +96,7 @@ def apply_directory_move(
             for old_str, new_str in replacements:
                 content = content.replace(old_str, new_str)
             written_files[filepath] = original
-            safe_write(filepath, content)
+            safe_write_text(filepath, content)
 
     except (OSError, UnicodeDecodeError, shutil.Error) as ex:
         print(
@@ -113,4 +108,4 @@ def apply_directory_move(
         raise
 
 
-__all__ = ["apply_directory_move", "apply_file_move", "safe_write"]
+__all__ = ["apply_directory_move", "apply_file_move"]

@@ -1,0 +1,22 @@
+{
+  "dimension_prompts": {
+    "abstraction_fitness": {
+      "description": "C# abstraction fitness: interfaces and service layers should provide real substitution, policy, or boundary value — not stack delegate-only indirection.",
+      "look_for": [
+        "Service methods that only delegate to another service/repository with no translation or policy",
+        "I* interfaces with exactly one implementation and no test seam or boundary rationale",
+        "Large options/context objects passed broadly while each method uses few members",
+        "Utility classes combining unrelated concerns under one static helper surface",
+        "Cross-layer delegate chains (controller -> service -> manager -> repository) with little behavior added",
+        "Shared helper/service layers acting as low-cohesion dumping grounds"
+      ],
+      "skip": [
+        "ASP.NET framework abstractions required for controller, middleware, or DI wiring",
+        "Wrappers that intentionally centralize auth, observability, retry, or caching policy",
+        "Boundary adapters around external SDKs with clear ownership and volatility",
+        "Intentional DI/IoC boundaries that improve testability and replaceability"
+      ]
+    }
+  },
+  "system_prompt_append": "C# anchor checks: delegate-only service layers, one-implementation I* patterns, broad options object plumbing, and recurring delegate chains across controller/service/repository layers."
+}

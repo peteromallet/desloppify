@@ -6,13 +6,23 @@ from dataclasses import dataclass
 
 from desloppify.engine.work_queue_internal.helpers import ALL_STATUSES as _ALL_STATUSES
 from desloppify.engine.work_queue_internal.helpers import ATTEST_EXAMPLE
-from desloppify.engine.work_queue_internal.helpers import build_subjective_items as _build_subjective_items
-from desloppify.engine.work_queue_internal.helpers import scope_matches as _scope_matches
-from desloppify.engine.work_queue_internal.ranking import build_finding_items as _build_finding_items
-from desloppify.engine.work_queue_internal.ranking import choose_fallback_tier as _choose_fallback_tier
+from desloppify.engine.work_queue_internal.helpers import (
+    build_subjective_items as _build_subjective_items,
+)
+from desloppify.engine.work_queue_internal.helpers import (
+    scope_matches as _scope_matches,
+)
+from desloppify.engine.work_queue_internal.ranking import (
+    build_finding_items as _build_finding_items,
+)
+from desloppify.engine.work_queue_internal.ranking import (
+    choose_fallback_tier as _choose_fallback_tier,
+)
 from desloppify.engine.work_queue_internal.ranking import group_queue_items
 from desloppify.engine.work_queue_internal.ranking import item_explain as _item_explain
-from desloppify.engine.work_queue_internal.ranking import item_sort_key as _item_sort_key
+from desloppify.engine.work_queue_internal.ranking import (
+    item_sort_key as _item_sort_key,
+)
 from desloppify.engine.work_queue_internal.ranking import tier_counts as _tier_counts
 
 
@@ -36,33 +46,9 @@ def build_work_queue(
     state: dict,
     *,
     options: QueueBuildOptions | None = None,
-    **legacy_kwargs: object,
 ) -> dict[str, object]:
     """Build ranked queue items + tier metadata."""
-    base_options = options or QueueBuildOptions()
-    resolved_options = QueueBuildOptions(
-        tier=legacy_kwargs.pop("tier", base_options.tier),
-        count=legacy_kwargs.pop("count", base_options.count),
-        scan_path=legacy_kwargs.pop("scan_path", base_options.scan_path),
-        scope=legacy_kwargs.pop("scope", base_options.scope),
-        status=legacy_kwargs.pop("status", base_options.status),
-        include_subjective=legacy_kwargs.pop(
-            "include_subjective", base_options.include_subjective
-        ),
-        subjective_threshold=legacy_kwargs.pop(
-            "subjective_threshold", base_options.subjective_threshold
-        ),
-        chronic=legacy_kwargs.pop("chronic", base_options.chronic),
-        no_tier_fallback=legacy_kwargs.pop(
-            "no_tier_fallback", base_options.no_tier_fallback
-        ),
-        explain=legacy_kwargs.pop("explain", base_options.explain),
-    )
-    if legacy_kwargs:
-        unknown = next(iter(legacy_kwargs))
-        raise TypeError(
-            f"build_work_queue() got an unexpected keyword argument '{unknown}'"
-        )
+    resolved_options = options or QueueBuildOptions()
 
     status = resolved_options.status
     if status not in _ALL_STATUSES:

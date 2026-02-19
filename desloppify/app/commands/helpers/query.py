@@ -13,7 +13,4 @@ def write_query(data: dict) -> None:
     _core_write_query(data, query_file=QUERY_FILE)
 
 
-# Backward-compatible alias for callers not migrated yet.
-_write_query = write_query
-
-__all__ = ["QUERY_FILE", "write_query", "_write_query"]
+__all__ = ["QUERY_FILE", "write_query"]

@@ -2,10 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from desloppify.utils import colorize
 
 
-def print_subjective_followup(followup, *, leading_newline: bool = False) -> bool:
+class SubjectiveFollowup(Protocol):
+    """Contract for objects passed to print_subjective_followup."""
+
+    low_assessed: object  # falsy when no dimensions are below threshold
+    threshold_label: str
+    rendered: str
+    command: str
+    integrity_lines: list[tuple[str, str]]
+
+
+def print_subjective_followup(followup: SubjectiveFollowup, *, leading_newline: bool = False) -> bool:
     """Render common subjective quality/integrity guidance lines.
 
     Returns True when any line is rendered.

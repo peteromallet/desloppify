@@ -11,18 +11,35 @@ from desloppify.engine.detectors import dupes as dupes_detector_mod
 from desloppify.engine.detectors import gods as gods_detector_mod
 from desloppify.engine.detectors import graph as graph_detector_mod
 from desloppify.engine.detectors import orphaned as orphaned_detector_mod
-from desloppify.utils import c, display_entries, find_py_files, print_table, rel
 from desloppify.languages.python.detectors import deps as deps_detector_mod
 from desloppify.languages.python.detectors import facade as facade_detector_mod
 from desloppify.languages.python.detectors import smells as smells_detector_mod
 from desloppify.languages.python.detectors import unused as unused_detector_mod
-from desloppify.languages.python.extractors import detect_passthrough_functions, extract_py_classes, extract_py_functions
+from desloppify.languages.python.extractors import (
+    detect_passthrough_functions,
+    extract_py_functions,
+)
+from desloppify.languages.python.extractors_classes import extract_py_classes
+from desloppify.utils import c, display_entries, find_py_files, print_table, rel
 
 if TYPE_CHECKING:
     import argparse
 
-from desloppify.languages.framework.commands_base import make_cmd_complexity, make_cmd_facade, make_cmd_large, make_cmd_naming, make_cmd_passthrough, make_cmd_single_use, make_cmd_smells
-from desloppify.languages.python.phases import PY_COMPLEXITY_SIGNALS, PY_ENTRY_PATTERNS, PY_GOD_RULES, PY_SKIP_NAMES
+from desloppify.languages.framework.commands_base import (
+    make_cmd_complexity,
+    make_cmd_facade,
+    make_cmd_large,
+    make_cmd_naming,
+    make_cmd_passthrough,
+    make_cmd_single_use,
+    make_cmd_smells,
+)
+from desloppify.languages.python.phases import (
+    PY_COMPLEXITY_SIGNALS,
+    PY_ENTRY_PATTERNS,
+    PY_GOD_RULES,
+    PY_SKIP_NAMES,
+)
 
 cmd_large = make_cmd_large(find_py_files, default_threshold=300)
 cmd_complexity = make_cmd_complexity(
@@ -66,8 +83,10 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
         Path(args.path),
         graph,
         extensions=[".py"],
-        extra_entry_patterns=PY_ENTRY_PATTERNS,
-        extra_barrel_names={"__init__.py"},
+        options=orphaned_detector_mod.OrphanedDetectionOptions(
+            extra_entry_patterns=PY_ENTRY_PATTERNS,
+            extra_barrel_names={"__init__.py"},
+        ),
     )
     if getattr(args, "json", False):
         print(

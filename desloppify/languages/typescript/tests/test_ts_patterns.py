@@ -41,7 +41,7 @@ class TestBuildCensus:
             "src/tools/editor/main.ts",
             ("const settings = useAutoSaveSettings<Config>();\n"),
         )
-        census = _build_census(tmp_path)
+        census, evidence = _build_census(tmp_path)
         assert len(census) > 0
         assert isinstance(evidence, dict)
         # At least one area should have tool_settings family with useAutoSaveSettings
@@ -72,14 +72,14 @@ class TestBuildCensus:
                 "const mutation = useMutation({ mutationFn: save });\n"
             ),
         )
-        census = _build_census(tmp_path)
+        census, evidence = _build_census(tmp_path)
         found_data_fetching = False
         for _area, families in census.items():
             if "data_fetching" in families:
                 found_data_fetching = True
                 assert "useQuery" in families["data_fetching"]
                 assert "useMutation" in families["data_fetching"]
-                assert "useQuery" in evidence.get(area, {}).get("data_fetching", {})
+                assert "useQuery" in evidence.get(_area, {}).get("data_fetching", {})
         assert found_data_fetching
 
 

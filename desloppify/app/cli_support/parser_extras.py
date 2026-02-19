@@ -4,45 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-USAGE_EXAMPLES = """
-workflow:
-  scan                          Run all detectors, update state, show diff
-  status                        Score dashboard with per-tier progress
-  explain                       Explain strict-score loss hotspots
-  help-me-improve               Alias for explain
-  tree                          Annotated codebase tree (zoom with --focus)
-  show <pattern>                Dig into findings by file/dir/detector/ID
-  resolve <status> <pattern...> Resolve or suppress findings (status includes ignore)
-  zone show                     Show zone classifications for all files
-  zone set <file> <zone>        Override zone for a file
-  review --prepare              Prepare files for AI design review
-  review --import FILE          Import review findings from JSON
-  issues                        Review findings work queue
-  plan                          Generate prioritized markdown plan
-  help [command]                Show top-level or command-specific help
-
-examples:
-  desloppify scan --skip-slow
-  desloppify --lang python scan --path scripts/desloppify
-  desloppify explain --top 15 --subjective-threshold 89
-  desloppify help-me-improve --top 15
-  desloppify tree --focus shared/components --sort findings --depth 3
-  desloppify tree --detail --focus shared/components/MediaLightbox --min-loc 300
-  desloppify show src/shared/components/PromptEditorModal.tsx
-  desloppify show gods
-  desloppify show "src/shared/components/MediaLightbox"
-  desloppify resolve fixed "unused::src/foo.tsx::React" "unused::src/bar.tsx::React"
-  desloppify resolve fixed "logs::src/foo.tsx::*" --note "removed debug logs"
-  desloppify resolve wontfix deprecated --note "migration in progress"
-  desloppify resolve false_positive "smells::src/foo.ts::noisy_case"
-  desloppify resolve ignore "smells::*::async_no_await" --note "temporary migration noise"
-  desloppify detect logs --top 10
-  desloppify detect dupes --threshold 0.9
-  desloppify dev scaffold-lang go --extension .go --marker go.mod --default-src .
-  desloppify move src/shared/hooks/useFoo.ts src/shared/hooks/video/useFoo.ts --dry-run
-  desloppify move scripts/foo/bar.py scripts/foo/baz/bar.py
-"""
-
 
 def add_detect_parser(sub, detector_names: Sequence[str]) -> None:
     parser = sub.add_parser(

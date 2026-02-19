@@ -10,7 +10,7 @@ import logging
 import re
 from pathlib import Path
 
-from desloppify.engine.detectors import security as security_detector_mod
+from desloppify.engine.detectors.security import rules as security_detector_mod
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages.python.detectors.security_ast import _SecurityVisitor
 
@@ -118,12 +118,14 @@ def detect_python_security(
                             security_detector_mod.make_security_entry(
                                 filepath,
                                 line_num,
-                                "debug_mode",
-                                f"Debug mode enabled: {label}",
-                                "medium",
-                                "medium",
                                 line,
-                                "Ensure debug mode is disabled in production via environment variables",
+                                security_detector_mod.SecurityRule(
+                                    check_id="debug_mode",
+                                    summary=f"Debug mode enabled: {label}",
+                                    severity="medium",
+                                    confidence="medium",
+                                    remediation="Ensure debug mode is disabled in production via environment variables",
+                                ),
                             )
                         )
 
@@ -135,12 +137,14 @@ def detect_python_security(
                             security_detector_mod.make_security_entry(
                                 filepath,
                                 line_num,
-                                "xxe_vuln",
-                                "Potential XXE vulnerability: using stdlib XML parser",
-                                "high",
-                                "medium",
                                 line,
-                                remediation,
+                                security_detector_mod.SecurityRule(
+                                    check_id="xxe_vuln",
+                                    summary="Potential XXE vulnerability: using stdlib XML parser",
+                                    severity="high",
+                                    confidence="medium",
+                                    remediation=remediation,
+                                ),
                             )
                         )
 
@@ -154,12 +158,14 @@ def detect_python_security(
                         security_detector_mod.make_security_entry(
                             filepath,
                             line_num,
-                            "weak_password_hash",
-                            "Weak hash near password context: MD5/SHA1 is unsuitable for passwords",
-                            "medium",
-                            "medium",
                             line,
-                            "Use bcrypt, argon2, or scrypt for password hashing",
+                            security_detector_mod.SecurityRule(
+                                check_id="weak_password_hash",
+                                summary="Weak hash near password context: MD5/SHA1 is unsuitable for passwords",
+                                severity="medium",
+                                confidence="medium",
+                                remediation="Use bcrypt, argon2, or scrypt for password hashing",
+                            ),
                         )
                     )
 
@@ -174,12 +180,14 @@ def detect_python_security(
                         security_detector_mod.make_security_entry(
                             filepath,
                             line_num,
-                            "insecure_cookie",
-                            "Cookie set without secure=True",
-                            "low",
-                            "low",
                             line,
-                            "Set secure=True and httponly=True on cookies",
+                            security_detector_mod.SecurityRule(
+                                check_id="insecure_cookie",
+                                summary="Cookie set without secure=True",
+                                severity="low",
+                                confidence="low",
+                                remediation="Set secure=True and httponly=True on cookies",
+                            ),
                         )
                     )
 

@@ -24,11 +24,19 @@ def _is_lang_plugin_entrypoint(path: Path) -> bool:
         return False
     parts = path.parts
     for idx, segment in enumerate(parts[:-2]):
-        if segment != "lang":
+        if segment not in {"lang", "languages"}:
             continue
         plugin_name = parts[idx + 1]
         return bool(plugin_name and not plugin_name.startswith("_"))
     return False
+
+
+def _is_test_importer(importer: str) -> bool:
+    """Whether an importer path points to test code."""
+    p = Path(importer)
+    if p.name.startswith("test_"):
+        return True
+    return any(part in {"tests", "test"} for part in p.parts)
 
 
 def detect_single_use_abstractions(
@@ -58,11 +66,13 @@ def detect_single_use_abstractions(
                 continue
             if _is_lang_plugin_entrypoint(p):
                 continue
+            importer = list(entry["importers"])[0]
+            if _is_test_importer(importer):
+                continue
             total_candidates += 1
             loc = len(p.read_text().splitlines())
             if loc < 20 or loc > 300:
                 continue
-            importer = list(entry["importers"])[0]
             entries.append(
                 {
                     "file": filepath,

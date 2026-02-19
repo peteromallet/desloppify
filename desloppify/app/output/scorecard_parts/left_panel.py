@@ -3,7 +3,18 @@
 from __future__ import annotations
 
 from desloppify.app.output.scorecard_parts.ornaments import draw_rule_with_ornament
-from desloppify.app.output.scorecard_parts.theme import ACCENT, BG, BG_SCORE, BORDER, DIM, TEXT, fmt_score, load_font, scale, score_color
+from desloppify.app.output.scorecard_parts.theme import (
+    ACCENT,
+    BG,
+    BG_SCORE,
+    BORDER,
+    DIM,
+    TEXT,
+    fmt_score,
+    load_font,
+    scale,
+    score_color,
+)
 
 
 def _draw_left_panel_version(
@@ -164,32 +175,33 @@ def _left_panel_measurements(
     )
     project_h = project_bbox[3] - project_bbox[1]
     return {
-        "fonts": (
-            font_version,
-            font_title,
-            font_big,
-            font_strict_label,
-            font_strict_val,
-            font_project,
-        ),
-        "text": (version_text, title, score_text, strict_text),
-        "bbox": (
-            version_bbox,
-            title_bbox,
-            score_bbox,
-            strict_label_bbox,
-            strict_value_bbox,
-            project_bbox,
-        ),
-        "heights": (version_h, title_h, score_h, strict_h, project_h),
-        "widths": (
-            draw.textlength(version_text, font=font_version),
-            draw.textlength(title, font=font_title),
-        ),
+        "font_version": font_version,
+        "font_title": font_title,
+        "font_big": font_big,
+        "font_strict_label": font_strict_label,
+        "font_strict_val": font_strict_val,
+        "font_project": font_project,
+        "version_text": version_text,
+        "title": title,
+        "score_text": score_text,
+        "strict_text": strict_text,
+        "version_bbox": version_bbox,
+        "title_bbox": title_bbox,
+        "score_bbox": score_bbox,
+        "strict_label_bbox": strict_label_bbox,
+        "strict_value_bbox": strict_value_bbox,
+        "project_bbox": project_bbox,
+        "version_h": version_h,
+        "title_h": title_h,
+        "score_h": score_h,
+        "strict_h": strict_h,
+        "project_h": project_h,
+        "version_width": draw.textlength(version_text, font=font_version),
+        "title_width": draw.textlength(title, font=font_title),
     }
 
 
-def _draw_left_panel(
+def draw_left_panel(
     draw,
     main_score: float,
     strict_score: float,
@@ -207,25 +219,29 @@ def _draw_left_panel(
         project_name=project_name,
         package_version=package_version,
     )
-    (
-        font_version,
-        font_title,
-        font_big,
-        font_strict_label,
-        font_strict_val,
-        font_project,
-    ) = measurements["fonts"]
-    version_text, title, score_text, strict_text = measurements["text"]
-    (
-        version_bbox,
-        title_bbox,
-        score_bbox,
-        strict_label_bbox,
-        strict_value_bbox,
-        project_bbox,
-    ) = measurements["bbox"]
-    version_h, title_h, score_h, strict_h, project_h = measurements["heights"]
-    version_width, title_width = measurements["widths"]
+    font_version = measurements["font_version"]
+    font_title = measurements["font_title"]
+    font_big = measurements["font_big"]
+    font_strict_label = measurements["font_strict_label"]
+    font_strict_val = measurements["font_strict_val"]
+    font_project = measurements["font_project"]
+    version_text = measurements["version_text"]
+    title = measurements["title"]
+    score_text = measurements["score_text"]
+    strict_text = measurements["strict_text"]
+    version_bbox = measurements["version_bbox"]
+    title_bbox = measurements["title_bbox"]
+    score_bbox = measurements["score_bbox"]
+    strict_label_bbox = measurements["strict_label_bbox"]
+    strict_value_bbox = measurements["strict_value_bbox"]
+    project_bbox = measurements["project_bbox"]
+    version_h = measurements["version_h"]
+    title_h = measurements["title_h"]
+    score_h = measurements["score_h"]
+    strict_h = measurements["strict_h"]
+    project_h = measurements["project_h"]
+    version_width = measurements["version_width"]
+    title_width = measurements["title_width"]
     lp_center = (lp_left + lp_right) // 2
 
     draw.rounded_rectangle(
@@ -321,11 +337,4 @@ def _draw_left_panel(
         project_bbox=project_bbox,
         font_project=font_project,
     )
-
-
-def draw_left_panel(*args, **kwargs) -> None:
-    """Compatibility wrapper for callers using the public legacy name."""
-    _draw_left_panel(*args, **kwargs)
-
-
-__all__ = ["_draw_left_panel", "draw_left_panel"]
+__all__ = ["draw_left_panel"]

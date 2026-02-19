@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.hook_registry import register_lang_hooks
-from desloppify.utils import find_ts_files, get_area
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
+from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base import BoundaryRule, DetectorPhase, FixerConfig, FixResult, LangConfig, detector_phase_security, detector_phase_test_coverage, shared_subjective_duplicates_tail
+from desloppify.languages.framework.base.phase_builders import (
+    detector_phase_security,
+    detector_phase_test_coverage,
+    shared_subjective_duplicates_tail,
+)
+from desloppify.languages.framework.base.types import (
+    BoundaryRule,
+    DetectorPhase,
+    FixerConfig,
+    FixResult,
+    LangConfig,
+)
 from desloppify.languages.typescript import commands as ts_commands_mod
 from desloppify.languages.typescript import fixers as ts_fixers_mod
 from desloppify.languages.typescript import test_coverage as ts_test_coverage_hooks
@@ -19,18 +29,39 @@ from desloppify.languages.typescript.detectors import smells as smells_detector_
 from desloppify.languages.typescript.detectors import unused as unused_detector_mod
 from desloppify.languages.typescript.detectors.security import detect_ts_security
 from desloppify.languages.typescript.extractors import extract_ts_functions
-from desloppify.languages.typescript.phases import TS_COMPLEXITY_SIGNALS as TS_COMPLEXITY_SIGNALS
+from desloppify.languages.typescript.phases import (
+    TS_COMPLEXITY_SIGNALS as TS_COMPLEXITY_SIGNALS,
+)
 from desloppify.languages.typescript.phases import TS_GOD_RULES as TS_GOD_RULES
 from desloppify.languages.typescript.phases import TS_SKIP_DIRS as TS_SKIP_DIRS
 from desloppify.languages.typescript.phases import TS_SKIP_NAMES as TS_SKIP_NAMES
-from desloppify.languages.typescript.phases import _phase_coupling, _phase_deprecated, _phase_exports, _phase_logs, _phase_smells, _phase_structural, _phase_unused
-from desloppify.languages.typescript.review import HOLISTIC_REVIEW_DIMENSIONS as TS_HOLISTIC_REVIEW_DIMENSIONS
-from desloppify.languages.typescript.review import LOW_VALUE_PATTERN as TS_LOW_VALUE_PATTERN
-from desloppify.languages.typescript.review import MIGRATION_MIXED_EXTENSIONS as TS_MIGRATION_MIXED_EXTENSIONS
-from desloppify.languages.typescript.review import MIGRATION_PATTERN_PAIRS as TS_MIGRATION_PATTERN_PAIRS
+from desloppify.languages.typescript.phases import (
+    _phase_coupling,
+    _phase_deprecated,
+    _phase_exports,
+    _phase_logs,
+    _phase_smells,
+    _phase_structural,
+    _phase_unused,
+)
+from desloppify.languages.typescript.review import (
+    HOLISTIC_REVIEW_DIMENSIONS as TS_HOLISTIC_REVIEW_DIMENSIONS,
+)
+from desloppify.languages.typescript.review import (
+    LOW_VALUE_PATTERN as TS_LOW_VALUE_PATTERN,
+)
+from desloppify.languages.typescript.review import (
+    MIGRATION_MIXED_EXTENSIONS as TS_MIGRATION_MIXED_EXTENSIONS,
+)
+from desloppify.languages.typescript.review import (
+    MIGRATION_PATTERN_PAIRS as TS_MIGRATION_PATTERN_PAIRS,
+)
 from desloppify.languages.typescript.review import REVIEW_GUIDANCE as TS_REVIEW_GUIDANCE
 from desloppify.languages.typescript.review import api_surface as ts_review_api_surface
-from desloppify.languages.typescript.review import module_patterns as ts_review_module_patterns
+from desloppify.languages.typescript.review import (
+    module_patterns as ts_review_module_patterns,
+)
+from desloppify.utils import find_ts_files, get_area
 
 _TS_TEST_COVERAGE_HOOKS = (
     ts_test_coverage_hooks.has_testable_logic,

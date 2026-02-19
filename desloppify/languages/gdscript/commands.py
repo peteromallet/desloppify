@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import argparse
 
-from desloppify.languages._shared.scaffold_detect_commands import make_cmd_cycles, make_cmd_deps, make_cmd_dupes, make_cmd_orphaned
-from desloppify.languages.framework.commands_base import make_cmd_complexity, make_cmd_large, make_get_detect_commands
+from desloppify.languages._shared.scaffold_detect_commands import (
+    make_cmd_cycles,
+    make_cmd_deps,
+    make_cmd_dupes,
+    make_cmd_orphaned,
+)
+from desloppify.languages.framework.commands_base import (
+    make_cmd_complexity,
+    make_cmd_large,
+    make_get_detect_commands,
+)
 from desloppify.languages.gdscript.detectors.deps import build_dep_graph
-from desloppify.languages.gdscript.extractors import extract_functions, find_gdscript_files
+from desloppify.languages.gdscript.extractors import (
+    extract_functions,
+    find_gdscript_files,
+)
 from desloppify.languages.gdscript.phases import GDSCRIPT_COMPLEXITY_SIGNALS
 
 _cmd_large_impl = make_cmd_large(find_gdscript_files, default_threshold=500)

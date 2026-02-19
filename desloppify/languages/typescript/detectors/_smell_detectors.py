@@ -2,7 +2,12 @@
 
 import re
 
-from desloppify.languages.typescript.detectors._smell_helpers import _strip_ts_comments, _track_brace_body, _ts_match_is_in_string, scan_code
+from desloppify.languages.typescript.detectors._smell_helpers import (
+    _strip_ts_comments,
+    _track_brace_body,
+    _ts_match_is_in_string,
+    scan_code,
+)
 
 _MAX_CATCH_BODY = 1000  # max characters to scan for catch block body
 _MAX_SWITCH_BODY_SCAN = 5000

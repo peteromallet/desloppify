@@ -7,11 +7,16 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from desloppify.intelligence.review.dimensions.validation import parse_holistic_payload, parse_per_file_payload
+from desloppify.intelligence.review.dimensions.validation import (
+    parse_dimensions_payload,
+)
 
 _LANG_DIR = Path(__file__).resolve().parents[3] / "languages"
 _LANG_DATA_SUBDIR = "review_data"
 _DATA_DIR = _LANG_DIR / "_shared" / _LANG_DATA_SUBDIR
+
+# Canonical filename for the unified dimensions payload.
+_DIMENSIONS_FILE = "dimensions.json"
 
 
 def _load_json_payload_from_path(path: Path) -> dict:
@@ -152,16 +157,10 @@ def _load_payload_for_lang(
 
     Resolution order:
     1) Start from shared base payload in ``lang/_shared/review_data``.
-    2) If language full payload exists (legacy), use it as base.
-    3) If language override payload exists, patch the selected base.
+    2) If language override payload exists, patch the selected base.
     """
     base_payload = _load_json_payload(filename)
     context = filename
-
-    lang_full_path = _lang_payload_path(lang_name, filename)
-    if lang_full_path.is_file():
-        base_payload = _load_json_payload_from_path(lang_full_path)
-        context = str(lang_full_path)
 
     lang_override_path = _lang_payload_path(lang_name, _override_filename(filename))
     if lang_override_path.is_file():
@@ -177,41 +176,27 @@ def _load_payload_for_lang(
     return base_payload, context
 
 
-@lru_cache(maxsize=1)
-def load_per_file_dimensions() -> tuple[list[str], dict[str, dict[str, object]], str]:
-    """Load and validate per-file review dimension definitions."""
-    payload = _load_json_payload("per_file_dimensions.json")
-    return parse_per_file_payload(payload, context_prefix="per_file_dimensions.json")
+# ---------------------------------------------------------------------------
+# Canonical loaders — use these for new code.
+# ---------------------------------------------------------------------------
 
 
 @lru_cache(maxsize=1)
-def load_holistic_dimensions() -> tuple[list[str], dict[str, dict[str, object]], str]:
-    """Load and validate holistic review dimension definitions."""
-    payload = _load_json_payload("holistic_dimensions.json")
-    return parse_holistic_payload(payload, context_prefix="holistic_dimensions.json")
+def load_dimensions() -> tuple[list[str], dict[str, dict[str, object]], str]:
+    """Load and validate the unified review dimension definitions."""
+    payload = _load_json_payload(_DIMENSIONS_FILE)
+    return parse_dimensions_payload(payload, context_prefix=_DIMENSIONS_FILE)
 
 
 @lru_cache(maxsize=16)
-def load_per_file_dimensions_for_lang(
+def load_dimensions_for_lang(
     lang_name: str,
 ) -> tuple[list[str], dict[str, dict[str, object]], str]:
-    """Load per-file review dimensions for a language."""
+    """Load unified review dimensions for a language (with lang override applied)."""
     payload, context = _load_payload_for_lang(
         lang_name,
-        "per_file_dimensions.json",
+        _DIMENSIONS_FILE,
         dims_key="default_dimensions",
     )
-    return parse_per_file_payload(payload, context_prefix=context)
+    return parse_dimensions_payload(payload, context_prefix=context)
 
-
-@lru_cache(maxsize=16)
-def load_holistic_dimensions_for_lang(
-    lang_name: str,
-) -> tuple[list[str], dict[str, dict[str, object]], str]:
-    """Load holistic review dimensions for a language."""
-    payload, context = _load_payload_for_lang(
-        lang_name,
-        "holistic_dimensions.json",
-        dims_key="holistic_dimensions",
-    )
-    return parse_holistic_payload(payload, context_prefix=context)

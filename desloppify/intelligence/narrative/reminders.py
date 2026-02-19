@@ -8,7 +8,11 @@ from datetime import datetime as _dt
 from datetime import timezone as _tz
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.intelligence.narrative._constants import _FEEDBACK_URL, _REMINDER_DECAY_THRESHOLD, STRUCTURAL_MERGE
+from desloppify.intelligence.narrative._constants import (
+    _FEEDBACK_URL,
+    _REMINDER_DECAY_THRESHOLD,
+    STRUCTURAL_MERGE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +79,13 @@ def _badge_reminder(strict_score: float | None, badge: dict) -> list[dict]:
     )
     if not eligible_for_badge:
         return []
+    badge_path = str(badge.get("path") or "scorecard.png")
     return [
         {
             "type": "badge_recommendation",
             "message": (
                 "Score is above 90! Add the scorecard to your README: "
-                '<img src="assets/scorecard.png" width="100%">'
+                f'<img src="{badge_path}" width="100%">'
             ),
             "command": None,
         }
@@ -132,6 +137,25 @@ def _wontfix_debt_reminders(state: dict, debt: dict, command: str | None) -> lis
             }
         )
     return reminders
+
+
+def _ignore_suppression_reminder(state: dict) -> list[dict]:
+    """Nudge when ignores/suppression are high enough to mask signal quality."""
+    integrity = state.get("ignore_integrity", {}) or {}
+    ignored = int(integrity.get("ignored", 0) or 0)
+    suppressed_pct = float(integrity.get("suppressed_pct", 0.0) or 0.0)
+    if ignored < 10 and suppressed_pct < 30.0:
+        return []
+    return [
+        {
+            "type": "ignore_suppression_high",
+            "message": (
+                f"Ignore suppression is high ({ignored} ignored, {suppressed_pct:.1f}% suppressed). "
+                "Revisit broad ignore patterns and resolve stale suppressions."
+            ),
+            "command": "desloppify show --status wontfix",
+        }
+    ]
 
 
 def _stagnation_reminders(dimensions: dict) -> list[dict]:
@@ -341,6 +365,46 @@ def _feedback_reminder(
     ]
 
 
+_REMINDER_METADATA: dict[str, tuple[int, str]] = {
+    # Highest urgency operational nudges.
+    "rescan_needed": (1, "high"),
+    "ignore_suppression_high": (1, "high"),
+    "review_findings_pending": (1, "high"),
+    "rereview_needed": (1, "high"),
+    # Medium urgency quality/process nudges.
+    "wontfix_growing": (2, "medium"),
+    "wontfix_stale": (2, "medium"),
+    "stagnant_nudge": (2, "medium"),
+    "review_stale": (2, "medium"),
+    "auto_fixers_available": (2, "medium"),
+    "zone_classification": (2, "medium"),
+    "fp_calibration": (2, "medium"),
+    # Informational nudges.
+    "badge_recommendation": (3, "low"),
+    "dry_run_first": (3, "low"),
+    "feedback_nudge": (3, "low"),
+    "review_not_run": (3, "low"),
+    "report_scores": (3, "low"),
+}
+
+
+def _decorate_reminder_metadata(reminders: list[dict]) -> list[dict]:
+    """Attach stable priority/severity metadata and sort by priority."""
+    decorated: list[dict] = []
+    for reminder in reminders:
+        reminder_type = str(reminder.get("type", ""))
+        key = reminder_type
+        if reminder_type.startswith("fp_calibration_"):
+            key = "fp_calibration"
+        priority, severity = _REMINDER_METADATA.get(key, (3, "low"))
+        clone = dict(reminder)
+        clone.setdefault("priority", priority)
+        clone.setdefault("severity", severity)
+        decorated.append(clone)
+    decorated.sort(key=lambda item: (int(item.get("priority", 3)), str(item.get("type", ""))))
+    return decorated
+
+
 def _report_scores_reminder(command: str | None) -> list[dict]:
     if command != "scan":
         return []
@@ -404,6 +468,7 @@ def _compute_reminders(
     reminders.extend(_rescan_needed_reminder(command))
     reminders.extend(_badge_reminder(strict_score, badge))
     reminders.extend(_wontfix_debt_reminders(state, debt, command))
+    reminders.extend(_ignore_suppression_reminder(state))
     reminders.extend(_stagnation_reminders(dimensions))
     reminders.extend(_dry_run_reminder(actions))
     reminders.extend(_zone_classification_reminder(state))
@@ -414,4 +479,5 @@ def _compute_reminders(
     reminders.extend(_review_staleness_reminder(state, config))
     reminders.extend(_feedback_reminder(state, phase, command, fp_rates))
 
+    reminders = _decorate_reminder_metadata(reminders)
     return _apply_decay(reminders, reminder_history)

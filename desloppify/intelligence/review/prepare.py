@@ -2,27 +2,49 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from desloppify import utils as _utils_mod
-from desloppify.utils import disable_file_cache, enable_file_cache, read_file_text, rel
-from desloppify.intelligence.review.context import abs_path, dep_graph_lookup, importer_count, serialize_context, build_review_context
+from desloppify.intelligence.review.context import (
+    abs_path,
+    build_review_context,
+    dep_graph_lookup,
+    importer_count,
+    serialize_context,
+)
 from desloppify.intelligence.review.context_holistic import build_holistic_context
 from desloppify.intelligence.review.context_internal.models import HolisticContext
-from desloppify.intelligence.review.dimensions.data import load_holistic_dimensions_for_lang, load_per_file_dimensions_for_lang
+from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.intelligence.review.dimensions.lang import get_lang_guidance
-from desloppify.intelligence.review.dimensions.selection import resolve_holistic_dimensions, resolve_per_file_dimensions
-from desloppify.intelligence.review.prepare_batches import build_investigation_batches as _build_investigation_batches
-from desloppify.intelligence.review.prepare_batches import filter_batches_to_dimensions as _filter_batches_to_dimensions
-from desloppify.intelligence.review.prepare_internal.helpers import HOLISTIC_WORKFLOW, append_full_sweep_batch
-from desloppify.intelligence.review.selection import ReviewSelectionOptions, count_fresh, count_stale, get_file_findings, select_files_for_review
-
-# Backward-compatible exports for existing internal imports/tests.
-build_investigation_batches = _build_investigation_batches
-filter_batches_to_dimensions = _filter_batches_to_dimensions
-_HOLISTIC_WORKFLOW = HOLISTIC_WORKFLOW
+from desloppify.intelligence.review.dimensions.selection import (
+    resolve_holistic_dimensions,
+    resolve_per_file_dimensions,
+)
+from desloppify.intelligence.review.prepare_batches import (
+    build_investigation_batches as _build_investigation_batches,
+)
+from desloppify.intelligence.review.prepare_batches import (
+    filter_batches_to_dimensions as _filter_batches_to_dimensions,
+)
+from desloppify.intelligence.review.prepare_internal.helpers import (
+    HOLISTIC_WORKFLOW,
+    append_full_sweep_batch,
+)
+from desloppify.intelligence.review.selection import (
+    ReviewSelectionOptions,
+    count_fresh,
+    count_stale,
+    get_file_findings,
+    select_files_for_review,
+)
+from desloppify.utils import (
+    disable_file_cache,
+    enable_file_cache,
+    is_file_cache_enabled,
+    read_file_text,
+    rel,
+)
 
 
 @dataclass
@@ -45,36 +67,6 @@ class HolisticReviewPrepareOptions:
     files: list[str] | None = None
     include_full_sweep: bool = True
 
-
-def _resolve_review_prepare_options(
-    options: ReviewPrepareOptions | None,
-    legacy_options: dict[str, Any],
-) -> ReviewPrepareOptions:
-    resolved = ReviewPrepareOptions() if options is None else replace(options)
-    for key in (
-        "max_files",
-        "max_age_days",
-        "force_refresh",
-        "dimensions",
-        "config_dimensions",
-        "files",
-    ):
-        if key in legacy_options:
-            setattr(resolved, key, legacy_options[key])
-    return resolved
-
-
-def _resolve_holistic_prepare_options(
-    options: HolisticReviewPrepareOptions | None,
-    legacy_options: dict[str, Any],
-) -> HolisticReviewPrepareOptions:
-    resolved = HolisticReviewPrepareOptions() if options is None else replace(options)
-    for key in ("dimensions", "files", "include_full_sweep"):
-        if key in legacy_options:
-            setattr(resolved, key, legacy_options[key])
-    return resolved
-
-
 def _rel_list(s) -> list[str]:
     """Normalize a set or list of paths to sorted relative paths (max 10)."""
     if isinstance(s, set):
@@ -95,14 +87,13 @@ def prepare_review(
     lang: object,
     state: dict,
     options: ReviewPrepareOptions | None = None,
-    **legacy_options: Any,
 ) -> dict[str, object]:
     """Prepare review data for agent consumption. Returns structured dict.
 
     If *files* is provided, skip file_finder (avoids redundant filesystem walks
     when the caller already has the file list, e.g. from _setup_lang).
     """
-    resolved_options = _resolve_review_prepare_options(options, legacy_options)
+    resolved_options = options or ReviewPrepareOptions()
     resolved_options.max_files = _normalize_max_files(resolved_options.max_files)
     all_files = (
         resolved_options.files
@@ -112,7 +103,7 @@ def prepare_review(
 
     # Enable file cache for entire prepare operation — context building,
     # file selection, and content extraction all read the same files.
-    already_cached = bool(_utils_mod._cache_enabled)
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:
@@ -133,9 +124,7 @@ def prepare_review(
         if not already_cached:
             disable_file_cache()
 
-    default_dims, dimension_prompts, system_prompt = load_per_file_dimensions_for_lang(
-        lang.name
-    )
+    default_dims, dimension_prompts, system_prompt = load_dimensions_for_lang(lang.name)
     dims = resolve_per_file_dimensions(
         cli_dimensions=resolved_options.dimensions,
         config_dimensions=resolved_options.config_dimensions,
@@ -221,17 +210,16 @@ def prepare_holistic_review(
     lang: object,
     state: dict,
     options: HolisticReviewPrepareOptions | None = None,
-    **legacy_options: Any,
 ) -> dict[str, object]:
     """Prepare holistic review data for agent consumption. Returns structured dict."""
-    resolved_options = _resolve_holistic_prepare_options(options, legacy_options)
+    resolved_options = options or HolisticReviewPrepareOptions()
     all_files = (
         resolved_options.files
         if resolved_options.files is not None
         else (lang.file_finder(path) if lang.file_finder else [])
     )
 
-    already_cached = bool(_utils_mod._cache_enabled)
+    already_cached = is_file_cache_enabled()
     if not already_cached:
         enable_file_cache()
     try:
@@ -244,10 +232,8 @@ def prepare_holistic_review(
         if not already_cached:
             disable_file_cache()
 
-    default_dims, holistic_prompts, system_prompt = load_holistic_dimensions_for_lang(
-        lang.name
-    )
-    _, per_file_prompts, _ = load_per_file_dimensions_for_lang(lang.name)
+    default_dims, holistic_prompts, system_prompt = load_dimensions_for_lang(lang.name)
+    _, per_file_prompts, _ = load_dimensions_for_lang(lang.name)
     dims = resolve_holistic_dimensions(
         lang_name=lang.name,
         cli_dimensions=resolved_options.dimensions,

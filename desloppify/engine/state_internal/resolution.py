@@ -5,7 +5,11 @@ from __future__ import annotations
 import copy
 
 from desloppify.engine.state_internal.filtering import _matches_pattern
-from desloppify.engine.state_internal.schema import ensure_state_defaults, utc_now, validate_state_invariants
+from desloppify.engine.state_internal.schema import (
+    ensure_state_defaults,
+    utc_now,
+    validate_state_invariants,
+)
 from desloppify.engine.state_internal.scoring import _recompute_stats
 
 

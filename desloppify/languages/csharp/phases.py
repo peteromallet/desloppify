@@ -11,14 +11,26 @@ from desloppify.engine.detectors.flat_dirs import detect_flat_dirs
 from desloppify.engine.detectors.gods import detect_gods
 from desloppify.engine.detectors.graph import detect_cycles
 from desloppify.engine.detectors.large import detect_large_files
-from desloppify.engine.detectors.orphaned import detect_orphaned_files
+from desloppify.engine.detectors.orphaned import (
+    OrphanedDetectionOptions,
+    detect_orphaned_files,
+)
 from desloppify.engine.detectors.single_use import detect_single_use_abstractions
-from desloppify.state import make_finding
-from desloppify.utils import log, rel
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages.framework.base import LangConfig, add_structural_signal, make_cycle_findings, make_orphaned_findings, make_single_use_findings, merge_structural_signals
 from desloppify.languages.csharp.detectors.deps import build_dep_graph
 from desloppify.languages.csharp.extractors import extract_csharp_classes
+from desloppify.languages.framework.base.structural import (
+    add_structural_signal,
+    merge_structural_signals,
+)
+from desloppify.languages.framework.base.types import LangConfig
+from desloppify.languages.framework.finding_factories import (
+    make_cycle_findings,
+    make_orphaned_findings,
+    make_single_use_findings,
+)
+from desloppify.state import make_finding
+from desloppify.utils import log, rel
 
 
 def _compute_max_nesting(content: str, _lines: list[str]):
@@ -129,9 +141,14 @@ def _corroboration_signals_for_csharp(
     loc = entry.get("loc", 0)
     import_count = entry.get("import_count", 0)
     fanout_threshold = max(1, _runtime_setting(lang, "high_fanout_threshold", 5))
-    complexity_score = lang.complexity_map.get(filepath, 0)
+    complexity_map = getattr(lang, "complexity_map", None)
+    if not isinstance(complexity_map, dict):
+        complexity_map = getattr(lang, "_complexity_map", {})
+    if not isinstance(complexity_map, dict):
+        complexity_map = {}
+    complexity_score = complexity_map.get(filepath, 0)
     if complexity_score == 0 and filepath:
-        complexity_score = lang.complexity_map.get(rel(filepath), 0)
+        complexity_score = complexity_map.get(rel(filepath), 0)
 
     signals: list[str] = []
     if loc >= lang.large_threshold:
@@ -257,8 +274,10 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         path,
         graph,
         extensions=lang.extensions,
-        extra_entry_patterns=lang.entry_patterns,
-        extra_barrel_names=lang.barrel_names,
+        options=OrphanedDetectionOptions(
+            extra_entry_patterns=lang.entry_patterns,
+            extra_barrel_names=lang.barrel_names,
+        ),
     )
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
     orphan_findings = make_orphaned_findings(orphan_entries, log)

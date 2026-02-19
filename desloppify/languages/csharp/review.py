@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 
-from desloppify.utils import rel
 from desloppify.languages._shared.review_dimensions import HOLISTIC_REVIEW_DIMENSIONS
+from desloppify.utils import rel
 
 REVIEW_GUIDANCE = {
     "patterns": [

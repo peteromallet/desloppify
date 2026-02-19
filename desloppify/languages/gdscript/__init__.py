@@ -2,16 +2,35 @@
 
 from __future__ import annotations
 
-from desloppify.hook_registry import register_lang_hooks
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
+from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base import DetectorPhase, LangConfig, detector_phase_security, detector_phase_test_coverage, shared_subjective_duplicates_tail
+from desloppify.languages.framework.base.phase_builders import (
+    detector_phase_security,
+    detector_phase_test_coverage,
+    shared_subjective_duplicates_tail,
+)
+from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages.gdscript import test_coverage as gdscript_test_coverage_hooks
 from desloppify.languages.gdscript.commands import get_detect_commands
-from desloppify.languages.gdscript.detectors.deps import build_dep_graph as build_gdscript_dep_graph
-from desloppify.languages.gdscript.extractors import GDSCRIPT_FILE_EXCLUSIONS, extract_functions, find_gdscript_files
+from desloppify.languages.gdscript.detectors.deps import (
+    build_dep_graph as build_gdscript_dep_graph,
+)
+from desloppify.languages.gdscript.extractors import (
+    GDSCRIPT_FILE_EXCLUSIONS,
+    extract_functions,
+    find_gdscript_files,
+)
 from desloppify.languages.gdscript.phases import _phase_coupling, _phase_structural
-from desloppify.languages.gdscript.review import HOLISTIC_REVIEW_DIMENSIONS, LOW_VALUE_PATTERN, MIGRATION_MIXED_EXTENSIONS, MIGRATION_PATTERN_PAIRS, REVIEW_GUIDANCE, api_surface, module_patterns
+from desloppify.languages.gdscript.review import (
+    HOLISTIC_REVIEW_DIMENSIONS,
+    LOW_VALUE_PATTERN,
+    MIGRATION_MIXED_EXTENSIONS,
+    MIGRATION_PATTERN_PAIRS,
+    REVIEW_GUIDANCE,
+    api_surface,
+    module_patterns,
+)
 
 
 def _get_gdscript_area(filepath: str) -> str:

@@ -7,11 +7,21 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
-from desloppify.languages.framework.base import LangConfig
-from desloppify.languages.framework import discovery, registry_state, resolution, runtime
+from desloppify.languages.framework import (
+    discovery,
+    registry_state,
+    resolution,
+    runtime,
+)
+from desloppify.languages.framework.base.types import LangConfig
 from desloppify.languages.framework.contract_validation import validate_lang_contract
 from desloppify.languages.framework.policy import REQUIRED_DIRS, REQUIRED_FILES
-from desloppify.languages.framework.resolution import auto_detect_lang, available_langs, get_lang, make_lang_config
+from desloppify.languages.framework.resolution import (
+    auto_detect_lang,
+    available_langs,
+    get_lang,
+    make_lang_config,
+)
 from desloppify.languages.framework.structure_validation import validate_lang_structure
 
 T = TypeVar("T")

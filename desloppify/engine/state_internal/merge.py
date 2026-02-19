@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
-from desloppify.engine.state_internal.merge_findings import _auto_resolve_disappeared, _find_suspect_detectors, _upsert_findings
-from desloppify.engine.state_internal.merge_history import _append_scan_history, _build_merge_diff, _compute_suppression, _merge_scan_inputs, _record_scan_metadata
-from desloppify.engine.state_internal.schema import ScanDiff, ensure_state_defaults, utc_now, validate_state_invariants
+from desloppify.engine.state_internal.merge_findings import (
+    _auto_resolve_disappeared,
+    find_suspect_detectors,
+    upsert_findings,
+)
+from desloppify.engine.state_internal.merge_history import (
+    _append_scan_history,
+    _build_merge_diff,
+    _compute_suppression,
+    _merge_scan_inputs,
+    _record_scan_metadata,
+)
+from desloppify.engine.state_internal.schema import (
+    ScanDiff,
+    ensure_state_defaults,
+    utc_now,
+    validate_state_invariants,
+)
 from desloppify.engine.state_internal.scoring import _recompute_stats
 
 
@@ -27,41 +42,14 @@ class MergeScanOptions:
     subjective_integrity_target: float | None = None
 
 
-def _resolve_merge_scan_options(
-    options: MergeScanOptions | None,
-    legacy_options: dict[str, Any],
-) -> MergeScanOptions:
-    resolved = MergeScanOptions() if options is None else replace(options)
-    for key in (
-        "lang",
-        "scan_path",
-        "force_resolve",
-        "exclude",
-        "potentials",
-        "merge_potentials",
-        "codebase_metrics",
-        "include_slow",
-        "ignore",
-        "subjective_integrity_target",
-    ):
-        if key in legacy_options:
-            setattr(resolved, key, legacy_options[key])
-    return resolved
-
-
-find_suspect_detectors = _find_suspect_detectors
-upsert_findings = _upsert_findings
-
-
 def merge_scan(
     state: dict,
     current_findings: list[dict],
     options: MergeScanOptions | None = None,
-    **legacy_options: Any,
 ) -> ScanDiff:
     """Merge a fresh scan into existing state and return a diff summary."""
     ensure_state_defaults(state)
-    resolved_options = _resolve_merge_scan_options(options, legacy_options)
+    resolved_options = options or MergeScanOptions()
 
     now = utc_now()
     _record_scan_metadata(
@@ -86,7 +74,7 @@ def merge_scan(
         else state.get("config", {}).get("ignore", [])
     )
     current_ids, new_count, reopened_count, current_by_detector, ignored_count = (
-        _upsert_findings(
+        upsert_findings(
             existing,
             current_findings,
             ignore_patterns,
@@ -103,7 +91,7 @@ def merge_scan(
         if resolved_options.potentials is not None
         else None
     )
-    suspect_detectors = _find_suspect_detectors(
+    suspect_detectors = find_suspect_detectors(
         existing,
         current_by_detector,
         resolved_options.force_resolve,

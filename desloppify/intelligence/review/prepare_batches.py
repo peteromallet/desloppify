@@ -20,7 +20,6 @@ _GOVERNANCE_REFERENCE_FILES: tuple[str, ...] = (
     "DEVELOPMENT_PHILOSOPHY.md",
     "desloppify/STRUCTURE.md",
     "pyproject.toml",
-    "scripts/checks.sh",
 )
 
 

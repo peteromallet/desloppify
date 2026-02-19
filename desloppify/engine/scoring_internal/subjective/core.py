@@ -30,7 +30,14 @@ DISPLAY_NAMES: dict[str, str] = {
     "contract_coherence": "Contracts",
 }
 
-_DISPLAY_FALLBACK = lambda dim_name: dim_name.replace("_", " ").title()
+def _display_fallback(dim_name: str) -> str:
+    return dim_name.replace("_", " ").title()
+
+
+def _normalize_dimension_key(dim_name: object) -> str:
+    if not isinstance(dim_name, str):
+        return ""
+    return "_".join(dim_name.strip().lower().replace("-", "_").split())
 
 
 def _primary_lang_from_findings(findings: dict) -> str | None:
@@ -55,7 +62,7 @@ def _dimension_display_name(dim_name: str, *, lang_name: str | None) -> str:
         )
         return str(metadata_mod.dimension_display_name(dim_name, lang_name=lang_name))
     except (ImportError, AttributeError, RuntimeError, ValueError, TypeError):
-        return DISPLAY_NAMES.get(dim_name, _DISPLAY_FALLBACK(dim_name))
+        return DISPLAY_NAMES.get(dim_name, _display_fallback(dim_name))
 
 
 def _dimension_weight(dim_name: str, *, lang_name: str | None) -> float:
@@ -68,11 +75,12 @@ def _dimension_weight(dim_name: str, *, lang_name: str | None) -> float:
         return 1.0
 
 
-def _append_subjective_dimensions(
+def append_subjective_dimensions(
     results: dict,
     findings: dict,
     assessments: dict | None,
     failure_set: frozenset[str],
+    allowed_dimensions: set[str] | None = None,
 ) -> None:
     """Append subjective review dimensions to results dict (mutates results).
 
@@ -81,9 +89,30 @@ def _append_subjective_dimensions(
     metadata for transparency.
     """
     review_mod = importlib.import_module("desloppify.intelligence.review")
-    default_dimensions = review_mod.DEFAULT_DIMENSIONS
+    raw_defaults = review_mod.DEFAULT_DIMENSIONS
+    allowed = (
+        {_normalize_dimension_key(name) for name in allowed_dimensions}
+        if allowed_dimensions is not None
+        else None
+    )
 
-    assessed = assessments or {}
+    default_dimensions = []
+    for raw_dim in raw_defaults:
+        dim = _normalize_dimension_key(raw_dim)
+        if not dim:
+            continue
+        if allowed is not None and dim not in allowed:
+            continue
+        default_dimensions.append(dim)
+
+    assessed: dict[str, dict] = {}
+    for raw_dim, payload in (assessments or {}).items():
+        dim = _normalize_dimension_key(raw_dim)
+        if not dim:
+            continue
+        if allowed is not None and dim not in allowed:
+            continue
+        assessed[dim] = payload
     existing_lower = {k.lower() for k in results}
     lang_name = _primary_lang_from_findings(findings)
 
@@ -107,7 +136,10 @@ def _append_subjective_dimensions(
             for finding in findings.values()
             if finding.get("detector") == "review"
             and finding.get("status") in failure_set
-            and finding.get("detail", {}).get("dimension") == dim_name
+            and _normalize_dimension_key(
+                finding.get("detail", {}).get("dimension")
+            )
+            == dim_name
         )
 
         assessment_score = (
@@ -189,18 +221,7 @@ def _append_subjective_dimensions(
         }
 
 
-def append_subjective_dimensions(
-    results: dict,
-    findings: dict,
-    assessments: dict | None,
-    failure_set: frozenset[str],
-) -> None:
-    """Public wrapper for appending subjective dimension rows."""
-    _append_subjective_dimensions(results, findings, assessments, failure_set)
-
-
 __all__ = [
     "DISPLAY_NAMES",
     "append_subjective_dimensions",
-    "_append_subjective_dimensions",
 ]

@@ -7,7 +7,10 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import ClassInfo
-from desloppify.engine.detectors.passthrough import classify_params, classify_passthrough_tier
+from desloppify.engine.detectors.passthrough import (
+    classify_params,
+    classify_passthrough_tier,
+)
 from desloppify.utils import PROJECT_ROOT, find_tsx_files
 
 logger = logging.getLogger(__name__)

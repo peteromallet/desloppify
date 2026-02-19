@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 
+from desloppify.app.output.scorecard_parts.dimensions import (
+    prepare_scorecard_dimensions,
+)
 from desloppify.scoring import DIMENSIONS, DISPLAY_NAMES
-from desloppify.app.output.scorecard import prepare_scorecard_dimensions
 
 
 def dimension_cli_key(dimension_name: str) -> str:
@@ -37,8 +39,7 @@ def scorecard_dimension_rows(
     if rows:
         return rows
 
-    # Backward-compatible fallback for synthetic/unit-test states that do not
-    # contain enough context for scorecard projection.
+    # Fallback for synthetic/unit-test states without full scorecard context.
     fallback_dim_scores = dim_scores or {}
     if not isinstance(fallback_dim_scores, dict):
         return []

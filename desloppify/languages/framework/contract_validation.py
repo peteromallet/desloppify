@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from desloppify.languages.framework.base import DetectorPhase, FixerConfig, LangConfig, LangValueSpec
+from desloppify.languages.framework.base.types import (
+    DetectorPhase,
+    FixerConfig,
+    LangConfig,
+    LangValueSpec,
+)
 from desloppify.languages.framework.policy import ALLOWED_SCAN_PROFILES
 
 
@@ -87,20 +92,6 @@ def _validate_setting_specs(cfg: LangConfig) -> list[str]:
     return errors
 
 
-def _validate_legacy_setting_keys(cfg: LangConfig) -> list[str]:
-    errors: list[str] = []
-    if not isinstance(cfg.legacy_setting_keys, dict):
-        errors.append("legacy_setting_keys must be a dict")
-        return errors
-
-    for old_key, setting_key in cfg.legacy_setting_keys.items():
-        if not isinstance(old_key, str) or not old_key.strip():
-            errors.append("legacy_setting_keys has empty/non-string legacy key")
-        if not isinstance(setting_key, str) or not setting_key.strip():
-            errors.append("legacy_setting_keys has empty/non-string setting key")
-    return errors
-
-
 def _validate_runtime_option_specs(cfg: LangConfig) -> list[str]:
     errors: list[str] = []
     if not isinstance(cfg.runtime_option_specs, dict):
@@ -112,20 +103,6 @@ def _validate_runtime_option_specs(cfg: LangConfig) -> list[str]:
             errors.append("runtime_option_specs has empty/non-string key")
         if not isinstance(spec, LangValueSpec):
             errors.append(f"runtime_option_specs['{key}'] is not LangValueSpec")
-    return errors
-
-
-def _validate_runtime_option_aliases(cfg: LangConfig) -> list[str]:
-    errors: list[str] = []
-    if not isinstance(cfg.runtime_option_aliases, dict):
-        errors.append("runtime_option_aliases must be a dict")
-        return errors
-
-    for alias, key in cfg.runtime_option_aliases.items():
-        if not isinstance(alias, str) or not alias.strip():
-            errors.append("runtime_option_aliases has empty/non-string alias")
-        if not isinstance(key, str) or not key.strip():
-            errors.append("runtime_option_aliases has empty/non-string target key")
     return errors
 
 
@@ -145,9 +122,7 @@ def validate_lang_contract(name: str, cfg: LangConfig) -> None:
         errors.extend(_validate_detect_commands(cfg))
         errors.extend(_validate_fixers(cfg))
         errors.extend(_validate_setting_specs(cfg))
-        errors.extend(_validate_legacy_setting_keys(cfg))
         errors.extend(_validate_runtime_option_specs(cfg))
-        errors.extend(_validate_runtime_option_aliases(cfg))
         errors.extend(_validate_zone_rules(cfg))
 
     if errors:

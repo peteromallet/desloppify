@@ -11,10 +11,27 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.engine.detectors.graph import detect_cycles, finalize_graph, get_coupling_score
-from desloppify.utils import PROJECT_ROOT, c, find_source_files, find_ts_files, grep_files, print_table, rel, resolve_path
-from desloppify.languages.typescript.detectors.deps_runtime import build_dynamic_import_targets as _build_dynamic_import_targets
-from desloppify.languages.typescript.detectors.deps_runtime import ts_alias_resolver as _ts_alias_resolver
+from desloppify.engine.detectors.graph import (
+    detect_cycles,
+    finalize_graph,
+    get_coupling_score,
+)
+from desloppify.languages.typescript.detectors.deps_runtime import (
+    build_dynamic_import_targets as _build_dynamic_import_targets,
+)
+from desloppify.languages.typescript.detectors.deps_runtime import (
+    ts_alias_resolver as _ts_alias_resolver,
+)
+from desloppify.utils import (
+    PROJECT_ROOT,
+    c,
+    find_source_files,
+    find_ts_files,
+    grep_files,
+    print_table,
+    rel,
+    resolve_path,
+)
 
 _FRAMEWORK_EXTENSIONS = (".svelte", ".vue", ".astro")
 _RESOLVE_EXTENSIONS = ("", ".ts", ".tsx", "/index.ts", "/index.tsx")

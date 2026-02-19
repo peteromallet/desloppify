@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from desloppify import state as state_mod
-from desloppify.utils import colorize
 from desloppify.app.commands.scan.scan_helpers import _format_delta
 from desloppify.app.commands.status_parts.strict_target import (
     format_strict_target_progress,
 )
+from desloppify.utils import colorize
 
 
 def _consecutive_subjective_integrity_status(state: dict, status: str) -> int:

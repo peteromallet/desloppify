@@ -1,60 +1,29 @@
 """Codebase treemap visualization with HTML output and LLM-readable tree text."""
 
 import argparse
-import importlib
 import json
 import logging
 import sys
 from collections import defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, colorize, rel
-from desloppify.app.output import tree_text as _tree_text_mod
 from desloppify.app.output._viz_cmd_context import load_cmd_context
 from desloppify.app.output.tree_text import render_tree_lines
+from desloppify.core.fallbacks import log_best_effort_failure
+from desloppify.state import get_objective_score, get_overall_score, get_strict_score
+from desloppify.utils import PROJECT_ROOT, colorize, rel, safe_write_text
 
 D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
 logger = logging.getLogger(__name__)
 
 
-def _resolve_visualization_lang(path: Path, lang):
-    """Resolve language config for visualization if not already provided."""
-    if lang:
-        return lang
-    lang_mod = importlib.import_module("desloppify.languages")
-
-    search_roots = [path if path.is_dir() else path.parent]
-    search_roots.extend(search_roots[0].parents)
-    for root in search_roots:
-        detected = lang_mod.auto_detect_lang(root)
-        if detected:
-            return lang_mod.get_lang(detected)
-    return None
-
-
-def _fallback_source_files(path: Path) -> list[str]:
-    """Collect source files using extensions from all registered language plugins."""
-    lang_mod = importlib.import_module("desloppify.languages")
-    utils_mod = importlib.import_module("desloppify.utils")
-
-    extensions: set[str] = set()
-    for lang_name in lang_mod.available_langs():
-        cfg = lang_mod.get_lang(lang_name)
-        extensions.update(cfg.extensions)
-    if not extensions:
-        return []
-    return utils_mod.find_source_files(path, sorted(extensions))
-
-D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
-
-__all__ = ["D3_CDN_URL", "_aggregate", "_print_tree"]
+__all__ = ["D3_CDN_URL"]
 
 
 def _fmt_score(value) -> str:
-    return f"{value:.1f}" if isinstance(value, (int, float)) else "N/A"
+    return f"{value:.1f}" if isinstance(value, int | float) else "N/A"
 
 
 def _resolve_visualization_lang(path: Path, lang):
@@ -204,10 +173,9 @@ def generate_visualization(
         1 for fs in fbf.values() for f in fs if f.get("status") == "open"
     )
     if state:
-        state_mod = importlib.import_module("desloppify.state")
-        overall_score = state_mod.get_overall_score(state)
-        objective_score = state_mod.get_objective_score(state)
-        strict_score = state_mod.get_strict_score(state)
+        overall_score = get_overall_score(state)
+        objective_score = get_objective_score(state)
+        strict_score = get_strict_score(state)
     else:
         overall_score = objective_score = strict_score = None
 
@@ -231,8 +199,7 @@ def generate_visualization(
 
     if output:
         try:
-            utils_mod = importlib.import_module("desloppify.utils")
-            utils_mod.safe_write_text(output, html)
+            safe_write_text(output, html)
         except OSError as e:
             print(f"  \u26a0 Could not write visualization: {e}", file=sys.stderr)
             return html
@@ -249,12 +216,6 @@ def cmd_viz(args: argparse.Namespace) -> None:
     print(colorize(f"\nTreemap written to {output}", "green"))
     print(colorize(f"Open in browser: file://{output.resolve()}", "dim"))
 
-
-_load_cmd_context = load_cmd_context
-_aggregate = _tree_text_mod._aggregate
-_print_tree = _tree_text_mod._print_tree
-
-
 @dataclass
 class TreeTextOptions:
     """Text tree rendering options."""
@@ -265,27 +226,15 @@ class TreeTextOptions:
     detail: bool = False
 
 
-def _resolve_tree_text_options(
-    options: TreeTextOptions | None,
-    legacy_options: dict[str, Any],
-) -> TreeTextOptions:
-    resolved = TreeTextOptions() if options is None else replace(options)
-    for key in ("max_depth", "focus", "min_loc", "sort_by", "detail"):
-        if key in legacy_options:
-            setattr(resolved, key, legacy_options[key])
-    return resolved
-
-
 def generate_tree_text(
     path: Path,
     state: dict | None = None,
     options: TreeTextOptions | None = None,
     *,
     lang=None,
-    **legacy_options: Any,
 ) -> str:
     """Generate text-based annotated tree of the codebase."""
-    resolved_options = _resolve_tree_text_options(options, legacy_options)
+    resolved_options = options or TreeTextOptions()
     files = _collect_file_data(path, lang)
     dep_graph = _build_dep_graph_for_path(path, lang)
     tree = _build_tree(files, dep_graph, _findings_by_file(state))
@@ -322,11 +271,13 @@ def cmd_tree(args: argparse.Namespace) -> None:
         generate_tree_text(
             path,
             state,
-            max_depth=getattr(args, "depth", 2),
-            focus=getattr(args, "focus", None),
-            min_loc=getattr(args, "min_loc", 0),
-            sort_by=getattr(args, "sort", "loc"),
-            detail=getattr(args, "detail", False),
+            options=TreeTextOptions(
+                max_depth=getattr(args, "depth", 2),
+                focus=getattr(args, "focus", None),
+                min_loc=getattr(args, "min_loc", 0),
+                sort_by=getattr(args, "sort", "loc"),
+                detail=getattr(args, "detail", False),
+            ),
             lang=lang,
         )
     )

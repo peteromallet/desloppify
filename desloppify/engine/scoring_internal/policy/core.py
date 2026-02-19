@@ -9,7 +9,7 @@ from desloppify.core.enums import Confidence, Tier
 from desloppify.engine.policy.zones import EXCLUDED_ZONE_VALUES
 
 ScoreMode = Literal["lenient", "strict", "verified_strict"]
-_SCORING_MODES: tuple[ScoreMode, ...] = ("lenient", "strict", "verified_strict")
+SCORING_MODES: tuple[ScoreMode, ...] = ("lenient", "strict", "verified_strict")
 
 
 @dataclass(frozen=True)
@@ -38,11 +38,11 @@ _DIMENSION_SPECS: tuple[tuple[str, int], ...] = (
 )
 
 # Security findings are excluded in non-production zones.
-_SECURITY_EXCLUDED_ZONES = frozenset({"test", "config", "generated", "vendor"})
+SECURITY_EXCLUDED_ZONES = frozenset({"test", "config", "generated", "vendor"})
 
 # Central scoring policy for each detector: dimension/tier assignment,
 # weighting mode, and zone exclusions.
-_DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = {
+DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = {
     # File health
     "structural": DetectorScoringPolicy("structural", "File health", 3),
     # Code quality
@@ -88,7 +88,7 @@ _DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = {
         "Security",
         4,
         file_based=True,
-        excluded_zones=_SECURITY_EXCLUDED_ZONES,
+        excluded_zones=SECURITY_EXCLUDED_ZONES,
     ),
     "cycles": DetectorScoringPolicy("cycles", "Security", 4),
     # Review findings are scored via subjective dimensions, not mechanical dimensions.
@@ -97,16 +97,16 @@ _DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = {
 
 # Detectors where potential = file count but findings are per-(file, sub-type).
 # Per-file weighted failures are capped at 1.0 to match the file-based denominator.
-_FILE_BASED_DETECTORS = {
+FILE_BASED_DETECTORS = {
     detector
-    for detector, policy in _DETECTOR_SCORING_POLICIES.items()
+    for detector, policy in DETECTOR_SCORING_POLICIES.items()
     if policy.file_based
 }
 
 
 def _build_dimensions() -> list[Dimension]:
     grouped: dict[str, list[str]] = {name: [] for name, _tier in _DIMENSION_SPECS}
-    for detector, policy in _DETECTOR_SCORING_POLICIES.items():
+    for detector, policy in DETECTOR_SCORING_POLICIES.items():
         if policy.dimension is None:
             continue
         grouped[policy.dimension].append(detector)
@@ -117,7 +117,7 @@ def _build_dimensions() -> list[Dimension]:
 
 
 DIMENSIONS = _build_dimensions()
-_DIMENSIONS_BY_NAME = {d.name: d for d in DIMENSIONS}
+DIMENSIONS_BY_NAME = {d.name: d for d in DIMENSIONS}
 
 TIER_WEIGHTS = {
     Tier.AUTO_FIX: 1,
@@ -172,24 +172,16 @@ SUBJECTIVE_DIMENSION_WEIGHTS: dict[str, float] = {
 # Synthetic check count for subjective dimensions in dimension_scores.
 SUBJECTIVE_CHECKS = 10
 
-_FAILURE_STATUSES_BY_MODE: dict[ScoreMode, frozenset[str]] = {
+FAILURE_STATUSES_BY_MODE: dict[ScoreMode, frozenset[str]] = {
     "lenient": frozenset({"open"}),
     "strict": frozenset({"open", "wontfix"}),
     "verified_strict": frozenset({"open", "wontfix", "fixed", "false_positive"}),
 }
 
-# Public aliases for cross-module imports from internal helpers.
-SCORING_MODES: tuple[ScoreMode, ...] = _SCORING_MODES
-FAILURE_STATUSES_BY_MODE: dict[ScoreMode, frozenset[str]] = _FAILURE_STATUSES_BY_MODE
-DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = _DETECTOR_SCORING_POLICIES
-DIMENSIONS_BY_NAME: dict[str, Dimension] = _DIMENSIONS_BY_NAME
-FILE_BASED_DETECTORS: set[str] = _FILE_BASED_DETECTORS
-SECURITY_EXCLUDED_ZONES: frozenset[str] = _SECURITY_EXCLUDED_ZONES
-
 
 def detector_policy(detector: str) -> DetectorScoringPolicy:
     """Get scoring policy for a detector, with a safe default fallback."""
-    return _DETECTOR_SCORING_POLICIES.get(
+    return DETECTOR_SCORING_POLICIES.get(
         detector,
         DetectorScoringPolicy(detector=detector, dimension=None, tier=None),
     )
@@ -216,11 +208,5 @@ __all__ = [
     "DetectorScoringPolicy",
     "Dimension",
     "ScoreMode",
-    "_DETECTOR_SCORING_POLICIES",
-    "_DIMENSIONS_BY_NAME",
-    "_FAILURE_STATUSES_BY_MODE",
-    "_FILE_BASED_DETECTORS",
-    "_SCORING_MODES",
-    "_SECURITY_EXCLUDED_ZONES",
     "detector_policy",
 ]

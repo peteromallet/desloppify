@@ -6,12 +6,21 @@ import sys
 from pathlib import Path
 
 from desloppify import languages as lang_mod
-from desloppify.utils import colorize, rel
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.move.move_apply import apply_directory_move
-from desloppify.app.commands.move.move_language import detect_lang_from_dir, load_lang_move_module, resolve_move_verify_hint, supported_ext_hint
-from desloppify.app.commands.move.move_planning import build_directory_move_plan, build_internal_directory_changes, collect_source_files
+from desloppify.app.commands.move.move_language import (
+    detect_lang_from_dir,
+    load_lang_move_module,
+    resolve_move_verify_hint,
+    supported_ext_hint,
+)
+from desloppify.app.commands.move.move_planning import (
+    build_directory_move_plan,
+    build_internal_directory_changes,
+    collect_source_files,
+)
 from desloppify.app.commands.move.move_reporting import print_directory_move_plan
+from desloppify.utils import colorize, rel
 
 
 def run_directory_move(args, source_abs: str, resolve_path_fn) -> None:

@@ -6,11 +6,11 @@ import logging
 import re
 from pathlib import Path
 
-from desloppify.core.signal_patterns import SERVICE_ROLE_TOKEN_RE, is_server_only_path
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.engine.detectors import security as security_detector_mod
+from desloppify.core.signal_patterns import SERVICE_ROLE_TOKEN_RE, is_server_only_path
+from desloppify.engine.detectors.security import rules as security_detector_mod
 from desloppify.engine.policy.zones import FileZoneMap, Zone
-from desloppify.languages.typescript.detectors.contracts import DetectorResult, as_legacy_tuple
+from desloppify.languages.typescript.detectors.contracts import DetectorResult
 
 # ── Patterns ──
 
@@ -52,6 +52,31 @@ _SECURITY_INVOKER_RE = re.compile(r"security_invoker\s*=\s*true", re.IGNORECASE)
 logger = logging.getLogger(__name__)
 
 
+def _make_security_entry(
+    filepath: str,
+    line_num: int,
+    line: str,
+    *,
+    check_id: str,
+    summary: str,
+    severity: str,
+    confidence: str,
+    remediation: str,
+) -> dict:
+    return security_detector_mod.make_security_entry(
+        filepath,
+        line_num,
+        line,
+        security_detector_mod.SecurityRule(
+            check_id=check_id,
+            summary=summary,
+            severity=severity,
+            confidence=confidence,
+            remediation=remediation,
+        ),
+    )
+
+
 def detect_ts_security(
     files: list[str],
     zone_map: FileZoneMap | None,
@@ -60,7 +85,7 @@ def detect_ts_security(
 
     Returns (entries, files_scanned).
     """
-    return as_legacy_tuple(detect_ts_security_result(files, zone_map))
+    return detect_ts_security_result(files, zone_map).as_tuple()
 
 
 def detect_ts_security_result(
@@ -136,57 +161,57 @@ def _line_security_findings(
         context = "\n".join(lines[max(0, line_num - 3) : min(len(lines), line_num + 3)])
         if SERVICE_ROLE_TOKEN_RE.search(context) and not is_server_only:
             line_findings.append(
-                security_detector_mod.make_security_entry(
+                _make_security_entry(
                     filepath,
                     line_num,
-                    "service_role_on_client",
-                    "Supabase service role key used in client code",
-                    "critical",
-                    "high",
                     line,
-                    "Never use SERVICE_ROLE key outside server-only code — use anon key + RLS on clients",
+                    check_id="service_role_on_client",
+                    summary="Supabase service role key used in client code",
+                    severity="critical",
+                    confidence="high",
+                    remediation="Never use SERVICE_ROLE key outside server-only code — use anon key + RLS on clients",
                 )
             )
 
     if _EVAL_PATTERNS.search(line):
         line_findings.append(
-            security_detector_mod.make_security_entry(
+            _make_security_entry(
                 filepath,
                 line_num,
-                "eval_injection",
-                "eval() or new Function() — potential code injection",
-                "critical",
-                "high",
                 line,
-                "Avoid eval/new Function — use safer alternatives (JSON.parse, Map, etc.)",
+                check_id="eval_injection",
+                summary="eval() or new Function() — potential code injection",
+                severity="critical",
+                confidence="high",
+                remediation="Avoid eval/new Function — use safer alternatives (JSON.parse, Map, etc.)",
             )
         )
 
     if _DANGEROUS_HTML_RE.search(line):
         line_findings.append(
-            security_detector_mod.make_security_entry(
+            _make_security_entry(
                 filepath,
                 line_num,
-                "dangerously_set_inner_html",
-                "dangerouslySetInnerHTML — XSS risk if data is untrusted",
-                "high",
-                "medium",
                 line,
-                "Sanitize HTML with DOMPurify before using dangerouslySetInnerHTML",
+                check_id="dangerously_set_inner_html",
+                summary="dangerouslySetInnerHTML — XSS risk if data is untrusted",
+                severity="high",
+                confidence="medium",
+                remediation="Sanitize HTML with DOMPurify before using dangerouslySetInnerHTML",
             )
         )
 
     if _INNER_HTML_RE.search(line):
         line_findings.append(
-            security_detector_mod.make_security_entry(
+            _make_security_entry(
                 filepath,
                 line_num,
-                "innerHTML_assignment",
-                "Direct .innerHTML assignment — XSS risk",
-                "high",
-                "medium",
                 line,
-                "Use textContent for text or sanitize HTML with DOMPurify",
+                check_id="innerHTML_assignment",
+                summary="Direct .innerHTML assignment — XSS risk",
+                severity="high",
+                confidence="medium",
+                remediation="Use textContent for text or sanitize HTML with DOMPurify",
             )
         )
 
@@ -194,29 +219,29 @@ def _line_security_findings(
         is_dev_file = "/dev/" in normalized_path or "dev." in Path(filepath).name
         if not (is_dev_file and has_dev_guard):
             line_findings.append(
-                security_detector_mod.make_security_entry(
+                _make_security_entry(
                     filepath,
                     line_num,
-                    "dev_credentials_env",
-                    "Sensitive credential exposed via VITE_ environment variable",
-                    "medium",
-                    "medium",
                     line,
-                    "Sensitive credentials should never be in client-accessible VITE_ env vars",
+                    check_id="dev_credentials_env",
+                    summary="Sensitive credential exposed via VITE_ environment variable",
+                    severity="medium",
+                    confidence="medium",
+                    remediation="Sensitive credentials should never be in client-accessible VITE_ env vars",
                 )
             )
 
     if _OPEN_REDIRECT_RE.search(line):
         line_findings.append(
-            security_detector_mod.make_security_entry(
+            _make_security_entry(
                 filepath,
                 line_num,
-                "open_redirect",
-                "Potential open redirect: user-controlled data assigned to window.location",
-                "medium",
-                "medium",
                 line,
-                "Validate redirect URLs against an allowlist before redirecting",
+                check_id="open_redirect",
+                summary="Potential open redirect: user-controlled data assigned to window.location",
+                severity="medium",
+                confidence="medium",
+                remediation="Validate redirect URLs against an allowlist before redirecting",
             )
         )
 
@@ -224,15 +249,15 @@ def _line_security_findings(
         context = "\n".join(lines[max(0, line_num - 3) : min(len(lines), line_num + 3)])
         if _JWT_PAYLOAD_RE.search(context):
             line_findings.append(
-                security_detector_mod.make_security_entry(
+                _make_security_entry(
                     filepath,
                     line_num,
-                    "unverified_jwt_decode",
-                    "JWT decoded with atob() without signature verification",
-                    "critical",
-                    "high",
                     line,
-                    "Use auth.getUser() or a JWT library that verifies signatures",
+                    check_id="unverified_jwt_decode",
+                    summary="JWT decoded with atob() without signature verification",
+                    severity="critical",
+                    confidence="high",
+                    remediation="Use auth.getUser() or a JWT library that verifies signatures",
                 )
             )
 
@@ -252,21 +277,21 @@ def _file_level_security_findings(
     if _looks_like_edge_handler(normalized_path, content):
         if not _AUTH_CHECK_RE.search(content):
             file_findings.append(
-                security_detector_mod.make_security_entry(
+                _make_security_entry(
                     filepath,
                     1,
-                    "edge_function_missing_auth",
-                    "Edge function serves requests without authentication check",
-                    "high",
-                    "medium",
                     content.splitlines()[0] if lines else "",
-                    "Add authentication check (e.g., authenticateRequest, auth.getUser)",
+                    check_id="edge_function_missing_auth",
+                    summary="Edge function serves requests without authentication check",
+                    severity="high",
+                    confidence="medium",
+                    remediation="Add authentication check (e.g., authenticateRequest, auth.getUser)",
                 )
             )
 
     _check_json_parse_unguarded(filepath, lines, file_findings)
     if filepath.endswith(".sql"):
-        _check_rls_bypass(filepath, lines, file_findings)
+        _check_rls_bypass(filepath, content, lines, file_findings)
     return file_findings
 
 
@@ -287,8 +312,9 @@ def _is_in_try_scope(lines: list[str], target_line: int) -> bool:
     depth = 0
     for i in range(target_line - 2, -1, -1):  # 0-indexed, go backwards
         stripped = lines[i].strip()
-        # Stop at function boundaries — inner functions are not guarded by outer try
-        if re.match(r"(?:async\s+)?function\b", stripped) or "=>" in stripped:
+        # Stop at named function boundaries — inner functions are not guarded by outer try.
+        # Arrow functions (=>) are NOT a boundary: they may appear inside a try block.
+        if re.match(r"(?:async\s+)?function\b", stripped):
             return False
         depth += stripped.count("}") - stripped.count("{")
         if depth <= 0 and re.search(r"\btry\b", stripped):
@@ -312,22 +338,21 @@ def _check_json_parse_unguarded(
         if _is_in_try_scope(lines, line_num):
             continue
         entries.append(
-            security_detector_mod.make_security_entry(
+            _make_security_entry(
                 filepath,
                 line_num,
-                "json_parse_unguarded",
-                "JSON.parse() without try/catch — may throw on malformed input",
-                "low",
-                "low",
                 line,
-                "Wrap JSON.parse() in a try/catch block",
+                check_id="json_parse_unguarded",
+                summary="JSON.parse() without try/catch — may throw on malformed input",
+                severity="low",
+                confidence="low",
+                remediation="Wrap JSON.parse() in a try/catch block",
             )
         )
 
 
-def _check_rls_bypass(filepath: str, lines: list[str], entries: list[dict]) -> None:
+def _check_rls_bypass(filepath: str, content: str, lines: list[str], entries: list[dict]) -> None:
     """Check for CREATE VIEW without security_invoker in SQL files."""
-    content = "\n".join(lines)
     for m in _CREATE_VIEW_RE.finditer(content):
         # Find the line number
         line_num = content[: m.start()].count("\n") + 1
@@ -335,14 +360,14 @@ def _check_rls_bypass(filepath: str, lines: list[str], entries: list[dict]) -> N
         view_block = content[m.start() : m.start() + 500]
         if not _SECURITY_INVOKER_RE.search(view_block):
             entries.append(
-                security_detector_mod.make_security_entry(
+                _make_security_entry(
                     filepath,
                     line_num,
-                    "rls_bypass_views",
-                    "SQL VIEW without security_invoker=true may bypass RLS",
-                    "high",
-                    "medium",
                     lines[line_num - 1] if 0 < line_num <= len(lines) else "",
-                    "Add 'WITH (security_invoker = true)' to the view definition",
+                    check_id="rls_bypass_views",
+                    summary="SQL VIEW without security_invoker=true may bypass RLS",
+                    severity="high",
+                    confidence="medium",
+                    remediation="Add 'WITH (security_invoker = true)' to the view definition",
                 )
             )

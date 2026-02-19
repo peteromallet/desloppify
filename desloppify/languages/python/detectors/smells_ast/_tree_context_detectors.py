@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import ast
 
-from desloppify.languages.python.detectors.smells_ast._shared import _iter_nodes, _looks_like_path_var
+from desloppify.languages.python.detectors.smells_ast._shared import (
+    _iter_nodes,
+    _looks_like_path_var,
+)
 
 _CALLBACK_LOG_NAMES = {
     "dprint",

@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 from desloppify.app.output.scorecard_parts.left_panel import draw_left_panel
-from desloppify.app.output.scorecard_parts.ornaments import draw_ornament
-from desloppify.app.output.scorecard_parts.ornaments import draw_rule_with_ornament
-from desloppify.app.output.scorecard_parts.ornaments import draw_vert_rule_with_ornament
-from desloppify.app.output.scorecard_parts.theme import BG_ROW_ALT, BG_TABLE, BORDER, TEXT, fmt_score, load_font, scale, score_color
+from desloppify.app.output.scorecard_parts.ornaments import (
+    draw_ornament,
+    draw_rule_with_ornament,
+    draw_vert_rule_with_ornament,
+)
+from desloppify.app.output.scorecard_parts.theme import (
+    BG_ROW_ALT,
+    BG_TABLE,
+    BORDER,
+    TEXT,
+    fmt_score,
+    load_font,
+    scale,
+    score_color,
+)
 
 
 def draw_right_panel(
@@ -107,21 +118,10 @@ def draw_right_panel(
                 font=font_strict,
             )
 
-
-# Backward-compatible aliases.
-_draw_left_panel = draw_left_panel
-_draw_right_panel = draw_right_panel
-_draw_ornament = draw_ornament
-_draw_rule_with_ornament = draw_rule_with_ornament
-_draw_vert_rule_with_ornament = draw_vert_rule_with_ornament
-
-
 __all__ = [
     "draw_left_panel",
     "draw_right_panel",
-    "_draw_left_panel",
-    "_draw_right_panel",
-    "_draw_ornament",
-    "_draw_rule_with_ornament",
-    "_draw_vert_rule_with_ornament",
+    "draw_ornament",
+    "draw_rule_with_ornament",
+    "draw_vert_rule_with_ornament",
 ]

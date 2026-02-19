@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from desloppify import state as state_mod
-from desloppify.core.config import load_config
 from desloppify.app.commands.helpers.state import state_path
+from desloppify.core.config import load_config
 
 
 @dataclass(frozen=True)

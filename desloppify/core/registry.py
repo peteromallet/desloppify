@@ -194,6 +194,27 @@ DETECTORS: dict[str, DetectorMeta] = {
         "manual_fix",
         "fix architectural layer violations — move shared code to the correct layer",
     ),
+    "responsibility_cohesion": DetectorMeta(
+        "responsibility_cohesion",
+        "responsibility cohesion",
+        "Code quality",
+        "refactor",
+        "split modules with too many responsibilities — extract focused sub-modules",
+    ),
+    "boilerplate_duplication": DetectorMeta(
+        "boilerplate_duplication",
+        "boilerplate duplication",
+        "Duplication",
+        "refactor",
+        "extract shared boilerplate into reusable helpers or base classes",
+    ),
+    "stale_wontfix": DetectorMeta(
+        "stale_wontfix",
+        "stale wontfix",
+        "Code quality",
+        "manual_fix",
+        "re-evaluate old wontfix decisions — fix, document, or escalate",
+    ),
     # ── Manual fix ────────────────────────────────────────
     "deprecated": DetectorMeta(
         "deprecated",
@@ -271,7 +292,7 @@ def dimension_action_type(dim_name: str) -> str:
 
 
 def detector_tools() -> dict[str, dict]:
-    """DETECTOR_TOOLS-shaped dict for narrative.py backward compat."""
+    """Build detector tool metadata keyed by detector name."""
     result = {}
     for name, d in DETECTORS.items():
         entry: dict = {

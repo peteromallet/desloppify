@@ -1,4 +1,4 @@
-"""Stale @deprecated shim detection."""
+"""Stale @deprecated symbol detection."""
 
 from __future__ import annotations
 
@@ -10,16 +10,23 @@ from typing import Any
 
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.core.signal_patterns import DEPRECATION_MARKER_RE
-from desloppify.utils import c, find_ts_files, grep_count_files, grep_files, print_table, rel, resolve_path
-from desloppify.languages.typescript.detectors.contracts import DetectorResult, as_legacy_tuple
+from desloppify.languages.typescript.detectors.contracts import DetectorResult
+from desloppify.utils import (
+    c,
+    find_ts_files,
+    grep_count_files,
+    grep_files,
+    print_table,
+    rel,
+    resolve_path,
+)
 
 logger = logging.getLogger(__name__)
 
-LOGGER = logging.getLogger(__name__)
 
 def detect_deprecated(path: Path) -> tuple[list[dict[str, Any]], int]:
-    """Backwards-compatible deprecated detector entrypoint."""
-    return as_legacy_tuple(detect_deprecated_result(path))
+    """Deprecated detector entrypoint."""
+    return detect_deprecated_result(path).as_tuple()
 
 
 def detect_deprecated_result(path: Path) -> DetectorResult[dict[str, Any]]:
@@ -44,7 +51,7 @@ def detect_deprecated_result(path: Path) -> DetectorResult[dict[str, Any]]:
             continue
         seen_symbols.add(key)
         importers = (
-            _count_importers(symbol, filepath, scan_root=path)
+            _count_importers(symbol, filepath, ts_files=ts_files, scan_root=path)
             if kind == "top-level"
             else -1
         )
@@ -86,11 +93,7 @@ def _extract_deprecated_symbol(
         # or `/** @deprecated */ export const oldThing = ...`
         if "/**" in content_stripped and "*/" in content_stripped:
             # This is a single-line JSDoc. Check what follows on the same or next line
-            after_jsdoc = (
-                content_stripped.split("*/", 1)[1].strip()
-                if "*/" in content_stripped
-                else ""
-            )
+            after_jsdoc = content_stripped.split("*/", 1)[1].strip()
             if after_jsdoc:
                 # Property on same line: `/** @deprecated */ someField?: string;`
                 m = re.match(r"(\w+)\s*[?:=]", after_jsdoc)
@@ -113,10 +116,6 @@ def _extract_deprecated_symbol(
             src = lines[idx].strip()
             # Skip empty lines, comment continuations, closing comment
             if not src or src.startswith("*") or src.startswith("//"):
-                if src == "*/":
-                    continue
-                if src.startswith("*"):
-                    continue
                 continue
             # Top-level declaration
             m = re.match(
@@ -162,10 +161,11 @@ def _resolve_source_file(filepath: str, *, scan_root: Path | None) -> Path:
     return Path(resolve_path(filepath))
 
 
-def _count_importers(name: str, declaring_file: str, *, scan_root: Path) -> int:
+def _count_importers(
+    name: str, declaring_file: str, *, ts_files: list[str], scan_root: Path
+) -> int:
     if not name:
         return -1
-    ts_files = find_ts_files(scan_root)
     matching = grep_count_files(name, ts_files, word_boundary=True)
     declaring_resolved = str(
         _resolve_source_file(declaring_file, scan_root=scan_root).resolve()

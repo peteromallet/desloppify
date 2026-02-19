@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from desloppify.utils import matches_exclusion
 from desloppify.engine.state_internal.filtering import matched_ignore_pattern
+from desloppify.utils import matches_exclusion
 
 
-def _find_suspect_detectors(
+def find_suspect_detectors(
     existing: dict,
     current_by_detector: dict[str, int],
     force_resolve: bool,
@@ -25,6 +25,8 @@ def _find_suspect_detectors(
             previous_open_by_detector.get(detector, 0) + 1
         )
 
+    # 'review' findings enter via `desloppify review --import`, not via scan phases.
+    # They are always marked suspect so the scan never auto-resolves them.
     import_only_detectors = {"review"}
     suspect: set[str] = set()
 
@@ -42,18 +44,6 @@ def _find_suspect_detectors(
             suspect.add(detector)
 
     return suspect
-
-
-def find_suspect_detectors(
-    existing: dict,
-    current_by_detector: dict[str, int],
-    force_resolve: bool,
-    ran_detectors: set[str] | None = None,
-) -> set[str]:
-    """Public alias for tests/internal callers that should avoid private imports."""
-    return _find_suspect_detectors(
-        existing, current_by_detector, force_resolve, ran_detectors
-    )
 
 
 def _auto_resolve_disappeared(
@@ -122,7 +112,7 @@ def _auto_resolve_disappeared(
     return resolved, skipped_other_lang, skipped_out_of_scope
 
 
-def _upsert_findings(
+def upsert_findings(
     existing: dict,
     current_findings: list[dict],
     ignore: list[str],
@@ -156,7 +146,6 @@ def _upsert_findings(
                 existing[finding_id]["suppressed"] = True
                 existing[finding_id]["suppressed_at"] = now
                 existing[finding_id]["suppression_pattern"] = matched_ignore
-            if matched_ignore:
                 continue
             new_count += 1
             continue
@@ -207,22 +196,8 @@ def _upsert_findings(
     return current_ids, new_count, reopened_count, by_detector, ignored_count
 
 
-def upsert_findings(
-    existing: dict,
-    current_findings: list[dict],
-    ignore: list[str],
-    now: str,
-    *,
-    lang: str | None,
-) -> tuple[set[str], int, int, dict[str, int], int]:
-    """Public alias for tests/internal callers that should avoid private imports."""
-    return _upsert_findings(existing, current_findings, ignore, now, lang=lang)
-
-
 __all__ = [
     "_auto_resolve_disappeared",
-    "_find_suspect_detectors",
-    "_upsert_findings",
     "find_suspect_detectors",
     "upsert_findings",
 ]

@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from desloppify.intelligence.narrative._constants import _DETECTOR_CASCADE, STRUCTURAL_MERGE
+from desloppify.intelligence.narrative._constants import (
+    _DETECTOR_CASCADE,
+    STRUCTURAL_MERGE,
+)
 
 
 def open_files_by_detector(findings: dict[str, dict[str, Any]]) -> dict[str, set[str]]:

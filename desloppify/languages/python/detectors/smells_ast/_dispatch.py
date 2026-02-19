@@ -5,11 +5,41 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 
-from desloppify.languages.python.detectors.smells_ast._node_detectors import _detect_dead_functions, _detect_deferred_imports, _detect_inline_classes, _detect_lru_cache_mutable, _detect_monster_functions
-from desloppify.languages.python.detectors.smells_ast._tree_context_detectors import _detect_callback_logging, _detect_hardcoded_path_sep
-from desloppify.languages.python.detectors.smells_ast._tree_quality_detectors import _detect_annotation_quality, _detect_constant_return, _detect_mutable_class_var, _detect_noop_function, _detect_optional_param_sprawl, _detect_unreachable_code
-from desloppify.languages.python.detectors.smells_ast._tree_safety_detectors import _detect_import_time_boundary_mutations, _detect_lost_exception_context, _detect_naive_comment_strip, _detect_regex_backtrack, _detect_silent_except, _detect_subprocess_no_timeout, _detect_sys_exit_in_library, _detect_unsafe_file_write
-from desloppify.languages.python.detectors.smells_ast._types import NodeCollector, SmellMatch, TreeCollector, merge_smell_matches
+from desloppify.languages.python.detectors.smells_ast._node_detectors import (
+    _detect_dead_functions,
+    _detect_deferred_imports,
+    _detect_inline_classes,
+    _detect_lru_cache_mutable,
+    _detect_monster_functions,
+)
+from desloppify.languages.python.detectors.smells_ast._tree_context_detectors import (
+    _detect_callback_logging,
+    _detect_hardcoded_path_sep,
+)
+from desloppify.languages.python.detectors.smells_ast._tree_quality_detectors import (
+    _detect_annotation_quality,
+    _detect_constant_return,
+    _detect_mutable_class_var,
+    _detect_noop_function,
+    _detect_optional_param_sprawl,
+    _detect_unreachable_code,
+)
+from desloppify.languages.python.detectors.smells_ast._tree_safety_detectors import (
+    _detect_import_time_boundary_mutations,
+    _detect_lost_exception_context,
+    _detect_naive_comment_strip,
+    _detect_regex_backtrack,
+    _detect_silent_except,
+    _detect_subprocess_no_timeout,
+    _detect_sys_exit_in_library,
+    _detect_unsafe_file_write,
+)
+from desloppify.languages.python.detectors.smells_ast._types import (
+    NodeCollector,
+    SmellMatch,
+    TreeCollector,
+    merge_smell_matches,
+)
 
 
 def _collect_from_mutating(

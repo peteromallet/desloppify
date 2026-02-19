@@ -3,16 +3,19 @@
 import sys
 from pathlib import Path
 
-from desloppify.engine.work_queue_internal.issues import finding_weight, impact_label, list_open_review_findings, render_issue_detail, update_investigation
-from desloppify.intelligence.narrative import compute_narrative
-from desloppify.state import save_state
-from desloppify.utils import colorize
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
-
-_write_query = write_query
 from desloppify.app.commands.helpers.rendering import print_agent_plan
 from desloppify.app.commands.helpers.runtime import command_runtime
+from desloppify.core.issues_render import finding_weight, render_issue_detail
+from desloppify.engine.work_queue_internal.issues import (
+    impact_label,
+    list_open_review_findings,
+    update_investigation,
+)
+from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
+from desloppify.state import save_state
+from desloppify.utils import colorize
 
 
 def cmd_issues(args):
@@ -26,10 +29,19 @@ def cmd_issues(args):
         _update_issue(args)
 
 
+def _score_for_issue(finding, assessments, weight_fn, label_fn) -> str:
+    """Render score cell as '<assessment> <impact>'."""
+    dim = finding.get("detail", {}).get("dimension", "")
+    raw_score = assessments.get(dim)
+    score = f"{float(raw_score):.1f}" if isinstance(raw_score, int | float) else "--.-"
+    weight, _, _ = weight_fn(finding)
+    return f"{score} {label_fn(weight)}"
+
+
 def _list_issues(args):
     """Print numbered table of open review findings."""
     state = command_runtime(args).state
-    narrative = compute_narrative(state, command="issues")
+    narrative = compute_narrative(state, context=NarrativeContext(command="issues"))
     items = list_open_review_findings(state)
 
     if not items:
@@ -41,7 +53,7 @@ def _list_issues(args):
             )
         )
         print()
-        _write_query(
+        write_query(
             {
                 "command": "issues",
                 "action": "list",
@@ -88,7 +100,7 @@ def _list_issues(args):
     )
     print()
 
-    _write_query(
+    write_query(
         {
             "command": "issues",
             "action": "list",
@@ -111,7 +123,7 @@ def _list_issues(args):
 def _show_issue(args):
     """Show full details for a single issue by number."""
     state = command_runtime(args).state
-    narrative = compute_narrative(state, command="issues")
+    narrative = compute_narrative(state, context=NarrativeContext(command="issues"))
     items = list_open_review_findings(state)
     number = args.number
 
@@ -137,7 +149,7 @@ def _show_issue(args):
     print()
     print(doc)
 
-    _write_query(
+    write_query(
         {
             "command": "issues",
             "action": "show",
@@ -158,7 +170,7 @@ def _update_issue(args):
     runtime = command_runtime(args)
     state = runtime.state
     sp = runtime.state_path
-    narrative = compute_narrative(state, command="issues")
+    narrative = compute_narrative(state, context=NarrativeContext(command="issues"))
     items = list_open_review_findings(state)
     number = args.number
 
@@ -204,7 +216,7 @@ def _update_issue(args):
     )
     print(colorize("  Next command: `desloppify issues show 1`", "dim"))
     print()
-    _write_query(
+    write_query(
         {
             "command": "issues",
             "action": "update",

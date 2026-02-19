@@ -6,18 +6,15 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import FunctionInfo
+from desloppify.languages.typescript.extractors_components import (
+    detect_passthrough_components,
+    extract_props,
+    extract_ts_components,
+    tsx_passthrough_pattern,
+)
 from desloppify.utils import PROJECT_ROOT
-from desloppify.languages.typescript.extractors_components import detect_passthrough_components as _detect_passthrough_components_impl
-from desloppify.languages.typescript.extractors_components import extract_props as _extract_props_impl
-from desloppify.languages.typescript.extractors_components import extract_ts_components as _extract_ts_components_impl
-from desloppify.languages.typescript.extractors_components import tsx_passthrough_pattern as _tsx_passthrough_pattern_impl
 
 logger = logging.getLogger(__name__)
-
-extract_ts_components = _extract_ts_components_impl
-extract_props = _extract_props_impl
-tsx_passthrough_pattern = _tsx_passthrough_pattern_impl
-detect_passthrough_components = _detect_passthrough_components_impl
 
 
 def _extract_ts_params(sig: str) -> list[str]:
@@ -195,7 +192,6 @@ def extract_ts_functions(filepath: str) -> list[FunctionInfo]:
                         break
                 sig = "\n".join(sig_lines)
                 params = _extract_ts_params(sig)
-                return_annotation = _extract_ts_return_annotation(sig)
 
                 if len(normalized.splitlines()) >= 3:
                     functions.append(
@@ -238,3 +234,15 @@ def normalize_ts_body(body: str) -> str:
             continue
         normalized.append(stripped)
     return "\n".join(normalized)
+
+
+__all__ = [
+    "_extract_ts_params",
+    "_parse_param_names",
+    "detect_passthrough_components",
+    "extract_props",
+    "extract_ts_components",
+    "extract_ts_functions",
+    "normalize_ts_body",
+    "tsx_passthrough_pattern",
+]

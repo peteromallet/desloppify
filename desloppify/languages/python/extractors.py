@@ -5,12 +5,17 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import FunctionInfo
-from desloppify.engine.detectors.passthrough import classify_params, classify_passthrough_tier
+from desloppify.engine.detectors.passthrough import (
+    classify_params,
+    classify_passthrough_tier,
+)
+from desloppify.languages.python.extractors_classes import extract_py_classes
+from desloppify.languages.python.extractors_shared import (
+    extract_py_params,
+    find_block_end,
+    read_file,
+)
 from desloppify.utils import find_py_files
-from desloppify.languages.python.extractors_classes import extract_py_classes as _extract_py_classes_impl
-from desloppify.languages.python.extractors_shared import extract_py_params, find_block_end, read_file
-
-extract_py_classes = _extract_py_classes_impl
 
 
 def _find_signature_end(lines: list[str], start: int) -> int | None:
@@ -191,3 +196,13 @@ def detect_passthrough_functions(path: Path) -> list[dict]:
             )
 
     return sorted(entries, key=lambda e: (-e["passthrough"], -e["ratio"]))
+
+
+__all__ = [
+    "detect_passthrough_functions",
+    "extract_py_classes",
+    "extract_py_functions",
+    "extract_py_params",
+    "normalize_py_body",
+    "py_passthrough_pattern",
+]

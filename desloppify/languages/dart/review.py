@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 
-from desloppify.languages._shared.scaffold_defaults import SCAFFOLD_HOLISTIC_REVIEW_DIMENSIONS as HOLISTIC_REVIEW_DIMENSIONS
+from desloppify.languages._shared.scaffold_defaults import (
+    SCAFFOLD_HOLISTIC_REVIEW_DIMENSIONS as HOLISTIC_REVIEW_DIMENSIONS,
+)
 
 REVIEW_GUIDANCE = {
     "patterns": [
@@ -57,3 +59,14 @@ def api_surface(file_contents: dict[str, str]) -> dict[str, list[str]]:
         "public_types": sorted(public_types),
         "public_functions": sorted(public_functions),
     }
+
+
+__all__ = [
+    "HOLISTIC_REVIEW_DIMENSIONS",
+    "LOW_VALUE_PATTERN",
+    "MIGRATION_MIXED_EXTENSIONS",
+    "MIGRATION_PATTERN_PAIRS",
+    "REVIEW_GUIDANCE",
+    "api_surface",
+    "module_patterns",
+]

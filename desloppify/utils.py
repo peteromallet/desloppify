@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.core.internal import text_utils as _text_utils
-from desloppify.core.runtime_state import CACHE_ENABLED as _cache_enabled
-from desloppify.core.runtime_state import EXCLUSION_CONFIG, FILE_TEXT_CACHE, SOURCE_FILE_CACHE
+from desloppify.core.runtime_state import current_runtime_context
 
 get_area = _text_utils.get_area
 strip_c_style_comments = _text_utils.strip_c_style_comments
@@ -23,7 +22,7 @@ SRC_PATH = PROJECT_ROOT / os.environ.get("DESLOPPIFY_SRC", "src")
 
 
 def read_code_snippet(filepath: str, line: int, context: int = 1) -> str | None:
-    """Compatibility wrapper that honors runtime changes to PROJECT_ROOT."""
+    """Read a snippet around a 1-based line number."""
     return _text_utils.read_code_snippet(
         filepath, line, context, project_root=PROJECT_ROOT
     )
@@ -56,8 +55,9 @@ DEFAULT_EXCLUSIONS = frozenset(
 
 def set_exclusions(patterns: list[str]):
     """Set global exclusion patterns (called once from CLI at startup)."""
-    EXCLUSION_CONFIG.values = tuple(patterns)
-    SOURCE_FILE_CACHE.clear()
+    runtime = current_runtime_context()
+    runtime.exclusion_config.values = tuple(patterns)
+    runtime.source_file_cache.clear()
 
 
 def get_exclusions() -> tuple[str, ...]:
@@ -66,19 +66,26 @@ def get_exclusions() -> tuple[str, ...]:
     Use this instead of accessing exclusion state directly —
     from-imports bind to the initial value and become stale after set_exclusions().
     """
-    return EXCLUSION_CONFIG.values
+    return current_runtime_context().exclusion_config.values
 
 
 def enable_file_cache():
     """Enable scan-scoped file content cache."""
-    FILE_TEXT_CACHE.enable()
-    _cache_enabled.set(True)
+    runtime = current_runtime_context()
+    runtime.file_text_cache.enable()
+    runtime.cache_enabled.set(True)
 
 
 def disable_file_cache():
     """Disable file content cache and free memory."""
-    FILE_TEXT_CACHE.disable()
-    _cache_enabled.set(False)
+    runtime = current_runtime_context()
+    runtime.file_text_cache.disable()
+    runtime.cache_enabled.set(False)
+
+
+def is_file_cache_enabled() -> bool:
+    """Return whether scan-scoped file cache is currently enabled."""
+    return bool(current_runtime_context().cache_enabled)
 
 
 # ── Atomic file writes ─────────────────────────────────────
@@ -102,7 +109,7 @@ def safe_write_text(filepath: str | Path, content: str) -> None:
 
 def read_file_text(filepath: str) -> str | None:
     """Read a file as text, with optional caching."""
-    return FILE_TEXT_CACHE.read(filepath)
+    return current_runtime_context().file_text_cache.read(filepath)
 
 
 def grep_files(
@@ -135,14 +142,13 @@ def grep_files_containing(
     """
     if not names:
         return {}
+    names_by_length = sorted(names, key=len, reverse=True)
     if word_boundary:
-        escaped = sorted(names, key=len, reverse=True)
         combined = re.compile(
-            r"\b(?:" + "|".join(re.escape(n) for n in escaped) + r")\b"
+            r"\b(?:" + "|".join(re.escape(n) for n in names_by_length) + r")\b"
         )
     else:
-        escaped = sorted(names, key=len, reverse=True)
-        combined = re.compile("|".join(re.escape(n) for n in escaped))
+        combined = re.compile("|".join(re.escape(n) for n in names_by_length))
 
     name_to_files: dict[str, set[str]] = {}
     for filepath in file_list:
@@ -325,14 +331,9 @@ def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
     return in_default_exclusions or is_virtualenv_dir or matches_extra_exclusion
 
 
-# Backward-compatible names used in tests; state is owned by core.runtime_state.
-_SOURCE_FILE_CACHE_MAX = SOURCE_FILE_CACHE.max_entries
-_SOURCE_FILE_CACHE = SOURCE_FILE_CACHE.values
-
-
 def _clear_source_file_cache() -> None:
     """Clear cached source-file discovery results."""
-    SOURCE_FILE_CACHE.clear()
+    current_runtime_context().source_file_cache.clear()
 
 
 def _find_source_files_cached(
@@ -343,7 +344,8 @@ def _find_source_files_cached(
 ) -> tuple[str, ...]:
     """Cached file discovery using os.walk — cross-platform, prunes during traversal."""
     cache_key = (path, extensions, exclusions, extra_exclusions)
-    cached = SOURCE_FILE_CACHE.get(cache_key)
+    cache = current_runtime_context().source_file_cache
+    cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
@@ -371,7 +373,7 @@ def _find_source_files_cached(
                     continue
                 files.append(rel_file)
     result = tuple(sorted(files))
-    SOURCE_FILE_CACHE.put(cache_key, result)
+    cache.put(cache_key, result)
     return result
 
 

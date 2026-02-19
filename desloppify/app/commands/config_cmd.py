@@ -1,8 +1,13 @@
 """config command: show/set/unset project configuration."""
 
-from desloppify.core.config import CONFIG_SCHEMA, save_config, set_config_value, unset_config_value
-from desloppify.utils import colorize
 from desloppify.app.commands.helpers.runtime import command_runtime
+from desloppify.core.config import (
+    CONFIG_SCHEMA,
+    save_config,
+    set_config_value,
+    unset_config_value,
+)
+from desloppify.utils import colorize
 
 
 def cmd_config(args):

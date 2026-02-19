@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence import narrative as narrative_mod
 from desloppify import state as state_mod
+from desloppify.app.commands.helpers.rendering import print_ranked_actions
+from desloppify.intelligence import narrative as narrative_mod
 from desloppify.intelligence.integrity import review as subjective_integrity_mod
 from desloppify.utils import colorize
-from desloppify.app.commands.helpers.rendering import print_ranked_actions
 
 
 def _subjective_dimensions_below_threshold(
@@ -31,7 +31,9 @@ def _subjective_dimensions_below_threshold(
         if not isinstance(subjective_payload, dict):
             continue
         issues = subjective_payload.get("issues", 0)
-        if not isinstance(score, (int, float)) or not isinstance(issues, (int, float)):
+        if not isinstance(score, int | float) or not isinstance(
+            issues, int | float
+        ):
             continue
         if score < threshold and issues > 0:
             low_dims.append(str(dim_name))
@@ -173,7 +175,12 @@ def _show_post_scan_analysis(
     # Computed narrative: headline + top action as terminal suggestion
     lang_name = lang.name if lang else None
     narrative = narrative_mod.compute_narrative(
-        state, diff=diff, lang=lang_name, command="scan"
+        state,
+        context=narrative_mod.NarrativeContext(
+            diff=diff,
+            lang=lang_name,
+            command="scan",
+        ),
     )
 
     # Show one actionable plan and optional strategy context.

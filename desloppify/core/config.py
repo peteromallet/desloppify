@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import importlib
 import json
 import logging
 from dataclasses import dataclass
@@ -40,7 +39,7 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         bool, True, "Generate scorecard image after each scan"
     ),
     "badge_path": ConfigKey(
-        str, "assets/scorecard.png", "Output path for scorecard image"
+        str, "scorecard.png", "Output path for scorecard image"
     ),
     "exclude": ConfigKey(list, [], "Path patterns to exclude from scanning"),
     "ignore": ConfigKey(list, [], "Finding patterns to suppress"),
@@ -79,36 +78,6 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
 }
 
 
-def _legacy_language_key_map() -> dict[str, tuple[str, str]]:
-    """Build legacy top-level config key mappings from language plugin metadata."""
-    try:
-        lang_mod = importlib.import_module("desloppify.languages")
-    except ImportError:
-        return {}
-
-    key_map: dict[str, tuple[str, str]] = {}
-    for lang_name in lang_mod.available_langs():
-        try:
-            cfg = lang_mod.get_lang(lang_name)
-        except (ImportError, ValueError, TypeError, AttributeError) as exc:
-            logger.debug(
-                "Skipping legacy key migration for language %s: %s",
-                lang_name,
-                exc,
-            )
-            continue
-        legacy_keys = getattr(cfg, "legacy_setting_keys", {}) or {}
-        if not isinstance(legacy_keys, dict):
-            continue
-        for old_key, setting_key in legacy_keys.items():
-            if not isinstance(old_key, str) or not old_key.strip():
-                continue
-            if not isinstance(setting_key, str) or not setting_key.strip():
-                continue
-            key_map[old_key] = (lang_name, setting_key)
-    return key_map
-
-
 def default_config() -> dict[str, Any]:
     """Return a config dict with all keys set to their defaults."""
     return {k: copy.deepcopy(v.default) for k, v in CONFIG_SCHEMA.items()}
@@ -140,7 +109,7 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
         # First run — try migrating from state files
         config = _migrate_from_state_files(p)
 
-    changed = _migrate_legacy_language_keys(config)
+    changed = False
 
     # Fill missing keys with defaults
     for key, schema in CONFIG_SCHEMA.items():
@@ -148,6 +117,12 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
             config[key] = copy.deepcopy(schema.default)
             changed = True
         elif key == "badge_path":
+            if str(config[key]).strip() == "assets/scorecard.png":
+                # 0.6.0 briefly changed the default to assets/scorecard.png.
+                # Treat that exact value as a legacy default and restore root default.
+                config[key] = copy.deepcopy(schema.default)
+                changed = True
+                continue
             try:
                 normalized = _validate_badge_path(str(config[key]))
                 if normalized != config[key]:
@@ -189,18 +164,17 @@ def set_ignore_metadata(config: dict, pattern: str, *, note: str, added_at: str)
 
 
 def _validate_badge_path(raw: str) -> str:
-    """Require badge_path to include both directory and filename."""
+    """Require badge_path to point to a filename (root or nested path)."""
     value = raw.strip()
     path = Path(value)
     if (
         not value
         or value.endswith(("/", "\\"))
         or path.name in {"", ".", ".."}
-        or (not path.is_absolute() and path.parent == Path("."))
     ):
         raise ValueError(
-            "Expected path with directory + filename for badge_path "
-            f"(example: assets/scorecard.png), got: {raw}"
+            "Expected file path for badge_path "
+            f"(example: scorecard.png or assets/scorecard.png), got: {raw}"
         )
     return value
 
@@ -281,35 +255,6 @@ def _merge_config_value(config: dict, key: str, value: object) -> None:
                 config[key][dk] = copy.deepcopy(dv)
         return
 
-
-def _migrate_legacy_language_keys(config: dict[str, Any]) -> bool:
-    """Move deprecated top-level language keys into config.languages.<lang>."""
-    changed = False
-    legacy_key_map = _legacy_language_key_map()
-    if not legacy_key_map:
-        return changed
-
-    languages = config.get("languages")
-    if not isinstance(languages, dict):
-        languages = {}
-        config["languages"] = languages
-        changed = True
-
-    for old_key, (lang_name, setting_key) in legacy_key_map.items():
-        if old_key not in config:
-            continue
-        old_value = config.pop(old_key)
-        lang_config = languages.setdefault(lang_name, {})
-        if not isinstance(lang_config, dict):
-            lang_config = {}
-            languages[lang_name] = lang_config
-        if setting_key not in lang_config:
-            lang_config[setting_key] = old_value
-        changed = True
-
-    return changed
-
-
 def _migrate_from_state_files(config_path: Path) -> dict:
     """Migrate config keys from state-*.json files into config.json.
 
@@ -326,8 +271,6 @@ def _migrate_from_state_files(config_path: Path) -> dict:
         state_dir.glob("state.json")
     )
     migrated_any = False
-    legacy_key_map = _legacy_language_key_map()
-
     for sf in state_files:
         try:
             state_data = json.loads(sf.read_text())
@@ -341,19 +284,6 @@ def _migrate_from_state_files(config_path: Path) -> dict:
 
         # Merge: union for lists, merge for dicts, first-wins for scalars
         for k, v in old_config.items():
-            legacy_mapping = legacy_key_map.get(k)
-            if legacy_mapping is not None:
-                lang_name, setting_key = legacy_mapping
-                languages = config.setdefault("languages", {})
-                if not isinstance(languages, dict):
-                    languages = {}
-                    config["languages"] = languages
-                lang_config = languages.setdefault(lang_name, {})
-                if not isinstance(lang_config, dict):
-                    lang_config = {}
-                    languages[lang_name] = lang_config
-                _merge_config_value(lang_config, setting_key, v)
-                continue
             if k not in CONFIG_SCHEMA:
                 continue
             _merge_config_value(config, k, v)
@@ -373,7 +303,6 @@ def _migrate_from_state_files(config_path: Path) -> dict:
         migrated_any = True
 
     if migrated_any and config:
-        _migrate_legacy_language_keys(config)
         try:
             save_config(config, config_path)
         except OSError as exc:

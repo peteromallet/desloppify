@@ -3,7 +3,10 @@
 from typing import Any
 
 from desloppify.languages.typescript.detectors._smell_helpers import scan_code
-from desloppify.languages.typescript.fixers.common import apply_fixer, collapse_blank_lines
+from desloppify.languages.typescript.fixers.common import (
+    apply_fixer,
+    collapse_blank_lines,
+)
 
 
 def fix_empty_if_chain(

@@ -11,8 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from desloppify.intelligence.review.context import (
+    abs_path,
+    dep_graph_lookup,
+    importer_count,
+)
 from desloppify.utils import read_file_text, rel
-from desloppify.intelligence.review.context import abs_path, dep_graph_lookup, importer_count
 
 logger = logging.getLogger(__name__)
 
@@ -33,37 +37,6 @@ class ReviewSelectionOptions:
     force_refresh: bool = True
     files: list[str] | None = None
 
-    @classmethod
-    def from_legacy_kwargs(
-        cls, legacy_kwargs: dict[str, object]
-    ) -> ReviewSelectionOptions:
-        """Build options from legacy keyword arguments."""
-        if not legacy_kwargs:
-            return cls()
-
-        allowed = {"max_files", "max_age_days", "force_refresh", "files"}
-        unknown = sorted(set(legacy_kwargs) - allowed)
-        if unknown:
-            unknown_text = ", ".join(unknown)
-            raise TypeError(f"Unexpected review selection option(s): {unknown_text}")
-
-        files_value = legacy_kwargs.get("files")
-        files = files_value if isinstance(files_value, list) else None
-
-        max_files_value = legacy_kwargs.get("max_files")
-        if max_files_value in (None, ""):
-            max_files: int | None = None
-        else:
-            parsed = int(max_files_value)
-            max_files = parsed if parsed > 0 else None
-
-        return cls(
-            max_files=max_files,
-            max_age_days=int(legacy_kwargs.get("max_age_days", 30)),
-            force_refresh=bool(legacy_kwargs.get("force_refresh", True)),
-            files=files,
-        )
-
 
 def hash_file(filepath: str) -> str:
     """Compute a content hash for a file."""
@@ -79,20 +52,12 @@ def select_files_for_review(
     path: Path,
     state: dict,
     options: ReviewSelectionOptions | None = None,
-    **legacy_kwargs: object,
 ) -> list[str]:
     """Select production files for review, priority-sorted.
 
     If *files* is provided, skip file_finder (avoids redundant filesystem walks).
     """
-    if options is not None and legacy_kwargs:
-        raise ValueError(
-            "Pass either options=ReviewSelectionOptions(...) or legacy kwargs, not both."
-        )
-
-    resolved_options = options or ReviewSelectionOptions.from_legacy_kwargs(
-        legacy_kwargs
-    )
+    resolved_options = options or ReviewSelectionOptions()
 
     files = resolved_options.files
     if files is None:
@@ -236,7 +201,7 @@ def is_low_value_file(filepath: str, lang_or_name=None) -> bool:
     return bool(pattern.search(filepath))
 
 
-def _get_file_findings(state: dict, filepath: str) -> list[dict]:
+def get_file_findings(state: dict, filepath: str) -> list[dict]:
     """Get existing open findings for a file (summaries for context)."""
     rpath = rel(filepath)
     findings = state.get("findings", {})
@@ -247,7 +212,7 @@ def _get_file_findings(state: dict, filepath: str) -> list[dict]:
     ]
 
 
-def _count_fresh(state: dict, max_age_days: int) -> int:
+def count_fresh(state: dict, max_age_days: int) -> int:
     """Count files in review cache that are still fresh."""
     cache = state.get("review_cache", {}).get("files", {})
     now = datetime.now(timezone.utc)
@@ -260,7 +225,6 @@ def _count_fresh(state: dict, max_age_days: int) -> int:
                 if (now - reviewed).days <= max_age_days:
                     count += 1
             except (ValueError, TypeError) as exc:
-                entry["reviewed_at"] = ""
                 logger.debug(
                     "Invalid review cache date %r while counting fresh files: %s",
                     reviewed_at,
@@ -269,26 +233,11 @@ def _count_fresh(state: dict, max_age_days: int) -> int:
     return count
 
 
-def _count_stale(state: dict, max_age_days: int) -> int:
+def count_stale(state: dict, max_age_days: int) -> int:
     """Count files in review cache that are stale."""
     cache = state.get("review_cache", {}).get("files", {})
     total = len(cache)
-    return total - _count_fresh(state, max_age_days)
-
-
-def get_file_findings(state: dict, filepath: str) -> list[dict]:
-    """Public wrapper for per-file open finding summaries."""
-    return _get_file_findings(state, filepath)
-
-
-def count_fresh(state: dict, max_age_days: int) -> int:
-    """Public wrapper for fresh review-cache count."""
-    return _count_fresh(state, max_age_days)
-
-
-def count_stale(state: dict, max_age_days: int) -> int:
-    """Public wrapper for stale review-cache count."""
-    return _count_stale(state, max_age_days)
+    return total - count_fresh(state, max_age_days)
 
 
 __all__ = [
@@ -302,7 +251,4 @@ __all__ = [
     "is_low_value_file",
     "low_value_pattern",
     "select_files_for_review",
-    "_count_fresh",
-    "_count_stale",
-    "_get_file_findings",
 ]

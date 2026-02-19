@@ -2,7 +2,11 @@
 
 from typing import Any
 
-from desloppify.languages.typescript.fixers.common import apply_fixer, collapse_blank_lines, find_balanced_end
+from desloppify.languages.typescript.fixers.common import (
+    apply_fixer,
+    collapse_blank_lines,
+    find_balanced_end,
+)
 
 
 def fix_dead_useeffect(

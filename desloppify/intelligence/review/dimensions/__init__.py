@@ -1,10 +1,22 @@
-"""Compatibility facade for review dimension constants and helpers."""
+"""Review dimension constants and helper predicates."""
 
 from __future__ import annotations
 
-from desloppify.intelligence.review.dimensions.file import DEFAULT_DIMENSIONS, DIMENSION_PROMPTS, REVIEW_SYSTEM_PROMPT
-from desloppify.intelligence.review.dimensions.holistic import HOLISTIC_DIMENSION_PROMPTS, HOLISTIC_DIMENSIONS, HOLISTIC_REVIEW_SYSTEM_PROMPT
-from desloppify.intelligence.review.dimensions.lang import HOLISTIC_DIMENSIONS_BY_LANG, LANG_GUIDANCE, get_lang_guidance
+from desloppify.intelligence.review.dimensions.file import (
+    DEFAULT_DIMENSIONS,
+    DIMENSION_PROMPTS,
+    REVIEW_SYSTEM_PROMPT,
+)
+from desloppify.intelligence.review.dimensions.holistic import (
+    HOLISTIC_DIMENSION_PROMPTS,
+    HOLISTIC_DIMENSIONS,
+    HOLISTIC_REVIEW_SYSTEM_PROMPT,
+)
+from desloppify.intelligence.review.dimensions.lang import (
+    HOLISTIC_DIMENSIONS_BY_LANG,
+    LANG_GUIDANCE,
+    get_lang_guidance,
+)
 
 _KNOWN_PER_FILE = frozenset(
     "_".join(str(name).strip().lower().replace("-", "_").split())

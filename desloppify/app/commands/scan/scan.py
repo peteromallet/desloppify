@@ -2,17 +2,47 @@
 
 from __future__ import annotations
 
-from desloppify.core.query import write_query
-from desloppify.utils import colorize
 from desloppify.app.commands.helpers.query import QUERY_FILE
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
-from desloppify.app.commands.scan.scan_artifacts import build_scan_query_payload, emit_scorecard_badge
-from desloppify.app.commands.scan.scan_helpers import _audit_excluded_dirs, _collect_codebase_metrics, _effective_include_slow, _format_delta, _format_hidden_by_detector, _resolve_scan_profile, _warn_explicit_lang_with_no_files
-from desloppify.app.commands.scan.scan_reporting_analysis import _show_post_scan_analysis, _show_score_integrity
-from desloppify.app.commands.scan.scan_reporting_dimensions import _show_dimension_deltas, _show_low_dimension_hints, _show_score_model_breakdown, _show_scorecard_subjective_measures, _show_subjective_paths
+from desloppify.app.commands.scan.scan_artifacts import (
+    build_scan_query_payload,
+    emit_scorecard_badge,
+)
+from desloppify.app.commands.scan.scan_helpers import (
+    _audit_excluded_dirs,
+    _collect_codebase_metrics,
+    _effective_include_slow,
+    _format_delta,
+    _format_hidden_by_detector,
+    _resolve_scan_profile,
+    _warn_explicit_lang_with_no_files,
+)
+from desloppify.app.commands.scan.scan_reporting_analysis import (
+    _show_post_scan_analysis,
+    _show_score_integrity,
+)
+from desloppify.app.commands.scan.scan_reporting_dimensions import (
+    _show_dimension_deltas,
+    _show_low_dimension_hints,
+    _show_score_model_breakdown,
+    _show_scorecard_subjective_measures,
+    _show_subjective_paths,
+)
 from desloppify.app.commands.scan.scan_reporting_llm import _print_llm_summary
-from desloppify.app.commands.scan.scan_reporting_summary import _show_diff_summary, _show_score_delta, _show_strict_target_progress
-from desloppify.app.commands.scan.scan_workflow import merge_scan_results, persist_reminder_history, prepare_scan_runtime, resolve_noise_snapshot, run_scan_generation
+from desloppify.app.commands.scan.scan_reporting_summary import (
+    _show_diff_summary,
+    _show_score_delta,
+    _show_strict_target_progress,
+)
+from desloppify.app.commands.scan.scan_workflow import (
+    merge_scan_results,
+    persist_reminder_history,
+    prepare_scan_runtime,
+    resolve_noise_snapshot,
+    run_scan_generation,
+)
+from desloppify.core.query import write_query
+from desloppify.utils import colorize
 
 
 def _print_scan_header(lang_label: str) -> None:

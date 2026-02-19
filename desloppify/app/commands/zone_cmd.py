@@ -5,14 +5,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from desloppify.core import config as config_mod
-from desloppify.state import load_state
-from desloppify.utils import colorize, rel
-from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.rendering import print_agent_plan
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import state_path
+from desloppify.core import config as config_mod
+from desloppify.engine.policy.zones import FileZoneMap, Zone
+from desloppify.utils import colorize, rel
 
 
 def cmd_zone(args: argparse.Namespace) -> None:
@@ -31,7 +30,9 @@ def cmd_zone(args: argparse.Namespace) -> None:
 def _zone_show(args):
     """Show zone classifications for all scanned files."""
     sp = state_path(args)
-    load_state(sp)  # validate state file exists/loads
+    if not sp.exists():
+        print(colorize("No state file found — run a scan first.", "red"))
+        return
     lang = resolve_lang(args)
     if not lang or not lang.file_finder:
         print(colorize("No language detected — run a scan first.", "red"))

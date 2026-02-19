@@ -6,7 +6,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any
 
-from desloppify.languages.framework.base import LangConfig
+from desloppify.languages.framework.base.types import LangConfig
 
 _UNSET = object()
 
@@ -122,25 +122,9 @@ class LangRun:
         return default
 
 
-def _resolve_lang_run_overrides(
-    overrides: LangRunOverrides | None,
-    legacy_overrides: dict[str, Any],
-) -> LangRunOverrides:
-    if overrides is None:
-        resolved = LangRunOverrides()
-    else:
-        resolved = copy.deepcopy(overrides)
-
-    for key, value in legacy_overrides.items():
-        if hasattr(resolved, key):
-            setattr(resolved, key, value)
-    return resolved
-
-
 def make_lang_run(
     lang: LangConfig | LangRun,
     overrides: LangRunOverrides | None = None,
-    **legacy_overrides: Any,
 ) -> LangRun:
     """Build a fresh LangRun for a command invocation."""
 
@@ -148,8 +132,14 @@ def make_lang_run(
         runtime = lang
     else:
         runtime = LangRun(config=lang)
+        runtime.state.runtime_settings = copy.deepcopy(
+            getattr(lang, "_default_runtime_settings", {})
+        )
+        runtime.state.runtime_options = copy.deepcopy(
+            getattr(lang, "_default_runtime_options", {})
+        )
 
-    resolved = _resolve_lang_run_overrides(overrides, legacy_overrides)
+    resolved = overrides if overrides is not None else LangRunOverrides()
     if resolved.zone_map is not _UNSET:
         runtime.zone_map = resolved.zone_map
     if resolved.dep_graph is not _UNSET:

@@ -1,5 +1,6 @@
 """Tests for desloppify.languages.python — PythonConfig and configuration data."""
 
+from desloppify.engine.policy.zones import Zone
 from desloppify.languages.python import (
     PY_COMPLEXITY_SIGNALS,
     PY_ENTRY_PATTERNS,
@@ -8,7 +9,6 @@ from desloppify.languages.python import (
     PY_ZONE_RULES,
     PythonConfig,
 )
-from desloppify.engine.policy.zones import Zone
 
 
 class TestPythonConfig:

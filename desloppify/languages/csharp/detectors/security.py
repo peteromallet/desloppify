@@ -6,7 +6,7 @@ import logging
 import re
 from pathlib import Path
 
-from desloppify.engine.detectors import security as security_detector_mod
+from desloppify.engine.detectors.security import rules as security_detector_mod
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 
 logger = logging.getLogger(__name__)
@@ -69,12 +69,14 @@ def detect_csharp_security(
                     security_detector_mod.make_security_entry(
                         filepath,
                         line_num,
-                        "sql_injection",
-                        "Potential SQL injection: dynamic SQL command construction",
-                        "critical",
-                        "high",
                         line,
-                        "Use parameterized SQL commands with SqlParameter.",
+                        security_detector_mod.SecurityRule(
+                            check_id="sql_injection",
+                            summary="Potential SQL injection: dynamic SQL command construction",
+                            severity="critical",
+                            confidence="high",
+                            remediation="Use parameterized SQL commands with SqlParameter.",
+                        ),
                     )
                 )
 
@@ -83,12 +85,14 @@ def detect_csharp_security(
                     security_detector_mod.make_security_entry(
                         filepath,
                         line_num,
-                        "insecure_random",
-                        "Insecure random in security-sensitive context",
-                        "medium",
-                        "medium",
                         line,
-                        "Use RandomNumberGenerator.GetBytes or a cryptographic RNG.",
+                        security_detector_mod.SecurityRule(
+                            check_id="insecure_random",
+                            summary="Insecure random in security-sensitive context",
+                            severity="medium",
+                            confidence="medium",
+                            remediation="Use RandomNumberGenerator.GetBytes or a cryptographic RNG.",
+                        ),
                     )
                 )
 
@@ -97,12 +101,14 @@ def detect_csharp_security(
                     security_detector_mod.make_security_entry(
                         filepath,
                         line_num,
-                        "weak_crypto_tls",
-                        "TLS certificate validation disabled",
-                        "high",
-                        "high",
                         line,
-                        "Remove custom callback or validate certificates properly.",
+                        security_detector_mod.SecurityRule(
+                            check_id="weak_crypto_tls",
+                            summary="TLS certificate validation disabled",
+                            severity="high",
+                            confidence="high",
+                            remediation="Remove custom callback or validate certificates properly.",
+                        ),
                     )
                 )
 
@@ -111,12 +117,14 @@ def detect_csharp_security(
                     security_detector_mod.make_security_entry(
                         filepath,
                         line_num,
-                        "unsafe_deserialization",
-                        "Unsafe formatter usage may enable insecure deserialization",
-                        "high",
-                        "medium",
                         line,
-                        "Use safe serializers (System.Text.Json) instead of BinaryFormatter/SoapFormatter.",
+                        security_detector_mod.SecurityRule(
+                            check_id="unsafe_deserialization",
+                            summary="Unsafe formatter usage may enable insecure deserialization",
+                            severity="high",
+                            confidence="medium",
+                            remediation="Use safe serializers (System.Text.Json) instead of BinaryFormatter/SoapFormatter.",
+                        ),
                     )
                 )
 

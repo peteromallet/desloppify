@@ -7,14 +7,27 @@ import json
 from pathlib import Path
 
 from desloppify.engine.detectors.dupes import detect_duplicates
-from desloppify.engine.detectors.orphaned import detect_orphaned_files
-from desloppify.utils import c, print_table, rel
-from desloppify.languages.framework.commands_base import make_cmd_complexity, make_cmd_large, make_get_detect_commands
-from desloppify.languages.csharp.detectors.deps import build_dep_graph, resolve_roslyn_cmd_from_args
+from desloppify.engine.detectors.orphaned import (
+    OrphanedDetectionOptions,
+    detect_orphaned_files,
+)
+from desloppify.languages.csharp.detectors.deps import (
+    build_dep_graph,
+    resolve_roslyn_cmd_from_args,
+)
 from desloppify.languages.csharp.detectors.deps import cmd_cycles as cmd_cycles_deps
 from desloppify.languages.csharp.detectors.deps import cmd_deps as cmd_deps_direct
-from desloppify.languages.csharp.extractors import extract_csharp_functions, find_csharp_files
+from desloppify.languages.csharp.extractors import (
+    extract_csharp_functions,
+    find_csharp_files,
+)
 from desloppify.languages.csharp.phases import CSHARP_COMPLEXITY_SIGNALS
+from desloppify.languages.framework.commands_base import (
+    make_cmd_complexity,
+    make_cmd_large,
+    make_get_detect_commands,
+)
+from desloppify.utils import c, print_table, rel
 
 _cmd_large_impl = make_cmd_large(find_csharp_files, default_threshold=500)
 _cmd_complexity_impl = make_cmd_complexity(
@@ -46,8 +59,15 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
         Path(args.path),
         graph,
         extensions=[".cs"],
-        extra_entry_patterns=["/Program.cs", "/Startup.cs", "/Main.cs", "/Properties/"],
-        extra_barrel_names={"Program.cs"},
+        options=OrphanedDetectionOptions(
+            extra_entry_patterns=[
+                "/Program.cs",
+                "/Startup.cs",
+                "/Main.cs",
+                "/Properties/",
+            ],
+            extra_barrel_names={"Program.cs"},
+        ),
     )
     if getattr(args, "json", False):
         print(

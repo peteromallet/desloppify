@@ -1,6 +1,6 @@
 # Desloppify - agent tools to make your codebase 🤌
 
-Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports TypeScript, Python, and C#/.NET.
+Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports TypeScript, Python, C#/.NET, Dart, and GDScript.
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo. Strict score counts open + wontfix debt; ignored findings are tracked separately:
 
@@ -64,10 +64,8 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 |---------|-------------|
 | `scan [--reset-subjective]` | Run all detectors, update state (optional: reset subjective baseline to 0 first) |
 | `status` | Score + per-tier progress |
-| `explain` | Explain strict-score loss hotspots and priorities |
-| `help-me-improve` | Alias for `explain` |
 | `show <pattern>` | Findings by file, directory, detector, or ID |
-| `next [--tier N]` | Highest-priority open finding |
+| `next [--tier N] [--explain]` | Highest-priority open finding (--explain: with score context) |
 | `resolve <status> <patterns>` | Mark fixed / wontfix / false_positive / ignore |
 | `fix <fixer> [--dry-run]` | Auto-fix mechanical issues |
 | `review --prepare` | Generate subjective review packet (`query.json`) |
@@ -110,14 +108,14 @@ Score is weighted (T4 = 4x T1). Strict score penalizes both open and wontfix.
 | `--lang <name>` | auto-detected | Language selection (each has own state) |
 | `--exclude <pattern>` | none | Path patterns to skip (repeatable: `--exclude migrations --exclude tests`) |
 | `--no-badge` | false | Skip scorecard image generation |
-| `--badge-path <path>` | `assets/scorecard.png` | Output path for scorecard image |
+| `--badge-path <path>` | `scorecard.png` | Output path for scorecard image |
 | `DESLOPPIFY_NO_BADGE` | — | Set to `true` to disable badge via env |
-| `DESLOPPIFY_BADGE_PATH` | `assets/scorecard.png` | Badge output path via env |
+| `DESLOPPIFY_BADGE_PATH` | `scorecard.png` | Badge output path via env |
 
 Project config values (stored in `.desloppify/config.json`) are managed via:
 - `desloppify config show`
 - `desloppify config set target_strict_score 95` (default: `95`, valid range: `0-100`)
-- `desloppify config set badge_path assets/scorecard.png` (path must include directory + filename; customize name like `assets/health.png`)
+- `desloppify config set badge_path scorecard.png` (or nested path like `assets/health.png`)
 
 #### Adding a language
 
@@ -139,7 +137,7 @@ Validated at registration. Zero shared code changes.
 engine/detectors/       ← Generic algorithms (zero language knowledge)
 hook_registry.py        ← Detector-safe access to optional language hooks
 languages/framework/runtime.py ← LangRun (per-run mutable scan state)
-languages/framework/base.py    ← Shared finding helpers
+languages/framework/base/      ← Shared framework contracts + phase helpers
 languages/<name>/       ← Language config + phases + extractors + detectors + fixers
 ```
 

@@ -7,8 +7,14 @@ import re
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
+from desloppify.languages.python.detectors.smells_ast import (
+    collect_module_constants,
+    detect_ast_smells,
+    detect_duplicate_constants,
+    detect_star_import_no_all,
+    detect_vestigial_parameter,
+)
 from desloppify.utils import PROJECT_ROOT, find_py_files
-from desloppify.languages.python.detectors.smells_ast import collect_module_constants, detect_ast_smells, detect_duplicate_constants, detect_star_import_no_all, detect_vestigial_parameter
 
 logger = logging.getLogger(__name__)
 

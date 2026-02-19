@@ -21,8 +21,18 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import c, find_ts_files, get_area, print_table, resolve_path
-from desloppify.languages.typescript.detectors.contracts import DetectorResult, as_legacy_tuple
+from desloppify.languages.typescript.detectors.contracts import DetectorResult
+from desloppify.utils import (
+    PROJECT_ROOT as PROJECT_ROOT,
+)
+from desloppify.utils import (
+    c,
+    find_ts_files,
+    get_area,
+    print_table,
+    rel,
+    resolve_path,
+)
 
 # ── Pattern families ────────────────────────────────────────────
 #
@@ -133,8 +143,8 @@ def _build_census(path: Path) -> tuple[dict[str, dict[str, set[str]]], dict[str,
 
 
 def detect_pattern_anomalies(path: Path) -> tuple[list[dict], int]:
-    """Backwards-compatible anomaly detector entrypoint."""
-    return as_legacy_tuple(detect_pattern_anomalies_result(path))
+    """Anomaly detector entrypoint."""
+    return detect_pattern_anomalies_result(path).as_tuple()
 
 
 def detect_pattern_anomalies_result(path: Path) -> DetectorResult[dict]:
@@ -206,12 +216,22 @@ def detect_pattern_anomalies_result(path: Path) -> DetectorResult[dict]:
 
             if reasons:
                 confidence = "medium" if len(patterns) >= threshold else "low"
+                family_evidence = (
+                    evidence.get(area, {}).get(family_name, {})
+                    if isinstance(evidence, dict)
+                    else {}
+                )
                 anomalies.append(
                     {
                         "area": area,
                         "family": family_name,
                         "patterns_used": sorted(patterns),
                         "pattern_count": len(patterns),
+                        "pattern_evidence": {
+                            pattern_name: list(entries)
+                            for pattern_name, entries in family_evidence.items()
+                            if pattern_name in patterns and isinstance(entries, list)
+                        },
                         "confidence": confidence,
                         "review": " | ".join(reasons),
                     }

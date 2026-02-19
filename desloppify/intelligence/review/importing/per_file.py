@@ -6,27 +6,34 @@ import hashlib
 import importlib
 from typing import Any
 
-from desloppify.state import make_finding, merge_scan, utc_now
+from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
+from desloppify.intelligence.review.importing.shared import (
+    extract_reviewed_files,
+    store_assessments,
+)
+from desloppify.state import MergeScanOptions, make_finding, merge_scan, utc_now
 from desloppify.utils import PROJECT_ROOT
-from desloppify.intelligence.review.dimensions.data import load_per_file_dimensions_for_lang
-from desloppify.intelligence.review.importing.shared import extract_reviewed_files, store_assessments
 
 
-def _extract_findings_and_assessments(
-    data: list[dict] | dict,
-) -> tuple[list[dict], dict | None]:
-    """Parse import payload in legacy/list or current/object format."""
-    if isinstance(data, list):
-        return data, None
-    if isinstance(data, dict):
-        findings = data.get("findings", [])
-        assessments = data.get("assessments") or None
-        return findings if isinstance(findings, list) else [], assessments
-    return [], None
+def parse_per_file_import_payload(data: dict) -> tuple[list[dict], dict | None]:
+    """Parse strict per-file import payload object."""
+    if not isinstance(data, dict):
+        raise ValueError("Per-file review import payload must be a JSON object")
+
+    findings = data.get("findings", [])
+    if not isinstance(findings, list):
+        raise ValueError("Per-file review import payload 'findings' must be a list")
+
+    assessments = data.get("assessments")
+    if assessments is not None and not isinstance(assessments, dict):
+        raise ValueError(
+            "Per-file review import payload 'assessments' must be an object"
+        )
+    return findings, assessments
 
 
 def import_review_findings(
-    findings_data: list[dict] | dict,
+    findings_data: dict,
     state: dict[str, Any],
     lang_name: str,
     *,
@@ -34,7 +41,7 @@ def import_review_findings(
     utc_now_fn=utc_now,
 ) -> dict[str, Any]:
     """Import agent-produced per-file review findings into state."""
-    findings_list, assessments = _extract_findings_and_assessments(findings_data)
+    findings_list, assessments = parse_per_file_import_payload(findings_data)
     reviewed_files = extract_reviewed_files(findings_data)
     if assessments:
         store_assessments(
@@ -44,7 +51,7 @@ def import_review_findings(
             utc_now_fn=utc_now_fn,
         )
 
-    _, per_file_prompts, _ = load_per_file_dimensions_for_lang(lang_name)
+    _, per_file_prompts, _ = load_dimensions_for_lang(lang_name)
     required_fields = ("file", "dimension", "identifier", "summary", "confidence")
 
     review_findings: list[dict[str, Any]] = []
@@ -96,12 +103,12 @@ def import_review_findings(
         imported["lang"] = lang_name
         review_findings.append(imported)
 
-    reviewed_from_findings = {
+    valid_reviewed_files = {
         finding["file"]
         for finding in findings_list
         if all(key in finding for key in required_fields)
     }
-    review_potential_files = reviewed_from_findings | set(reviewed_files)
+    review_potential_files = valid_reviewed_files | set(reviewed_files)
 
     potentials = state.setdefault("potentials", {}).setdefault(lang_name, {})
     potentials["review"] = len(review_potential_files)
@@ -109,17 +116,15 @@ def import_review_findings(
     diff = merge_scan(
         state,
         review_findings,
-        lang=lang_name,
-        potentials={"review": potentials.get("review", 0)},
-        merge_potentials=True,
+        options=MergeScanOptions(
+            lang=lang_name,
+            potentials={"review": potentials.get("review", 0)},
+            merge_potentials=True,
+        ),
     )
 
     new_ids = {finding["id"] for finding in review_findings}
-    reimported_files = {
-        finding["file"]
-        for finding in findings_list
-        if all(key in finding for key in required_fields)
-    }
+    reimported_files = valid_reviewed_files
     for finding_id, finding in state.get("findings", {}).items():
         if (
             finding["status"] == "open"

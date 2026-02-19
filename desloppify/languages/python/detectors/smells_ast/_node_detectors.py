@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import ast
 
-from desloppify.languages.python.detectors.smells_ast._shared import _is_docstring, _is_return_none
+from desloppify.languages.python.detectors.smells_ast._shared import (
+    _is_docstring,
+    _is_return_none,
+)
 
 
 def _is_test_file(filepath: str) -> bool:

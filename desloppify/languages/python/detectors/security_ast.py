@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 
-from desloppify.engine.detectors import security as security_detector_mod
+from desloppify.engine.detectors.security import rules as security_detector_mod
 
 
 class _SecurityVisitor(ast.NodeVisitor):
@@ -30,12 +30,14 @@ class _SecurityVisitor(ast.NodeVisitor):
             security_detector_mod.make_security_entry(
                 self.filepath,
                 line_num,
-                check_id,
-                summary,
-                severity,
-                confidence,
                 content,
-                remediation,
+                security_detector_mod.SecurityRule(
+                    check_id=check_id,
+                    summary=summary,
+                    severity=severity,
+                    confidence=confidence,
+                    remediation=remediation,
+                ),
             )
         )
 

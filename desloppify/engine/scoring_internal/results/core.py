@@ -4,15 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.engine.scoring_internal.detection import detector_stats_by_mode as _detector_stats_by_mode
-from desloppify.engine.scoring_internal.policy.core import DETECTOR_SCORING_POLICIES, DIMENSIONS_BY_NAME, FAILURE_STATUSES_BY_MODE, SCORING_MODES, DIMENSIONS, MECHANICAL_DIMENSION_WEIGHTS, MECHANICAL_WEIGHT_FRACTION, MIN_SAMPLE, SUBJECTIVE_DIMENSION_WEIGHTS, SUBJECTIVE_WEIGHT_FRACTION, ScoreMode
-from desloppify.engine.scoring_internal.subjective.core import append_subjective_dimensions
-
-_DETECTOR_SCORING_POLICIES = DETECTOR_SCORING_POLICIES
-_DIMENSIONS_BY_NAME = DIMENSIONS_BY_NAME
-_FAILURE_STATUSES_BY_MODE = FAILURE_STATUSES_BY_MODE
-_SCORING_MODES = SCORING_MODES
-_append_subjective_dimensions = append_subjective_dimensions
+from desloppify.engine.scoring_internal.detection import detector_stats_by_mode
+from desloppify.engine.scoring_internal.policy.core import (
+    DETECTOR_SCORING_POLICIES,
+    DIMENSIONS,
+    DIMENSIONS_BY_NAME,
+    FAILURE_STATUSES_BY_MODE,
+    MECHANICAL_DIMENSION_WEIGHTS,
+    MECHANICAL_WEIGHT_FRACTION,
+    MIN_SAMPLE,
+    SCORING_MODES,
+    SUBJECTIVE_DIMENSION_WEIGHTS,
+    SUBJECTIVE_WEIGHT_FRACTION,
+    ScoreMode,
+)
+from desloppify.engine.scoring_internal.subjective.core import (
+    append_subjective_dimensions,
+)
 
 
 @dataclass(frozen=True)
@@ -26,14 +34,15 @@ class ScoreBundle:
     verified_strict_score: float
 
 
-def _compute_dimension_scores_by_mode(
+def compute_dimension_scores_by_mode(
     findings: dict,
     potentials: dict[str, int],
     *,
     subjective_assessments: dict | None = None,
+    allowed_subjective_dimensions: set[str] | None = None,
 ) -> dict[ScoreMode, dict[str, dict]]:
     """Compute dimension scores for lenient/strict/verified_strict in one pass."""
-    results: dict[ScoreMode, dict[str, dict]] = {mode: {} for mode in _SCORING_MODES}
+    results: dict[ScoreMode, dict[str, dict]] = {mode: {} for mode in SCORING_MODES}
 
     for dim in DIMENSIONS:
         totals = {
@@ -43,7 +52,7 @@ def _compute_dimension_scores_by_mode(
                 "weighted_failures": 0.0,
                 "detectors": {},
             }
-            for mode in _SCORING_MODES
+            for mode in SCORING_MODES
         }
 
         for detector in dim.detectors:
@@ -51,8 +60,8 @@ def _compute_dimension_scores_by_mode(
             if potential <= 0:
                 continue
 
-            detector_stats = _detector_stats_by_mode(detector, findings, potential)
-            for mode in _SCORING_MODES:
+            detector_stats = detector_stats_by_mode(detector, findings, potential)
+            for mode in SCORING_MODES:
                 pass_rate, issues, weighted = detector_stats[mode]
                 totals[mode]["checks"] += potential
                 totals[mode]["issues"] += issues
@@ -64,7 +73,7 @@ def _compute_dimension_scores_by_mode(
                     "weighted_failures": weighted,
                 }
 
-        for mode in _SCORING_MODES:
+        for mode in SCORING_MODES:
             total_checks = totals[mode]["checks"]
             if total_checks <= 0:
                 continue
@@ -83,28 +92,15 @@ def _compute_dimension_scores_by_mode(
                 "detectors": totals[mode]["detectors"],
             }
 
-    for mode in _SCORING_MODES:
-        _append_subjective_dimensions(
+    for mode in SCORING_MODES:
+        append_subjective_dimensions(
             results[mode],
             findings,
             subjective_assessments,
-            _FAILURE_STATUSES_BY_MODE[mode],
+            FAILURE_STATUSES_BY_MODE[mode],
+            allowed_dimensions=allowed_subjective_dimensions,
         )
     return results
-
-
-def compute_dimension_scores_by_mode(
-    findings: dict,
-    potentials: dict[str, int],
-    *,
-    subjective_assessments: dict | None = None,
-) -> dict[ScoreMode, dict[str, dict]]:
-    """Public wrapper for multi-mode dimension score computation."""
-    return _compute_dimension_scores_by_mode(
-        findings,
-        potentials,
-        subjective_assessments=subjective_assessments,
-    )
 
 
 def compute_dimension_scores(
@@ -113,13 +109,15 @@ def compute_dimension_scores(
     *,
     strict: bool = False,
     subjective_assessments: dict | None = None,
+    allowed_subjective_dimensions: set[str] | None = None,
 ) -> dict[str, dict]:
     """Compute per-dimension scores from findings and potentials."""
     mode: ScoreMode = "strict" if strict else "lenient"
-    return _compute_dimension_scores_by_mode(
+    return compute_dimension_scores_by_mode(
         findings,
         potentials,
         subjective_assessments=subjective_assessments,
+        allowed_subjective_dimensions=allowed_subjective_dimensions,
     )[mode]
 
 
@@ -299,7 +297,7 @@ def compute_score_bundle(
     subjective_assessments: dict | None = None,
 ) -> ScoreBundle:
     """Compute all score channels from one scoring engine pass."""
-    by_mode = _compute_dimension_scores_by_mode(
+    by_mode = compute_dimension_scores_by_mode(
         findings,
         potentials,
         subjective_assessments=subjective_assessments,
@@ -386,16 +384,15 @@ def compute_score_impact(
 
 def get_dimension_for_detector(detector: str):
     """Look up which dimension a detector belongs to."""
-    policy = _DETECTOR_SCORING_POLICIES.get(detector)
+    policy = DETECTOR_SCORING_POLICIES.get(detector)
     if not policy or policy.dimension is None:
         return None
-    return _DIMENSIONS_BY_NAME.get(policy.dimension)
+    return DIMENSIONS_BY_NAME.get(policy.dimension)
 
 
 __all__ = [
     "ScoreBundle",
     "compute_dimension_scores_by_mode",
-    "_compute_dimension_scores_by_mode",
     "compute_dimension_scores",
     "compute_health_breakdown",
     "compute_health_score",

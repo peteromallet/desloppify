@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
+from typing import Callable, Protocol
+
+
+class _StateMod(Protocol):
+    def path_scoped_findings(self, findings: dict, scan_path: object) -> dict: ...
+
+
+class _NarrativeMod(Protocol):
+    STRUCTURAL_MERGE: frozenset[str]
+
+
+class _RegistryMod(Protocol):
+    DETECTORS: dict
+
+    def display_order(self) -> list[str]: ...
+
 
 def show_detector_progress(
     state: dict,
     *,
-    state_mod,
-    narrative_mod,
-    registry_mod,
-    colorize_fn,
+    state_mod: _StateMod,
+    narrative_mod: _NarrativeMod,
+    registry_mod: _RegistryMod,
+    colorize_fn: Callable[[str, str], str],
 ) -> None:
     """Show per-detector progress bars."""
     findings = state_mod.path_scoped_findings(state["findings"], state.get("scan_path"))

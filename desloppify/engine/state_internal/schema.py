@@ -116,6 +116,8 @@ class ScanDiff(TypedDict):
     ignore_patterns: int
     raw_findings: int
     suppressed_pct: float
+    skipped: NotRequired[int]
+    skipped_details: NotRequired[list[dict]]
 
 
 STATE_DIR = PROJECT_ROOT / ".desloppify"
@@ -128,7 +130,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _empty_state() -> StateModel:
+def empty_state() -> StateModel:
     """Return a new empty state payload."""
     return {
         "version": CURRENT_VERSION,
@@ -146,11 +148,6 @@ def _empty_state() -> StateModel:
     }
 
 
-def empty_state() -> StateModel:
-    """Public alias for tests/internal callers that should avoid private imports."""
-    return _empty_state()
-
-
 def _as_non_negative_int(value: Any, default: int = 0) -> int:
     try:
         parsed = int(value)
@@ -161,7 +158,7 @@ def _as_non_negative_int(value: Any, default: int = 0) -> int:
 
 def ensure_state_defaults(state: dict) -> StateModel:
     """Normalize loose/legacy state payloads to a valid base shape."""
-    for key, value in _empty_state().items():
+    for key, value in empty_state().items():
         state.setdefault(key, value)
 
     if not isinstance(state.get("findings"), dict):
@@ -273,8 +270,9 @@ def get_strict_score(state: dict) -> float | None:
 
 
 def get_verified_strict_score(state: dict) -> float | None:
-    """Strict score that only credits scan-verified fixes."""
-    verified = state.get("verified_strict_score")
-    if verified is not None:
-        return verified
-    return state.get("strict_score")
+    """Strict score that only credits scan-verified fixes.
+
+    Returns None if no scan-verified score exists yet (fresh state or
+    no scan has run). Does not fall back to the unverified strict_score.
+    """
+    return state.get("verified_strict_score")

@@ -12,7 +12,11 @@ languages/
 ├── __init__.py
 ├── README.md
 ├── framework/                # Shared plugin framework internals
-│   ├── base.py               # LangConfig, DetectorPhase, FixerConfig contracts
+│   ├── base/                 # LangConfig, DetectorPhase, FixerConfig contracts
+│   │   ├── types.py          # LangConfig, FixerConfig, FixResult dataclasses
+│   │   ├── shared_phases.py  # shared detector phase runners
+│   │   ├── phase_builders.py # phase builder helpers
+│   │   └── structural.py     # structural analysis utilities
 │   ├── runtime.py            # LangRun (per-run mutable execution state)
 │   ├── resolution.py         # get_lang/available_langs/auto_detect_lang
 │   ├── discovery.py          # plugin discovery + load errors
@@ -76,8 +80,8 @@ Registration/validation fails when the contract is incomplete.
 
 ```bash
 pytest -q \
-  tests/test_lang_standardization.py \
-  tests/test_lang_test_layout.py \
+  desloppify/tests/lang/common/test_lang_standardization.py \
+  desloppify/tests/lang/common/test_lang_test_layout.py \
   desloppify/languages/<name>/tests
 ```
 

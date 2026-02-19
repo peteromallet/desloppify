@@ -1,0 +1,21 @@
+{
+  "dimension_prompts": {
+    "abstraction_fitness": {
+      "description": "Python abstraction fitness: favor direct modules, explicit domain APIs, and bounded packages over indirection and generic helper surfaces.",
+      "look_for": [
+        "Functions that only forward args/kwargs to another function without policy or translation",
+        "Protocol/base-class abstractions with one concrete implementation and no extension pressure",
+        "Cross-module wrapper chains where calls hop through helper layers before reaching real logic",
+        "Project-wide reliance on generic helper modules instead of bounded domain packages",
+        "Over-broad dict/config/context parameters used as implicit parameter bags"
+      ],
+      "skip": [
+        "Django/FastAPI/SQLAlchemy framework boundaries that require adapters or dependency hooks",
+        "Wrappers that add retries, metrics, auth checks, caching, or tracing",
+        "Intentional package facades used to stabilize public import paths",
+        "Migration shims with active callers and clear sunset plan"
+      ]
+    }
+  },
+  "system_prompt_append": "Python anchor checks: pass-through wrappers using *args/**kwargs, one-implementation Protocol patterns, implicit dict-based context bags, and recurring helper-layer indirection across package boundaries."
+}

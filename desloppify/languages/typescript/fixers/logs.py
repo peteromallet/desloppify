@@ -7,8 +7,12 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
+from desloppify.languages.typescript.fixers.common import (
+    collapse_blank_lines,
+    extract_body_between_braces,
+    find_balanced_end,
+)
 from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
-from desloppify.languages.typescript.fixers.common import collapse_blank_lines, extract_body_between_braces, find_balanced_end
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +92,6 @@ def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
         except (OSError, UnicodeDecodeError) as ex:
             skipped_files.append((filepath, str(ex)))
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
-            skipped_files += 1
 
     if skipped_files:
         log_best_effort_failure(

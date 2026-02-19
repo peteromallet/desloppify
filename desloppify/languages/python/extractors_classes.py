@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import ClassInfo, FunctionInfo
-from desloppify.utils import find_py_files
 from desloppify.languages.python.extractors_shared import find_block_end, read_file
+from desloppify.utils import find_py_files
 
 
 def extract_py_classes(path: Path) -> list[ClassInfo]:

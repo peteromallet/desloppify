@@ -6,8 +6,8 @@ import ast
 import keyword
 import re
 
-from desloppify.utils import PROJECT_ROOT, colorize, safe_write_text
 from desloppify.app.commands.dev_scaffold_templates import build_scaffold_files
+from desloppify.utils import PROJECT_ROOT, colorize, safe_write_text
 
 
 def cmd_dev(args) -> None:

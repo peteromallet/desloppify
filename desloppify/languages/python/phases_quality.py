@@ -6,13 +6,17 @@ from pathlib import Path
 
 from desloppify import state as state_mod
 from desloppify.engine.detectors import signature as signature_detector_mod
-from desloppify.utils import log
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages.framework.base import make_smell_findings
+from desloppify.languages.framework.finding_factories import make_smell_findings
 from desloppify.languages.python.detectors import dict_keys as dict_keys_detector_mod
-from desloppify.languages.python.detectors import layer_violation as layer_violation_detector_mod
-from desloppify.languages.python.detectors import mutable_state as mutable_state_detector_mod
+from desloppify.languages.python.detectors import (
+    layer_violation as layer_violation_detector_mod,
+)
+from desloppify.languages.python.detectors import (
+    mutable_state as mutable_state_detector_mod,
+)
 from desloppify.languages.python.detectors import smells as smells_detector_mod
+from desloppify.utils import log
 
 
 def phase_smells(path: Path, lang) -> tuple[list[dict], dict[str, int]]:

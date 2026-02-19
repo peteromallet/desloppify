@@ -58,7 +58,6 @@ def fix_unused_params(entries: list[dict], *, dry_run: bool = False) -> list[dic
         except (OSError, UnicodeDecodeError) as ex:
             skipped_files.append((filepath, str(ex)))
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
-            skipped_files += 1
 
     if skipped_files:
         log_best_effort_failure(

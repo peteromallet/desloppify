@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from desloppify.utils import colorize, rel
 from desloppify.app.commands.helpers.rendering import print_replacement_groups
-from desloppify.app.commands.move.move_planning import DirectoryMovePlan, summarize_directory_plan
+from desloppify.app.commands.move.move_planning import (
+    DirectoryMovePlan,
+    summarize_directory_plan,
+)
+from desloppify.utils import colorize, rel
 
 
 def print_file_move_plan(

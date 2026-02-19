@@ -4,32 +4,32 @@ from __future__ import annotations
 
 import re
 
-_FUNC_NAME_RE = re.compile(r"(?:function|def|async\s+def|async\s+function)\s+(\w+)")
-_CLASS_NAME_RE = re.compile(r"(?:class|interface|type)\s+(\w+)")
+FUNC_NAME_RE = re.compile(r"(?:function|def|async\s+def|async\s+function)\s+(\w+)")
+CLASS_NAME_RE = re.compile(r"(?:class|interface|type)\s+(\w+)")
 
-_ERROR_PATTERNS = {
+ERROR_PATTERNS = {
     "try_catch": re.compile(r"\b(?:try\s*\{|try\s*:)"),
     "returns_null": re.compile(r"\breturn\s+(?:null|None|undefined)\b"),
     "result_type": re.compile(r"\b(?:Result|Either|Ok|Err)\b"),
     "throws": re.compile(r"\b(?:throw\s+new|raise\s+\w)"),
 }
 
-_NAME_PREFIX_RE = re.compile(
+NAME_PREFIX_RE = re.compile(
     r"^(get|set|is|has|can|should|use|create|make|build|parse|format|"
     r"validate|check|find|fetch|load|save|update|delete|remove|add|"
     r"handle|on|init|setup|render|compute|calculate|transform|convert|"
     r"to|from|with|ensure|assert|process|run|do|manage|execute)"
 )
 
-_FROM_IMPORT_RE = re.compile(
+FROM_IMPORT_RE = re.compile(
     r"^(?:from\s+\S+\s+import\s+(.+)|import\s+(.+))$", re.MULTILINE
 )
 
 
-def _extract_imported_names(content: str) -> set[str]:
+def extract_imported_names(content: str) -> set[str]:
     """Extract imported symbol names from a file's import statements."""
     names: set[str] = set()
-    for match in _FROM_IMPORT_RE.finditer(content):
+    for match in FROM_IMPORT_RE.finditer(content):
         raw = match.group(1) or match.group(2)
         if raw is None:
             continue
@@ -46,7 +46,7 @@ def _extract_imported_names(content: str) -> set[str]:
     return names
 
 
-def _default_review_module_patterns(content: str) -> list[str]:
+def default_review_module_patterns(content: str) -> list[str]:
     """Fallback module-pattern extraction used when language hook is absent."""
     out: list[str] = []
     if re.search(r"\bexport\s+default\b", content):
@@ -59,16 +59,6 @@ def _default_review_module_patterns(content: str) -> list[str]:
         out.append("explicit_api")
     return out
 
-
-CLASS_NAME_RE = _CLASS_NAME_RE
-ERROR_PATTERNS = _ERROR_PATTERNS
-FROM_IMPORT_RE = _FROM_IMPORT_RE
-FUNC_NAME_RE = _FUNC_NAME_RE
-NAME_PREFIX_RE = _NAME_PREFIX_RE
-default_review_module_patterns = _default_review_module_patterns
-extract_imported_names = _extract_imported_names
-
-
 __all__ = [
     "CLASS_NAME_RE",
     "ERROR_PATTERNS",
@@ -77,11 +67,4 @@ __all__ = [
     "NAME_PREFIX_RE",
     "default_review_module_patterns",
     "extract_imported_names",
-    "_CLASS_NAME_RE",
-    "_ERROR_PATTERNS",
-    "_FUNC_NAME_RE",
-    "_FROM_IMPORT_RE",
-    "_NAME_PREFIX_RE",
-    "_default_review_module_patterns",
-    "_extract_imported_names",
 ]

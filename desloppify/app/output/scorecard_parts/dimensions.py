@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-from desloppify.app.output.scorecard_parts.dimension_policy import _DEFAULT_ELEGANCE_COMPONENTS, _ELEGANCE_COMPONENTS_BY_LANG, _MECHANICAL_SCORECARD_DIMENSIONS, _SCORECARD_DIMENSIONS_BY_LANG, _SCORECARD_MAX_DIMENSIONS, _SUBJECTIVE_SCORECARD_ORDER_BY_LANG, _SUBJECTIVE_SCORECARD_ORDER_DEFAULT
+from desloppify.app.output.scorecard_parts.dimension_policy import (
+    _DEFAULT_ELEGANCE_COMPONENTS,
+    _ELEGANCE_COMPONENTS_BY_LANG,
+    _MECHANICAL_SCORECARD_DIMENSIONS,
+    _SCORECARD_DIMENSIONS_BY_LANG,
+    _SUBJECTIVE_SCORECARD_ORDER_BY_LANG,
+    _SUBJECTIVE_SCORECARD_ORDER_DEFAULT,
+)
+from desloppify.app.output.scorecard_parts.dimension_policy import (
+    _SCORECARD_MAX_DIMENSIONS as SCORECARD_MAX_DIMENSIONS,
+)
 
 
-def _resolve_scorecard_lang(state: dict) -> str | None:
+def resolve_scorecard_lang(state: dict) -> str | None:
     """Best-effort current scan language key for scorecard display policy."""
     history = state.get("scan_history")
     if isinstance(history, list):
@@ -37,7 +47,7 @@ def _resolve_scorecard_lang(state: dict) -> str | None:
     return None
 
 
-def _is_unassessed_subjective_placeholder(data: dict) -> bool:
+def is_unassessed_subjective_placeholder(data: dict) -> bool:
     return (
         "subjective_assessment" in data.get("detectors", {})
         and data.get("score", 0) == 0
@@ -45,7 +55,7 @@ def _is_unassessed_subjective_placeholder(data: dict) -> bool:
     )
 
 
-def _collapse_elegance_dimensions(
+def collapse_elegance_dimensions(
     active_dims: list[tuple[str, dict]],
     *,
     lang_key: str | None,
@@ -108,11 +118,11 @@ def _collapse_elegance_dimensions(
     ]
 
 
-def _limit_scorecard_dimensions(
+def limit_scorecard_dimensions(
     active_dims: list[tuple[str, dict]],
     *,
     lang_key: str | None,
-    max_rows: int = _SCORECARD_MAX_DIMENSIONS,
+    max_rows: int = SCORECARD_MAX_DIMENSIONS,
 ) -> list[tuple[str, dict]]:
     """Limit scorecard rows with language-specific subjective priority."""
     if len(active_dims) <= max_rows:
@@ -160,7 +170,7 @@ def _limit_scorecard_dimensions(
     return [*mechanical, *selected]
 
 
-def _prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
+def prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
     """Prepare scorecard rows (active, elegance-collapsed, capped)."""
     dim_scores = state.get("dimension_scores", {})
     if not isinstance(dim_scores, dict):
@@ -170,8 +180,8 @@ def _prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
         (name, data) for name, data in dim_scores.items() if isinstance(data, dict)
     ]
 
-    lang_key = _resolve_scorecard_lang(state)
-    all_dims = _collapse_elegance_dimensions(all_dims, lang_key=lang_key)
+    lang_key = resolve_scorecard_lang(state)
+    all_dims = collapse_elegance_dimensions(all_dims, lang_key=lang_key)
     dims_by_name = {name: data for name, data in all_dims}
 
     target_names = _SCORECARD_DIMENSIONS_BY_LANG.get(lang_key or "")
@@ -206,74 +216,28 @@ def _prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
                         "issues": 0,
                         "tier": 3,
                         "detectors": {},
+                        "not_scanned": True,
                     }
             selected.append((name, data))
 
         selected.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
-        return selected[:_SCORECARD_MAX_DIMENSIONS]
+        return selected[:SCORECARD_MAX_DIMENSIONS]
 
     # Unknown language fallback: keep prior behavior for active dimensions only.
     active_dims = [
         (name, data)
         for name, data in all_dims
-        if data.get("checks", 0) > 0 and not _is_unassessed_subjective_placeholder(data)
+        if data.get("checks", 0) > 0 and not is_unassessed_subjective_placeholder(data)
     ]
-    active_dims = _limit_scorecard_dimensions(active_dims, lang_key=lang_key)
+    active_dims = limit_scorecard_dimensions(active_dims, lang_key=lang_key)
     active_dims.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
     return active_dims
-
-
-def prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
-    """Public wrapper for scorecard row projection used by CLI/reporting surfaces."""
-    return _prepare_scorecard_dimensions(state)
-
-
-def resolve_scorecard_lang(state: dict) -> str | None:
-    """Public wrapper for scorecard language resolution."""
-    return _resolve_scorecard_lang(state)
-
-
-def collapse_elegance_dimensions(
-    active_dims: list[tuple[str, dict]],
-    *,
-    lang_key: str | None,
-) -> list[tuple[str, dict]]:
-    """Public wrapper for elegance-row collapsing."""
-    return _collapse_elegance_dimensions(active_dims, lang_key=lang_key)
-
-
-def limit_scorecard_dimensions(
-    active_dims: list[tuple[str, dict]],
-    *,
-    lang_key: str | None,
-    max_rows: int = _SCORECARD_MAX_DIMENSIONS,
-) -> list[tuple[str, dict]]:
-    """Public wrapper for scorecard row limiting."""
-    return _limit_scorecard_dimensions(
-        active_dims,
-        lang_key=lang_key,
-        max_rows=max_rows,
-    )
-
-
-def prepare_scorecard_dimensions_internal(state: dict) -> list[tuple[str, dict]]:
-    """Public wrapper for internal projection behavior."""
-    return _prepare_scorecard_dimensions(state)
-
-
-SCORECARD_MAX_DIMENSIONS = _SCORECARD_MAX_DIMENSIONS
 
 
 __all__ = [
     "SCORECARD_MAX_DIMENSIONS",
     "collapse_elegance_dimensions",
-    "limit_scorecard_dimensions",
-    "prepare_scorecard_dimensions_internal",
     "prepare_scorecard_dimensions",
+    "limit_scorecard_dimensions",
     "resolve_scorecard_lang",
-    "_SCORECARD_MAX_DIMENSIONS",
-    "_collapse_elegance_dimensions",
-    "_limit_scorecard_dimensions",
-    "_prepare_scorecard_dimensions",
-    "_resolve_scorecard_lang",
 ]

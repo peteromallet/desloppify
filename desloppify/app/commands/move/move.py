@@ -6,12 +6,20 @@ import sys
 from pathlib import Path
 
 from desloppify import languages as lang_mod
-from desloppify.utils import colorize, rel, resolve_path
 from desloppify.app.commands.move.move_apply import apply_file_move
 from desloppify.app.commands.move.move_directory import run_directory_move
-from desloppify.app.commands.move.move_language import load_lang_move_module, resolve_lang_for_file_move, resolve_move_verify_hint, supported_ext_hint
-from desloppify.app.commands.move.move_planning import compute_replacements, resolve_dest
+from desloppify.app.commands.move.move_language import (
+    load_lang_move_module,
+    resolve_lang_for_file_move,
+    resolve_move_verify_hint,
+    supported_ext_hint,
+)
+from desloppify.app.commands.move.move_planning import (
+    compute_replacements,
+    resolve_dest,
+)
 from desloppify.app.commands.move.move_reporting import print_file_move_plan
+from desloppify.utils import colorize, rel, resolve_path
 
 
 def cmd_move(args) -> None:
