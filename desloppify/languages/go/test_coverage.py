@@ -65,7 +65,7 @@ def strip_test_markers(basename: str) -> str | None:
     """Strip Go test naming markers to derive a source basename."""
     if basename.endswith("_test.go"):
         return basename[:-8] + ".go"
-    return basename
+    return None
 
 
 def strip_comments(content: str) -> str:
