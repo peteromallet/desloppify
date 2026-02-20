@@ -62,11 +62,35 @@ def _dimension_name(detector: str) -> str:
     return dimension.name if dimension else "Unknown"
 
 
+def _fixer_has_applicable_findings(
+    state: dict[str, Any], detector: str, fixer_name: str
+) -> bool:
+    """For the smells detector, verify the fixer has matching open findings.
+
+    The smells detector aggregates many smell types but each fixer only handles
+    one sub-type (e.g. ``dead-useeffect`` only fixes ``dead_useeffect`` smells).
+    Without this check, a React-specific fixer can be suggested to projects that
+    have no React code at all, producing a confusing "Found 0 candidates" result.
+
+    For all other detectors the fixer is considered universally applicable.
+    """
+    if detector != "smells":
+        return True
+    smell_id = fixer_name.replace("-", "_")
+    return any(
+        f.get("status") == "open"
+        and f.get("detector") == "smells"
+        and f.get("detail", {}).get("smell_id") == smell_id
+        for f in state.get("findings", {}).values()
+    )
+
+
 def _append_auto_fix_actions(
     actions: list[ActionItem],
     by_detector: dict[str, int],
     supported: set[str] | None,
     impact_for: Callable[[str, int], float],
+    state: dict[str, Any],
 ) -> None:
     """Append auto-fix/manual-fix actions for detectors with auto fixers."""
     for detector, tool_info in DETECTOR_TOOLS.items():
@@ -80,7 +104,8 @@ def _append_auto_fix_actions(
         available_fixers = [
             fixer
             for fixer in tool_info["fixers"]
-            if supported is None or fixer in supported
+            if (supported is None or fixer in supported)
+            and _fixer_has_applicable_findings(state, detector, fixer)
         ]
         if not available_fixers:
             actions.append(
@@ -234,7 +259,7 @@ def compute_actions(ctx: ActionContext) -> list[ActionItem]:
     impact_for = _impact_calculator(ctx.dimension_scores, ctx.state)
     supported = supported_fixers(ctx.state, ctx.lang)
 
-    _append_auto_fix_actions(actions, ctx.by_detector, supported, impact_for)
+    _append_auto_fix_actions(actions, ctx.by_detector, supported, impact_for, ctx.state)
     _append_reorganize_actions(actions, ctx.by_detector, impact_for)
     _append_refactor_actions(actions, ctx.by_detector, impact_for)
     _append_debt_action(actions, ctx.debt)

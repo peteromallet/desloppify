@@ -21,6 +21,7 @@ from desloppify.app.commands.helpers.score import (
 from desloppify.cli import (
     DETECTOR_NAMES,
     _apply_persisted_exclusions,
+    _resolve_default_path,
     create_parser,
     state_path,
 )
@@ -467,6 +468,71 @@ class TestStatePath:
         args = SimpleNamespace(state="/tmp/override.json", lang="python")
         result = state_path(args)
         assert result == Path("/tmp/override.json")
+
+
+class TestResolveDefaultPath:
+    """Tests for _resolve_default_path — especially the review-command scan_path fix."""
+
+    def test_does_nothing_when_path_already_set(self):
+        args = SimpleNamespace(command="review", path="/explicit/path")
+        _resolve_default_path(args)
+        assert args.path == "/explicit/path"
+
+    def test_review_uses_scan_path_from_state(self, monkeypatch, tmp_path):
+        """Regression test for issue #127: review --prepare should use last scan path."""
+        project_root = tmp_path / "myproject"
+        project_root.mkdir()
+        # Simulate a project with files at the root (no src/ subdir)
+        (project_root / "server.ts").write_text("export {}")
+        saved_state = {"scan_path": "."}  # scan was run with --path .
+
+        monkeypatch.setattr(cli_mod, "PROJECT_ROOT", project_root)
+        monkeypatch.setattr(
+            "desloppify.app.commands.helpers.state.PROJECT_ROOT", project_root
+        )
+
+        with (
+            patch("desloppify.cli.state_path", return_value=tmp_path / "state.json"),
+            patch("desloppify.cli.load_state", return_value=saved_state),
+        ):
+            args = SimpleNamespace(command="review", path=None)
+            _resolve_default_path(args)
+
+        assert args.path == str(project_root.resolve())
+
+    def test_review_falls_back_to_lang_default_when_no_scan_path(self, monkeypatch):
+        """When state has no scan_path, review falls back to lang.default_src."""
+        with (
+            patch("desloppify.cli.state_path", return_value=None),
+            patch("desloppify.cli.load_state", return_value={}),
+            patch("desloppify.cli.resolve_lang") as mock_lang,
+        ):
+            mock_lang.return_value = SimpleNamespace(default_src="src")
+            args = SimpleNamespace(command="review", path=None)
+            _resolve_default_path(args)
+
+        assert args.path.endswith("src")
+
+    def test_review_falls_back_when_state_load_raises(self, monkeypatch):
+        """If state cannot be loaded, path resolution continues without crashing."""
+        with (
+            patch("desloppify.cli.state_path", return_value=None),
+            patch("desloppify.cli.load_state", side_effect=OSError("no file")),
+            patch("desloppify.cli.resolve_lang") as mock_lang,
+        ):
+            mock_lang.return_value = SimpleNamespace(default_src="src")
+            args = SimpleNamespace(command="review", path=None)
+            _resolve_default_path(args)  # must not raise
+
+        assert args.path.endswith("src")
+
+    def test_non_review_command_uses_lang_default(self):
+        with patch("desloppify.cli.resolve_lang") as mock_lang:
+            mock_lang.return_value = SimpleNamespace(default_src="src")
+            args = SimpleNamespace(command="scan", path=None)
+            _resolve_default_path(args)
+
+        assert args.path.endswith("src")
 
 
 class TestResolveLang:

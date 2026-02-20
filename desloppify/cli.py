@@ -49,9 +49,25 @@ def _apply_persisted_exclusions(args, config: dict):
 
 
 def _resolve_default_path(args) -> None:
-    """Fill args.path from detected language or default source path."""
+    """Fill args.path from detected language or default source path.
+
+    For the review command, the last scan path (stored in state) is used as the
+    default so that ``desloppify review --prepare`` works on the same scope as
+    the preceding scan even when the project files are not under ``src/``.
+    """
     if getattr(args, "path", None) is not None:
         return
+    if getattr(args, "command", None) == "review":
+        try:
+            sp = state_path(args)
+            if sp:
+                saved = load_state(sp)
+                saved_path = saved.get("scan_path")
+                if saved_path:
+                    args.path = str((PROJECT_ROOT / saved_path).resolve())
+                    return
+        except Exception:
+            pass
     lang = resolve_lang(args)
     if lang:
         args.path = str(PROJECT_ROOT / lang.default_src)
