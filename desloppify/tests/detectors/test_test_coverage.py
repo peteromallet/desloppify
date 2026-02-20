@@ -76,6 +76,12 @@ class TestStripTestMarkers:
         # Only basename is passed, so nested name shouldn't matter
         assert _strip_test_markers("test_deep_module.py", "python") == "deep_module.py"
 
+    def test_go_test_suffix(self):
+        assert _strip_test_markers("utils_test.go", "go") == "utils.go"
+
+    def test_go_no_marker(self):
+        assert _strip_test_markers("utils.go", "go") is None
+
 
 # ── _infer_lang_name ──────────────────────────────────────
 
@@ -761,6 +767,12 @@ class TestNamingBasedMapping:
         # _strip_test_markers("test_utils.py") → "utils.py"
         # prod_by_basename["utils.py"] → "src/deep/utils.py"
         assert result == {"src/deep/utils.py"}
+
+    def test_go_non_test_file_does_not_map(self):
+        test_files = {"tests/helpers.go"}
+        production_files = {"pkg/helpers.go"}
+        result = _naming_based_mapping(test_files, production_files, "go")
+        assert result == set()
 
 
 # ── _resolve_import (TypeScript) ─────────────────────────

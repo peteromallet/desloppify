@@ -6,7 +6,7 @@ import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
-import setuptools
+import pytest
 import tomllib
 
 from desloppify.engine.policy.zones import FileZoneMap, Zone
@@ -21,6 +21,15 @@ def _load_pyproject() -> dict:
 
 def _lang_test_rel_path(lang: str) -> str:
     return f"desloppify/languages/{lang}/tests"
+
+
+def _find_packages(root: Path, *, include: list[str], exclude: list[str]) -> set[str]:
+    """Call setuptools.find_packages with environment-safe fallback."""
+    try:
+        import setuptools
+    except (ImportError, AssertionError) as exc:
+        pytest.skip(f"setuptools unavailable in test env: {exc}")
+    return set(setuptools.find_packages(str(root), include=include, exclude=exclude))
 
 
 def test_pyproject_discovers_lang_test_paths():
@@ -67,6 +76,7 @@ def test_colocated_lang_tests_are_classified_as_test_zone():
         )
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_packaging_includes_lang_plugin_tests():
     """Regression: pyproject.toml exclude patterns must not drop language plugin tests/.
 
@@ -84,9 +94,7 @@ def test_packaging_includes_lang_plugin_tests():
     includes = find_cfg.get("include", ["*"])
     excludes = find_cfg.get("exclude", [])
 
-    pkgs = set(
-        setuptools.find_packages(str(PROJECT_ROOT), include=includes, exclude=excludes)
-    )
+    pkgs = _find_packages(PROJECT_ROOT, include=includes, exclude=excludes)
 
     missing = [
         f"desloppify.languages.{lang}.tests"

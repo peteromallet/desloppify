@@ -30,7 +30,7 @@ include-package-data = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ['desloppify/tests', 'desloppify/languages/python/tests', 'desloppify/languages/typescript/tests', 'desloppify/languages/csharp/tests', 'desloppify/languages/dart/tests', 'desloppify/languages/gdscript/tests']
+testpaths = ['desloppify/tests', 'desloppify/languages/python/tests', 'desloppify/languages/typescript/tests', 'desloppify/languages/csharp/tests', 'desloppify/languages/dart/tests', 'desloppify/languages/gdscript/tests', 'desloppify/languages/go/tests']
 norecursedirs = ["desloppify/tests/fixtures"]
 
 [tool.ruff]

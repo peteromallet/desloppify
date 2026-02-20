@@ -119,6 +119,7 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
         elif key == "badge_path":
             try:
                 normalized = _validate_badge_path(str(config[key]))
+                normalized = _normalize_legacy_badge_path(normalized)
                 if normalized != config[key]:
                     config[key] = normalized
                     changed = True
@@ -170,6 +171,13 @@ def _validate_badge_path(raw: str) -> str:
             "Expected file path for badge_path "
             f"(example: scorecard.png or assets/scorecard.png), got: {raw}"
         )
+    return value
+
+
+def _normalize_legacy_badge_path(value: str) -> str:
+    """Migrate legacy default badge path from assets/ to project root."""
+    if value.replace("\\", "/") == "assets/scorecard.png":
+        return "scorecard.png"
     return value
 
 
