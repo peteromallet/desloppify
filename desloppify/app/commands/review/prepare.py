@@ -55,7 +55,6 @@ def do_prepare(
     data["config"] = _redacted_review_config(config)
     data["narrative"] = narrative
     data["next_command"] = "desloppify review --import findings.json"
-    write_query_fn(data)
     total = data.get("total_files", 0)
     if total == 0:
         print(
@@ -85,6 +84,7 @@ def do_prepare(
                 file=sys.stderr,
             )
         sys.exit(1)
+    write_query_fn(data)
     batches = data.get("investigation_batches", [])
     print(colorize_fn(f"\n  Holistic review prepared: {total} files in codebase", "bold"))
     if batches:

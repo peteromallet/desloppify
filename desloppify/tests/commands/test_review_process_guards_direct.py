@@ -134,12 +134,13 @@ def _make_do_prepare_args(*, total_files: int = 3, state: dict | None = None):
 
 def test_review_prepare_zero_files_exits_with_error(capsys):
     """Regression guard for issue #127: 0-file result must error, not silently succeed."""
-    kwargs, _ = _make_do_prepare_args(total_files=0)
+    kwargs, captured = _make_do_prepare_args(total_files=0)
     with pytest.raises(SystemExit) as exc:
         do_prepare(**kwargs)
     assert exc.value.code == 1
     err = capsys.readouterr().err
     assert "no files found" in err.lower()
+    assert not captured, "query.json must not be written when no files are found"
 
 
 def test_review_prepare_zero_files_hints_scan_path(capsys):
