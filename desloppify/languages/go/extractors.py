@@ -8,29 +8,34 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import FunctionInfo
+from desloppify.utils import PROJECT_ROOT, find_source_files
 
 logger = logging.getLogger(__name__)
 
-def extract_functions(path: Path) -> list[FunctionInfo]:
-    """Return function-like items for duplicate/signature detectors."""
+_GO_FUNC_RE = re.compile(
+    r"^\s*func\s+(?:\([^)]+\)\s+)?(?P<name>\w+)(?:\[[^\]]+\])?\s*\("
+)
+
+
+def extract_go_functions(filepath: Path | str) -> list[FunctionInfo]:
+    """Extract function-like items from one Go file."""
+    source = Path(filepath)
+    read_path = source if source.is_absolute() else PROJECT_ROOT / source
     try:
-        content = path.read_text()
+        content = read_path.read_text()
     except (OSError, UnicodeDecodeError) as exc:
-        logger.debug("Skipping unreadable Go file %s: %s", path, exc)
+        logger.debug("Skipping unreadable Go file %s: %s", filepath, exc)
         return []
 
     lines = content.splitlines()
-    functions = []
-    
-    # Matches: func Name(..., func (r *Receiver) Name(...)
-    fn_re = re.compile(r"^func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(")
+    functions: list[FunctionInfo] = []
 
     i = 0
     while i < len(lines):
         line = lines[i]
-        m = fn_re.match(line)
+        m = _GO_FUNC_RE.match(line)
         if m:
-            name = m.group(1)
+            name = m.group("name")
             start_line = i
             brace_depth = 0
             found_open = False
@@ -74,7 +79,7 @@ def extract_functions(path: Path) -> list[FunctionInfo]:
                     functions.append(
                         FunctionInfo(
                             name=name,
-                            file=str(path),
+                            file=str(filepath),
                             line=start_line + 1,
                             end_line=j + 1,
                             loc=j - start_line + 1,
@@ -88,6 +93,15 @@ def extract_functions(path: Path) -> list[FunctionInfo]:
                 continue
         i += 1
     return functions
+
+
+def extract_functions(path: Path) -> list[FunctionInfo]:
+    """Extract function-like items from all Go files below a directory."""
+    functions: list[FunctionInfo] = []
+    for filepath in find_source_files(path, [".go"]):
+        functions.extend(extract_go_functions(filepath))
+    return functions
+
 
 def normalize_go_body(body: str) -> str:
     lines = body.splitlines()
