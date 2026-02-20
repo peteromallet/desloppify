@@ -39,13 +39,34 @@ def extract_go_functions(filepath: Path | str) -> list[FunctionInfo]:
             start_line = i
             brace_depth = 0
             found_open = False
+            in_backticks = False
+            in_block_comment = False
             j = i
             while j < len(lines):
                 ln = lines[j]
                 k = 0
                 while k < len(ln):
                     ch = ln[k]
-                    if ch in ('"', '`', "'"):
+                    nxt = ln[k+1] if k + 1 < len(ln) else ""
+                    
+                    if in_block_comment:
+                        if ch == '*' and nxt == '/':
+                            in_block_comment = False
+                            k += 2
+                        else:
+                            k += 1
+                        continue
+                        
+                    if in_backticks:
+                        if ch == '`':
+                            in_backticks = False
+                        k += 1
+                        continue
+
+                    if ch == '`':
+                        in_backticks = True
+                        k += 1
+                    elif ch in ('"', "'"):
                         quote = ch
                         k += 1
                         while k < len(ln):
@@ -53,16 +74,23 @@ def extract_go_functions(filepath: Path | str) -> list[FunctionInfo]:
                                 k += 2
                                 continue
                             if ln[k] == quote:
+                                k += 1
                                 break
                             k += 1
-                    elif ch == '/' and k + 1 < len(ln) and ln[k+1] == '/':
+                    elif ch == '/' and nxt == '/':
                         break
+                    elif ch == '/' and nxt == '*':
+                        in_block_comment = True
+                        k += 2
                     elif ch == '{':
                         brace_depth += 1
                         found_open = True
+                        k += 1
                     elif ch == '}':
                         brace_depth -= 1
-                    k += 1
+                        k += 1
+                    else:
+                        k += 1
                 if found_open and brace_depth <= 0:
                     break
                 j += 1
