@@ -7,7 +7,6 @@ Language-specific commands with unique display logic stay in their own modules.
 
 from __future__ import annotations
 
-import inspect
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -32,19 +31,17 @@ if TYPE_CHECKING:
     from desloppify.engine.detectors.base import ComplexitySignal
 
 
-def _bind_callsite_module(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Attribute generated command functions to the language commands module."""
-    frame = inspect.currentframe()
-    caller = frame.f_back.f_back if frame and frame.f_back else None
-    module_name = caller.f_globals.get("__name__") if caller else None
-    if isinstance(module_name, str):
+def _set_module(fn: Callable[..., Any], module_name: str | None) -> Callable[..., Any]:
+    """Set fn.__module__ from an explicit module name (no frame introspection)."""
+    if module_name is not None:
         fn.__module__ = module_name
-    del frame
     return fn
 
 
 def make_cmd_large(
-    file_finder: Callable[..., Any], default_threshold: int
+    file_finder: Callable[..., Any],
+    default_threshold: int,
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect large files."""
 
@@ -65,13 +62,14 @@ def make_cmd_large(
             row_fn=lambda e: [rel(e["file"]), str(e["loc"])],
         )
 
-    return _bind_callsite_module(cmd_large)
+    return _set_module(cmd_large, module_name)
 
 
 def make_cmd_complexity(
     file_finder: Callable[..., Any],
     signals: list[ComplexitySignal],
     default_threshold: int = 15,
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect complexity signals."""
 
@@ -97,11 +95,13 @@ def make_cmd_complexity(
             ],
         )
 
-    return _bind_callsite_module(cmd_complexity)
+    return _set_module(cmd_complexity, module_name)
 
 
 def make_cmd_single_use(
-    build_dep_graph: Callable[..., Any], barrel_names: set[str]
+    build_dep_graph: Callable[..., Any],
+    barrel_names: set[str],
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect single-use abstractions."""
 
@@ -120,7 +120,7 @@ def make_cmd_single_use(
             row_fn=lambda e: [rel(e["file"]), str(e["loc"]), e["sole_importer"]],
         )
 
-    return _bind_callsite_module(cmd_single_use)
+    return _set_module(cmd_single_use, module_name)
 
 
 def make_cmd_passthrough(
@@ -128,6 +128,7 @@ def make_cmd_passthrough(
     noun: str,
     name_key: str,
     total_key: str,
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect passthrough components/functions."""
 
@@ -150,13 +151,14 @@ def make_cmd_passthrough(
             ],
         )
 
-    return _bind_callsite_module(cmd_passthrough)
+    return _set_module(cmd_passthrough, module_name)
 
 
 def make_cmd_naming(
     file_finder: Callable[..., Any],
     skip_names: set[str],
     skip_dirs: set[str] | None = None,
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect naming inconsistencies."""
 
@@ -183,12 +185,13 @@ def make_cmd_naming(
             ],
         )
 
-    return _bind_callsite_module(cmd_naming)
+    return _set_module(cmd_naming, module_name)
 
 
 def make_cmd_facade(
     build_dep_graph_fn: Callable[..., Any],
     detect_facades_fn: Callable[..., tuple[list[dict], int]],
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect re-export facades."""
 
@@ -233,11 +236,12 @@ def make_cmd_facade(
             ]
             print_table(["Directory", "Files", "Importers"], rows, [50, 6, 9])
 
-    return _bind_callsite_module(cmd_facade)
+    return _set_module(cmd_facade, module_name)
 
 
 def make_cmd_smells(
     detect_smells_fn: Callable[..., Any],
+    module_name: str | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Factory: detect code smells."""
 
@@ -276,7 +280,7 @@ def make_cmd_smells(
             for m in e["matches"][:10]:
                 print(f"    {rel(m['file'])}:{m['line']}  {m['content'][:60]}")
 
-    return _bind_callsite_module(cmd_smells)
+    return _set_module(cmd_smells, module_name)
 
 
 def build_standard_detect_registry(

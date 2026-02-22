@@ -43,20 +43,21 @@ from desloppify.languages.python.phases import (
     PY_SKIP_NAMES,
 )
 
-cmd_large = make_cmd_large(find_py_files, default_threshold=300)
+cmd_large = make_cmd_large(find_py_files, default_threshold=300, module_name=__name__)
 cmd_complexity = make_cmd_complexity(
-    find_py_files, PY_COMPLEXITY_SIGNALS, default_threshold=25
+    find_py_files, PY_COMPLEXITY_SIGNALS, default_threshold=25, module_name=__name__
 )
 cmd_single_use = make_cmd_single_use(
-    deps_detector_mod.build_dep_graph, barrel_names={"__init__.py"}
+    deps_detector_mod.build_dep_graph, barrel_names={"__init__.py"}, module_name=__name__
 )
 cmd_passthrough = make_cmd_passthrough(
     detect_passthrough_functions,
     noun="function",
     name_key="function",
     total_key="total_params",
+    module_name=__name__,
 )
-cmd_naming = make_cmd_naming(find_py_files, skip_names=PY_SKIP_NAMES)
+cmd_naming = make_cmd_naming(find_py_files, skip_names=PY_SKIP_NAMES, module_name=__name__)
 
 
 def cmd_gods(args: argparse.Namespace) -> None:
@@ -158,10 +159,11 @@ def cmd_cycles(args: argparse.Namespace) -> None:
         )
 
 
-cmd_smells = make_cmd_smells(smells_detector_mod.detect_smells)
+cmd_smells = make_cmd_smells(smells_detector_mod.detect_smells, module_name=__name__)
 cmd_facade = make_cmd_facade(
     deps_detector_mod.build_dep_graph,
     detect_facades_fn=facade_detector_mod.detect_reexport_facades,
+    module_name=__name__,
 )
 
 

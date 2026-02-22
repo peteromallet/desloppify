@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from desloppify.engine._state.schema import ScanDiff
+from desloppify.engine._state.schema import ScanDiff, StateModel
 from desloppify.utils import compute_tool_hash
 
 
 def _record_scan_metadata(
-    state: dict,
+    state: StateModel,
     now: str,
     *,
     lang: str | None,
@@ -25,7 +25,7 @@ def _record_scan_metadata(
 
 
 def _merge_scan_inputs(
-    state: dict,
+    state: StateModel,
     *,
     lang: str | None,
     potentials: dict[str, int] | None,
@@ -67,7 +67,7 @@ def _subjective_integrity_snapshot(integrity: dict | None) -> dict[str, object] 
 
 
 def _append_scan_history(
-    state: dict,
+    state: StateModel,
     *,
     now: str,
     lang: str | None,

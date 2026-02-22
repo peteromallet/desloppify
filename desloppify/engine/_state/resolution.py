@@ -13,6 +13,7 @@ __all__ = [
 from desloppify.core._internal.text_utils import is_numeric
 from desloppify.engine._state.filtering import _matches_pattern
 from desloppify.engine._state.schema import (
+    StateModel,
     ensure_state_defaults,
     utc_now,
     validate_state_invariants,
@@ -37,7 +38,7 @@ def coerce_assessment_score(value: object) -> float | None:
 
 
 def _mark_stale_assessments_on_review_resolve(
-    state: dict,
+    state: StateModel,
     *,
     status: str,
     resolved_findings: list[dict],
@@ -80,7 +81,7 @@ def _mark_stale_assessments_on_review_resolve(
 
 
 def match_findings(
-    state: dict, pattern: str, status_filter: str = "open"
+    state: StateModel, pattern: str, status_filter: str = "open"
 ) -> list[dict]:
     """Return findings matching *pattern* with the given status."""
     ensure_state_defaults(state)
@@ -94,7 +95,7 @@ def match_findings(
 
 
 def resolve_findings(
-    state: dict,
+    state: StateModel,
     pattern: str,
     status: str,
     note: str | None = None,

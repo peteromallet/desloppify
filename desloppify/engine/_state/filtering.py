@@ -16,6 +16,7 @@ __all__ = [
 
 from desloppify.engine._state.schema import (
     Finding,
+    StateModel,
     ensure_state_defaults,
     utc_now,
     validate_state_invariants,
@@ -68,7 +69,7 @@ def matched_ignore_pattern(
     return None
 
 
-def remove_ignored_findings(state: dict, pattern: str) -> int:
+def remove_ignored_findings(state: StateModel, pattern: str) -> int:
     """Suppress findings matching an ignore pattern. Returns count affected."""
     # deferred: avoid circular import with engine._state.scoring (it imports filtering)
     scoring_mod = importlib.import_module("desloppify.engine._state.scoring")
@@ -95,7 +96,7 @@ def remove_ignored_findings(state: dict, pattern: str) -> int:
     return len(matched_ids)
 
 
-def add_ignore(state: dict, pattern: str) -> int:
+def add_ignore(state: StateModel, pattern: str) -> int:
     """Add an ignore pattern and remove existing matching findings."""
     ensure_state_defaults(state)
     config = state.setdefault("config", {})

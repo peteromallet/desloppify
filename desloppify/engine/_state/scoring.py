@@ -11,7 +11,7 @@ __all__ = [
 
 from desloppify.engine._scoring.policy.core import matches_target_score
 from desloppify.engine._state.filtering import path_scoped_findings
-from desloppify.engine._state.schema import ensure_state_defaults
+from desloppify.engine._state.schema import StateModel, ensure_state_defaults
 
 _EMPTY_COUNTERS = ("open", "fixed", "auto_resolved", "wontfix", "false_positive")
 _SUBJECTIVE_TARGET_RESET_THRESHOLD = 2
@@ -121,7 +121,7 @@ def _aggregate_scores(dim_scores: dict, scoring_mod) -> dict[str, float]:
 
 
 def _update_objective_health(
-    state: dict,
+    state: StateModel,
     findings: dict,
     *,
     subjective_integrity_target: float | None = None,
@@ -208,7 +208,7 @@ def _update_objective_health(
 
 
 def _recompute_stats(
-    state: dict,
+    state: StateModel,
     scan_path: str | None = None,
     *,
     subjective_integrity_target: float | None = None,
@@ -244,7 +244,7 @@ def _empty_suppression_metrics() -> dict[str, int | float]:
     }
 
 
-def suppression_metrics(state: dict, *, window: int = 5) -> dict[str, int | float]:
+def suppression_metrics(state: StateModel, *, window: int = 5) -> dict[str, int | float]:
     """Summarize ignore suppression from recent scan history."""
     history = state.get("scan_history", [])
     if not history:

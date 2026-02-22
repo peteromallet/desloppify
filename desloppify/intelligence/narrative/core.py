@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from desloppify.core.config import load_config as _load_config
 from desloppify.intelligence.narrative._constants import STRUCTURAL_MERGE

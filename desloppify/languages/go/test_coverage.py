@@ -5,7 +5,6 @@ Originally contributed by tinker495 (KyuSeok Jung) in PR #128.
 
 from __future__ import annotations
 
-import os
 import re
 
 ASSERT_PATTERNS = [

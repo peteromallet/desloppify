@@ -33,8 +33,11 @@ from desloppify.engine._state.schema import (
     CURRENT_VERSION,
     STATE_DIR,
     STATE_FILE,
+    ConcernDismissal,
     Finding,
     StateModel,
+    SubjectiveAssessment,
+    SubjectiveIntegrity,
     get_objective_score,
     get_overall_score,
     get_strict_score,
@@ -54,7 +57,7 @@ class ScoreSnapshot(NamedTuple):
     verified: float | None
 
 
-def score_snapshot(state: dict) -> ScoreSnapshot:
+def score_snapshot(state: StateModel) -> ScoreSnapshot:
     """Load all four canonical scores from *state* in one call."""
     return ScoreSnapshot(
         overall=get_overall_score(state),
@@ -66,12 +69,15 @@ def score_snapshot(state: dict) -> ScoreSnapshot:
 
 __all__ = [
     "CURRENT_VERSION",
+    "ConcernDismissal",
     "DEFAULT_FINDING_NOISE_BUDGET",
     "DEFAULT_FINDING_NOISE_GLOBAL_BUDGET",
     "Finding",
     "MergeScanOptions",
     "ScoreSnapshot",
     "StateModel",
+    "SubjectiveAssessment",
+    "SubjectiveIntegrity",
     "STATE_DIR",
     "STATE_FILE",
     "coerce_assessment_score",

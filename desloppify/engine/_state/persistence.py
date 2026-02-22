@@ -102,7 +102,7 @@ def _coerce_integrity_target(value: object) -> float | None:
 
 
 def _resolve_integrity_target(
-    state: dict[str, object],
+    state: StateModel,
     explicit_target: float | None,
 ) -> float | None:
     target = _coerce_integrity_target(explicit_target)

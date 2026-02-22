@@ -30,7 +30,10 @@ from desloppify.app.commands.scan.scan_reporting_dimensions import (
     show_scorecard_subjective_measures,
     show_subjective_paths_section,
 )
-from desloppify.app.commands.scan.scan_reporting_llm import _print_llm_summary
+from desloppify.app.commands.scan.scan_reporting_llm import (
+    _print_llm_summary,
+    auto_update_skill,
+)
 from desloppify.app.commands.scan.scan_reporting_summary import (  # noqa: F401
     show_concern_count,
     show_diff_summary,
@@ -155,6 +158,7 @@ def cmd_scan(args: argparse.Namespace) -> None:
 
     badge_path = emit_scorecard_badge(args, runtime.config, runtime.state)
     _print_llm_summary(runtime.state, badge_path, narrative, merge.diff)
+    auto_update_skill()
 
 
 __all__ = [

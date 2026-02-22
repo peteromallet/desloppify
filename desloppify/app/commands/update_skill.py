@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import urllib.error
 import urllib.request
 

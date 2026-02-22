@@ -211,12 +211,11 @@ def _detect_agent_interface() -> str | None:
     return None
 
 
-def _auto_update_skill() -> None:
-    """Auto-install or auto-update the skill document during scan.
+def _try_auto_update_skill() -> None:
+    """Attempt to auto-install or auto-update the skill document.
 
-    - First scan with no skill doc: auto-installs if we can detect the agent.
-    - Subsequent scans with stale doc: auto-updates.
-    - Unknown agent with no doc: silent (user runs ``update-skill`` manually).
+    Best-effort: swallows all exceptions so a network failure or permission
+    error never breaks the scan.
     """
     install = utils_mod.find_installed_skill()
 
@@ -230,18 +229,14 @@ def _auto_update_skill() -> None:
         )
 
         if install:
-            # Stale — resolve interface from existing install.
             interface = resolve_interface(install=install)
         else:
-            # No install — detect from environment.
             interface = _detect_agent_interface()
 
         if interface:
             update_installed_skill(interface)
     except Exception:  # noqa: BLE001
-        # Network failure, permission error, etc. — don't break the scan.
-        if install:
-            print("Skill document is outdated. Run: desloppify update-skill")
+        pass
 
 
 def _print_badge_hint(badge_path: Path | None) -> None:
@@ -304,8 +299,33 @@ def _print_llm_summary(
     _print_workflow_guide()
     _print_narrative_status(narrative)
     _print_badge_hint(badge_path)
-    _auto_update_skill()
     print("─" * 60)
 
 
-__all__ = ["_print_llm_summary"]
+def auto_update_skill() -> None:
+    """Auto-install or update the skill document if we detect an agent.
+
+    Called unconditionally from the scan workflow — not gated on scores.
+    """
+    if not _is_agent_environment():
+        return
+
+    _try_auto_update_skill()
+
+    # Single post-check: whatever happened above, is the doc current now?
+    install = utils_mod.find_installed_skill()
+    if not install:
+        names = ", ".join(sorted(utils_mod.SKILL_TARGETS))
+        print(
+            f"No skill document found. Install one for better workflow guidance: "
+            f"desloppify update-skill <{names}>"
+        )
+    elif install.stale:
+        print(
+            f"Skill document is outdated "
+            f"(v{install.version}, current v{utils_mod.SKILL_VERSION}). "
+            f"Run: desloppify update-skill"
+        )
+
+
+__all__ = ["_print_llm_summary", "auto_update_skill"]

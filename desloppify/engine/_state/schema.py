@@ -9,12 +9,15 @@ from typing import Any, Literal, NotRequired, Required, TypedDict, cast
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 __all__ = [
+    "ConcernDismissal",
     "FindingStatus",
     "Finding",
     "TierStats",
     "StateStats",
     "DimensionScore",
     "ScanHistoryEntry",
+    "SubjectiveAssessment",
+    "SubjectiveIntegrity",
     "StateModel",
     "ScanDiff",
     "STATE_DIR",
@@ -110,6 +113,34 @@ class ScanHistoryEntry(TypedDict, total=False):
     dimension_scores: dict[str, dict[str, float]] | None
 
 
+class SubjectiveIntegrity(TypedDict, total=False):
+    """Anti-gaming metadata for subjective assessment scores."""
+
+    status: str  # "disabled" | "pass" | "warn" | "penalized"
+    target_score: float | None
+    matched_count: int
+    matched_dimensions: list[str]
+    reset_dimensions: list[str]
+
+
+class SubjectiveAssessment(TypedDict, total=False):
+    """A single subjective dimension assessment payload."""
+
+    score: float
+    integrity_penalty: str | None
+    needs_review_refresh: bool
+    refresh_reason: str | None
+    stale_since: str | None
+
+
+class ConcernDismissal(TypedDict, total=False):
+    """Record of a dismissed concern from review output."""
+
+    dismissed_at: str
+    reason: str | None
+    dimension: str
+
+
 class StateModel(TypedDict, total=False):
     version: Required[int]
     created: Required[str]
@@ -122,9 +153,9 @@ class StateModel(TypedDict, total=False):
     stats: Required[StateStats]
     findings: Required[dict[str, Finding]]
     scan_history: list[ScanHistoryEntry]
-    subjective_integrity: Required[dict[str, Any]]
-    subjective_assessments: Required[dict[str, Any]]
-    concern_dismissals: dict[str, Any]
+    subjective_integrity: Required[SubjectiveIntegrity]
+    subjective_assessments: Required[dict[str, SubjectiveAssessment]]
+    concern_dismissals: dict[str, ConcernDismissal]
 
 
 class ScanDiff(TypedDict):
@@ -180,7 +211,7 @@ def _as_non_negative_int(value: Any, default: int = 0) -> int:
     return parsed if parsed >= 0 else 0
 
 
-def ensure_state_defaults(state: dict) -> StateModel:
+def ensure_state_defaults(state: StateModel | dict) -> StateModel:
     """Normalize loose/legacy state payloads to a valid base shape."""
     for key, value in empty_state().items():
         state.setdefault(key, value)
@@ -281,22 +312,22 @@ def json_default(obj: Any) -> Any:
     )
 
 
-def get_overall_score(state: dict) -> float | None:
+def get_overall_score(state: StateModel) -> float | None:
     """Canonical overall score (lenient, includes subjective dimensions)."""
     return state.get("overall_score")
 
 
-def get_objective_score(state: dict) -> float | None:
+def get_objective_score(state: StateModel) -> float | None:
     """Canonical objective score (lenient, mechanical dimensions only)."""
     return state.get("objective_score")
 
 
-def get_strict_score(state: dict) -> float | None:
+def get_strict_score(state: StateModel) -> float | None:
     """Canonical strict score (strict, includes subjective dimensions)."""
     return state.get("strict_score")
 
 
-def get_verified_strict_score(state: dict) -> float | None:
+def get_verified_strict_score(state: StateModel) -> float | None:
     """Strict score that only credits scan-verified fixes.
 
     Returns None if no scan-verified score exists yet (fresh state or

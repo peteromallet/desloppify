@@ -44,19 +44,24 @@ from desloppify.utils import (
     print_table,
 )
 
-cmd_large = make_cmd_large(find_ts_files, default_threshold=500)
-cmd_complexity = make_cmd_complexity(find_ts_files, TS_COMPLEXITY_SIGNALS)
+cmd_large = make_cmd_large(find_ts_files, default_threshold=500, module_name=__name__)
+cmd_complexity = make_cmd_complexity(
+    find_ts_files, TS_COMPLEXITY_SIGNALS, module_name=__name__
+)
 cmd_single_use = make_cmd_single_use(
-    deps_detector_mod.build_dep_graph, barrel_names={"index.ts", "index.tsx"}
+    deps_detector_mod.build_dep_graph,
+    barrel_names={"index.ts", "index.tsx"},
+    module_name=__name__,
 )
 cmd_passthrough = make_cmd_passthrough(
     detect_passthrough_components,
     noun="component",
     name_key="component",
     total_key="total_props",
+    module_name=__name__,
 )
 cmd_naming = make_cmd_naming(
-    find_ts_files, skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS
+    find_ts_files, skip_names=TS_SKIP_NAMES, skip_dirs=TS_SKIP_DIRS, module_name=__name__
 )
 
 
@@ -169,10 +174,11 @@ def cmd_dupes(args: argparse.Namespace) -> None:
         print_table(["Function A", "Function B", "Sim"], rows, [50, 50, 5])
 
 
-cmd_smells = make_cmd_smells(smells_detector_mod.detect_smells)
+cmd_smells = make_cmd_smells(smells_detector_mod.detect_smells, module_name=__name__)
 cmd_facade = make_cmd_facade(
     deps_detector_mod.build_dep_graph,
     detect_facades_fn=facade_detector_mod.detect_reexport_facades,
+    module_name=__name__,
 )
 
 
