@@ -47,9 +47,9 @@ Vibe coding gets things built fast. But the codebase accumulates debt — tangle
 
 Traditional tools catch the mechanical stuff: dead code, unused imports, complexity metrics. That's table stakes. The real problems are subjective and structural — poor module boundaries, convention drift, error handling that's inconsistent across the codebase, naming that misleads. These are the things that actually make a codebase hard to work with, and no linter can see them.
 
-LLMs are now good enough to recognize these problems when asked the right questions. Desloppify is the harness that asks those questions — structured prompts about architecture, design quality, convention consistency — and tracks the answers as scored findings alongside the mechanical detections. The score is weighted heavily toward these subjective insights because that's where the real leverage is.
+LLMs are now good enough to recognize these problems when asked the right questions. Desloppify asks those questions — structured prompts about architecture, design quality, convention consistency — and tracks the answers as scored findings alongside the mechanical detections. The score weights subjective findings heavily because that's what actually matters.
 
-Mechanical detection and auto-fix is handled automatically. For the rest — the stuff that needs taste — it gives your agent a prioritized shortlist. You decide what to fix and what to mindfully ignore. The goal is a single score that combines both objective and subjective metrics — a real measure of codebase health, not just lint output.
+Mechanical detection and auto-fix is handled automatically. For the rest — the stuff that needs taste — it gives your agent a prioritized shortlist. You decide what to fix and what to mindfully ignore. One score, objective and subjective combined — actual codebase health, not just lint output.
 
 If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
 
