@@ -1,20 +1,27 @@
-# Desloppify - agent tools to make your codebase 🤌
+# Desloppify - an agent harness to make your codebase 🤌
 
-Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports 28 languages — full plugin depth for TypeScript, Python, C#, Dart, and GDScript; generic linter + tree-sitter support for Go, Rust, Ruby, Java, Kotlin, and 18 more.
+Desloppify gives your AI coding agent the tools to identify, understand, and systematically improve codebase quality. It finds issues in two ways:
 
-Every scan generates a scorecard badge you can add to your README — here's the one for this repo. Strict score counts open + wontfix debt; ignored findings are tracked separately:
+1. **Subjective** — Examines the codebase from multiple subjective perspectives: abstraction quality, naming consistency, module boundaries, error handling patterns, convention drift, and language-specific questions. LLM evaluation scores these and tracks them as findings.
+
+2. **Mechanical** — Detects common mechanical issues like unused imports, dead code, overly long functions, duplication, and dependency cycles. Questionable issues are also flagged to the subjective agent for review.
+
+Your agent works through a prioritized list — auto-fixing what it can, presenting the rest for your judgment. State persists across scans so it chips away over multiple sessions, and the scoring is designed to resist gaming: attestation requirements, strict scoring that penalizes dismissed issues, and cross-checked subjective assessments.
+
+This produces a combined health score — our goal is that a score above 98 correlates with a codebase a seasoned engineer would call beautiful. That score generates a scorecard badge for your GitHub profile or README:
 
 <img src="assets/scorecard.png" width="100%">
 
-Adding a new language plugin? See `desloppify/languages/README.md`.
+Currently supports 28 languages — full plugin depth for TypeScript, Python, C#, Dart, and GDScript; generic linter + tree-sitter support for Go, Rust, Ruby, Java, Kotlin, and 18 more.
 
 ## For your agent's consideration...
 
-Copy-paste into any AI coding agent (Cursor, Codex, OpenCode, etc.):
+Paste this prompt into your agent:
 
 ```
 Install or update desloppify, then scan this codebase for code quality issues (dead code,
-duplication, complexity, smells). It tracks findings and reports a health score.
+duplication, complexity, smells). It tracks findings persistently across sessions and reports
+a health score — state is cumulative, so each scan builds on previous progress.
 
 pip install --upgrade git+https://github.com/peteromallet/desloppify.git
 desloppify scan --path .
@@ -30,26 +37,38 @@ Language is auto-detected. To override: desloppify --lang python scan --path .
 
 Fix what it finds, then "desloppify resolve fixed <id> --note 'what changed' --attest 'I have actually improved how [WHAT YOU IMPROVED EXPLICITLY] enough to honestly justify a score of [SCORE] and I am not gaming the score.'" and rescan.
 For false positives: "desloppify resolve wontfix <id> --note 'reason' --attest 'I have actually improved how [WHAT YOU IMPROVED EXPLICITLY] enough to honestly justify a score of [SCORE] and I am not gaming the score.'" (note is required — don't skip work; attestation must include the keywords "I have actually" and "not gaming").
-Keep going until all issues are resolved. If you notice anything wrong or confusing about
+Keep going until all issues are resolved.
+
+Because state persists, desloppify works best when run regularly. Ask the user if they'd
+like to add a desloppify scan to their workflow — for example, adding "run desloppify scan
+before each git push" to their CLAUDE.md, AGENTS.md, or equivalent agent instructions file,
+so code health is checked at a natural interval.
+
+If you notice anything wrong or confusing about
 desloppify itself, tell me and ask if I want you to log an issue. If you need to understand
 how desloppify works or debug an issue: git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify
 
-If you're Claude Code, also run:
+Agent-specific overlays optimize the subjective review workflow. Install yours:
+
+If you're Claude Code:
 mkdir -p .claude/skills/desloppify && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/CLAUDE.md; } > .claude/skills/desloppify/SKILL.md
 
-If you're Codex, also run:
-mkdir -p .agents/skills/desloppify "${CODEX_HOME:-$HOME/.codex}/skills/desloppify" && { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/CODEX.md; } | tee .agents/skills/desloppify/SKILL.md > "${CODEX_HOME:-$HOME/.codex}/skills/desloppify/SKILL.md"
+For AGENTS.md agents, pick your overlay — CODEX, CURSOR, COPILOT, WINDSURF, or GEMINI:
+{ curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/<OVERLAY>.md; } >> AGENTS.md
+
+If no overlay matches (Aider, opencode, Zed, Devin, and others):
+curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md >> AGENTS.md
 ```
 
 ## From Vibe Coding to Vibe Engineering
 
-Vibe coding gets things built fast. But the codebase accumulates debt — tangled dependencies, inconsistent patterns, abstractions that don't make sense — and eventually progress slows, bugs get harder to fix, and new features become a pain.
+Vibe coding gets things built fast. But speed without structure creates codebases that fight back — progress slows, bugs multiply, and new features become a negotiation with past decisions.
 
-Traditional tools catch the mechanical stuff: dead code, unused imports, complexity metrics. That's table stakes. The real problems are subjective and structural — poor module boundaries, convention drift, error handling that's inconsistent across the codebase, naming that misleads. These are the things that actually make a codebase hard to work with, and no linter can see them.
+We believe agents can do more than just write code. They can understand it, evaluate it, and hold it to a standard — if you give them the right framework. The subjective stuff that actually matters — whether abstractions make sense, whether patterns are consistent, whether the code reads like it was written with intent — these are things LLMs can now recognize when asked the right questions.
 
-LLMs are now good enough to recognize these problems when asked the right questions. Desloppify asks those questions — structured prompts about architecture, design quality, convention consistency — and tracks the answers as scored findings alongside the mechanical detections. The score weights subjective findings heavily because that's what actually matters.
+Desloppify is our attempt to define what "good" looks like as an optimizable target, and to make that target honest enough that improving the score means genuinely improving the codebase. Not suppressing warnings. Not renaming things. Actually making it better.
 
-Mechanical detection and auto-fix is handled automatically. For the rest — the stuff that needs taste — it gives your agent a prioritized shortlist. You decide what to fix and what to mindfully ignore. One score, objective and subjective combined — actual codebase health, not just lint output.
+The end goal is that anyone — regardless of experience level — can use AI agents to build and maintain codebases that a seasoned engineer would be proud of.
 
 If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
 
@@ -119,7 +138,7 @@ Project config values (stored in `.desloppify/config.json`) are managed via:
 - `desloppify config set target_strict_score 95` (default: `95`, valid range: `0-100`)
 - `desloppify config set badge_path scorecard.png` (or nested path like `assets/health.png`)
 
-#### Adding a language
+#### Adding or augmenting a language
 
 Use the scaffold workflow documented in `desloppify/languages/README.md`:
 

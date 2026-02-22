@@ -5,7 +5,7 @@ description: >
   about code quality, technical debt, dead code, large files, god classes,
   duplicate functions, code smells, naming issues, import cycles, or coupling
   problems. Also use when asked for a health score, what to fix next, or to
-  create a cleanup plan. Supports TypeScript/React, Python, and C#/.NET.
+  create a cleanup plan. Supports 28 languages.
 allowed-tools: Bash(desloppify *)
 ---
 
@@ -64,19 +64,22 @@ Score = 40% mechanical + 60% subjective. Subjective starts at 0% until reviewed.
 1. `desloppify review --prepare` — writes dimension definitions and codebase context
    to `query.json`.
 
-2. **Launch parallel subagents** — one message, multiple Task calls. Split the
-   dimensions across agents however makes sense. Give each agent:
+2. **Review each dimension independently.** For best results, review dimensions in
+   isolation so scores don't bleed across concerns. If your agent supports parallel
+   execution, use it — your agent-specific overlay (appended below, if installed)
+   has the optimal approach. Each reviewer needs:
    - The codebase path and the dimensions to score
    - What each dimension means (from `query.json`'s `dimension_prompts`)
    - The output format (below)
    - Nothing else — let them decide what to read and how
 
-3. Merge `assessments` (average multi-agent scores) and `findings`, then import:
+3. Merge assessments (average scores if multiple reviewers cover the same dimension)
+   and findings, then import:
    ```bash
    desloppify review --import findings.json
    ```
 
-   Required output format per agent:
+   Required output format per reviewer:
    ```json
    {
      "assessments": { "naming_quality": 75.0, "logic_clarity": 82.0 },
