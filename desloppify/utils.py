@@ -11,33 +11,16 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
-    # Re-exports from file_discovery
-    "DEFAULT_EXCLUSIONS",
-    "disable_file_cache",
-    "enable_file_cache",
-    "find_py_files",
-    "find_source_files",
-    "find_ts_files",
-    "find_tsx_files",
-    "get_exclusions",
-    "is_file_cache_enabled",
-    "matches_exclusion",
-    "read_file_text",
-    "rel",
-    "resolve_path",
-    "safe_write_text",
-    "set_exclusions",
-    # Re-exports from text_utils
-    "get_area",
-    "strip_c_style_comments",
-    # Own public API
+    # Path constants
     "PROJECT_ROOT",
     "DEFAULT_PATH",
     "SRC_PATH",
+    # Grep helpers
     "read_code_snippet",
     "grep_files",
     "grep_files_containing",
     "grep_count_files",
+    # Output formatting
     "LOC_COMPACT_THRESHOLD",
     "COLORS",
     "NO_COLOR",
@@ -45,9 +28,11 @@ __all__ = [
     "log",
     "print_table",
     "display_entries",
+    # Tool staleness
     "TOOL_DIR",
     "compute_tool_hash",
     "check_tool_staleness",
+    # Skill document tracking
     "SKILL_VERSION",
     "SKILL_VERSION_RE",
     "SKILL_OVERLAY_RE",
@@ -61,28 +46,9 @@ __all__ = [
 ]
 
 from desloppify.core._internal import text_utils as _text_utils
-from desloppify.file_discovery import (
-    DEFAULT_EXCLUSIONS as DEFAULT_EXCLUSIONS,
-    _find_source_files_cached as _find_source_files_cached,
-    disable_file_cache as disable_file_cache,
-    enable_file_cache as enable_file_cache,
-    find_py_files as find_py_files,
-    find_source_files as find_source_files,
-    find_ts_files as find_ts_files,
-    find_tsx_files as find_tsx_files,
-    get_exclusions as get_exclusions,
-    is_file_cache_enabled as is_file_cache_enabled,
-    matches_exclusion as matches_exclusion,
-    read_file_text as read_file_text,
-    rel as rel,
-    resolve_path as resolve_path,
-    safe_write_text as safe_write_text,
-    set_exclusions as set_exclusions,
-)
+from desloppify.file_discovery import read_file_text as _read_file_text
 
-get_area = _text_utils.get_area
-get_project_root = _text_utils.get_project_root
-strip_c_style_comments = _text_utils.strip_c_style_comments
+_get_project_root = _text_utils.get_project_root
 
 PROJECT_ROOT = _text_utils.PROJECT_ROOT
 DEFAULT_PATH = PROJECT_ROOT / "src"
@@ -92,7 +58,7 @@ SRC_PATH = PROJECT_ROOT / os.environ.get("DESLOPPIFY_SRC", "src")
 def read_code_snippet(filepath: str, line: int, context: int = 1) -> str | None:
     """Read a snippet around a 1-based line number."""
     return _text_utils.read_code_snippet(
-        filepath, line, context, project_root=get_project_root()
+        filepath, line, context, project_root=_get_project_root()
     )
 
 
@@ -109,8 +75,8 @@ def grep_files(
     compiled = re.compile(pattern, flags)
     results: list[tuple[str, int, str]] = []
     for filepath in file_list:
-        abs_path = filepath if os.path.isabs(filepath) else str(get_project_root() / filepath)
-        content = read_file_text(abs_path)
+        abs_path = filepath if os.path.isabs(filepath) else str(_get_project_root() / filepath)
+        content = _read_file_text(abs_path)
         if content is None:
             continue
         for lineno, line in enumerate(content.splitlines(), 1):
@@ -139,8 +105,8 @@ def grep_files_containing(
 
     name_to_files: dict[str, set[str]] = {}
     for filepath in file_list:
-        abs_path = filepath if os.path.isabs(filepath) else str(get_project_root() / filepath)
-        content = read_file_text(abs_path)
+        abs_path = filepath if os.path.isabs(filepath) else str(_get_project_root() / filepath)
+        content = _read_file_text(abs_path)
         if content is None:
             continue
         found = set(combined.findall(content))
@@ -159,8 +125,8 @@ def grep_count_files(
         pat = re.compile(re.escape(name))
     matching: list[str] = []
     for filepath in file_list:
-        abs_path = filepath if os.path.isabs(filepath) else str(get_project_root() / filepath)
-        content = read_file_text(abs_path)
+        abs_path = filepath if os.path.isabs(filepath) else str(_get_project_root() / filepath)
+        content = _read_file_text(abs_path)
         if content is None:
             continue
         if pat.search(content):
@@ -331,7 +297,7 @@ class SkillInstall:
 def find_installed_skill() -> SkillInstall | None:
     """Find the installed skill document and return its metadata, or None."""
     for rel_path in SKILL_SEARCH_PATHS:
-        full = get_project_root() / rel_path
+        full = _get_project_root() / rel_path
         if not full.is_file():
             continue
         try:

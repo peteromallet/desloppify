@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import fnmatch
-import importlib
 
 __all__ = [
     "path_scoped_findings",
@@ -71,8 +70,6 @@ def matched_ignore_pattern(
 
 def remove_ignored_findings(state: StateModel, pattern: str) -> int:
     """Suppress findings matching an ignore pattern. Returns count affected."""
-    # deferred: avoid circular import with engine._state.scoring (it imports filtering)
-    scoring_mod = importlib.import_module("desloppify.engine._state.scoring")
     ensure_state_defaults(state)
     matched_ids = [
         finding_id
@@ -91,7 +88,10 @@ def remove_ignored_findings(state: StateModel, pattern: str) -> int:
             finding["note"] = (
                 "Suppressed by ignore pattern — remains unresolved for score integrity"
             )
-    scoring_mod._recompute_stats(state, scan_path=state.get("scan_path"))
+    # Deferred import to avoid circular dependency with engine._state.scoring
+    from desloppify.engine._state.scoring import _recompute_stats
+
+    _recompute_stats(state, scan_path=state.get("scan_path"))
     validate_state_invariants(state)
     return len(matched_ids)
 

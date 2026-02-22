@@ -20,11 +20,8 @@ from desloppify.file_discovery import (
     resolve_path,
     safe_write_text,
 )
-from desloppify.utils import (
-    colorize,
-    print_table,
-    strip_c_style_comments,
-)
+from desloppify.core._internal.text_utils import strip_c_style_comments
+from desloppify.utils import colorize, print_table
 
 TS6133_RE = re.compile(
     r"^(.+)\((\d+),(\d+)\): error TS6133: '(\S+)' is declared but its value is never read\."

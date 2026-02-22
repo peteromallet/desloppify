@@ -11,15 +11,7 @@ logger = logging.getLogger(__name__)
 def detect_large_files(
     path: Path, file_finder, threshold: int = 500
 ) -> tuple[list[dict], int]:
-    """Find files exceeding a line count threshold.
-
-    Args:
-        file_finder: callable(path) -> list[str]. Required.
-        threshold: LOC threshold.
-
-    Returns:
-        (entries, total_files_checked)
-    """
+    """Find files exceeding a line count threshold."""
     files = file_finder(path)
     entries = []
     for filepath in files:

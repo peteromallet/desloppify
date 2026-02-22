@@ -33,14 +33,7 @@ def detect_naming_inconsistencies(
 ) -> tuple[list[dict], int]:
     """Find directories where minority naming convention is significant.
 
-    Args:
-        file_finder: callable(path) -> list[str]. Required.
-        skip_names: filenames to exclude from analysis. Required.
-        skip_dirs: directories to exclude from analysis.
-
-    Thresholds:
-    - Minority must have >= 5 files (absolute)
-    - Minority must be >= 15% of total files (proportional)
+    Thresholds: minority must have >= 5 files (absolute) and >= 15% of total (proportional).
     """
     all_skip_names = skip_names or set()
     all_skip_dirs = skip_dirs or set()

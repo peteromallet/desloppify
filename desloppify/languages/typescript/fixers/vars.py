@@ -98,13 +98,7 @@ def fix_unused_vars(
 ) -> tuple[list[dict], dict[str, int]]:
     """Remove unused names from destructuring patterns.
 
-    Handles two patterns:
-    1. Multi-line destructuring: name on its own line -> remove line
-    2. Single-line destructuring: const { a, unused, b } = ... -> remove unused
-
-    Returns:
-        (results, skip_reasons) — results is the usual list of dicts,
-        skip_reasons maps reason string -> count.
+    Returns (results, skip_reasons) where skip_reasons maps reason string to count.
     """
     skip_reasons: dict[str, int] = defaultdict(int)
 

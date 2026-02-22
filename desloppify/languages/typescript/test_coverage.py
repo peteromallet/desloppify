@@ -8,7 +8,8 @@ import re
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import SRC_PATH, strip_c_style_comments
+from desloppify.core._internal.text_utils import strip_c_style_comments
+from desloppify.utils import SRC_PATH
 
 TS_IMPORT_RE = re.compile(r"""(?:from|import)\s+['\"]([^'\"]+)['\"]""", re.MULTILINE)
 TS_REEXPORT_RE = re.compile(

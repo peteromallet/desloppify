@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 
 from desloppify import state as state_mod
-from desloppify import utils as utils_mod
 from desloppify.app.commands import next_output as next_output_mod
 from desloppify.app.commands import next_render as next_render_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
@@ -21,7 +20,8 @@ from desloppify.engine.work_queue import (
     build_work_queue,
 )
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
-from desloppify.utils import colorize
+from desloppify.file_discovery import safe_write_text
+from desloppify.utils import check_skill_version, check_tool_staleness, colorize
 
 
 def _scorecard_subjective(
@@ -64,10 +64,10 @@ def cmd_next(args: argparse.Namespace) -> None:
     if not require_completed_scan(state):
         return
 
-    stale_warning = utils_mod.check_tool_staleness(state)
+    stale_warning = check_tool_staleness(state)
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
-    skill_warning = utils_mod.check_skill_version()
+    skill_warning = check_skill_version()
     if skill_warning:
         print(colorize(f"  {skill_warning}", "yellow"))
 
@@ -130,7 +130,7 @@ def _get_items(args, state: dict, config: dict) -> None:
             output_file,
             payload,
             len(items),
-            safe_write_text_fn=utils_mod.safe_write_text,
+            safe_write_text_fn=safe_write_text,
             colorize_fn=colorize,
         ):
             return

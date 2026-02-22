@@ -45,13 +45,7 @@ def _module_to_file(module: str) -> str:
 
 
 def detect_with_import_linter(path: Path) -> list[dict] | None:
-    """Run lint-imports and return layer violation entries, or None on failure.
-
-    Returns:
-        None  — lint-imports not installed, no .importlinter config, or timeout.
-        []    — no violations found.
-        [...] — list of finding dicts with file, line, summary, confidence.
-    """
+    """Run lint-imports and return layer violation entries, or None on failure."""
     config_dir = _find_importlinter_root(path)
     if config_dir is None:
         logger.debug("import-linter: no .importlinter config found — skipping")

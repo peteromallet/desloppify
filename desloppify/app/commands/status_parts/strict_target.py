@@ -6,14 +6,7 @@ from __future__ import annotations
 def format_strict_target_progress(
     strict_target: dict | None,
 ) -> tuple[list[tuple[str, str]], float | None, float | None]:
-    """Return display lines and numeric values for strict target progress.
-
-    Returns:
-      (lines, target, gap)
-      lines: list of (message, color_style)
-      target: target strict score, or None when unavailable
-      gap: target - current strict score, or None when unavailable
-    """
+    """Return display lines and numeric values for strict target progress."""
     lines: list[tuple[str, str]] = []
     if not isinstance(strict_target, dict):
         return lines, None, None

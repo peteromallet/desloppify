@@ -50,18 +50,7 @@ def detect_orphaned_files(
     extensions: list[str],
     options: OrphanedDetectionOptions | None = None,
 ) -> tuple[list[dict], int]:
-    """Find files with zero importers that aren't known entry points.
-
-    Args:
-        extensions: File extensions to consider.
-        extra_entry_patterns: Entry-point patterns (substring-matched against relative paths).
-        extra_barrel_names: Barrel file names to skip.
-        dynamic_import_context:
-            Optional ``(dynamic_import_finder, alias_resolver)`` tuple.
-            - ``dynamic_import_finder``: ``(path, extensions) -> set[str]``
-            - ``alias_resolver``: ``(target) -> resolved_target``
-            If omitted, dynamic import checking is skipped.
-    """
+    """Find files with zero importers that aren't known entry points."""
     resolved_options = options or OrphanedDetectionOptions()
     all_entry_patterns = resolved_options.extra_entry_patterns or []
     all_barrel_names = resolved_options.extra_barrel_names or set()

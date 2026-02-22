@@ -205,14 +205,11 @@ def _detect_stale_imports(
     mutated_names: dict[str, set[str]],
     entries: list[dict],
 ):
-    """Detect `from X import mutable_name` that creates a stale binding.
+    """Detect ``from X import mutable_name`` that creates a stale binding.
 
-    When a module-level mutable is reassigned (via `global`), other modules
-    that import the name directly get a stale copy. They should import the
+    When a module-level mutable is reassigned (via ``global``), other modules
+    that import the name directly get a stale copy.  They should import the
     module and access the attribute at call time instead.
-
-    Args:
-        mutated_names: {module_dotted_path: {name, ...}} of mutated globals
     """
     files = find_py_files(path)
 

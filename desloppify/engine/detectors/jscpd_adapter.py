@@ -98,13 +98,7 @@ def _parse_jscpd_report(report: dict, scan_path: Path) -> list[dict]:
 
 
 def detect_with_jscpd(path: Path) -> list[dict] | None:
-    """Run jscpd on path and return duplication entries, or None on failure.
-
-    Returns:
-        None  — jscpd/npx not installed or timed out.
-        []    — no duplicates found.
-        [...] — list of cluster dicts (same shape as old boilerplate_duplication).
-    """
+    """Run jscpd on *path* and return duplication entries, or None on failure."""
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
             subprocess.run(
@@ -122,7 +116,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                     "--min-tokens",
                     "50",
                     "--ignore",
-                    "**/node_modules/**,**/.git/**,**/__pycache__/**",
+                    "**/node_modules/**,**/.git/**,**/__pycache__/**,**/.venv*/**,**/venv/**",
                     "--silent",
                 ],
                 capture_output=True,

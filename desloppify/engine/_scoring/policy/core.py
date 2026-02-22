@@ -29,14 +29,6 @@ class DetectorScoringPolicy:
     excluded_zones: frozenset[str] = frozenset(EXCLUDED_ZONE_VALUES)
 
 
-_DIMENSION_SPECS: tuple[tuple[str, int], ...] = (
-    ("File health", 3),
-    ("Code quality", 3),
-    ("Duplication", 3),
-    ("Test health", 4),
-    ("Security", 4),
-)
-
 # Security findings are excluded in non-production zones.
 SECURITY_EXCLUDED_ZONES = frozenset({"test", "config", "generated", "vendor"})
 
@@ -107,14 +99,25 @@ FILE_BASED_DETECTORS = {
 
 
 def _build_dimensions() -> list[Dimension]:
-    grouped: dict[str, list[str]] = {name: [] for name, _tier in _DIMENSION_SPECS}
+    """Derive dimensions from DETECTOR_SCORING_POLICIES.
+
+    Each unique (dimension, tier) pair becomes a Dimension, with its detectors
+    collected automatically. Order follows first-seen in the policies dict.
+    """
+    # Collect (dimension_name -> tier) preserving first-seen order,
+    # and group detectors by dimension.
+    dim_tiers: dict[str, int] = {}
+    grouped: dict[str, list[str]] = {}
     for detector, policy in DETECTOR_SCORING_POLICIES.items():
-        if policy.dimension is None:
+        if policy.dimension is None or policy.tier is None:
             continue
+        if policy.dimension not in dim_tiers:
+            dim_tiers[policy.dimension] = policy.tier
+            grouped[policy.dimension] = []
         grouped[policy.dimension].append(detector)
     return [
         Dimension(name=name, tier=tier, detectors=grouped[name])
-        for name, tier in _DIMENSION_SPECS
+        for name, tier in dim_tiers.items()
     ]
 
 

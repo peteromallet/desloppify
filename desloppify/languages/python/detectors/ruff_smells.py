@@ -31,8 +31,11 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 
-from desloppify import utils as _utils_mod
 from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import (
+    get_exclusions as _get_exclusions,
+    matches_exclusion as _matches_exclusion,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +108,7 @@ def detect_with_ruff_smells(path: Path) -> list[dict] | None:
         logger.debug("ruff smells: JSON parse error: %s", exc)
         return None
 
-    exclusions = _utils_mod.get_exclusions()
+    exclusions = _get_exclusions()
 
     # Group diagnostics by (code, file) → list of matches.
     # Then convert to smell entry format.
@@ -117,7 +120,7 @@ def detect_with_ruff_smells(path: Path) -> list[dict] | None:
         filepath = diag.get("filename", "")
         if not filepath:
             continue
-        if exclusions and any(_utils_mod.matches_exclusion(filepath, ex) for ex in exclusions):
+        if exclusions and any(_matches_exclusion(filepath, ex) for ex in exclusions):
             continue
         location = diag.get("location", {})
         line = location.get("row", 0) if isinstance(location, dict) else 0

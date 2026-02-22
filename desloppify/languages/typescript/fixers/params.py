@@ -6,18 +6,7 @@ from desloppify.languages.typescript.fixers.common import apply_fixer
 
 
 def fix_unused_params(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
-    """Prefix unused function/callback/catch parameters with _.
-
-    Only handles parameters (positional — can't remove without breaking calls).
-    Prefixing with _ signals "intentionally unused" and is ignored by the scanner.
-
-    Args:
-        entries: [{file, line, col, name, category}, ...] from detect_unused(), category=="vars".
-        dry_run: If True, don't write files.
-
-    Returns:
-        List of {file, removed: [str], lines_removed: int} dicts.
-    """
+    """Prefix unused function/callback/catch parameters with _ to signal intentional non-use."""
 
     def _transform(lines: list[str], file_entries: list[dict]):
         removed_names: list[str] = []

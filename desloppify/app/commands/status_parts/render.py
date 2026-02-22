@@ -27,7 +27,8 @@ from desloppify.scoring import (
     compute_score_impact,
     merge_potentials,
 )
-from desloppify.utils import colorize, get_area, print_table
+from desloppify.core._internal.text_utils import get_area
+from desloppify.utils import colorize, print_table
 
 
 def show_tier_progress_table(by_tier: dict) -> None:

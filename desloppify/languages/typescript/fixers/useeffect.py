@@ -14,15 +14,7 @@ def fix_dead_useeffect(
     *,
     dry_run: bool = False,
 ) -> list[dict[str, Any]]:
-    """Delete useEffect calls with empty/comment-only bodies.
-
-    Args:
-        entries: [{file, line, content}, ...] from smell detector.
-        dry_run: If True, don't write files.
-
-    Returns:
-        List of {file, removed: [str], lines_removed: int} dicts.
-    """
+    """Delete useEffect calls with empty/comment-only bodies."""
 
     def transform(
         lines: list[str],

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from desloppify.languages.dart.pubspec import read_package_name
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.utils import strip_c_style_comments
+from desloppify.core._internal.text_utils import strip_c_style_comments
 
 _DART_LOGIC_RE = re.compile(
     r"(?m)^\s*(?:class|enum|mixin|extension|typedef)\s+\w+|"

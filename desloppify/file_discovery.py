@@ -34,7 +34,7 @@ DEFAULT_EXCLUSIONS = frozenset(
         "node_modules",
         ".git",
         "__pycache__",
-        ".venv",
+        ".venv*",
         "venv",
         ".env",
         "dist",
@@ -73,10 +73,18 @@ def matches_exclusion(rel_path: str, exclusion: str) -> bool:
     or "src/test/bar.py") or a directory prefix (e.g. "src/test" matches
     "src/test/bar.py"). Does NOT do substring matching — "test" will NOT match
     "testimony.py".
+
+    Glob-style ``*`` in exclusion patterns is supported: ``*.egg-info`` matches
+    any path component ending with ``.egg-info``, and ``.venv*`` matches
+    ``.venv``, ``.venv-debug``, etc.
     """
     parts = Path(rel_path).parts
     if exclusion in parts:
         return True
+    if "*" in exclusion:
+        import fnmatch
+        if any(fnmatch.fnmatch(part, exclusion) for part in parts):
+            return True
     if "/" in exclusion or os.sep in exclusion:
         normalized = exclusion.rstrip("/").rstrip(os.sep)
         return rel_path.startswith(normalized + "/") or rel_path.startswith(

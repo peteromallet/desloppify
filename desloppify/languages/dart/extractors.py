@@ -9,7 +9,7 @@ from pathlib import Path
 from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.file_discovery import resolve_path
 from desloppify.file_discovery import find_source_files
-from desloppify.utils import strip_c_style_comments
+from desloppify.core._internal.text_utils import strip_c_style_comments
 
 DART_FILE_EXCLUSIONS = ["build", ".dart_tool", ".fvm", ".git", "node_modules"]
 

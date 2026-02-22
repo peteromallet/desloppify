@@ -3,27 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypedDict
 
-from desloppify.engine._work_queue.helpers import ALL_STATUSES as _ALL_STATUSES
-from desloppify.engine._work_queue.helpers import ATTEST_EXAMPLE
+from desloppify.state import StateModel
+
 from desloppify.engine._work_queue.helpers import (
-    build_subjective_items as _build_subjective_items,
-)
-from desloppify.engine._work_queue.helpers import (
-    scope_matches as _scope_matches,
-)
-from desloppify.engine._work_queue.ranking import (
-    build_finding_items as _build_finding_items,
+    ALL_STATUSES,
+    ATTEST_EXAMPLE,
+    build_subjective_items,
+    scope_matches,
 )
 from desloppify.engine._work_queue.ranking import (
-    choose_fallback_tier as _choose_fallback_tier,
+    build_finding_items,
+    choose_fallback_tier,
+    group_queue_items,
+    item_explain,
+    item_sort_key,
+    tier_counts,
 )
-from desloppify.engine._work_queue.ranking import group_queue_items
-from desloppify.engine._work_queue.ranking import item_explain as _item_explain
-from desloppify.engine._work_queue.ranking import (
-    item_sort_key as _item_sort_key,
-)
-from desloppify.engine._work_queue.ranking import tier_counts as _tier_counts
 
 
 @dataclass(frozen=True)
@@ -42,16 +39,29 @@ class QueueBuildOptions:
     explain: bool = False
 
 
+class WorkQueueResult(TypedDict):
+    """Typed shape of the dict returned by :func:`build_work_queue`."""
+
+    items: list[dict]
+    total: int
+    tier_counts: dict[int, int]
+    requested_tier: int | None
+    selected_tier: int | None
+    fallback_reason: str | None
+    available_tiers: list[int]
+    grouped: dict[str, list[dict]]
+
+
 def build_work_queue(
-    state: dict,
+    state: StateModel,
     *,
     options: QueueBuildOptions | None = None,
-) -> dict[str, object]:
+) -> WorkQueueResult:
     """Build ranked queue items + tier metadata."""
     resolved_options = options or QueueBuildOptions()
 
     status = resolved_options.status
-    if status not in _ALL_STATUSES:
+    if status not in ALL_STATUSES:
         raise ValueError(f"Unsupported status filter: {status}")
     try:
         subjective_threshold_value = float(resolved_options.subjective_threshold)
@@ -59,7 +69,7 @@ def build_work_queue(
         subjective_threshold_value = 100.0
     subjective_threshold_value = max(0.0, min(100.0, subjective_threshold_value))
 
-    finding_items = _build_finding_items(
+    finding_items = build_finding_items(
         state,
         scan_path=resolved_options.scan_path,
         status_filter=status,
@@ -73,17 +83,17 @@ def build_work_queue(
         and status in {"open", "all"}
         and not resolved_options.chronic
     ):
-        subjective_items = _build_subjective_items(
+        subjective_items = build_subjective_items(
             state,
             state.get("findings", {}),
             threshold=subjective_threshold_value,
         )
         for item in subjective_items:
-            if _scope_matches(item, resolved_options.scope):
+            if scope_matches(item, resolved_options.scope):
                 all_items.append(item)
 
-    all_items.sort(key=_item_sort_key)
-    counts = _tier_counts(all_items)
+    all_items.sort(key=item_sort_key)
+    counts = tier_counts(all_items)
 
     requested_tier = (
         int(resolved_options.tier) if resolved_options.tier is not None else None
@@ -99,7 +109,7 @@ def build_work_queue(
             if int(item.get("effective_tier", item.get("tier", 3))) == requested_tier
         ]
         if not filtered and not resolved_options.no_tier_fallback:
-            chosen = _choose_fallback_tier(requested_tier, counts)
+            chosen = choose_fallback_tier(requested_tier, counts)
             if chosen is not None:
                 selected_tier = chosen
                 filtered = [
@@ -120,7 +130,7 @@ def build_work_queue(
 
     if resolved_options.explain:
         for item in filtered:
-            item["explain"] = _item_explain(item)
+            item["explain"] = item_explain(item)
 
     available_tiers = [tier for tier, value in counts.items() if value > 0]
     return {
@@ -138,6 +148,7 @@ def build_work_queue(
 __all__ = [
     "ATTEST_EXAMPLE",
     "QueueBuildOptions",
+    "WorkQueueResult",
     "build_work_queue",
     "group_queue_items",
 ]

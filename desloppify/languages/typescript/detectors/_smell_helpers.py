@@ -26,7 +26,7 @@ from desloppify.languages.typescript.detectors._smell_effects import (
 from desloppify.languages.typescript.detectors._smell_effects import (
     track_brace_body as _track_brace_body_impl,
 )
-from desloppify.utils import strip_c_style_comments
+from desloppify.core._internal.text_utils import strip_c_style_comments
 
 
 def scan_code(

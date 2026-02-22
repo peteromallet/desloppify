@@ -129,12 +129,6 @@ def all_treesitter_phases(spec_name: str) -> list[DetectorPhase]:
     Convenience bundle — returns AST smells, cohesion, and (when import
     query exists) unused imports.  Returns [] if tree-sitter-language-pack
     is not installed.
-
-    For cherry-picking individual phases, use the ``make_*_phase``
-    factories directly with a spec from ``TREESITTER_SPECS``.
-
-    Args:
-        spec_name: language name key in TREESITTER_SPECS (e.g. "csharp", "dart").
     """
     from desloppify.languages._framework.treesitter import is_available
 

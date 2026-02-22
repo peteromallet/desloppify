@@ -5,9 +5,12 @@ import re
 import subprocess
 from pathlib import Path
 
-from desloppify import utils as _utils_mod
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.file_discovery import find_py_files
+from desloppify.file_discovery import (
+    find_py_files,
+    get_exclusions as _get_exclusions,
+    matches_exclusion as _matches_exclusion,
+)
 
 
 def _selected_codes(category: str) -> list[str]:
@@ -22,7 +25,7 @@ def _selected_codes(category: str) -> list[str]:
 def _is_excluded(filepath: str, exclusions: tuple[str, ...]) -> bool:
     return bool(
         exclusions
-        and any(_utils_mod.matches_exclusion(filepath, ex) for ex in exclusions)
+        and any(_matches_exclusion(filepath, ex) for ex in exclusions)
     )
 
 
@@ -173,7 +176,7 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
     except json.JSONDecodeError:
         return None
 
-    exclusions = _utils_mod.get_exclusions()
+    exclusions = _get_exclusions()
     return _parse_ruff_diagnostics(
         diagnostics, category=category, exclusions=exclusions
     )
@@ -192,6 +195,6 @@ def _try_pyflakes(path: Path, category: str) -> list[dict] | None:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
 
-    exclusions = _utils_mod.get_exclusions()
+    exclusions = _get_exclusions()
     lines = (result.stdout + result.stderr).splitlines()
     return _parse_pyflakes_lines(lines, category=category, exclusions=exclusions)

@@ -125,16 +125,7 @@ def ts_extract_functions(
     spec: TreeSitterLangSpec,
     file_list: list[str],
 ) -> list[FunctionInfo]:
-    """Extract functions from all files using tree-sitter.
-
-    Args:
-        path: Scan root path.
-        spec: Language-specific tree-sitter configuration.
-        file_list: List of source file paths to parse.
-
-    Returns:
-        List of FunctionInfo objects for duplicate detection.
-    """
+    """Extract functions from all files using tree-sitter."""
     parser, language = _get_parser(spec.grammar)
     query = _make_query(language, spec.function_query)
     functions: list[FunctionInfo] = []
@@ -192,16 +183,7 @@ def ts_extract_classes(
     spec: TreeSitterLangSpec,
     file_list: list[str],
 ) -> list[ClassInfo]:
-    """Extract classes/structs from all files using tree-sitter.
-
-    Args:
-        path: Scan root path.
-        spec: Language-specific tree-sitter configuration.
-        file_list: List of source file paths to parse.
-
-    Returns:
-        List of ClassInfo objects for god class detection.
-    """
+    """Extract classes/structs from all files using tree-sitter."""
     if not spec.class_query:
         return []
 

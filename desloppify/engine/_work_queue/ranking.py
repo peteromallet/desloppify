@@ -5,15 +5,15 @@ from __future__ import annotations
 from desloppify.engine.planning.common import CONFIDENCE_ORDER
 from desloppify.state import path_scoped_findings
 from desloppify.engine._work_queue.helpers import (
-    is_review_finding as _is_review_finding,
-    is_subjective_finding as _is_subjective_finding,
-    primary_command_for_finding as _primary_command_for_finding,
-    review_finding_weight as _review_finding_weight,
-    scope_matches as _scope_matches,
-    slugify as _slugify,
-    status_matches as _status_matches,
-    subjective_strict_scores as _subjective_strict_scores,
-    supported_fixers_for_item as _supported_fixers_for_item,
+    is_review_finding,
+    is_subjective_finding,
+    primary_command_for_finding,
+    review_finding_weight,
+    scope_matches,
+    slugify,
+    status_matches,
+    subjective_strict_scores,
+    supported_fixers_for_item,
 )
 
 
@@ -33,13 +33,13 @@ def build_finding_items(
     chronic: bool,
 ) -> list[dict]:
     scoped = path_scoped_findings(state.get("findings", {}), scan_path)
-    subjective_scores = _subjective_strict_scores(state)
+    subjective_scores = subjective_strict_scores(state)
     out: list[dict] = []
 
     for finding_id, finding in scoped.items():
         if finding.get("suppressed"):
             continue
-        if not _status_matches(finding.get("status", "open"), status_filter):
+        if not status_matches(finding.get("status", "open"), status_filter):
             continue
         if chronic and not (
             finding.get("status") == "open" and finding.get("reopen_count", 0) >= 2
@@ -49,32 +49,32 @@ def build_finding_items(
         item = dict(finding)
         item["id"] = finding_id
         item["kind"] = "finding"
-        item["is_review"] = _is_review_finding(item)
-        item["is_subjective"] = _is_subjective_finding(item)
+        item["is_review"] = is_review_finding(item)
+        item["is_subjective"] = is_subjective_finding(item)
         item["effective_tier"] = (
             1
             if item["is_review"]
             else (4 if item["is_subjective"] else int(finding.get("tier", 3)))
         )
         item["review_weight"] = (
-            _review_finding_weight(item) if item["is_review"] else None
+            review_finding_weight(item) if item["is_review"] else None
         )
         subjective_score = None
         if item["is_subjective"]:
             detail = finding.get("detail", {})
             dim_name = detail.get("dimension_name", "")
-            dim_key = detail.get("dimension", "") or _slugify(dim_name)
+            dim_key = detail.get("dimension", "") or slugify(dim_name)
             subjective_score = subjective_scores.get(
                 dim_key, subjective_scores.get(dim_name.lower(), 100.0)
             )
         item["subjective_score"] = subjective_score
-        supported_fixers = _supported_fixers_for_item(state, item)
-        item["primary_command"] = _primary_command_for_finding(
+        supported_fixers = supported_fixers_for_item(state, item)
+        item["primary_command"] = primary_command_for_finding(
             item,
             supported_fixers=supported_fixers,
         )
 
-        if not _scope_matches(item, scope):
+        if not scope_matches(item, scope):
             continue
         out.append(item)
 

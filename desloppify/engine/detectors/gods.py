@@ -2,15 +2,7 @@
 
 
 def detect_gods(classes, rules, min_reasons: int = 2) -> tuple[list[dict], int]:
-    """Find god classes/components — entities with too many responsibilities.
-
-    Args:
-        classes: list of ClassInfo objects (from extractors).
-        rules: list of GodRule objects defining thresholds.
-        min_reasons: minimum rule violations to flag as god.
-
-    Returns (entries, total_classes_checked).
-    """
+    """Find god classes/components — entities with too many responsibilities."""
     entries = []
     for cls in classes:
         reasons = []

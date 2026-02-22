@@ -56,7 +56,6 @@ from desloppify.engine._state.schema import (
     validate_state_invariants,
 )
 from desloppify.engine._state.scoring import (
-    _coerce_subjective_score,
     suppression_metrics,
 )
 
@@ -98,7 +97,6 @@ __all__ = [
     "STATE_DIR",
     "STATE_FILE",
     # Functions
-    "_coerce_subjective_score",
     "add_ignore",
     "apply_finding_noise_budget",
     "coerce_assessment_score",

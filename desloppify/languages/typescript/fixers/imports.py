@@ -10,15 +10,7 @@ from desloppify.languages.typescript.fixers.common import (
 
 
 def fix_unused_imports(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
-    """Remove unused imports from source files.
-
-    Args:
-        entries: Output of detect_unused(), filtered to category=="imports".
-        dry_run: If True, don't write files, just report what would change.
-
-    Returns:
-        List of {file, removed: [symbols], lines_removed: int} dicts.
-    """
+    """Remove unused imports from source files."""
     import_entries = [e for e in entries if e["category"] == "imports"]
 
     def transform(

@@ -77,12 +77,14 @@ from desloppify.languages.csharp import review as csharp_review
 from desloppify.languages.typescript import review as ts_review
 
 
-def test_direct_module_coverage_smoke_signals():
-    # parser
+def test_smoke_parser():
+    """Parser and CLI support modules."""
     assert callable(cli_parser.create_parser)
     assert callable(cli_parser_groups._add_scan_parser)
 
-    # planning
+
+def test_smoke_planning():
+    """Planning modules: common, scan, select."""
     assert callable(plan_common.is_subjective_phase)
     assert isinstance(plan_common.TIER_LABELS, dict)
     assert 1 in plan_common.TIER_LABELS
@@ -90,7 +92,9 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(plan_select.get_next_items)
     assert callable(plan_select.get_next_item)
 
-    # commands
+
+def test_smoke_commands():
+    """App command modules: config, plan, move, scan, next, review, status."""
     assert callable(config_cmd.cmd_config)
     assert callable(plan_cmd.cmd_plan_output)
     assert callable(move_directory.run_directory_move)
@@ -121,21 +125,15 @@ def test_direct_module_coverage_smoke_signals():
     assert isinstance(cmd_registry.get_command_handlers(), dict)
     assert "scan" in cmd_registry.get_command_handlers()
     runtime = runtime_state.current_runtime_context()
-    assert isinstance(runtime.exclusion_config.values, tuple)
+    assert isinstance(runtime.exclusions, tuple)
     assert isinstance(runtime.source_file_cache.max_entries, int)
-    runtime.cache_enabled.set(True)
-    assert bool(runtime.cache_enabled)
-    runtime.cache_enabled.set(False)
+    runtime.cache_enabled = True
+    assert runtime.cache_enabled
+    runtime.cache_enabled = False
 
-    # lang package/discovery/resolution
-    assert callable(lang_pkg.register_lang)
-    assert callable(lang_pkg.available_langs)
-    assert callable(lang_discovery.load_all)
-    assert callable(lang_discovery.raise_load_errors)
-    assert callable(lang_resolution.make_lang_config)
-    assert callable(lang_resolution.get_lang)
-    assert callable(lang_resolution.auto_detect_lang)
 
+def test_smoke_engine():
+    """Engine modules: state internals, python detectors."""
     # state internals
     assert callable(persistence.load_state)
     assert callable(persistence.save_state)
@@ -168,7 +166,24 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(py_phases_quality.phase_smells)
     assert callable(py_phases_quality.phase_dict_keys)
 
-    # csharp/typescript review and move helpers
+    # typescript detector modules
+    assert callable(ts_smell_effects.detect_swallowed_errors)
+    assert callable(ts_deps_runtime.build_dynamic_import_targets)
+    assert callable(ts_extractors_components.extract_ts_components)
+
+
+def test_smoke_lang_plugins():
+    """Language plugin modules: package, discovery, resolution, per-lang."""
+    # lang package/discovery/resolution
+    assert callable(lang_pkg.register_lang)
+    assert callable(lang_pkg.available_langs)
+    assert callable(lang_discovery.load_all)
+    assert callable(lang_discovery.raise_load_errors)
+    assert callable(lang_resolution.make_lang_config)
+    assert callable(lang_resolution.get_lang)
+    assert callable(lang_resolution.auto_detect_lang)
+
+    # csharp
     assert callable(csharp_extractors.find_csharp_files)
     assert callable(csharp_extractors.extract_csharp_functions)
     assert callable(csharp_extractors_classes.extract_csharp_classes)
@@ -184,8 +199,12 @@ def test_direct_module_coverage_smoke_signals():
     ]
     assert isinstance(csharp_review.module_patterns("public class A {}"), list)
     assert csharp_review.api_surface({"A.cs": "public class A {}"}) == {}
+
+    # typescript
     assert isinstance(ts_review.module_patterns("export default function A() {}"), list)
     assert ts_review.api_surface({"a.ts": "export function f() {}"}) == {}
+
+    # dart
     assert isinstance(dart_move.get_verify_hint(), str)
     assert dart_move.find_replacements("a.dart", "b.dart", {}) == {}
     assert dart_move.find_self_replacements("a.dart", "b.dart", {}) == []
@@ -199,6 +218,8 @@ def test_direct_module_coverage_smoke_signals():
     assert isinstance(dart_review.HOLISTIC_REVIEW_DIMENSIONS, list)
     assert callable(dart_review.module_patterns)
     assert callable(dart_review.api_surface)
+
+    # gdscript
     assert isinstance(gdscript_move.get_verify_hint(), str)
     assert gdscript_move.find_replacements("a.gd", "b.gd", {}) == {}
     assert gdscript_move.find_self_replacements("a.gd", "b.gd", {}) == []
@@ -213,9 +234,17 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(gdscript_review.module_patterns)
     assert callable(gdscript_review.api_surface)
 
-    # review dimensions and scorecard draw helpers
+
+def test_smoke_intelligence():
+    """Intelligence modules: review dimensions, context, prepare, integrity."""
     assert isinstance(review_dimensions_holistic.DIMENSIONS, list)
     assert "cross_module_architecture" in review_dimensions_holistic.DIMENSIONS
+    assert callable(review_prepare_batches.build_investigation_batches)
+    assert callable(review_context_structure.compute_structure_context)
+    assert callable(review_dimensions_validation.parse_dimensions_payload)
+    assert callable(subjective_review_integrity.subjective_review_open_breakdown)
+
+    # scorecard and output helpers
     assert callable(scorecard_draw.draw_left_panel)
     assert callable(scorecard_draw.draw_right_panel)
     assert callable(scorecard_draw.draw_ornament)
@@ -223,13 +252,6 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(scorecard_ornaments.draw_ornament)
     assert callable(viz_cmd_context.load_cmd_context)
     assert callable(tree_text_mod._aggregate)
-    assert callable(review_prepare_batches.build_investigation_batches)
-    assert callable(review_context_structure.compute_structure_context)
-    assert callable(review_dimensions_validation.parse_dimensions_payload)
-    assert callable(subjective_review_integrity.subjective_review_open_breakdown)
-    assert callable(ts_smell_effects.detect_swallowed_errors)
-    assert callable(ts_deps_runtime.build_dynamic_import_targets)
-    assert callable(ts_extractors_components.extract_ts_components)
 
 
 # ---------------------------------------------------------------------------

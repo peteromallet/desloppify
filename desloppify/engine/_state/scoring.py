@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 from copy import deepcopy
 
 __all__ = [
@@ -101,7 +100,9 @@ def _apply_subjective_integrity_policy(
     return adjusted, meta
 
 
-def _aggregate_scores(dim_scores: dict, scoring_mod) -> dict[str, float]:
+def _aggregate_scores(
+    dim_scores: dict, compute_health_score_fn
+) -> dict[str, float]:
     """Derive the 4 aggregate scores from dimension-level data."""
     mechanical = {
         n: d
@@ -109,12 +110,12 @@ def _aggregate_scores(dim_scores: dict, scoring_mod) -> dict[str, float]:
         if "subjective_assessment" not in d.get("detectors", {})
     }
     return {
-        "overall_score": scoring_mod.compute_health_score(dim_scores),
-        "strict_score": scoring_mod.compute_health_score(
+        "overall_score": compute_health_score_fn(dim_scores),
+        "strict_score": compute_health_score_fn(
             dim_scores, score_key="strict_score"
         ),
-        "objective_score": scoring_mod.compute_health_score(mechanical),
-        "verified_strict_score": scoring_mod.compute_health_score(
+        "objective_score": compute_health_score_fn(mechanical),
+        "verified_strict_score": compute_health_score_fn(
             mechanical, score_key="verified_strict_score"
         ),
     }
@@ -131,10 +132,15 @@ def _update_objective_health(
     if not pots:
         return
 
-    # deferred: avoid circular import with desloppify.scoring
+    # Deferred import to avoid circular dependency with desloppify.scoring
     # (scoring -> _scoring/results/core -> _scoring/subjective/core -> review -> state -> _state/merge -> _state/scoring)
-    scoring_mod = importlib.import_module("desloppify.scoring")
-    merged = scoring_mod.merge_potentials(pots)
+    from desloppify.scoring import (
+        compute_health_score,
+        compute_score_bundle,
+        merge_potentials,
+    )
+
+    merged = merge_potentials(pots)
     if not merged:
         return
 
@@ -161,7 +167,7 @@ def _update_objective_health(
         state["verified_strict_score"] = 100.0
         return
 
-    bundle = scoring_mod.compute_score_bundle(
+    bundle = compute_score_bundle(
         findings,
         merged,
         subjective_assessments=subjective_assessments,
@@ -204,7 +210,7 @@ def _update_objective_health(
         )
         state["dimension_scores"][dim_name] = carried
 
-    state.update(_aggregate_scores(state["dimension_scores"], scoring_mod))
+    state.update(_aggregate_scores(state["dimension_scores"], compute_health_score))
 
 
 def _recompute_stats(

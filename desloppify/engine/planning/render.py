@@ -106,10 +106,7 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
             f"{checks:,} | {issues} | {score_val:.1f}% | {strict_val:.1f}% | {action} |"
         )
 
-    # Deferred import to avoid engine -> app layer dependency.
-    from desloppify.app.output.scorecard_parts.projection import (
-        scorecard_dimension_rows,
-    )
+    from desloppify.engine.planning.dimension_rows import scorecard_dimension_rows
 
     scorecard_rows = scorecard_dimension_rows(state)
     scorecard_subjective_rows = [

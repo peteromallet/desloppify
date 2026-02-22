@@ -44,14 +44,7 @@ def detect_single_use_abstractions(
     graph: dict,
     barrel_names: set[str],
 ) -> tuple[list[dict], int]:
-    """Find exported symbols imported by exactly 1 file — candidates for inlining.
-
-    Args:
-        barrel_names: set of barrel filenames to skip. Required.
-
-    Returns:
-        (entries, total_candidate_files) — candidates are files with exactly 1 importer.
-    """
+    """Find exported symbols imported by exactly 1 file — candidates for inlining."""
     entries = []
     total_candidates = 0
     for filepath, entry in graph.items():

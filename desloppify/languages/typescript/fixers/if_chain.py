@@ -14,15 +14,7 @@ def fix_empty_if_chain(
     *,
     dry_run: bool = False,
 ) -> list[dict[str, Any]]:
-    """Delete if/else chains where all branches are empty.
-
-    Args:
-        entries: [{file, line, content}, ...] from smell detector.
-        dry_run: If True, don't write files.
-
-    Returns:
-        List of {file, removed: [str], lines_removed: int} dicts.
-    """
+    """Delete if/else chains where all branches are empty."""
 
     def transform(
         lines: list[str],

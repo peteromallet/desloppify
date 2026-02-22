@@ -24,15 +24,7 @@ def _norm_prefix(prefix: str) -> str:
 def detect_coupling_violations(
     path: Path, graph: dict, shared_prefix: str = "", tools_prefix: str = ""
 ) -> tuple[list[dict], int]:
-    """Find files in shared/ that import from tools/ (backwards coupling).
-
-    Args:
-        shared_prefix: absolute path prefix for shared code. Required.
-        tools_prefix: absolute path prefix for tool code. Required.
-
-    Returns:
-        (entries, total_cross_boundary_edges_checked)
-    """
+    """Find files in shared/ that import from tools/ (backwards coupling)."""
     shared_prefix_norm = _norm_prefix(shared_prefix)
     tools_prefix_norm = _norm_prefix(tools_prefix)
 
@@ -68,15 +60,7 @@ def detect_boundary_candidates(
     tools_prefix: str = "",
     skip_basenames: set[str] | None = None,
 ) -> tuple[list[dict], int]:
-    """Find shared/ files whose importers ALL come from a single tool.
-
-    Args:
-        shared_prefix: absolute path prefix for shared code. Required.
-        tools_prefix: absolute path prefix for tool code. Required.
-
-    Returns:
-        (entries, total_shared_files_checked)
-    """
+    """Find shared/ files whose importers ALL come from a single tool."""
     shared_prefix_norm = _norm_prefix(shared_prefix)
     tools_prefix_norm = _norm_prefix(tools_prefix)
     ui_prefix_norm = shared_prefix_norm + "components/ui/"
@@ -128,14 +112,7 @@ def detect_boundary_candidates(
 def detect_cross_tool_imports(
     path: Path, graph: dict, tools_prefix: str = ""
 ) -> tuple[list[dict], int]:
-    """Find tools/A files that import from tools/B (cross-tool coupling).
-
-    Args:
-        tools_prefix: absolute path prefix for tool code. Required.
-
-    Returns:
-        (entries, total_cross_tool_edges)
-    """
+    """Find tools/A files that import from tools/B (cross-tool coupling)."""
     tools_prefix_norm = _norm_prefix(tools_prefix)
 
     total_edges = 0

@@ -11,6 +11,7 @@ from __future__ import annotations
 from desloppify.engine._work_queue.core import (
     ATTEST_EXAMPLE,
     QueueBuildOptions,
+    WorkQueueResult,
     build_work_queue,
     group_queue_items,
 )
@@ -52,6 +53,7 @@ __all__ = [
     # core
     "ATTEST_EXAMPLE",
     "QueueBuildOptions",
+    "WorkQueueResult",
     "build_work_queue",
     "group_queue_items",
     # helpers

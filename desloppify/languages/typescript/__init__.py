@@ -63,8 +63,8 @@ from desloppify.languages.typescript.review import api_surface as ts_review_api_
 from desloppify.languages.typescript.review import (
     module_patterns as ts_review_module_patterns,
 )
+from desloppify.core._internal.text_utils import get_area
 from desloppify.file_discovery import find_ts_files
-from desloppify.utils import get_area
 
 def _ts_treesitter_phases() -> list[DetectorPhase]:
     """Cherry-pick tree-sitter phases that complement TS's own detectors.

@@ -112,8 +112,6 @@ def apply_fixer(
     Groups *entries* by file, reads each file, calls
     ``transform_fn(lines, file_entries) -> (new_lines, removed_names)``
     and writes back if changed.
-
-    Returns ``[{file, removed, lines_removed}, ...]``.
     """
     by_file = _group_entries(entries, file_key)
     results = []

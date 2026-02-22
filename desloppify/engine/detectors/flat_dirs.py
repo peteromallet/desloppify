@@ -7,15 +7,7 @@ from pathlib import Path
 def detect_flat_dirs(
     path: Path, file_finder, threshold: int = 20
 ) -> tuple[list[dict], int]:
-    """Find directories with too many source files (suggests missing sub-organization).
-
-    Args:
-        file_finder: callable(path) -> list[str]. Required.
-        threshold: minimum file count to flag.
-
-    Returns:
-        (entries, total_directories)
-    """
+    """Find directories with too many source files (suggests missing sub-organization)."""
     files = file_finder(path)
     dir_counts: Counter[str] = Counter()
     for f in files:

@@ -14,17 +14,7 @@ from desloppify.utils import colorize
 
 
 def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
-    """Remove tagged console.log lines from source files.
-
-    Handles multi-line console.log calls by tracking open parens.
-
-    Args:
-        entries: Output of detect_logs() — [{file, line, tag, content}].
-        dry_run: If True, don't write files.
-
-    Returns:
-        List of {file, tags: [str], lines_removed: int, log_count: int} dicts.
-    """
+    """Remove tagged console.log lines and clean up aftermath (dead vars, empty blocks)."""
     entries_by_file: dict[str, list[dict]] = {}
     for e in entries:
         entries_by_file.setdefault(e["file"], []).append(e)
