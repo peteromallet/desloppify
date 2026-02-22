@@ -1,10 +1,10 @@
 # Desloppify - agent tools to make your codebase 🤌
 
-Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports TypeScript, Python, C#/.NET, Dart, and GDScript.
+Detects subjective and mechanical code-base issues - everything from poor quality abstractions and inconsistent naming, to file complexity and duplication. Once identified, it tracks issues, and helps you work with your agents to relentlessly solve them. Currently supports 28 languages — full plugin depth for TypeScript, Python, C#, Dart, and GDScript; generic linter + tree-sitter support for Go, Rust, Ruby, Java, Kotlin, and 18 more.
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo. Strict score counts open + wontfix debt; ignored findings are tracked separately:
 
-<img src="docs/scorecard.png" width="100%">
+<img src="assets/scorecard.png" width="100%">
 
 Adding a new language plugin? See `desloppify/languages/README.md`.
 
@@ -43,11 +43,13 @@ mkdir -p .agents/skills/desloppify "${CODEX_HOME:-$HOME/.codex}/skills/desloppif
 
 ## From Vibe Coding to Vibe Engineering
 
-Vibe coding gets things built fast. But the codebase accumulates debt - dead code, duplication, tangled dependencies - and eventually progress slows, bugs get harder to fix, and new features become a pain.
+Vibe coding gets things built fast. But the codebase accumulates debt — tangled dependencies, inconsistent patterns, abstractions that don't make sense — and eventually progress slows, bugs get harder to fix, and new features become a pain.
 
-Thankfully, both subjective and objective engineering best practices exist - and, with a little help from agents, they can be tracked. Desloppify is for people who want to keep the speed of agent-driven development while pushing themselves to a standard that rivals traditional engineering teams.
+Traditional tools catch the mechanical stuff: dead code, unused imports, complexity metrics. That's table stakes. The real problems are subjective and structural — poor module boundaries, convention drift, error handling that's inconsistent across the codebase, naming that misleads. These are the things that actually make a codebase hard to work with, and no linter can see them.
 
-It handles the mechanical layer automatically: scan, detect, auto-fix what it can. For the rest - architectural fitness, convention drift, things that need taste - it gives your agent a prioritized shortlist. You decide what to fix and what to mindfully ignore. The goal is to capture all of this in a single score that combines both objective and subjective metrics - a real measure of the health of your codebase.
+LLMs are now good enough to recognize these problems when asked the right questions. Desloppify is the harness that asks those questions — structured prompts about architecture, design quality, convention consistency — and tracks the answers as scored findings alongside the mechanical detections. The score is weighted heavily toward these subjective insights because that's where the real leverage is.
+
+Mechanical detection and auto-fix is handled automatically. For the rest — the stuff that needs taste — it gives your agent a prioritized shortlist. You decide what to fix and what to mindfully ignore. The goal is a single score that combines both objective and subjective metrics — a real measure of codebase health, not just lint output.
 
 If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
 
@@ -134,11 +136,13 @@ Validated at registration. Zero shared code changes.
 #### Architecture
 
 ```
-engine/detectors/       ← Generic algorithms (zero language knowledge)
-hook_registry.py        ← Detector-safe access to optional language hooks
-languages/framework/runtime.py ← LangRun (per-run mutable scan state)
-languages/framework/base/      ← Shared framework contracts + phase helpers
-languages/<name>/       ← Language config + phases + extractors + detectors + fixers
+engine/detectors/            ← Generic algorithms (zero language knowledge)
+hook_registry.py             ← Detector-safe access to optional language hooks
+languages/_framework/runtime.py    ← LangRun (per-run mutable scan state)
+languages/_framework/base/         ← Shared framework contracts + phase helpers
+languages/_framework/generic.py    ← generic_lang() factory for tool-based plugins
+languages/_framework/treesitter/   ← Tree-sitter integration (optional)
+languages/<name>/            ← Language config + phases + extractors + detectors + fixers
 ```
 
 Import direction: `languages/` → `engine/detectors/`. Never the reverse.
@@ -167,8 +171,8 @@ Outside these zones, use static imports.
 
 #### State Ownership
 
-- `desloppify/state.py` and `desloppify/engine/state_internal/` own persisted schema and merge rules
-- `desloppify/languages/framework/runtime.py` (`LangRun`) owns per-run mutable execution state
+- `desloppify/state.py` and `desloppify/engine/_state/` own persisted schema and merge rules
+- `desloppify/languages/_framework/runtime.py` (`LangRun`) owns per-run mutable execution state
 - command modules may read/write state through state APIs, but should not define ad-hoc persisted fields
 
 </details>

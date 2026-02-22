@@ -2,13 +2,13 @@
 
 ## Philosophy
 
-Desloppify gives AI coding agents a structured process for bringing codebases to a very high standard — with the human always in the loop. It works with any language via a plugin system.
+There are plenty of traditional tools that catch mechanical code issues — linters, formatters, dead code finders, complexity checkers. They're good at what they do and desloppify wraps many of them. But mechanical issues aren't usually what makes a codebase hard to work with.
 
-Code quality breaks into two layers. **Mechanical** issues — dead code, duplication, complexity, smells — can be detected deterministically and often fixed automatically. **Subjective** issues — architecture fitness, convention drift, error strategy consistency — require judgment that only a human can provide.
+The real problems are **subjective and structural**: poor abstractions, tangled dependencies, inconsistent patterns, modules that do too many things, naming that misleads. These are the things that slow you down, cause bugs, and make onboarding painful. Traditional static analysis can't see them because they require judgment — understanding intent, recognizing design drift, evaluating tradeoffs.
 
-Desloppify handles the mechanical layer aggressively: scan, track, coach the agent through cleanup. Findings persist across scans. A narrative system recognizes momentum, stagnation, and regression, and adjusts its guidance accordingly. Prioritization is opinionated — security and structural health outweigh style nits.
+LLMs are now good enough to recognize these problems when given the right harness. Desloppify is that harness: it gives an LLM structured questions about architecture, convention consistency, error strategy, and design quality — then tracks the answers as scored findings alongside the mechanical detections. The result is a single health score that captures both what a linter can see and what only a thoughtful review can catch.
 
-But the tool is deliberately non-prescriptive about *what* to fix. It gives the agent a shortlist and trusts the human to either solve each issue or mindfully dismiss it with a reason. The goal isn't a perfect score — it's making technical debt visible, tractable, and progressively smaller.
+The tool is deliberately non-prescriptive about *what* to fix. It gives the agent a prioritized shortlist and trusts the human to either solve each issue or mindfully dismiss it with a reason. A narrative system recognizes momentum, stagnation, and regression, and adjusts its coaching accordingly. The goal isn't a perfect score — it's making technical debt visible, tractable, and progressively smaller.
 
 See README.md for usage.
 
@@ -40,7 +40,7 @@ desloppify/
 │
 ├── languages/          # Layer 2 + 3: Language plugins (auto-discovered)
 │   ├── __init__.py     # Registry: @register_lang, get_lang, auto-detect, structural validation
-│   ├── framework/      # Shared plugin framework
+│   ├── _framework/     # Shared plugin framework
 │   │   ├── generic.py          # generic_lang() factory for tool-based plugins
 │   │   ├── base/               # Contracts, types, shared phase builders
 │   │   ├── discovery.py        # Plugin auto-discovery

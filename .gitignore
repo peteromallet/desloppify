@@ -25,6 +25,9 @@ obj/
 TestResults/
 todos/
 
+# Dev tool configs
+.importlinter
+
 # Local agent-generated skills (keep canonical copies under docs/)
 /.claude/skills/
 /.agents/skills/
