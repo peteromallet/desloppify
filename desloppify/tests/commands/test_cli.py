@@ -19,8 +19,8 @@ from desloppify.app.commands.helpers.score import (
     target_strict_score_from_config,
 )
 from desloppify.cli import (
-    DETECTOR_NAMES,
     _apply_persisted_exclusions,
+    _get_detector_names,
     _resolve_default_path,
     create_parser,
     state_path,
@@ -419,18 +419,20 @@ class TestCreateParser:
 
 
 # ===========================================================================
-# DETECTOR_NAMES
+# _get_detector_names (lazy)
 # ===========================================================================
 
 
 class TestDetectorNames:
     def test_is_non_empty_list(self):
-        assert isinstance(DETECTOR_NAMES, list)
-        assert len(DETECTOR_NAMES) > 0
+        names = _get_detector_names()
+        assert isinstance(names, list)
+        assert len(names) > 0
 
     def test_contains_known_detectors(self):
+        names = _get_detector_names()
         for name in ["logs", "unused", "smells", "cycles", "dupes"]:
-            assert name in DETECTOR_NAMES
+            assert name in names
 
 
 # ===========================================================================

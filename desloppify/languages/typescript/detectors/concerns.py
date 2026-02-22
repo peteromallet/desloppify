@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, colorize, find_tsx_files, print_table, rel
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, find_tsx_files, print_table
 
 logger = logging.getLogger(__name__)
 

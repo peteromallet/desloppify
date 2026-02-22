@@ -7,7 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.engine.planning.core import CONFIDENCE_ORDER
-from desloppify.utils import colorize, read_code_snippet, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, read_code_snippet
 
 
 def _print_pattern_evidence(pattern_evidence: dict) -> None:

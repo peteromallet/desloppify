@@ -254,6 +254,77 @@ def _structural_growth_details(snapshot: dict, current: dict) -> dict:
     return drift
 
 
+def _wontfix_staleness_reasons(
+    previous: dict,
+    current: dict,
+    *,
+    since_scan: int,
+    decay_scans: int,
+) -> tuple[list[str], dict]:
+    """Determine why a wontfix finding is stale and compute structural drift."""
+    reasons: list[str] = []
+    if decay_scans > 0 and since_scan >= decay_scans:
+        reasons.append("scan_decay")
+
+    drift: dict = {}
+    if previous.get("detector") == "structural":
+        snapshot = previous.get("wontfix_snapshot")
+        if isinstance(snapshot, dict):
+            drift = _structural_growth_details(snapshot, current)
+            if drift:
+                reasons.append("severity_drift")
+
+    return reasons, drift
+
+
+def _format_drift_summary(drift: dict) -> str:
+    """Format structural drift metrics into a human-readable suffix."""
+    parts = []
+    if "complexity_score" in drift:
+        comp = drift["complexity_score"]
+        parts.append(f"complexity {comp['from']:.0f}->{comp['to']:.0f}")
+    if "loc" in drift:
+        loc = drift["loc"]
+        parts.append(f"loc {loc['from']:.0f}->{loc['to']:.0f}")
+    return f"; drift: {', '.join(parts)}" if parts else ""
+
+
+def _build_stale_wontfix_finding(
+    finding_id: str,
+    previous: dict,
+    *,
+    reasons: list[str],
+    drift: dict,
+    since_scan: int,
+) -> dict:
+    """Construct a stale_wontfix finding from staleness metadata."""
+    tier = 4 if "severity_drift" in reasons else 3
+    confidence = "high" if "severity_drift" in reasons else "medium"
+    reason_text = " + ".join(reasons)
+    summary = (
+        f"Stale wontfix ({reason_text}): re-triage `{finding_id}` "
+        f"(last reviewed {since_scan} scans ago)"
+    )
+    summary += _format_drift_summary(drift)
+
+    return state_mod.make_finding(
+        "stale_wontfix",
+        previous.get("file", ""),
+        finding_id,
+        tier=tier,
+        confidence=confidence,
+        summary=summary,
+        detail={
+            "subtype": "stale_wontfix",
+            "original_finding_id": finding_id,
+            "original_detector": previous.get("detector"),
+            "reasons": reasons,
+            "scans_since_wontfix": since_scan,
+            "drift": drift,
+        },
+    )
+
+
 def _augment_with_stale_wontfix_findings(
     findings: list[dict],
     runtime: ScanRuntime,
@@ -283,55 +354,17 @@ def _augment_with_stale_wontfix_findings(
         )
         since_scan = max(since_scan, 0)
 
-        reasons: list[str] = []
-        if decay_scans > 0 and since_scan >= decay_scans:
-            reasons.append("scan_decay")
-
-        drift: dict = {}
-        if previous.get("detector") == "structural":
-            snapshot = previous.get("wontfix_snapshot")
-            if isinstance(snapshot, dict):
-                drift = _structural_growth_details(snapshot, current_by_id[finding_id])
-                if drift:
-                    reasons.append("severity_drift")
-
+        reasons, drift = _wontfix_staleness_reasons(
+            previous, current_by_id[finding_id],
+            since_scan=since_scan, decay_scans=decay_scans,
+        )
         if not reasons:
             continue
 
-        tier = 4 if "severity_drift" in reasons else 3
-        confidence = "high" if "severity_drift" in reasons else "medium"
-        reason_text = " + ".join(reasons)
-        summary = (
-            f"Stale wontfix ({reason_text}): re-triage `{finding_id}` "
-            f"(last reviewed {since_scan} scans ago)"
-        )
-        if drift:
-            drift_parts = []
-            if "complexity_score" in drift:
-                comp = drift["complexity_score"]
-                drift_parts.append(f"complexity {comp['from']:.0f}->{comp['to']:.0f}")
-            if "loc" in drift:
-                loc = drift["loc"]
-                drift_parts.append(f"loc {loc['from']:.0f}->{loc['to']:.0f}")
-            if drift_parts:
-                summary += f"; drift: {', '.join(drift_parts)}"
-
         augmented.append(
-            state_mod.make_finding(
-                "stale_wontfix",
-                previous.get("file", ""),
-                finding_id,
-                tier=tier,
-                confidence=confidence,
-                summary=summary,
-                detail={
-                    "subtype": "stale_wontfix",
-                    "original_finding_id": finding_id,
-                    "original_detector": previous.get("detector"),
-                    "reasons": reasons,
-                    "scans_since_wontfix": since_scan,
-                    "drift": drift,
-                },
+            _build_stale_wontfix_finding(
+                finding_id, previous,
+                reasons=reasons, drift=drift, since_scan=since_scan,
             )
         )
 

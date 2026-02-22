@@ -52,7 +52,8 @@ from desloppify.languages.typescript.extractors_components import (
     extract_ts_components,
 )
 from desloppify.state import make_finding
-from desloppify.utils import SRC_PATH, log, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import SRC_PATH, log
 
 # ── Helper computations for complexity signals ─────────────
 

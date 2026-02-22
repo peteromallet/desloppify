@@ -35,13 +35,13 @@ from desloppify.languages.typescript.phases import (
     TS_SKIP_DIRS,
     TS_SKIP_NAMES,
 )
+from desloppify.file_discovery import rel
 from desloppify.utils import (
     SRC_PATH,
     colorize,
     display_entries,
     find_ts_files,
     print_table,
-    rel,
 )
 
 cmd_large = make_cmd_large(find_ts_files, default_threshold=500)

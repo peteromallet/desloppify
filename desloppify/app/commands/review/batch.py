@@ -14,7 +14,8 @@ from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
 from desloppify.core.fallbacks import print_error
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.intelligence import review as review_mod
-from desloppify.utils import PROJECT_ROOT, colorize, log, safe_write_text
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import colorize, log, safe_write_text
 
 from .import_cmd import do_import as _do_import
 from .runtime import setup_lang_concrete as _setup_lang

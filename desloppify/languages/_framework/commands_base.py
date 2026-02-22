@@ -23,7 +23,8 @@ from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
     detect_orphaned_files,
 )
-from desloppify.utils import colorize, display_entries, print_table, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, display_entries, print_table
 
 if TYPE_CHECKING:
     import argparse

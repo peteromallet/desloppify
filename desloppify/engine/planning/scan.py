@@ -7,9 +7,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from desloppify import utils as utils_mod
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.engine.planning.common import is_subjective_phase
 from desloppify.engine.policy.zones import FileZoneMap
+from desloppify.file_discovery import rel
 from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages._framework.runtime import LangRun, make_lang_run
 from desloppify.utils import colorize
@@ -51,7 +52,7 @@ def _build_zone_map(path: Path, lang: LangRun, zone_overrides: dict[str, str] | 
 
     files = lang.file_finder(path)
     lang.zone_map = FileZoneMap(
-        files, lang.zone_rules, rel_fn=utils_mod.rel, overrides=zone_overrides
+        files, lang.zone_rules, rel_fn=rel, overrides=zone_overrides
     )
     counts = lang.zone_map.counts()
     zone_str = ", ".join(
@@ -141,7 +142,7 @@ def generate_findings(
     """Run all detectors and convert results to normalized findings."""
     resolved_options = options or PlanScanOptions()
 
-    resolved_lang = _resolve_lang(lang, utils_mod.PROJECT_ROOT)
+    resolved_lang = _resolve_lang(lang, PROJECT_ROOT)
     runtime_lang = make_lang_run(resolved_lang)
     return _generate_findings_from_lang(
         path,

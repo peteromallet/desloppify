@@ -42,12 +42,12 @@ from desloppify.intelligence.review.selection import (
     get_file_findings,
     select_files_for_review,
 )
+from desloppify.file_discovery import rel
 from desloppify.utils import (
     disable_file_cache,
     enable_file_cache,
     is_file_cache_enabled,
     read_file_text,
-    rel,
 )
 
 logger = logging.getLogger(__name__)

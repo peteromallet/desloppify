@@ -5,7 +5,7 @@ from __future__ import annotations
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.rendering import print_ranked_actions
 from desloppify.intelligence import narrative as narrative_mod
-from desloppify.intelligence.integrity import review as subjective_integrity_mod
+from desloppify.intelligence import integrity as subjective_integrity_mod
 from desloppify.utils import colorize
 
 

@@ -17,7 +17,7 @@ from desloppify.intelligence.review._context.patterns import (
 from desloppify.intelligence.review._context.patterns import (
     extract_imported_names as _extract_imported_names,
 )
-from desloppify.utils import rel, resolve_path
+from desloppify.file_discovery import rel, resolve_path
 
 logger = logging.getLogger(__name__)
 

@@ -1,13 +1,28 @@
 """Tests for C# function/class extractors."""
 
 from pathlib import Path
-from unittest.mock import patch
 
+import pytest
+
+import desloppify.core._internal.text_utils as utils_text_mod
+import desloppify.file_discovery as file_discovery_mod
+import desloppify.utils as utils_mod
 from desloppify.languages.csharp.extractors import (
     extract_csharp_classes,
     extract_csharp_functions,
     find_csharp_files,
 )
+
+
+@pytest.fixture
+def patch_project_root(monkeypatch):
+    """Patch PROJECT_ROOT across all modules that define/import it."""
+    def _patch(tmp_path):
+        monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(utils_text_mod, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(file_discovery_mod, "PROJECT_ROOT", tmp_path)
+        utils_mod._find_source_files_cached.cache_clear()
+    return _patch
 
 
 def test_extract_csharp_functions_block_and_expression(tmp_path):
@@ -32,7 +47,7 @@ public class Calc {
     assert add.params == ["a", "b"]
 
 
-def test_extract_csharp_classes_with_methods(tmp_path):
+def test_extract_csharp_classes_with_methods(tmp_path, patch_project_root):
     root = tmp_path
     src = root / "Models"
     src.mkdir(parents=True)
@@ -48,8 +63,8 @@ public class OrderService : BaseService, IOrderService {
 }
 """
     )
-    with patch("desloppify.utils.PROJECT_ROOT", root):
-        classes = extract_csharp_classes(root)
+    patch_project_root(root)
+    classes = extract_csharp_classes(root)
     assert len(classes) >= 1
     cls = next(c for c in classes if c.name == "OrderService")
     assert "BaseService" in cls.base_classes
@@ -57,13 +72,13 @@ public class OrderService : BaseService, IOrderService {
     assert len(cls.methods) >= 2
 
 
-def test_find_csharp_files_excludes_build_dirs(tmp_path):
+def test_find_csharp_files_excludes_build_dirs(tmp_path, patch_project_root):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "Main.cs").write_text("class MainClass {}")
     (tmp_path / "obj").mkdir()
     (tmp_path / "obj" / "Generated.cs").write_text("class Generated {}")
     (tmp_path / "bin").mkdir()
     (tmp_path / "bin" / "Compiled.cs").write_text("class Compiled {}")
-    with patch("desloppify.utils.PROJECT_ROOT", tmp_path):
-        files = find_csharp_files(Path(tmp_path))
+    patch_project_root(tmp_path)
+    files = find_csharp_files(Path(tmp_path))
     assert files == ["src/Main.cs"]

@@ -11,7 +11,8 @@ from desloppify.engine.detectors.passthrough import (
     classify_params,
     classify_passthrough_tier,
 )
-from desloppify.utils import PROJECT_ROOT, find_tsx_files
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import find_tsx_files
 
 logger = logging.getLogger(__name__)
 

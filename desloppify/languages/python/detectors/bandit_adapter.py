@@ -25,7 +25,8 @@ import subprocess
 from pathlib import Path
 
 from desloppify.engine.policy.zones import FileZoneMap, Zone
-from desloppify.utils import PROJECT_ROOT, rel
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel
 
 logger = logging.getLogger(__name__)
 

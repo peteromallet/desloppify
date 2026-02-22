@@ -513,8 +513,8 @@ class TestGracefulDegradation:
         finally:
             ts_mod._AVAILABLE = saved
             # Clean up registry.
-            from desloppify.languages._framework.registry_state import _registry
-            _registry.pop("_test_no_ts", None)
+            from desloppify.languages._framework import registry_state
+            registry_state.remove("_test_no_ts")
 
     def test_file_read_error_skipped(self, tmp_path):
         """Files that can't be read are silently skipped."""

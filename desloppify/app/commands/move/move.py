@@ -20,7 +20,8 @@ from desloppify.app.commands.move.move_planning import (
     resolve_dest,
 )
 from desloppify.app.commands.move.move_reporting import print_file_move_plan
-from desloppify.utils import colorize, rel, resolve_path
+from desloppify.file_discovery import rel, resolve_path
+from desloppify.utils import colorize
 
 
 def cmd_move(args: argparse.Namespace) -> None:

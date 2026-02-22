@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 FindingStatus = Literal["open", "fixed", "auto_resolved", "wontfix", "false_positive"]
 _ALLOWED_FINDING_STATUSES: set[str] = {

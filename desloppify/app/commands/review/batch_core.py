@@ -74,6 +74,122 @@ def extract_json_payload(raw: str, *, log_fn) -> dict | None:
     return None
 
 
+def _validate_dimension_note(key: str, note_raw: object) -> tuple[str, str, str, str, str]:
+    """Validate a single dimension_notes entry and return parsed fields.
+
+    Returns (evidence, impact_scope, fix_scope, confidence, unreported_risk).
+    Raises ValueError on invalid structure.
+    """
+    if not isinstance(note_raw, dict):
+        raise ValueError(
+            f"dimension_notes missing object for assessed dimension: {key}"
+        )
+    evidence = note_raw.get("evidence")
+    impact_scope = note_raw.get("impact_scope")
+    fix_scope = note_raw.get("fix_scope")
+    if not isinstance(evidence, list) or not evidence:
+        raise ValueError(
+            f"dimension_notes.{key}.evidence must be a non-empty array"
+        )
+    if not isinstance(impact_scope, str) or not impact_scope.strip():
+        raise ValueError(
+            f"dimension_notes.{key}.impact_scope must be a non-empty string"
+        )
+    if not isinstance(fix_scope, str) or not fix_scope.strip():
+        raise ValueError(
+            f"dimension_notes.{key}.fix_scope must be a non-empty string"
+        )
+
+    confidence_raw = str(note_raw.get("confidence", "medium")).strip().lower()
+    confidence = (
+        confidence_raw if confidence_raw in {"high", "medium", "low"} else "medium"
+    )
+    unreported_risk = str(note_raw.get("unreported_risk", "")).strip()
+    return evidence, impact_scope, fix_scope, confidence, unreported_risk
+
+
+def _normalize_abstraction_sub_axes(
+    note_raw: dict,
+    abstraction_sub_axes: tuple[str, ...],
+) -> dict[str, float]:
+    """Extract and clamp abstraction_fitness sub-axis scores from a note."""
+    sub_axes_raw = note_raw.get("sub_axes")
+    if sub_axes_raw is not None and not isinstance(sub_axes_raw, dict):
+        raise ValueError(
+            "dimension_notes.abstraction_fitness.sub_axes must be an object"
+        )
+    if not isinstance(sub_axes_raw, dict):
+        return {}
+
+    normalized: dict[str, float] = {}
+    for axis in abstraction_sub_axes:
+        axis_value = sub_axes_raw.get(axis)
+        if axis_value is None:
+            continue
+        if isinstance(axis_value, bool) or not isinstance(
+            axis_value, int | float
+        ):
+            raise ValueError(
+                f"dimension_notes.abstraction_fitness.sub_axes.{axis} "
+                "must be numeric"
+            )
+        normalized[axis] = round(
+            max(0.0, min(100.0, float(axis_value))),
+            1,
+        )
+    return normalized
+
+
+def _normalize_findings(
+    raw_findings: object,
+    dimension_notes: dict[str, dict],
+    *,
+    max_batch_findings: int,
+) -> list[dict]:
+    """Validate and normalize the findings array from a batch payload."""
+    if not isinstance(raw_findings, list):
+        raise ValueError("findings must be an array")
+
+    findings: list[dict] = []
+    for item in raw_findings:
+        if not isinstance(item, dict):
+            continue
+        dim = str(item.get("dimension", "")).strip()
+        note = dimension_notes.get(dim, {})
+        impact_scope = str(
+            item.get("impact_scope", note.get("impact_scope", ""))
+        ).strip()
+        fix_scope = str(item.get("fix_scope", note.get("fix_scope", ""))).strip()
+        if not impact_scope or not fix_scope:
+            continue
+        findings.append({**item, "impact_scope": impact_scope, "fix_scope": fix_scope})
+        if len(findings) >= max_batch_findings:
+            break
+    return findings
+
+
+def _compute_batch_quality(
+    assessments: dict[str, float],
+    findings: list[dict],
+    dimension_notes: dict[str, dict],
+    allowed_dims: set[str],
+    high_score_without_risk: float,
+) -> dict:
+    """Compute quality metrics for a single batch result."""
+    return {
+        "dimension_coverage": round(
+            len(assessments) / max(len(allowed_dims), 1),
+            3,
+        ),
+        "evidence_density": round(
+            sum(len(note.get("evidence", [])) for note in dimension_notes.values())
+            / max(len(findings), 1),
+            3,
+        ),
+        "high_score_without_risk": high_score_without_risk,
+    }
+
+
 def normalize_batch_result(
     payload: dict,
     allowed_dims: set[str],
@@ -110,57 +226,17 @@ def normalize_batch_result(
         score = round(max(0.0, min(100.0, float(value))), 1)
 
         note_raw = raw_dimension_notes.get(key)
-        if not isinstance(note_raw, dict):
-            raise ValueError(
-                f"dimension_notes missing object for assessed dimension: {key}"
-            )
-        evidence = note_raw.get("evidence")
-        impact_scope = note_raw.get("impact_scope")
-        fix_scope = note_raw.get("fix_scope")
-        if not isinstance(evidence, list) or not evidence:
-            raise ValueError(
-                f"dimension_notes.{key}.evidence must be a non-empty array"
-            )
-        if not isinstance(impact_scope, str) or not impact_scope.strip():
-            raise ValueError(
-                f"dimension_notes.{key}.impact_scope must be a non-empty string"
-            )
-        if not isinstance(fix_scope, str) or not fix_scope.strip():
-            raise ValueError(
-                f"dimension_notes.{key}.fix_scope must be a non-empty string"
-            )
-
-        confidence_raw = str(note_raw.get("confidence", "medium")).strip().lower()
-        confidence = (
-            confidence_raw if confidence_raw in {"high", "medium", "low"} else "medium"
+        evidence, impact_scope, fix_scope, confidence, unreported_risk = (
+            _validate_dimension_note(key, note_raw)
         )
-        unreported_risk = str(note_raw.get("unreported_risk", "")).strip()
         if score > 85 and not unreported_risk:
             high_score_without_risk += 1
 
         normalized_sub_axes: dict[str, float] = {}
         if key == "abstraction_fitness":
-            sub_axes_raw = note_raw.get("sub_axes")
-            if sub_axes_raw is not None and not isinstance(sub_axes_raw, dict):
-                raise ValueError(
-                    "dimension_notes.abstraction_fitness.sub_axes must be an object"
-                )
-            if isinstance(sub_axes_raw, dict):
-                for axis in abstraction_sub_axes:
-                    axis_value = sub_axes_raw.get(axis)
-                    if axis_value is None:
-                        continue
-                    if isinstance(axis_value, bool) or not isinstance(
-                        axis_value, int | float
-                    ):
-                        raise ValueError(
-                            f"dimension_notes.abstraction_fitness.sub_axes.{axis} "
-                            "must be numeric"
-                        )
-                    normalized_sub_axes[axis] = round(
-                        max(0.0, min(100.0, float(axis_value))),
-                        1,
-                    )
+            normalized_sub_axes = _normalize_abstraction_sub_axes(
+                note_raw, abstraction_sub_axes
+            )
 
         assessments[key] = score
         dimension_notes[key] = {
@@ -173,38 +249,15 @@ def normalize_batch_result(
         if normalized_sub_axes:
             dimension_notes[key]["sub_axes"] = normalized_sub_axes
 
-    raw_findings = payload.get("findings")
-    if not isinstance(raw_findings, list):
-        raise ValueError("findings must be an array")
+    findings = _normalize_findings(
+        payload.get("findings"),
+        dimension_notes,
+        max_batch_findings=max_batch_findings,
+    )
 
-    findings: list[dict] = []
-    for item in raw_findings:
-        if not isinstance(item, dict):
-            continue
-        dim = str(item.get("dimension", "")).strip()
-        note = dimension_notes.get(dim, {})
-        impact_scope = str(
-            item.get("impact_scope", note.get("impact_scope", ""))
-        ).strip()
-        fix_scope = str(item.get("fix_scope", note.get("fix_scope", ""))).strip()
-        if not impact_scope or not fix_scope:
-            continue
-        findings.append({**item, "impact_scope": impact_scope, "fix_scope": fix_scope})
-        if len(findings) >= max_batch_findings:
-            break
-
-    quality = {
-        "dimension_coverage": round(
-            len(assessments) / max(len(allowed_dims), 1),
-            3,
-        ),
-        "evidence_density": round(
-            sum(len(note.get("evidence", [])) for note in dimension_notes.values())
-            / max(len(findings), 1),
-            3,
-        ),
-        "high_score_without_risk": high_score_without_risk,
-    }
+    quality = _compute_batch_quality(
+        assessments, findings, dimension_notes, allowed_dims, high_score_without_risk
+    )
     return assessments, findings, dimension_notes, quality
 
 
@@ -271,6 +324,152 @@ def _finding_pressure_by_dimension(
     return pressure_by_dim, count_by_dim
 
 
+def _accumulate_batch_scores(
+    result: dict,
+    *,
+    score_buckets: dict[str, list[tuple[float, float]]],
+    score_raw_by_dim: dict[str, list[float]],
+    merged_dimension_notes: dict[str, dict],
+    abstraction_axis_scores: dict[str, list[tuple[float, float]]],
+    abstraction_sub_axes: tuple[str, ...],
+) -> None:
+    """Accumulate assessment scores, dimension notes, and sub-axis data from one batch."""
+    result_findings = result.get("findings", [])
+    result_notes = result.get("dimension_notes", {})
+    for key, score in result.get("assessments", {}).items():
+        if isinstance(score, bool):
+            continue
+        score_value = float(score)
+        weight = assessment_weight(
+            dimension=key,
+            score=score_value,
+            findings=result_findings,
+            dimension_notes=result_notes,
+        )
+        score_buckets.setdefault(key, []).append((score_value, weight))
+        score_raw_by_dim.setdefault(key, []).append(score_value)
+
+        note = result_notes.get(key)
+        existing = merged_dimension_notes.get(key)
+        existing_evidence = (
+            len(existing.get("evidence", [])) if isinstance(existing, dict) else -1
+        )
+        current_evidence = (
+            len(note.get("evidence", [])) if isinstance(note, dict) else -1
+        )
+        if current_evidence > existing_evidence:
+            merged_dimension_notes[key] = note
+
+        if key == "abstraction_fitness" and isinstance(note, dict):
+            sub_axes = note.get("sub_axes")
+            if isinstance(sub_axes, dict):
+                for axis in abstraction_sub_axes:
+                    axis_score = sub_axes.get(axis)
+                    if isinstance(axis_score, bool) or not isinstance(
+                        axis_score, int | float
+                    ):
+                        continue
+                    abstraction_axis_scores[axis].append(
+                        (float(axis_score), weight)
+                    )
+
+
+def _accumulate_batch_findings(
+    result: dict,
+    finding_map: dict[str, dict],
+) -> None:
+    """Deduplicate and accumulate findings from one batch into finding_map."""
+    for finding in result.get("findings", []):
+        dim = str(finding.get("dimension", "")).strip()
+        ident = str(finding.get("identifier", "")).strip()
+        summary = str(finding.get("summary", "")).strip()
+        dedupe_key = f"{dim}::{ident}::{summary}"
+        if dedupe_key in finding_map:
+            continue
+        finding_map[dedupe_key] = finding
+
+
+def _accumulate_batch_quality(
+    result: dict,
+    *,
+    coverage_values: list[float],
+    evidence_density_values: list[float],
+) -> float:
+    """Accumulate quality metrics from one batch. Returns high_score_without_risk delta."""
+    quality = result.get("quality", {})
+    if not isinstance(quality, dict):
+        return 0.0
+    coverage = quality.get("dimension_coverage")
+    density = quality.get("evidence_density")
+    no_risk = quality.get("high_score_without_risk")
+    if isinstance(coverage, int | float):
+        coverage_values.append(float(coverage))
+    if isinstance(density, int | float):
+        evidence_density_values.append(float(density))
+    return float(no_risk) if isinstance(no_risk, int | float) else 0.0
+
+
+def _compute_merged_assessments(
+    score_buckets: dict[str, list[tuple[float, float]]],
+    score_raw_by_dim: dict[str, list[float]],
+    finding_pressure_by_dim: dict[str, float],
+    finding_count_by_dim: dict[str, int],
+) -> dict[str, float]:
+    """Compute pressure-adjusted weighted mean for each dimension."""
+    merged: dict[str, float] = {}
+    for key, weighted_scores in sorted(score_buckets.items()):
+        if not weighted_scores:
+            continue
+        numerator = sum(score * weight for score, weight in weighted_scores)
+        denominator = sum(weight for _, weight in weighted_scores)
+        weighted_mean = numerator / max(denominator, 1.0)
+        floor = min(score_raw_by_dim.get(key, [weighted_mean]))
+        floor_aware = (0.7 * weighted_mean) + (0.3 * floor)
+        finding_pressure = finding_pressure_by_dim.get(key, 0.0)
+        finding_count = finding_count_by_dim.get(key, 0)
+        issue_penalty = min(
+            24.0,
+            (finding_pressure * 2.2) + (max(finding_count - 1, 0) * 0.8),
+        )
+        issue_adjusted = floor_aware - issue_penalty
+        if finding_count > 0:
+            issue_cap = max(60.0, 90.0 - (finding_pressure * 3.5))
+            issue_adjusted = min(issue_adjusted, issue_cap)
+        merged[key] = round(max(0.0, min(100.0, issue_adjusted)), 1)
+    return merged
+
+
+def _compute_abstraction_components(
+    merged_assessments: dict[str, float],
+    abstraction_axis_scores: dict[str, list[tuple[float, float]]],
+    *,
+    abstraction_sub_axes: tuple[str, ...],
+    abstraction_component_names: dict[str, str],
+) -> dict[str, float] | None:
+    """Compute weighted abstraction sub-axis component scores.
+
+    Returns component_scores dict, or None if abstraction_fitness is not assessed.
+    """
+    abstraction_score = merged_assessments.get("abstraction_fitness")
+    if abstraction_score is None:
+        return None
+
+    component_scores: dict[str, float] = {}
+    for axis in abstraction_sub_axes:
+        weighted = abstraction_axis_scores.get(axis, [])
+        if not weighted:
+            continue
+        numerator = sum(score * weight for score, weight in weighted)
+        denominator = sum(weight for _, weight in weighted)
+        if denominator <= 0:
+            continue
+        component_scores[abstraction_component_names[axis]] = round(
+            max(0.0, min(100.0, numerator / denominator)),
+            1,
+        )
+    return component_scores if component_scores else None
+
+
 def merge_batch_results(
     batch_results: list[dict],
     *,
@@ -290,65 +489,20 @@ def merge_batch_results(
     }
 
     for result in batch_results:
-        result_findings = result.get("findings", [])
-        result_notes = result.get("dimension_notes", {})
-        for key, score in result.get("assessments", {}).items():
-            if isinstance(score, bool):
-                continue
-            score_value = float(score)
-            weight = assessment_weight(
-                dimension=key,
-                score=score_value,
-                findings=result_findings,
-                dimension_notes=result_notes,
-            )
-            score_buckets.setdefault(key, []).append((score_value, weight))
-            score_raw_by_dim.setdefault(key, []).append(score_value)
-
-            note = result_notes.get(key)
-            existing = merged_dimension_notes.get(key)
-            existing_evidence = (
-                len(existing.get("evidence", [])) if isinstance(existing, dict) else -1
-            )
-            current_evidence = (
-                len(note.get("evidence", [])) if isinstance(note, dict) else -1
-            )
-            if current_evidence > existing_evidence:
-                merged_dimension_notes[key] = note
-
-            if key == "abstraction_fitness" and isinstance(note, dict):
-                sub_axes = note.get("sub_axes")
-                if isinstance(sub_axes, dict):
-                    for axis in abstraction_sub_axes:
-                        axis_score = sub_axes.get(axis)
-                        if isinstance(axis_score, bool) or not isinstance(
-                            axis_score, int | float
-                        ):
-                            continue
-                        abstraction_axis_scores[axis].append(
-                            (float(axis_score), weight)
-                        )
-
-        for finding in result.get("findings", []):
-            dim = str(finding.get("dimension", "")).strip()
-            ident = str(finding.get("identifier", "")).strip()
-            summary = str(finding.get("summary", "")).strip()
-            dedupe_key = f"{dim}::{ident}::{summary}"
-            if dedupe_key in finding_map:
-                continue
-            finding_map[dedupe_key] = finding
-
-        quality = result.get("quality", {})
-        if isinstance(quality, dict):
-            coverage = quality.get("dimension_coverage")
-            density = quality.get("evidence_density")
-            no_risk = quality.get("high_score_without_risk")
-            if isinstance(coverage, int | float):
-                coverage_values.append(float(coverage))
-            if isinstance(density, int | float):
-                evidence_density_values.append(float(density))
-            if isinstance(no_risk, int | float):
-                high_score_without_risk_total += float(no_risk)
+        _accumulate_batch_scores(
+            result,
+            score_buckets=score_buckets,
+            score_raw_by_dim=score_raw_by_dim,
+            merged_dimension_notes=merged_dimension_notes,
+            abstraction_axis_scores=abstraction_axis_scores,
+            abstraction_sub_axes=abstraction_sub_axes,
+        )
+        _accumulate_batch_findings(result, finding_map)
+        high_score_without_risk_total += _accumulate_batch_quality(
+            result,
+            coverage_values=coverage_values,
+            evidence_density_values=evidence_density_values,
+        )
 
     merged_findings = list(finding_map.values())
     finding_pressure_by_dim, finding_count_by_dim = _finding_pressure_by_dimension(
@@ -356,51 +510,25 @@ def merge_batch_results(
         dimension_notes=merged_dimension_notes,
     )
 
-    merged_assessments: dict[str, float] = {}
-    for key, weighted_scores in sorted(score_buckets.items()):
-        if not weighted_scores:
-            continue
-        numerator = sum(score * weight for score, weight in weighted_scores)
-        denominator = sum(weight for _, weight in weighted_scores)
-        weighted_mean = numerator / max(denominator, 1.0)
-        floor = min(score_raw_by_dim.get(key, [weighted_mean]))
-        floor_aware = (0.7 * weighted_mean) + (0.3 * floor)
-        finding_pressure = finding_pressure_by_dim.get(key, 0.0)
-        finding_count = finding_count_by_dim.get(key, 0)
-        issue_penalty = min(
-            24.0,
-            (finding_pressure * 2.2) + (max(finding_count - 1, 0) * 0.8),
-        )
-        issue_adjusted = floor_aware - issue_penalty
-        if finding_count > 0:
-            issue_cap = max(60.0, 90.0 - (finding_pressure * 3.5))
-            issue_adjusted = min(issue_adjusted, issue_cap)
-        merged_assessments[key] = round(max(0.0, min(100.0, issue_adjusted)), 1)
+    merged_assessments = _compute_merged_assessments(
+        score_buckets, score_raw_by_dim, finding_pressure_by_dim, finding_count_by_dim
+    )
 
     merged_assessment_payload: dict[str, float | dict[str, object]] = {
         key: value for key, value in merged_assessments.items()
     }
-    abstraction_score = merged_assessments.get("abstraction_fitness")
-    if abstraction_score is not None:
-        component_scores: dict[str, float] = {}
-        for axis in abstraction_sub_axes:
-            weighted = abstraction_axis_scores.get(axis, [])
-            if not weighted:
-                continue
-            numerator = sum(score * weight for score, weight in weighted)
-            denominator = sum(weight for _, weight in weighted)
-            if denominator <= 0:
-                continue
-            component_scores[abstraction_component_names[axis]] = round(
-                max(0.0, min(100.0, numerator / denominator)),
-                1,
-            )
-        if component_scores:
-            merged_assessment_payload["abstraction_fitness"] = {
-                "score": abstraction_score,
-                "components": list(component_scores),
-                "component_scores": component_scores,
-            }
+    component_scores = _compute_abstraction_components(
+        merged_assessments,
+        abstraction_axis_scores,
+        abstraction_sub_axes=abstraction_sub_axes,
+        abstraction_component_names=abstraction_component_names,
+    )
+    if component_scores is not None:
+        merged_assessment_payload["abstraction_fitness"] = {
+            "score": merged_assessments["abstraction_fitness"],
+            "components": list(component_scores),
+            "component_scores": component_scores,
+        }
 
     return {
         "assessments": merged_assessment_payload,

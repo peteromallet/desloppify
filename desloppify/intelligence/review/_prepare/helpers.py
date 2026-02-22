@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from desloppify.utils import rel
+from desloppify.file_discovery import rel
 
 HOLISTIC_WORKFLOW = [
     "Read .desloppify/query.json for context, excerpts, and investigation batches",

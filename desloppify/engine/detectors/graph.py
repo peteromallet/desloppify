@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from desloppify import utils as _utils_mod
-from desloppify.utils import PROJECT_ROOT, rel, resolve_path
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel, resolve_path
 
 
 def finalize_graph(graph: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:

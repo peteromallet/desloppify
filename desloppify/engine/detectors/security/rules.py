@@ -29,7 +29,7 @@ from desloppify.engine.detectors.patterns.security import (
 from desloppify.engine.detectors.patterns.security import (
     is_placeholder as _is_placeholder,
 )
-from desloppify.utils import rel
+from desloppify.file_discovery import rel
 
 
 @dataclass(frozen=True)

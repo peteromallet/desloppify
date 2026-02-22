@@ -20,7 +20,7 @@ from desloppify.app.output.scorecard_parts.meta import (
     resolve_package_version,
     resolve_project_name,
 )
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 # ===========================================================================
 # score_color

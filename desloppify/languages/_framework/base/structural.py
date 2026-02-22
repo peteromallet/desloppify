@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.state import Finding, make_finding
-from desloppify.utils import PROJECT_ROOT, resolve_path
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import resolve_path
 
 
 def add_structural_signal(structural: dict, file: str, signal: str, detail: dict):

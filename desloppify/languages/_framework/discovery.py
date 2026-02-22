@@ -18,17 +18,18 @@ _PLUGIN_IMPORT_ERRORS: tuple[type[Exception], ...] = (
 
 
 def raise_load_errors() -> None:
-    if not registry_state._load_errors:
+    errors = registry_state.get_load_errors()
+    if not errors:
         return
     lines = ["Language plugin import failures:"]
-    for module_name, ex in sorted(registry_state._load_errors.items()):
+    for module_name, ex in sorted(errors.items()):
         lines.append(f"  - {module_name}: {type(ex).__name__}: {ex}")
     raise ImportError("\n".join(lines))
 
 
 def load_all() -> None:
     """Import all language modules to trigger registration."""
-    if registry_state._load_attempted:
+    if registry_state.was_load_attempted():
         raise_load_errors()
         return
 
@@ -65,7 +66,7 @@ def load_all() -> None:
 
     # Discover user plugins from PROJECT_ROOT/.desloppify/plugins/*.py
     try:
-        from desloppify.utils import PROJECT_ROOT
+        from desloppify.core._internal.text_utils import PROJECT_ROOT
 
         user_plugin_dir = PROJECT_ROOT / ".desloppify" / "plugins"
         if user_plugin_dir.is_dir():
@@ -85,6 +86,6 @@ def load_all() -> None:
     except (OSError, ImportError) as exc:
         logger.debug("User plugin discovery skipped: %s", exc)
 
-    registry_state._load_attempted = True
-    registry_state._load_errors = failures
+    registry_state.set_load_attempted(True)
+    registry_state.set_load_errors(failures)
     raise_load_errors()

@@ -8,7 +8,7 @@ from typing import Any
 from desloppify.engine.detectors.graph import finalize_graph
 from desloppify.languages.gdscript.extractors import find_gdscript_files
 from desloppify.languages.gdscript.patterns import EXTENDS_RE, LOAD_PATH_RE
-from desloppify.utils import resolve_path
+from desloppify.file_discovery import resolve_path
 
 
 def _find_project_root(path: Path) -> Path:

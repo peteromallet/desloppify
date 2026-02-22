@@ -32,10 +32,10 @@ def test_register_lang_adds_to_registry():
             class DummyConfig:
                 pass
 
-        assert test_name in registry_state._registry
-        assert registry_state._registry[test_name] is DummyConfig
+        assert registry_state.is_registered(test_name)
+        assert registry_state.get(test_name) is DummyConfig
     finally:
-        registry_state._registry.pop(test_name, None)
+        registry_state.remove(test_name)
 
 
 def test_register_lang_returns_class_unchanged():
@@ -52,7 +52,7 @@ def test_register_lang_returns_class_unchanged():
             result = register_lang(test_name)(OriginalClass)
         assert result is OriginalClass
     finally:
-        registry_state._registry.pop(test_name, None)
+        registry_state.remove(test_name)
 
 
 # ── get_lang ─────────────────────────────────────────────────
@@ -346,12 +346,12 @@ def test_get_lang_rejects_invalid_contract():
                 zone_rules=[],
             )
 
-    registry_state._registry["_bad_contract"] = BadConfig
+    registry_state.register("_bad_contract", BadConfig)
     try:
         with pytest.raises(ValueError, match="invalid LangConfig contract"):
             get_lang("_bad_contract")
     finally:
-        registry_state._registry.pop("_bad_contract", None)
+        registry_state.remove("_bad_contract")
 
 
 def test_get_lang_rejects_non_snake_case_detect_command_key():
@@ -374,18 +374,18 @@ def test_get_lang_rejects_non_snake_case_detect_command_key():
                 zone_rules=[object()],
             )
 
-    registry_state._registry["_bad_key"] = BadKeyConfig
+    registry_state.register("_bad_key", BadKeyConfig)
     try:
         with pytest.raises(ValueError, match="snake_case"):
             get_lang("_bad_key")
     finally:
-        registry_state._registry.pop("_bad_key", None)
+        registry_state.remove("_bad_key")
 
 
 def test_load_all_surfaces_import_failures(monkeypatch):
-    original_registry = dict(registry_state._registry)
-    original_attempted = registry_state._load_attempted
-    original_errors = registry_state._load_errors
+    original_registry = dict(registry_state.all_items())
+    original_attempted = registry_state.was_load_attempted()
+    original_errors = registry_state.get_load_errors()
     real_import_module = importlib.import_module
 
     def fake_import_module(name, package=None):
@@ -394,15 +394,16 @@ def test_load_all_surfaces_import_failures(monkeypatch):
         return real_import_module(name, package)
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(registry_state, "_load_attempted", False)
-    monkeypatch.setattr(registry_state, "_load_errors", {})
-    registry_state._registry.clear()
+    registry_state.set_load_attempted(False)
+    registry_state.set_load_errors({})
+    registry_state.clear()
 
     try:
         with pytest.raises(ImportError, match="Language plugin import failures"):
             load_all()
     finally:
-        registry_state._registry.clear()
-        registry_state._registry.update(original_registry)
-        registry_state._load_attempted = original_attempted
-        registry_state._load_errors = original_errors
+        registry_state.clear()
+        for name, cfg in original_registry.items():
+            registry_state.register(name, cfg)
+        registry_state.set_load_attempted(original_attempted)
+        registry_state.set_load_errors(original_errors)

@@ -3,8 +3,12 @@
 import os
 from pathlib import Path
 
+import pytest
+
 import desloppify.core._internal.text_utils as utils_text_mod
+import desloppify.file_discovery as file_discovery_mod
 import desloppify.utils as utils_mod
+from desloppify.file_discovery import rel, resolve_path
 from desloppify.utils import (
     check_tool_staleness,
     compute_tool_hash,
@@ -15,10 +19,20 @@ from desloppify.utils import (
     grep_files_containing,
     matches_exclusion,
     read_code_snippet,
-    rel,
-    resolve_path,
     set_exclusions,
 )
+
+
+@pytest.fixture
+def patch_project_root(monkeypatch):
+    """Patch PROJECT_ROOT across all modules that define/import it."""
+    def _patch(tmp_path):
+        monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(utils_text_mod, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(file_discovery_mod, "PROJECT_ROOT", tmp_path)
+        utils_mod._find_source_files_cached.cache_clear()
+    return _patch
+
 
 # ── rel() ────────────────────────────────────────────────────
 
@@ -100,11 +114,9 @@ def test_matches_exclusion_partial_dir_no_match():
 # ── find_source_files() ─────────────────────────────────────
 
 
-def test_find_source_files_extensions(tmp_path, monkeypatch):
+def test_find_source_files_extensions(tmp_path, patch_project_root):
     """Only files with matching extensions are returned."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
-    # Clear the lru_cache so our monkeypatched PROJECT_ROOT takes effect
-    utils_mod._find_source_files_cached.cache_clear()
+    patch_project_root(tmp_path)
 
     src = tmp_path / "src"
     src.mkdir()
@@ -119,10 +131,9 @@ def test_find_source_files_extensions(tmp_path, monkeypatch):
     assert not any(f.endswith(".txt") for f in files)
 
 
-def test_find_source_files_excludes_default_dirs(tmp_path, monkeypatch):
+def test_find_source_files_excludes_default_dirs(tmp_path, patch_project_root):
     """Directories in DEFAULT_EXCLUSIONS (like __pycache__) are pruned."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
-    utils_mod._find_source_files_cached.cache_clear()
+    patch_project_root(tmp_path)
 
     src = tmp_path / "pkg"
     src.mkdir()
@@ -138,10 +149,9 @@ def test_find_source_files_excludes_default_dirs(tmp_path, monkeypatch):
     assert not any("__pycache__" in f for f in files)
 
 
-def test_find_source_files_with_explicit_exclusion(tmp_path, monkeypatch):
+def test_find_source_files_with_explicit_exclusion(tmp_path, patch_project_root):
     """Explicit exclusions filter out matching paths."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
-    utils_mod._find_source_files_cached.cache_clear()
+    patch_project_root(tmp_path)
 
     src = tmp_path / "src"
     src.mkdir()
@@ -157,10 +167,9 @@ def test_find_source_files_with_explicit_exclusion(tmp_path, monkeypatch):
     assert not any("generated" in f for f in files)
 
 
-def test_find_source_files_excludes_prefixed_virtualenv_dirs(tmp_path, monkeypatch):
+def test_find_source_files_excludes_prefixed_virtualenv_dirs(tmp_path, patch_project_root):
     """Prefixed virtualenv directories (.venv-*, venv-*) are pruned."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
-    utils_mod._find_source_files_cached.cache_clear()
+    patch_project_root(tmp_path)
 
     src = tmp_path / "src"
     src.mkdir()
@@ -197,9 +206,9 @@ def test_set_exclusions(monkeypatch):
 # ── grep_files() ─────────────────────────────────────────────
 
 
-def test_grep_files(tmp_path, monkeypatch):
+def test_grep_files(tmp_path, patch_project_root):
     """grep_files returns (filepath, lineno, line) tuples for matches."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
 
     f1 = tmp_path / "a.py"
     f1.write_text("def foo():\n    return 42\n")
@@ -214,9 +223,9 @@ def test_grep_files(tmp_path, monkeypatch):
     assert "def foo" in line
 
 
-def test_grep_files_no_match(tmp_path, monkeypatch):
+def test_grep_files_no_match(tmp_path, patch_project_root):
     """grep_files returns empty list when nothing matches."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
 
     f1 = tmp_path / "c.py"
     f1.write_text("x = 1\ny = 2\n")
@@ -225,9 +234,9 @@ def test_grep_files_no_match(tmp_path, monkeypatch):
     assert results == []
 
 
-def test_grep_files_multiple_matches(tmp_path, monkeypatch):
+def test_grep_files_multiple_matches(tmp_path, patch_project_root):
     """grep_files finds multiple matches across lines and files."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
 
     f1 = tmp_path / "d.py"
     f1.write_text("TODO: fix\nok\nTODO: refactor\n")
@@ -241,9 +250,9 @@ def test_grep_files_multiple_matches(tmp_path, monkeypatch):
 # ── grep_files_containing() ─────────────────────────────────
 
 
-def test_grep_files_containing(tmp_path, monkeypatch):
+def test_grep_files_containing(tmp_path, patch_project_root):
     """grep_files_containing maps names to sets of files containing them."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
 
     f1 = tmp_path / "m1.py"
     f1.write_text("import foo\nfrom bar import baz\n")
@@ -261,9 +270,9 @@ def test_grep_files_containing(tmp_path, monkeypatch):
     assert str(f2) in result["baz"]
 
 
-def test_grep_files_containing_word_boundary(tmp_path, monkeypatch):
+def test_grep_files_containing_word_boundary(tmp_path, patch_project_root):
     """Word boundary prevents partial matches by default."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
 
     f1 = tmp_path / "wb.py"
     f1.write_text("foobar\n")
@@ -282,9 +291,9 @@ def test_grep_files_containing_empty_names(tmp_path, monkeypatch):
 # ── grep_count_files() ──────────────────────────────────────
 
 
-def test_grep_count_files(tmp_path, monkeypatch):
+def test_grep_count_files(tmp_path, patch_project_root):
     """grep_count_files returns list of files containing the name."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
 
     f1 = tmp_path / "g1.py"
     f1.write_text("alpha = 1\n")
@@ -345,11 +354,11 @@ def test_check_tool_staleness_no_stored_hash():
 # ── read_code_snippet() ────────────────────────────────────
 
 
-def test_read_code_snippet_basic(tmp_path, monkeypatch):
+def test_read_code_snippet_basic(tmp_path, patch_project_root):
     """Returns lines around target with arrow marker."""
     f = tmp_path / "test.py"
     f.write_text("line1\nline2\nline3\nline4\nline5\n")
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
     result = read_code_snippet("test.py", 3, context=1)
     assert result is not None
     assert "→" in result
@@ -358,37 +367,37 @@ def test_read_code_snippet_basic(tmp_path, monkeypatch):
     assert "line4" in result
 
 
-def test_read_code_snippet_first_line(tmp_path, monkeypatch):
+def test_read_code_snippet_first_line(tmp_path, patch_project_root):
     """First line should work without negative indices."""
     f = tmp_path / "test.py"
     f.write_text("first\nsecond\nthird\n")
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
     result = read_code_snippet("test.py", 1, context=1)
     assert result is not None
     assert "first" in result
     assert "→" in result
 
 
-def test_read_code_snippet_out_of_range(tmp_path, monkeypatch):
+def test_read_code_snippet_out_of_range(tmp_path, patch_project_root):
     """Line out of range returns None."""
     f = tmp_path / "test.py"
     f.write_text("only line\n")
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
     assert read_code_snippet("test.py", 99) is None
     assert read_code_snippet("test.py", 0) is None
 
 
-def test_read_code_snippet_nonexistent_file(tmp_path, monkeypatch):
+def test_read_code_snippet_nonexistent_file(tmp_path, patch_project_root):
     """Missing file returns None."""
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
     assert read_code_snippet("no_such_file.py", 1) is None
 
 
-def test_read_code_snippet_long_line_truncated(tmp_path, monkeypatch):
+def test_read_code_snippet_long_line_truncated(tmp_path, patch_project_root):
     """Lines longer than 120 chars are truncated."""
     f = tmp_path / "test.py"
     f.write_text("x" * 200 + "\n")
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    patch_project_root(tmp_path)
     result = read_code_snippet("test.py", 1, context=0)
     assert result is not None
     assert "..." in result

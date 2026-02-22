@@ -14,7 +14,8 @@ from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.languages._framework.base.types import FixResult
-from desloppify.utils import colorize, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize
 
 from .io import _load_state, _save_state
 from .options import _COMMAND_POST_FIX

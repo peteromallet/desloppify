@@ -22,15 +22,14 @@ from desloppify.languages.typescript.detectors.deps_runtime import (
 from desloppify.languages.typescript.detectors.deps_runtime import (
     ts_alias_resolver as _ts_alias_resolver,
 )
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel, resolve_path
 from desloppify.utils import (
-    PROJECT_ROOT,
     colorize,
     find_source_files,
     find_ts_files,
     grep_files,
     print_table,
-    rel,
-    resolve_path,
 )
 
 _FRAMEWORK_EXTENSIONS = (".svelte", ".vue", ".astro")

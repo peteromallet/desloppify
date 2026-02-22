@@ -1,4 +1,4 @@
-"""Standalone helpers for subjective-review integrity signals.
+"""Lightweight integrity helpers for subjective/review scoring.
 
 This module intentionally lives outside ``desloppify.intelligence.review`` so command/state
 paths can import it without loading the heavier review package.
@@ -7,6 +7,25 @@ paths can import it without loading the heavier review package.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+
+from desloppify.engine._scoring.policy.core import (
+    SUBJECTIVE_TARGET_MATCH_TOLERANCE,
+    matches_target_score,
+)
+
+__all__ = [
+    "SUBJECTIVE_TARGET_MATCH_TOLERANCE",
+    "is_holistic_subjective_finding",
+    "is_subjective_review_open",
+    "matches_target_score",
+    "subjective_review_open_breakdown",
+    "unassessed_subjective_dimensions",
+]
+
+
+# ---------------------------------------------------------------------------
+# Internal iteration helper
+# ---------------------------------------------------------------------------
 
 
 def _iter_findings(
@@ -22,6 +41,11 @@ def _iter_findings(
     for index, finding in enumerate(findings):
         if isinstance(finding, dict):
             yield str(index), finding
+
+
+# ---------------------------------------------------------------------------
+# Public helpers (formerly in integrity/review.py)
+# ---------------------------------------------------------------------------
 
 
 def is_subjective_review_open(finding: dict) -> bool:

@@ -12,7 +12,8 @@ from desloppify.app.commands.scan.scan_workflow import (
 from desloppify.core.config import config_for_query
 from desloppify.scoring import compute_health_breakdown
 from desloppify.state import score_snapshot
-from desloppify.utils import PROJECT_ROOT, colorize
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import colorize
 
 
 def build_scan_query_payload(

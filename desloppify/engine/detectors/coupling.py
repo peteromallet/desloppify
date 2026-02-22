@@ -7,7 +7,7 @@ constitute "shared" vs "tools") are provided by the caller.
 
 from pathlib import Path
 
-from desloppify.utils import rel
+from desloppify.file_discovery import rel
 
 
 def _norm_path(path: str) -> str:

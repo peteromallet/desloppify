@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.score import coerce_target_score
-from desloppify.intelligence.integrity import review as subjective_review_integrity_mod
-from desloppify.intelligence.integrity import subjective as subjective_integrity_mod
+from desloppify.intelligence import integrity as subjective_integrity_mod
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +345,7 @@ def show_subjective_paths(
         state.get("findings", {}), state.get("scan_path")
     )
     coverage_total, reason_counts, holistic_reason_counts = (
-        subjective_review_integrity_mod.subjective_review_open_breakdown(scoped)
+        subjective_integrity_mod.subjective_review_open_breakdown(scoped)
     )
     holistic_total = sum(holistic_reason_counts.values())
     if (

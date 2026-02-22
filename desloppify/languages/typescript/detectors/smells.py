@@ -23,7 +23,8 @@ from desloppify.languages.typescript.detectors._smell_helpers import (
     _ts_match_is_in_string,
     scan_code,
 )
-from desloppify.utils import PROJECT_ROOT, find_ts_files
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import find_ts_files
 
 logger = logging.getLogger(__name__)
 

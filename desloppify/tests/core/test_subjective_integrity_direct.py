@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence.integrity.subjective import (
+from desloppify.intelligence.integrity import (
     SUBJECTIVE_TARGET_MATCH_TOLERANCE,
     matches_target_score,
 )

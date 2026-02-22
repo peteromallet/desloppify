@@ -12,7 +12,7 @@ from desloppify.languages.typescript.extractors_components import (
     extract_ts_components,
     tsx_passthrough_pattern,
 )
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 

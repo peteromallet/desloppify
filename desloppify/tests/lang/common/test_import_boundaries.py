@@ -35,12 +35,13 @@ def test_detectors_layer_does_not_import_lang_layer():
 
 
 def test_review_cmd_uses_split_modules():
-    cmd_src = Path("desloppify/app/commands/review/cmd.py").read_text()
     entrypoint_src = Path("desloppify/app/commands/review/entrypoint.py").read_text()
-    assert "from .entrypoint import cmd_review" in cmd_src
     assert "from .batch import _do_run_batches" in entrypoint_src
     assert "from .import_cmd import do_import" in entrypoint_src
     assert "from .prepare import do_prepare" in entrypoint_src
+    # registry imports directly from entrypoint (no cmd.py indirection)
+    registry_src = Path("desloppify/app/commands/registry.py").read_text()
+    assert "review.entrypoint import cmd_review" in registry_src
 
 
 def test_scan_reporting_aggregator_uses_split_modules():

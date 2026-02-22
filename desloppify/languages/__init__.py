@@ -40,9 +40,9 @@ def register_lang(name: str) -> Callable[[T], T]:
             validate_lang_structure(Path(module.__file__).parent, name)
         if isinstance(cls, type) and issubclass(cls, LangConfig):
             cfg = make_lang_config(name, cls)  # instantiate + validate
-            registry_state._registry[name] = cfg  # store instance
+            registry_state.register(name, cfg)  # store instance
         else:
-            registry_state._registry[name] = cls  # test doubles
+            registry_state.register(name, cls)  # test doubles
         return cls
 
     return decorator
@@ -51,7 +51,7 @@ def register_lang(name: str) -> Callable[[T], T]:
 def register_generic_lang(name: str, cfg: LangConfig) -> None:
     """Register a pre-built language plugin instance (no package structure required)."""
     validate_lang_contract(name, cfg)
-    registry_state._registry[name] = cfg
+    registry_state.register(name, cfg)
 
 
 __all__ = [

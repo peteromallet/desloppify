@@ -20,3 +20,5 @@ This is the canonical Codex overlay used by the README install command.
 
 7. Keep `findings` schema compatible with `query.system_prompt`.
 8. If a batch fails, retry only that slice with `desloppify review --run-batches --packet <packet.json> --only-batches <idxs>`.
+
+<!-- desloppify-update: { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/CODEX.md; } >> AGENTS.md -->

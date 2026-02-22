@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, safe_write_text
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import safe_write_text
 
 CONFIG_FILE = PROJECT_ROOT / ".desloppify" / "config.json"
 logger = logging.getLogger(__name__)

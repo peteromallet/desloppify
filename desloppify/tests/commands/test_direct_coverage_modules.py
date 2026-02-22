@@ -36,7 +36,7 @@ import desloppify.engine.planning.select as plan_select
 import desloppify.engine._state.noise as noise
 import desloppify.engine._state.persistence as persistence
 import desloppify.engine._state.resolution as state_resolution
-import desloppify.intelligence.integrity.review as subjective_review_integrity
+import desloppify.intelligence.integrity as subjective_review_integrity
 import desloppify.intelligence.review._context.structure as review_context_structure
 import desloppify.intelligence.review.dimensions.holistic as review_dimensions_holistic
 import desloppify.intelligence.review.dimensions.validation as review_dimensions_validation
@@ -118,8 +118,8 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(scan_reporting_subjective.subjective_rerun_command)
     assert callable(scan_reporting_subjective.subjective_integrity_followup)
     assert callable(scan_reporting_subjective.build_subjective_followup)
-    assert isinstance(cmd_registry.COMMAND_HANDLERS, dict)
-    assert "scan" in cmd_registry.COMMAND_HANDLERS
+    assert isinstance(cmd_registry.get_command_handlers(), dict)
+    assert "scan" in cmd_registry.get_command_handlers()
     runtime = runtime_state.current_runtime_context()
     assert isinstance(runtime.exclusion_config.values, tuple)
     assert isinstance(runtime.source_file_cache.max_entries, int)

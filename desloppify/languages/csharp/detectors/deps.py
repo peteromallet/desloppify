@@ -22,7 +22,8 @@ from desloppify.languages.csharp.extractors import (
     CSHARP_FILE_EXCLUSIONS,
     find_csharp_files,
 )
-from desloppify.utils import colorize, print_table, rel, resolve_path
+from desloppify.file_discovery import rel, resolve_path
+from desloppify.utils import colorize, print_table
 
 logger = logging.getLogger(__name__)
 

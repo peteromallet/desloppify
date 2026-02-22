@@ -9,7 +9,8 @@ from desloppify.languages.typescript.fixers.common import (
     extract_body_between_braces,
     find_balanced_end,
 )
-from desloppify.utils import colorize, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize
 
 
 def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> list[dict]:

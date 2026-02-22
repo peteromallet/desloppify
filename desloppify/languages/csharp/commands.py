@@ -27,7 +27,8 @@ from desloppify.languages._framework.commands_base import (
     make_cmd_complexity,
     make_cmd_large,
 )
-from desloppify.utils import colorize, print_table, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, print_table
 
 _cmd_large_impl = make_cmd_large(find_csharp_files, default_threshold=500)
 _cmd_complexity_impl = make_cmd_complexity(

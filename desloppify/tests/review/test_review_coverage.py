@@ -26,7 +26,7 @@ from desloppify.languages._framework.runtime import make_lang_run
 from desloppify.languages.python import PythonConfig
 from desloppify.languages.typescript import TypeScriptConfig
 from desloppify.scoring import DIMENSIONS, FILE_BASED_DETECTORS
-from desloppify.utils import rel
+from desloppify.file_discovery import rel
 
 # ── Helpers ──────────────────────────────────────────────────────
 

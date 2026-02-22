@@ -36,7 +36,9 @@ from desloppify.languages._framework.finding_factories import (
 )
 from desloppify.languages._framework.runtime import LangRun
 from desloppify.state import Finding, make_finding
-from desloppify.utils import PROJECT_ROOT, log, rel
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel
+from desloppify.utils import log
 
 
 def phase_dupes(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:

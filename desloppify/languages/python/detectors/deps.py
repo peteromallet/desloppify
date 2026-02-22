@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.engine.detectors.graph import finalize_graph
-from desloppify.utils import PROJECT_ROOT, find_py_files, resolve_path
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import resolve_path
+from desloppify.utils import find_py_files
 
 logger = logging.getLogger(__name__)
 

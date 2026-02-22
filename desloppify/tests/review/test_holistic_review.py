@@ -6,6 +6,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+import desloppify.core._internal.text_utils as _utils_text_mod
+import desloppify.file_discovery as _file_discovery_mod
 from desloppify import utils as _u
 from desloppify.engine.detectors.review_coverage import detect_holistic_review_staleness
 from desloppify.engine._state.filtering import path_scoped_findings
@@ -41,6 +45,18 @@ from desloppify.scoring import (
     HOLISTIC_POTENTIAL,
     detector_pass_rate,
 )
+
+
+@pytest.fixture
+def patch_project_root(monkeypatch):
+    """Patch PROJECT_ROOT across all modules that define/import it."""
+    def _patch(tmp_path):
+        monkeypatch.setattr(_u, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(_utils_text_mod, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(_file_discovery_mod, "PROJECT_ROOT", tmp_path)
+        _u._find_source_files_cached.cache_clear()
+    return _patch
+
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -1962,9 +1978,9 @@ class TestStructureContext:
         assert profile["file_count"] == 3
         assert profile["total_loc"] == 240  # 100+80+60
 
-    def test_root_files_classified(self, tmp_path, monkeypatch):
+    def test_root_files_classified(self, tmp_path, patch_project_root):
         """Root-level files are classified as core (fan_in>=5) or peripheral."""
-        monkeypatch.setattr(_u, "PROJECT_ROOT", tmp_path)
+        patch_project_root(tmp_path)
 
         f1 = _make_file(str(tmp_path), "utils.py", lines=200)
         f2 = _make_file(str(tmp_path), "scorecard.py", lines=100)

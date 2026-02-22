@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence.integrity.review import (
+from desloppify.intelligence.integrity import (
     is_holistic_subjective_finding,
     is_subjective_review_open,
     subjective_review_open_breakdown,

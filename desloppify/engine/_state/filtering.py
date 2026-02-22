@@ -11,7 +11,7 @@ from desloppify.engine._state.schema import (
     utc_now,
     validate_state_invariants,
 )
-from desloppify.utils import rel
+from desloppify.file_discovery import rel
 
 
 def path_scoped_findings(

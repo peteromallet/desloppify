@@ -12,6 +12,17 @@ from typing import Any
 
 from desloppify.core._internal import text_utils as _text_utils
 from desloppify.core.runtime_state import current_runtime_context
+from desloppify.file_discovery import (  # noqa: F401
+    DEFAULT_EXCLUSIONS,
+    _find_source_files_cached,
+    find_py_files,
+    find_source_files,
+    find_ts_files,
+    find_tsx_files,
+    matches_exclusion,
+    rel,
+    resolve_path,
+)
 
 get_area = _text_utils.get_area
 strip_c_style_comments = _text_utils.strip_c_style_comments
@@ -26,32 +37,6 @@ def read_code_snippet(filepath: str, line: int, context: int = 1) -> str | None:
     return _text_utils.read_code_snippet(
         filepath, line, context, project_root=PROJECT_ROOT
     )
-
-# Directories that are never useful to scan — always pruned during traversal.
-DEFAULT_EXCLUSIONS = frozenset(
-    {
-        "node_modules",
-        ".git",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".env",
-        "dist",
-        "build",
-        ".next",
-        ".nuxt",
-        ".output",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".eggs",
-        "*.egg-info",
-        ".svn",
-        ".hg",
-    }
-)
-
 
 def set_exclusions(patterns: list[str]):
     """Set global exclusion patterns (called once from CLI at startup)."""
@@ -259,154 +244,6 @@ def display_entries(
     return True
 
 
-def _normalize_path_separators(path: str) -> str:
-    """Normalize path separators to forward slashes for stable output."""
-    return path.replace("\\", "/")
-
-
-def _safe_relpath(path: str | Path, start: str | Path) -> str:
-    """Compute relpath with cross-drive fallback to absolute path.
-
-    On Windows, os.path.relpath raises ValueError when path and start are on
-    different drives. In that case return an absolute path string.
-    """
-    try:
-        return os.path.relpath(str(path), str(start))
-    except ValueError:
-        return str(Path(path).resolve())
-
-
-def rel(path: str) -> str:
-    resolved = Path(path).resolve()
-    try:
-        return _normalize_path_separators(str(resolved.relative_to(PROJECT_ROOT)))
-    except ValueError:
-        # Path outside PROJECT_ROOT: prefer relative form when possible, else absolute.
-        return _normalize_path_separators(_safe_relpath(resolved, PROJECT_ROOT))
-
-
-def resolve_path(filepath: str) -> str:
-    """Resolve a filepath to absolute, handling both relative and absolute."""
-    p = Path(filepath)
-    if p.is_absolute():
-        return str(p.resolve())
-    return str((PROJECT_ROOT / filepath).resolve())
-
-
-def matches_exclusion(rel_path: str, exclusion: str) -> bool:
-    """Check if a relative path matches an exclusion pattern (path-component aware).
-
-    Matches if exclusion is a path component (e.g. "test" matches "test/foo.py"
-    or "src/test/bar.py") or a directory prefix (e.g. "src/test" matches
-    "src/test/bar.py"). Does NOT do substring matching — "test" will NOT match
-    "testimony.py".
-    """
-    parts = Path(rel_path).parts
-    # Direct component match
-    if exclusion in parts:
-        return True
-    # Directory prefix match (e.g. "src/test" matches "src/test/bar.py")
-    if "/" in exclusion or os.sep in exclusion:
-        normalized = exclusion.rstrip("/").rstrip(os.sep)
-        return rel_path.startswith(normalized + "/") or rel_path.startswith(
-            normalized + os.sep
-        )
-    return False
-
-
-def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
-    """Check if a directory should be pruned during traversal."""
-    in_default_exclusions = name in DEFAULT_EXCLUSIONS or name.endswith(".egg-info")
-    is_virtualenv_dir = name.startswith(".venv") or name.startswith("venv")
-    matches_extra_exclusion = bool(
-        extra
-        and any(
-            matches_exclusion(rel_path, exclusion) or exclusion == name
-            for exclusion in extra
-        )
-    )
-    return in_default_exclusions or is_virtualenv_dir or matches_extra_exclusion
-
-
-def _clear_source_file_cache() -> None:
-    """Clear cached source-file discovery results."""
-    current_runtime_context().source_file_cache.clear()
-
-
-def _find_source_files_cached(
-    path: str,
-    extensions: tuple[str, ...],
-    exclusions: tuple[str, ...] | None = None,
-    extra_exclusions: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    """Cached file discovery using os.walk — cross-platform, prunes during traversal."""
-    cache_key = (path, extensions, exclusions, extra_exclusions)
-    cache = current_runtime_context().source_file_cache
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    root = Path(path)
-    if not root.is_absolute():
-        root = PROJECT_ROOT / root
-    all_exclusions = (exclusions or ()) + extra_exclusions
-    ext_set = set(extensions)
-    files: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Prune excluded directories in-place (prevents descending into them)
-        rel_dir = _normalize_path_separators(_safe_relpath(dirpath, PROJECT_ROOT))
-        dirnames[:] = sorted(
-            d
-            for d in dirnames
-            if not _is_excluded_dir(d, rel_dir + "/" + d, all_exclusions)
-        )
-        for fname in filenames:
-            if any(fname.endswith(ext) for ext in ext_set):
-                full = os.path.join(dirpath, fname)
-                rel_file = _normalize_path_separators(_safe_relpath(full, PROJECT_ROOT))
-                if all_exclusions and any(
-                    matches_exclusion(rel_file, ex) for ex in all_exclusions
-                ):
-                    continue
-                files.append(rel_file)
-    result = tuple(sorted(files))
-    cache.put(cache_key, result)
-    return result
-
-
-_find_source_files_cached.cache_clear = _clear_source_file_cache
-
-
-def find_source_files(
-    path: str | Path, extensions: list[str], exclusions: list[str] | None = None
-) -> list[str]:
-    """Find all files with given extensions under a path, excluding patterns."""
-    # Pass configured extra exclusions as part of the cache key so changes invalidate cached results.
-    return list(
-        _find_source_files_cached(
-            str(path),
-            tuple(extensions),
-            tuple(exclusions) if exclusions else None,
-            get_exclusions(),
-        )
-    )
-
-
-def find_ts_files(path: str | Path) -> list[str]:
-    """Find all .ts and .tsx files under a path."""
-    return find_source_files(path, [".ts", ".tsx"])
-
-
-def find_tsx_files(path: str | Path) -> list[str]:
-    """Find all .tsx files under a path."""
-    return find_source_files(path, [".tsx"])
-
-
-def find_py_files(path: str | Path) -> list[str]:
-    """Find all .py files under a path."""
-    return find_source_files(path, [".py"])
-
-
 TOOL_DIR = Path(__file__).resolve().parent
 
 
@@ -443,5 +280,61 @@ def check_tool_staleness(state: dict) -> str | None:
         return (
             f"Tool code changed since last scan (was {stored}, now {current}). "
             f"Consider re-running: desloppify scan"
+        )
+    return None
+
+
+# ── Skill document version tracking ─────────────────────────
+# Bump this integer whenever docs/SKILL.md changes in a way that agents
+# should pick up (new commands, changed workflows, removed sections).
+SKILL_VERSION = 1
+
+_SKILL_VERSION_RE = re.compile(r"<!--\s*desloppify-skill-version:\s*(\d+)\s*-->")
+_SKILL_UPDATE_RE = re.compile(r"<!--\s*desloppify-update:\s*(.+?)\s*-->")
+
+# Locations where the skill doc might be installed, relative to PROJECT_ROOT.
+_SKILL_SEARCH_PATHS = (
+    ".claude/skills/desloppify/SKILL.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".cursor/rules/desloppify.md",
+    ".github/copilot-instructions.md",
+)
+
+_FALLBACK_UPDATE_HINT = "see https://github.com/peteromallet/desloppify#quick-start"
+
+
+def check_skill_version() -> str | None:
+    """Return a warning if the installed skill doc is outdated, else None.
+
+    Searches common install locations for the ``desloppify-skill-version``
+    comment.  When outdated, reads the ``desloppify-update`` comment from the
+    same file to return the exact reinstall command the user needs.  Each
+    overlay (CLAUDE.md, CURSOR.md, etc.) embeds its own update command, so
+    there is no parallel dictionary to maintain.
+    """
+    for rel_path in _SKILL_SEARCH_PATHS:
+        full = PROJECT_ROOT / rel_path
+        if not full.is_file():
+            continue
+        try:
+            content = full.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        version_match = _SKILL_VERSION_RE.search(content)
+        if not version_match:
+            continue
+        installed_version = int(version_match.group(1))
+        if installed_version >= SKILL_VERSION:
+            return None
+        # Read the update command embedded by the overlay (last match wins,
+        # since overlays are appended after SKILL.md).
+        update_cmd = _FALLBACK_UPDATE_HINT
+        for m in _SKILL_UPDATE_RE.finditer(content):
+            update_cmd = m.group(1)
+        return (
+            f"Your desloppify skill document is outdated "
+            f"(v{installed_version}, current v{SKILL_VERSION}). "
+            f"Update: {update_cmd}"
         )
     return None

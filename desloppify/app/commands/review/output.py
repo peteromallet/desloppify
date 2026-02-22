@@ -9,7 +9,7 @@ from desloppify.app.commands.review import import_helpers as import_helpers_mod
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
-from desloppify.intelligence.integrity import subjective as subjective_integrity_mod
+from desloppify.intelligence import integrity as subjective_integrity_mod
 from desloppify.utils import colorize
 
 

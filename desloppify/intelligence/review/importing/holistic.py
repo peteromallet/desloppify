@@ -15,7 +15,7 @@ from desloppify.intelligence.review.importing.shared import (
 from desloppify.intelligence.review.selection import hash_file
 from desloppify.scoring import HOLISTIC_POTENTIAL
 from desloppify.state import MergeScanOptions, make_finding, merge_scan, utc_now
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 
 def parse_holistic_import_payload(

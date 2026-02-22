@@ -9,7 +9,8 @@ import re
 import sys
 
 from desloppify.app.commands.dev_scaffold_templates import build_scaffold_files
-from desloppify.utils import PROJECT_ROOT, colorize, safe_write_text
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import colorize, safe_write_text
 
 
 def cmd_dev(args: argparse.Namespace) -> None:

@@ -13,7 +13,9 @@ from desloppify.app.output._viz_cmd_context import load_cmd_context
 from desloppify.app.output.tree_text import render_tree_lines
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.state import get_objective_score, get_overall_score, get_strict_score
-from desloppify.utils import PROJECT_ROOT, colorize, rel, safe_write_text
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, safe_write_text
 
 D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
 logger = logging.getLogger(__name__)

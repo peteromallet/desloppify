@@ -13,7 +13,8 @@ from desloppify.languages._framework.base.shared_phases import (
 from desloppify.languages.csharp.detectors.deps import build_dep_graph
 from desloppify.languages.csharp.extractors import extract_csharp_classes
 from desloppify.languages._framework.runtime import LangRun
-from desloppify.utils import log, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import log
 
 
 def _compute_max_nesting(content: str, _lines: list[str]):

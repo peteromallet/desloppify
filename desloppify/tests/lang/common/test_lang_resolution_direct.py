@@ -36,7 +36,7 @@ def test_get_lang_uses_registry_and_reports_unknown(monkeypatch):
     assert resolved == ("python", sentinel_cls)
     assert resolved[0] == "python"
     assert resolved[1] is sentinel_cls
-    assert "python" in registry_state._registry
+    assert registry_state.is_registered("python")
 
     with pytest.raises(ValueError, match="Unknown language") as exc:
         lang_resolution_mod.get_lang("missing")

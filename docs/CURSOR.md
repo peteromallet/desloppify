@@ -49,3 +49,5 @@ Workflow:
   "findings": []
 }
 ```
+
+<!-- desloppify-update: { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/CURSOR.md; } > .cursor/rules/desloppify.md -->

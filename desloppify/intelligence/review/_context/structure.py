@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.intelligence.review.context import importer_count
-from desloppify.utils import rel, resolve_path
+from desloppify.file_discovery import rel, resolve_path
 
 
 def compute_structure_context(

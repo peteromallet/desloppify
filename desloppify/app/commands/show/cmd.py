@@ -10,7 +10,7 @@ from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
 from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
-from desloppify.utils import check_tool_staleness, colorize
+from desloppify.utils import check_skill_version, check_tool_staleness, colorize
 
 from .payload import ShowPayloadMeta, build_show_payload
 from .render import (
@@ -62,6 +62,9 @@ def cmd_show(args: argparse.Namespace) -> None:
     stale_warning = check_tool_staleness(state)
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
+    skill_warning = check_skill_version()
+    if skill_warning:
+        print(colorize(f"  {skill_warning}", "yellow"))
 
     # Handle "show concerns" as a special view.
     pattern_raw = getattr(args, "pattern", "")

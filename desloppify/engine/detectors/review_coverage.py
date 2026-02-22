@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from desloppify.hook_registry import get_lang_hook
-from desloppify.utils import read_file_text, rel, resolve_path
+from desloppify.file_discovery import rel, resolve_path
+from desloppify.utils import read_file_text
 
 _LOW_VALUE_NAMES = re.compile(
     r"(?:^|/)(?:types|constants|enums|index)\.[a-z]+$|(?:^|/).+\.d\.[a-z]+$"

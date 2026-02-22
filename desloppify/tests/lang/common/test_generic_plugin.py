@@ -28,10 +28,10 @@ def _cleanup_registry():
     """Auto-cleanup generic plugins registered during a test."""
     from desloppify.languages._framework import registry_state
 
-    before = set(registry_state._registry)
+    before = set(registry_state.all_keys())
     yield
-    for name in set(registry_state._registry) - before:
-        del registry_state._registry[name]
+    for name in set(registry_state.all_keys()) - before:
+        registry_state.remove(name)
 
 
 # ── Output parser tests ──────────────────────────────────
@@ -246,8 +246,8 @@ class TestGenericLang:
             ],
         )
         assert isinstance(cfg, LangConfig)
-        assert "test_generic_lang_1" in registry_state._registry
-        assert registry_state._registry["test_generic_lang_1"] is cfg
+        assert registry_state.is_registered("test_generic_lang_1")
+        assert registry_state.get("test_generic_lang_1") is cfg
 
     def test_get_lang_returns_instance(self):
         from desloppify.languages._framework.base.types import LangConfig

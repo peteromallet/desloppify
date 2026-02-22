@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 
 def read_file(filepath: str) -> str | None:

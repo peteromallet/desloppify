@@ -8,10 +8,11 @@ from textwrap import dedent
 
 from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
+from desloppify import utils as utils_mod
 from desloppify.app.output.scorecard_parts import projection as scorecard_projection_mod
 from desloppify.core import registry as registry_mod
 from desloppify.engine._work_queue.helpers import ATTEST_EXAMPLE
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 
 def _is_agent_environment() -> bool:
@@ -250,6 +251,9 @@ def _print_llm_summary(
     _print_workflow_guide()
     _print_narrative_status(narrative)
     _print_badge_hint(badge_path)
+    skill_warning = utils_mod.check_skill_version()
+    if skill_warning:
+        print(f"\n⚠ {skill_warning}\n")
     print("─" * 60)
 
 

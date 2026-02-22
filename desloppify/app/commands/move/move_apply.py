@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 from desloppify.core.fallbacks import restore_files_best_effort, warn_best_effort
-from desloppify.utils import colorize, rel, safe_write_text
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, safe_write_text
 
 
 def _rollback_written_files(written_files: dict[str, str]) -> None:

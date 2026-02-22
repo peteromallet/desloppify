@@ -7,7 +7,7 @@ imported back into state like any other detector.
 No LLM calls happen here — this module is pure Python.
 """
 
-from desloppify.intelligence.integrity.review import (
+from desloppify.intelligence.integrity import (
     is_holistic_subjective_finding,
     is_subjective_review_open,
     subjective_review_open_breakdown,

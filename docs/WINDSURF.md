@@ -36,3 +36,5 @@ in one session. This is slower but still works.
   "findings": []
 }
 ```
+
+<!-- desloppify-update: { curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/SKILL.md; printf '\n\n'; curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/WINDSURF.md; } >> AGENTS.md -->

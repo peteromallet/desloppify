@@ -151,22 +151,13 @@ def _scorecard_subjective_entries(state: dict, dim_scores: dict) -> list[dict]:
     )
 
 
-def show_dimension_table(state: dict, dim_scores: dict) -> None:
-    """Show dimension health table with dual scores and progress bars."""
-    print()
-    bar_len = 20
-    print(
-        colorize(
-            f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len + 2}} {'Tier'}  {'Action'}",
-            "dim",
-        )
-    )
-    print(colorize("  " + "─" * 86, "dim"))
-
-    scorecard_subjective = _scorecard_subjective_entries(state, dim_scores)
-
+def _find_lowest_dimension(
+    dim_scores: dict,
+    scorecard_subjective: list[dict],
+) -> str | None:
+    """Return the name of the dimension with the lowest strict score."""
     lowest_name = None
-    lowest_score = 101
+    lowest_score = 101.0
     for dim in DIMENSIONS:
         ds = dim_scores.get(dim.name)
         if not ds:
@@ -180,7 +171,13 @@ def show_dimension_table(state: dict, dim_scores: dict) -> None:
         if strict_val < lowest_score:
             lowest_score = strict_val
             lowest_name = entry.get("name")
+    return lowest_name
 
+
+def _render_objective_dimensions(
+    dim_scores: dict, *, lowest_name: str | None, bar_len: int
+) -> None:
+    """Print rows for objective (detector-based) dimensions."""
     for dim in DIMENSIONS:
         ds = dim_scores.get(dim.name)
         if not ds:
@@ -198,27 +195,37 @@ def show_dimension_table(state: dict, dim_scores: dict) -> None:
             f"  {dim.name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{dim.tier}  {action}{focus}"
         )
 
-    if scorecard_subjective:
-        print(
-            colorize(
-                "  ── Subjective Measures (matches scorecard.png) ──────────────────────",
-                "dim",
-            )
+
+def _render_subjective_dimensions(
+    scorecard_subjective: list[dict], *, lowest_name: str | None, bar_len: int
+) -> None:
+    """Print rows for subjective (review-based) dimensions."""
+    if not scorecard_subjective:
+        return
+    print(
+        colorize(
+            "  ── Subjective Measures (matches scorecard.png) ──────────────────────",
+            "dim",
         )
-        for entry in scorecard_subjective:
-            name = str(entry.get("name", "Unknown"))
-            score_val = float(entry.get("score", 0.0))
-            strict_val = float(entry.get("strict", score_val))
-            tier = 4
+    )
+    for entry in scorecard_subjective:
+        name = str(entry.get("name", "Unknown"))
+        score_val = float(entry.get("score", 0.0))
+        strict_val = float(entry.get("strict", score_val))
+        tier = 4
 
-            bar = dimension_bar(score_val, colorize_fn=colorize, bar_len=bar_len)
+        bar = dimension_bar(score_val, colorize_fn=colorize, bar_len=bar_len)
 
-            focus = colorize(" ←", "yellow") if name == lowest_name else "  "
-            checks_str = f"{'—':>7}"
-            stale_tag = colorize(" [stale]", "yellow") if entry.get("stale") else ""
-            print(
-                f"  {name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{tier}  {'review'}{focus}{stale_tag}"
-            )
+        focus = colorize(" ←", "yellow") if name == lowest_name else "  "
+        checks_str = f"{'—':>7}"
+        stale_tag = colorize(" [stale]", "yellow") if entry.get("stale") else ""
+        print(
+            f"  {name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{tier}  {'review'}{focus}{stale_tag}"
+        )
+
+
+def _render_dimension_legend(scorecard_subjective: list[dict]) -> None:
+    """Print the legend footer and stale-dimension re-review hint."""
     print(
         colorize("  Health = open penalized | Strict = open + wontfix penalized", "dim")
     )
@@ -243,33 +250,57 @@ def show_dimension_table(state: dict, dim_scores: dict) -> None:
                 "yellow",
             )
         )
+
+
+def show_dimension_table(state: dict, dim_scores: dict) -> None:
+    """Show dimension health table with dual scores and progress bars."""
+    print()
+    bar_len = 20
+    print(
+        colorize(
+            f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len + 2}} {'Tier'}  {'Action'}",
+            "dim",
+        )
+    )
+    print(colorize("  " + "─" * 86, "dim"))
+
+    scorecard_subjective = _scorecard_subjective_entries(state, dim_scores)
+    lowest_name = _find_lowest_dimension(dim_scores, scorecard_subjective)
+
+    _render_objective_dimensions(dim_scores, lowest_name=lowest_name, bar_len=bar_len)
+    _render_subjective_dimensions(
+        scorecard_subjective, lowest_name=lowest_name, bar_len=bar_len
+    )
+    _render_dimension_legend(scorecard_subjective)
     print()
 
 
 def show_focus_suggestion(dim_scores: dict, state: dict) -> None:
     """Show the lowest-scoring dimension as the focus area."""
+    scorecard_subjective = _scorecard_subjective_entries(state, dim_scores)
+    lowest_name = _find_lowest_dimension(dim_scores, scorecard_subjective)
+    if not lowest_name:
+        return
+
+    # Determine kind, score, and issue count from the resolved name
     lowest_kind = None
-    lowest_name = ""
     lowest_score = 101.0
     lowest_issues = 0
     for dim in DIMENSIONS:
-        ds = dim_scores.get(dim.name)
-        if not ds:
-            continue
-        strict_val = float(ds.get("strict", ds["score"]))
-        if strict_val < lowest_score:
-            lowest_score = strict_val
-            lowest_kind = "mechanical"
-            lowest_name = dim.name
-            lowest_issues = int(ds.get("issues", 0))
-
-    for entry in _scorecard_subjective_entries(state, dim_scores):
-        strict_val = float(entry.get("strict", entry.get("score", 100.0)))
-        if strict_val < lowest_score:
-            lowest_score = strict_val
-            lowest_kind = "subjective"
-            lowest_name = str(entry.get("name", "Subjective"))
-            lowest_issues = 0
+        if dim.name == lowest_name:
+            ds = dim_scores.get(dim.name)
+            if ds:
+                lowest_score = float(ds.get("strict", ds["score"]))
+                lowest_kind = "mechanical"
+                lowest_issues = int(ds.get("issues", 0))
+            break
+    else:
+        for entry in scorecard_subjective:
+            if entry.get("name") == lowest_name:
+                lowest_score = float(entry.get("strict", entry.get("score", 100.0)))
+                lowest_kind = "subjective"
+                lowest_issues = 0
+                break
 
     if lowest_name and lowest_score < 100:
         if lowest_kind == "subjective":
@@ -356,8 +387,13 @@ def show_agent_plan(narrative: dict) -> None:
         print()
 
 
-def show_structural_areas(state: dict):
-    """Show structural debt grouped by area when T3/T4 debt is significant."""
+def _collect_structural_areas(
+    state: dict,
+) -> list[tuple[str, list]] | None:
+    """Collect T3/T4 structural findings grouped by area.
+
+    Returns sorted area list, or None if insufficient data to display.
+    """
     findings = state_mod.path_scoped_findings(
         state.get("findings", {}), state.get("scan_path")
     )
@@ -369,7 +405,7 @@ def show_structural_areas(state: dict):
     ]
 
     if len(structural) < 5:
-        return
+        return None
 
     areas: dict[str, list] = defaultdict(list)
     for f in structural:
@@ -377,21 +413,15 @@ def show_structural_areas(state: dict):
         areas[area].append(f)
 
     if len(areas) < 2:
-        return
+        return None
 
-    sorted_areas = sorted(areas.items(), key=lambda x: -sum(f["tier"] for f in x[1]))
+    return sorted(areas.items(), key=lambda x: -sum(f["tier"] for f in x[1]))
 
-    print(colorize("\n  ── Structural Debt by Area ──", "bold"))
-    print(
-        colorize(
-            "  Create a task doc for each area → farm to sub-agents for decomposition",
-            "dim",
-        )
-    )
-    print()
 
+def _build_area_rows(sorted_areas: list[tuple[str, list]], *, max_areas: int = 15) -> list[list[str]]:
+    """Build table rows from sorted area findings."""
     rows = []
-    for area, area_findings in sorted_areas[:15]:
+    for area, area_findings in sorted_areas[:max_areas]:
         t3 = sum(1 for f in area_findings if f["tier"] == 3)
         t4 = sum(1 for f in area_findings if f["tier"] == 4)
         open_count = sum(1 for f in area_findings if f["status"] == "open")
@@ -407,12 +437,12 @@ def show_structural_areas(state: dict):
                 str(weight),
             ]
         )
+    return rows
 
-    print_table(
-        ["Area", "Items", "Tiers", "Open", "Debt", "Weight"], rows, [42, 6, 10, 5, 5, 7]
-    )
 
-    remaining = len(sorted_areas) - 15
+def _render_area_workflow(sorted_areas: list[tuple[str, list]], *, max_areas: int = 15) -> None:
+    """Print the overflow count and workflow instructions."""
+    remaining = len(sorted_areas) - max_areas
     if remaining > 0:
         print(colorize(f"\n  ... and {remaining} more areas", "dim"))
 
@@ -427,6 +457,29 @@ def show_structural_areas(state: dict):
         colorize("    3. Farm each task doc to a sub-agent for implementation", "dim")
     )
     print()
+
+
+def show_structural_areas(state: dict):
+    """Show structural debt grouped by area when T3/T4 debt is significant."""
+    sorted_areas = _collect_structural_areas(state)
+    if sorted_areas is None:
+        return
+
+    print(colorize("\n  ── Structural Debt by Area ──", "bold"))
+    print(
+        colorize(
+            "  Create a task doc for each area → farm to sub-agents for decomposition",
+            "dim",
+        )
+    )
+    print()
+
+    rows = _build_area_rows(sorted_areas)
+    print_table(
+        ["Area", "Items", "Tiers", "Open", "Debt", "Weight"], rows, [42, 6, 10, 5, 5, 7]
+    )
+
+    _render_area_workflow(sorted_areas)
 
 
 def show_review_summary(state: dict):

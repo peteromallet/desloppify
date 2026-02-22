@@ -22,16 +22,13 @@ from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.languages.typescript.detectors.contracts import DetectorResult
-from desloppify.utils import (
-    PROJECT_ROOT as PROJECT_ROOT,
-)
+from desloppify.core._internal.text_utils import PROJECT_ROOT as PROJECT_ROOT
+from desloppify.file_discovery import rel, resolve_path
 from desloppify.utils import (
     colorize,
     find_ts_files,
     get_area,
     print_table,
-    rel,
-    resolve_path,
 )
 
 # ── Pattern families ────────────────────────────────────────────

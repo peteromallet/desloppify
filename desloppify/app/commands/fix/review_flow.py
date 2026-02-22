@@ -12,7 +12,7 @@ from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.review import runtime as review_runtime_mod
 from desloppify.core.fallbacks import print_error
 from desloppify.intelligence import review as review_mod
-from desloppify.intelligence.integrity import review as subjective_integrity_mod
+from desloppify.intelligence import integrity as subjective_integrity_mod
 from desloppify.utils import colorize
 
 from .io import _load_state

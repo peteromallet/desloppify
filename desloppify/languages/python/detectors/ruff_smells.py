@@ -32,7 +32,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify import utils as _utils_mod
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 

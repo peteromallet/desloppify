@@ -7,7 +7,9 @@ from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.languages.typescript.detectors._smell_helpers import scan_code
-from desloppify.utils import PROJECT_ROOT, colorize, rel, safe_write_text
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, safe_write_text
 
 logger = logging.getLogger(__name__)
 

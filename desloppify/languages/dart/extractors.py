@@ -7,7 +7,8 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import FunctionInfo
-from desloppify.utils import find_source_files, resolve_path, strip_c_style_comments
+from desloppify.file_discovery import resolve_path
+from desloppify.utils import find_source_files, strip_c_style_comments
 
 DART_FILE_EXCLUSIONS = ["build", ".dart_tool", ".fvm", ".git", "node_modules"]
 

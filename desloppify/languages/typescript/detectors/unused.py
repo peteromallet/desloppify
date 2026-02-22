@@ -12,14 +12,13 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel, resolve_path
 from desloppify.utils import (
-    PROJECT_ROOT,
     colorize,
     find_ts_files,
     print_table,
     read_file_text,
-    rel,
-    resolve_path,
     safe_write_text,
     strip_c_style_comments,
 )

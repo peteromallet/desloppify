@@ -45,7 +45,7 @@ def cmd_langs(args: argparse.Namespace) -> None:
     load_all()
 
     configs: list[tuple[str, LangConfig]] = []
-    for name, obj in sorted(registry_state._registry.items()):
+    for name, obj in sorted(registry_state.all_items()):
         if isinstance(obj, LangConfig):
             configs.append((name, obj))
         else:

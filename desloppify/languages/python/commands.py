@@ -20,7 +20,8 @@ from desloppify.languages.python.extractors import (
     extract_py_functions,
 )
 from desloppify.languages.python.extractors_classes import extract_py_classes
-from desloppify.utils import colorize, display_entries, find_py_files, print_table, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, display_entries, find_py_files, print_table
 
 if TYPE_CHECKING:
     import argparse

@@ -21,7 +21,7 @@ def test_raise_load_errors_includes_module_name_and_exception_type(monkeypatch):
 def test_raise_load_errors_noop_when_no_errors(monkeypatch):
     monkeypatch.setattr(registry_state, "_load_errors", {})
     raise_load_errors()
-    assert registry_state._load_errors == {}
+    assert registry_state.get_load_errors() == {}
 
 
 def test_load_all_uses_plugin_file_naming_convention(monkeypatch, tmp_path):
@@ -44,13 +44,13 @@ def test_load_all_uses_plugin_file_naming_convention(monkeypatch, tmp_path):
     load_all()
     assert ".plugin_rust" in imported
     assert ".policy" not in imported
-    assert registry_state._load_attempted is True
-    assert registry_state._load_errors == {}
+    assert registry_state.was_load_attempted() is True
+    assert registry_state.get_load_errors() == {}
     assert len(imported) == 1
 
 
 def test_discovery_module_exports_expected_callables():
     assert callable(discovery_mod.load_all)
     assert callable(discovery_mod.raise_load_errors)
-    assert isinstance(registry_state._load_errors, dict)
-    assert isinstance(registry_state._load_attempted, bool)
+    assert isinstance(registry_state.get_load_errors(), dict)
+    assert isinstance(registry_state.was_load_attempted(), bool)

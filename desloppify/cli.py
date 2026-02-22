@@ -10,20 +10,29 @@ from desloppify.app.cli_support.parser import create_parser as _create_parser
 from desloppify.app.commands.helpers.lang import LangResolutionError, resolve_lang
 from desloppify.app.commands.helpers.runtime import CommandRuntime
 from desloppify.app.commands.helpers.state import state_path
-from desloppify.app.commands.registry import COMMAND_HANDLERS
 from desloppify.core.config import load_config
-from desloppify.core.registry import detector_names as _detector_names
 from desloppify.core.runtime_state import runtime_scope
 from desloppify.languages import available_langs
 from desloppify.state import load_state
-from desloppify.utils import DEFAULT_PATH, PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.utils import DEFAULT_PATH
 
-DETECTOR_NAMES = _detector_names()
+_DETECTOR_NAMES: list[str] | None = None
 logger = logging.getLogger(__name__)
+
+
+def _get_detector_names() -> list[str]:
+    """Return cached detector names, computing on first access."""
+    global _DETECTOR_NAMES
+    if _DETECTOR_NAMES is None:
+        from desloppify.core.registry import detector_names
+
+        _DETECTOR_NAMES = detector_names()
+    return _DETECTOR_NAMES
 
 def create_parser():
     """Return the top-level argparse parser."""
-    return _create_parser(langs=available_langs(), detector_names=DETECTOR_NAMES)
+    return _create_parser(langs=available_langs(), detector_names=_get_detector_names())
 
 
 def _apply_persisted_exclusions(args, config: dict):
@@ -87,7 +96,9 @@ def _load_shared_runtime(args) -> None:
 
 
 def _resolve_handler(command: str):
-    return COMMAND_HANDLERS[command]
+    from desloppify.app.commands.registry import get_command_handlers
+
+    return get_command_handlers()[command]
 
 
 def _handle_help_command(args, parser) -> None:

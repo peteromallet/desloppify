@@ -7,7 +7,6 @@ No print statements — returns dicts that flow into command query payload write
 from __future__ import annotations
 
 from desloppify.intelligence.narrative._constants import (
-    _FEEDBACK_URL,
     DETECTOR_TOOLS,
     STRUCTURAL_MERGE,
 )

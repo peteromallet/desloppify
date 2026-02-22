@@ -6,7 +6,7 @@ import math
 import os
 
 from desloppify.engine.policy.zones import FileZoneMap, Zone
-from desloppify.utils import PROJECT_ROOT
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 from .heuristics import _has_testable_logic, _is_runtime_entrypoint
 from .metrics import _COMPLEXITY_TIER_UPGRADE, _MIN_LOC, _file_loc, _loc_weight

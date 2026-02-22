@@ -28,12 +28,12 @@ def get_lang(name: str) -> LangConfig:
     All plugins (full and generic) store LangConfig instances in the registry.
     Test doubles that store plain classes are instantiated on demand as a fallback.
     """
-    if name not in registry_state._registry:
+    if not registry_state.is_registered(name):
         load_all()
-    if name not in registry_state._registry:
-        available = ", ".join(sorted(registry_state._registry.keys()))
+    if not registry_state.is_registered(name):
+        available = ", ".join(sorted(registry_state.all_keys()))
         raise ValueError(f"Unknown language: {name!r}. Available: {available}")
-    obj = registry_state._registry[name]
+    obj = registry_state.get(name)
     if isinstance(obj, LangConfig):
         return obj
     return make_lang_config(name, obj)  # fallback for test doubles
@@ -50,7 +50,7 @@ def auto_detect_lang(project_root: Path) -> str | None:
     candidates: list[str] = []
     configs: dict[str, LangConfig] = {}
 
-    for lang_name, obj in registry_state._registry.items():
+    for lang_name, obj in registry_state.all_items():
         cfg = obj if isinstance(obj, LangConfig) else make_lang_config(lang_name, obj)
         configs[lang_name] = cfg
         markers = getattr(cfg, "detect_markers", []) or []
@@ -81,4 +81,4 @@ def auto_detect_lang(project_root: Path) -> str | None:
 def available_langs() -> list[str]:
     """Return list of registered language names."""
     load_all()
-    return sorted(registry_state._registry.keys())
+    return sorted(registry_state.all_keys())

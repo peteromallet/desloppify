@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from desloppify.engine.detectors.graph import detect_cycles, get_coupling_score
-from desloppify.utils import colorize, print_table, rel
+from desloppify.file_discovery import rel
+from desloppify.utils import colorize, print_table
 
 
 def cmd_deps(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:

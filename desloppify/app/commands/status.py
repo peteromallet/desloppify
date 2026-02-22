@@ -32,7 +32,7 @@ from desloppify.app.output.scorecard_parts.projection import (
 )
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
 from desloppify.scoring import compute_health_breakdown
-from desloppify.utils import check_tool_staleness, colorize
+from desloppify.utils import check_skill_version, check_tool_staleness, colorize
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -69,6 +69,9 @@ def cmd_status(args: argparse.Namespace) -> None:
     stale_warning = check_tool_staleness(state)
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
+    skill_warning = check_skill_version()
+    if skill_warning:
+        print(colorize(f"  {skill_warning}", "yellow"))
 
     scores = state_mod.score_snapshot(state)
     by_tier = stats.get("by_tier", {})

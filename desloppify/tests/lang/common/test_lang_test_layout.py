@@ -12,7 +12,9 @@ import tomllib
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages import available_langs, get_lang
 from desloppify.languages._framework.structure_validation import validate_lang_structure
-from desloppify.utils import PROJECT_ROOT, compute_tool_hash, rel
+from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.file_discovery import rel
+from desloppify.utils import compute_tool_hash
 
 
 def _full_langs() -> list[str]:

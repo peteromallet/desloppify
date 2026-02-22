@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from desloppify.utils import rel
+from desloppify.file_discovery import rel
 
 logger = logging.getLogger(__name__)
 _LANG_PLUGIN_ENTRYPOINTS = frozenset(
