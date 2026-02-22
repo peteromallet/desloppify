@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 
 from desloppify import state as state_mod
-from desloppify.engine._work_queue.core import ATTEST_EXAMPLE
+from desloppify.engine.work_queue import ATTEST_EXAMPLE
 from desloppify.utils import colorize
 
 _REQUIRED_ATTESTATION_PHRASES = ("i have actually", "not gaming")

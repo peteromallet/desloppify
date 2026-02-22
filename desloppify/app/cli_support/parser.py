@@ -21,6 +21,7 @@ from desloppify.app.cli_support.parser_groups import (
     _add_show_parser,
     _add_status_parser,
     _add_tree_parser,
+    _add_update_skill_parser,
     _add_viz_parser,
     _add_zone_parser,
 )
@@ -114,6 +115,7 @@ def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.Ar
     _add_config_parser(sub)
     _add_dev_parser(sub)
     _add_langs_parser(sub)
+    _add_update_skill_parser(sub)
     return parser
 
 

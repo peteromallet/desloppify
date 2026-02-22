@@ -7,7 +7,7 @@ from pathlib import Path
 
 from desloppify import utils as _utils_mod
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.utils import find_py_files
+from desloppify.file_discovery import find_py_files
 
 
 def _selected_codes(category: str) -> list[str]:

@@ -10,9 +10,10 @@ from desloppify.engine._scoring.policy.core import (
     ScoreMode,
     detector_policy,
 )
+from desloppify.engine._state.schema import Finding
 
 
-def merge_potentials(potentials_by_lang: dict) -> dict[str, int]:
+def merge_potentials(potentials_by_lang: dict[str, dict[str, int]]) -> dict[str, int]:
     """Sum potentials across languages per detector."""
     merged: dict[str, int] = {}
     for lang_potentials in potentials_by_lang.values():
@@ -23,7 +24,7 @@ def merge_potentials(potentials_by_lang: dict) -> dict[str, int]:
 
 def _iter_scoring_candidates(
     detector: str,
-    findings: dict,
+    findings: dict[str, Finding],
     excluded_zones: frozenset[str],
 ):
     """Yield in-scope findings for a detector (zone-filtered)."""
@@ -35,7 +36,7 @@ def _iter_scoring_candidates(
         yield finding
 
 
-def _finding_weight(finding: dict, *, use_loc_weight: bool) -> float:
+def _finding_weight(finding: Finding, *, use_loc_weight: bool) -> float:
     """Compute the scoring weight for a single finding."""
     if use_loc_weight:
         return finding.get("detail", {}).get("loc_weight", 1.0)
@@ -57,7 +58,7 @@ def _file_count_cap(findings_in_file: int) -> float:
 
 def _file_based_failures_by_mode(
     detector: str,
-    findings: dict,
+    findings: dict[str, Finding],
     policy,
 ) -> dict[ScoreMode, tuple[int, float]]:
     """Accumulate weighted failures by score mode for file-based detectors."""
@@ -110,7 +111,7 @@ def _file_based_failures_by_mode(
 
 def detector_stats_by_mode(
     detector: str,
-    findings: dict,
+    findings: dict[str, Finding],
     potential: int,
 ) -> dict[ScoreMode, tuple[float, int, float]]:
     """Compute (pass_rate, issue_count, weighted_failures) for each score mode."""
@@ -158,7 +159,7 @@ def detector_stats_by_mode(
 
 def detector_pass_rate(
     detector: str,
-    findings: dict,
+    findings: dict[str, Finding],
     potential: int,
     *,
     strict: bool = False,

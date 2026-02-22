@@ -21,7 +21,8 @@ from desloppify.languages.python.extractors import (
 )
 from desloppify.languages.python.extractors_classes import extract_py_classes
 from desloppify.file_discovery import rel
-from desloppify.utils import colorize, display_entries, find_py_files, print_table
+from desloppify.file_discovery import find_py_files
+from desloppify.utils import colorize, display_entries, print_table
 
 if TYPE_CHECKING:
     import argparse

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from desloppify.core.config import config_for_query, load_config
 from desloppify.state import json_default
-from desloppify.utils import safe_write_text
+from desloppify.file_discovery import safe_write_text
 
 logger = logging.getLogger(__name__)
 

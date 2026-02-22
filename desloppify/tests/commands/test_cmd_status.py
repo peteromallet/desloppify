@@ -8,29 +8,70 @@ from desloppify.app.commands.status import (
     show_structural_areas,
     show_subjective_followup,
 )
+from desloppify.app.commands.status_parts.summary import score_summary_lines
 
 # ---------------------------------------------------------------------------
-# Module-level sanity
+# Module-level sanity — minimal behavioral checks
 # ---------------------------------------------------------------------------
 
 
 class TestStatusModuleSanity:
-    """Verify the module imports and has expected exports."""
+    """Verify the module exports work with minimal inputs."""
 
     def test_cmd_status_callable(self):
         assert callable(cmd_status)
 
-    def test_show_dimension_table_callable(self):
-        assert callable(show_dimension_table)
+    def test_show_dimension_table_with_empty_dims(self, capsys):
+        """show_dimension_table with empty dim_scores prints header only."""
+        show_dimension_table({}, {})
+        out = capsys.readouterr().out
+        assert "Dimension" in out
+        assert "Tier" in out
 
-    def test_show_focus_suggestion_callable(self):
-        assert callable(show_focus_suggestion)
+    def test_show_focus_suggestion_empty_dims_no_crash(self, capsys):
+        """show_focus_suggestion with no dims produces no output."""
+        show_focus_suggestion({}, {})
+        out = capsys.readouterr().out
+        assert out == ""
 
-    def test_show_structural_areas_callable(self):
-        assert callable(show_structural_areas)
+    def test_show_structural_areas_empty_state(self, capsys):
+        """show_structural_areas with no findings produces no output."""
+        show_structural_areas({})
+        assert capsys.readouterr().out == ""
 
-    def test_show_ignore_summary_callable(self):
-        assert callable(show_ignore_summary)
+    def test_show_ignore_summary_renders_patterns(self, capsys):
+        """show_ignore_summary renders at least the ignore count."""
+        show_ignore_summary(["smells::*"], {"recent_scans": 0})
+        out = capsys.readouterr().out
+        assert "Ignore list (1)" in out
+        assert "smells::*" in out
+
+    def test_score_summary_lines_with_scores(self):
+        """score_summary_lines returns formatted text for valid scores."""
+        lines = score_summary_lines(
+            overall_score=85.0,
+            objective_score=90.0,
+            strict_score=80.0,
+            verified_strict_score=75.0,
+        )
+        assert len(lines) == 1
+        text, style = lines[0]
+        assert "85.0" in text
+        assert "90.0" in text
+        assert "80.0" in text
+        assert "75.0" in text
+        assert style == "bold"
+
+    def test_score_summary_lines_unavailable(self):
+        """score_summary_lines returns fallback when scores are None."""
+        lines = score_summary_lines(
+            overall_score=None,
+            objective_score=None,
+            strict_score=None,
+            verified_strict_score=None,
+        )
+        assert len(lines) == 2
+        assert "unavailable" in lines[0][0]
 
 
 # ---------------------------------------------------------------------------

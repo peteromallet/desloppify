@@ -12,7 +12,7 @@ from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core import config as config_mod
 from desloppify.core.fallbacks import print_error
-from desloppify.engine._work_queue.core import ATTEST_EXAMPLE
+from desloppify.engine.work_queue import ATTEST_EXAMPLE
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.utils import colorize
 

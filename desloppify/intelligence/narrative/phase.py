@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
+from desloppify.state import get_strict_score
 
 from ._constants import _history_strict
 
@@ -54,8 +54,7 @@ def _detect_milestone(
     state: dict, _diff: dict | None, history: list[dict],
 ) -> str | None:
     """Detect notable milestones worth celebrating."""
-    state_mod = importlib.import_module("desloppify.state")
-    strict_score = state_mod.get_strict_score(state)
+    strict_score = get_strict_score(state)
     stats = state.get("stats", {})
 
     # Check T1 clear

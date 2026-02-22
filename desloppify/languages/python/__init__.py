@@ -60,7 +60,7 @@ from desloppify.languages.python.review import api_surface as py_review_api_surf
 from desloppify.languages.python.review import (
     module_patterns as py_review_module_patterns,
 )
-from desloppify.utils import find_py_files
+from desloppify.file_discovery import find_py_files
 
 # ── Zone classification rules (order matters — first match wins) ──
 

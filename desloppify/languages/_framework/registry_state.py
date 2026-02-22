@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-_registry: dict = {}  # str → LangConfig instance
+from collections.abc import ItemsView
+from typing import Any
+
+_registry: dict[str, Any] = {}  # str → LangConfig instance
 _load_attempted = False
 _load_errors: dict[str, BaseException] = {}
 
@@ -10,17 +13,17 @@ _load_errors: dict[str, BaseException] = {}
 # ── Public API ────────────────────────────────────────────
 
 
-def register(name: str, cfg) -> None:
+def register(name: str, cfg: Any) -> None:
     """Register a language config by name."""
     _registry[name] = cfg
 
 
-def get(name: str):
+def get(name: str) -> Any | None:
     """Get a language config by name, or None."""
     return _registry.get(name)
 
 
-def all_items():
+def all_items() -> ItemsView[str, Any]:
     """Return all (name, config) pairs."""
     return _registry.items()
 

@@ -22,6 +22,38 @@ _FIX_SCOPE_WEIGHTS = {
     "architectural_change": 1.7,
 }
 
+# ---------------------------------------------------------------------------
+# Penalty formula constants for _compute_merged_assessments.
+#
+# These values were calibrated so that a single high-severity codebase-wide
+# finding (pressure ~4.1) pulls a 92-point score into the mid-70s, while a
+# clean dimension (no findings) passes through unchanged.
+# ---------------------------------------------------------------------------
+
+# Blending ratio between the weighted mean and the per-batch floor score.
+# Higher FLOOR_BLEND_WEIGHT makes the merged score more sensitive to the
+# lowest individual batch score (guards against one batch inflating scores).
+_WEIGHTED_MEAN_BLEND = 0.7
+_FLOOR_BLEND_WEIGHT = 0.3
+
+# Maximum total penalty that findings can impose on a dimension score.
+# Prevents a pile-up of minor findings from zeroing out a dimension.
+_MAX_ISSUE_PENALTY = 24.0
+
+# Per-unit penalty from cumulative finding severity (confidence * impact * fix scope).
+_PRESSURE_PENALTY_MULTIPLIER = 2.2
+
+# Extra penalty per additional finding beyond the first in a dimension.
+# Encourages reviewers to consolidate related issues into fewer findings.
+_EXTRA_FINDING_PENALTY = 0.8
+
+# When findings exist, the score is capped to prevent high raw assessments
+# from surviving despite concrete issues. The cap starts at _CAP_CEILING and
+# is reduced by pressure * _CAP_PRESSURE_MULTIPLIER, but never below _CAP_FLOOR.
+_CAP_FLOOR = 60.0
+_CAP_CEILING = 90.0
+_CAP_PRESSURE_MULTIPLIER = 3.5
+
 
 def parse_batch_selection(raw: str | None, batch_count: int) -> list[int]:
     """Parse optional 1-based CSV list of batches."""
@@ -264,11 +296,14 @@ def normalize_batch_result(
 def assessment_weight(
     *,
     dimension: str,
-    score: float,
     findings: list[dict],
     dimension_notes: dict[str, dict],
 ) -> float:
-    """Evidence-weighted assessment score weight with a neutral floor."""
+    """Evidence-weighted assessment score weight with a neutral floor.
+
+    Weighting is evidence-based and score-independent: the raw score does not
+    influence how much weight a batch contributes during merge.
+    """
     note = dimension_notes.get(dimension, {})
     note_evidence = len(note.get("evidence", [])) if isinstance(note, dict) else 0
     finding_count = sum(
@@ -276,7 +311,6 @@ def assessment_weight(
         for finding in findings
         if str(finding.get("dimension", "")).strip() == dimension
     )
-    del score  # Weighting is evidence-based, score-independent.
     return float(1 + note_evidence + finding_count)
 
 
@@ -342,7 +376,6 @@ def _accumulate_batch_scores(
         score_value = float(score)
         weight = assessment_weight(
             dimension=key,
-            score=score_value,
             findings=result_findings,
             dimension_notes=result_notes,
         )
@@ -424,16 +457,20 @@ def _compute_merged_assessments(
         denominator = sum(weight for _, weight in weighted_scores)
         weighted_mean = numerator / max(denominator, 1.0)
         floor = min(score_raw_by_dim.get(key, [weighted_mean]))
-        floor_aware = (0.7 * weighted_mean) + (0.3 * floor)
+        floor_aware = (_WEIGHTED_MEAN_BLEND * weighted_mean) + (_FLOOR_BLEND_WEIGHT * floor)
         finding_pressure = finding_pressure_by_dim.get(key, 0.0)
         finding_count = finding_count_by_dim.get(key, 0)
         issue_penalty = min(
-            24.0,
-            (finding_pressure * 2.2) + (max(finding_count - 1, 0) * 0.8),
+            _MAX_ISSUE_PENALTY,
+            (finding_pressure * _PRESSURE_PENALTY_MULTIPLIER)
+            + (max(finding_count - 1, 0) * _EXTRA_FINDING_PENALTY),
         )
         issue_adjusted = floor_aware - issue_penalty
         if finding_count > 0:
-            issue_cap = max(60.0, 90.0 - (finding_pressure * 3.5))
+            issue_cap = max(
+                _CAP_FLOOR,
+                _CAP_CEILING - (finding_pressure * _CAP_PRESSURE_MULTIPLIER),
+            )
             issue_adjusted = min(issue_adjusted, issue_cap)
         merged[key] = round(max(0.0, min(100.0, issue_adjusted)), 1)
     return merged

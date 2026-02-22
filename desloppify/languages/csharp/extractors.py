@@ -6,8 +6,8 @@ import hashlib
 import re
 from pathlib import Path
 
-from desloppify import utils
 from desloppify.engine.detectors.base import ClassInfo, FunctionInfo
+from desloppify.file_discovery import find_source_files, resolve_path
 from desloppify.languages.csharp._parse_helpers import (
     extract_csharp_params as _extract_csharp_params,
 )
@@ -21,7 +21,6 @@ from desloppify.languages.csharp.extractors_classes import CSharpExtractorDeps
 from desloppify.languages.csharp.extractors_classes import (
     extract_csharp_classes as _extract_csharp_classes,
 )
-from desloppify.utils import find_source_files
 
 CSHARP_FILE_EXCLUSIONS = ["bin", "obj", ".vs", ".idea", "packages"]
 
@@ -74,7 +73,7 @@ def find_csharp_files(path: Path | str) -> list[str]:
 
 def _read_file(filepath: str) -> str | None:
     """Read file text, returning None on decode/IO errors."""
-    p = Path(utils.resolve_path(filepath))
+    p = Path(resolve_path(filepath))
     try:
         return p.read_text()
     except (OSError, UnicodeDecodeError):

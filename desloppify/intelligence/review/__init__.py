@@ -16,12 +16,12 @@ from desloppify.intelligence.integrity import (
 from desloppify.intelligence.review.context import ReviewContext, build_review_context
 from desloppify.intelligence.review.context_holistic import build_holistic_context
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
-from desloppify.intelligence.review.dimensions.file import (
-    DEFAULT_DIMENSIONS,
+from desloppify.intelligence.review.dimensions.holistic import (
+    DIMENSIONS,
     DIMENSION_PROMPTS,
     REVIEW_SYSTEM_PROMPT,
-)
-from desloppify.intelligence.review.dimensions.holistic import (
+    # Backward-compat aliases
+    DEFAULT_DIMENSIONS,
     HOLISTIC_DIMENSION_PROMPTS,
     HOLISTIC_DIMENSIONS,
     HOLISTIC_REVIEW_SYSTEM_PROMPT,
@@ -32,6 +32,7 @@ from desloppify.intelligence.review.dimensions.lang import (
     get_lang_guidance,
 )
 from desloppify.intelligence.review.dimensions.selection import (
+    resolve_dimensions,
     resolve_holistic_dimensions,
     resolve_per_file_dimensions,
 )
@@ -66,17 +67,20 @@ from desloppify.intelligence.review.selection import (
 )
 
 __all__ = [
-    # dimensions
+    # dimensions — canonical names
+    "DIMENSIONS",
+    "DIMENSION_PROMPTS",
+    "REVIEW_SYSTEM_PROMPT",
+    # dimensions — backward-compat aliases
+    "DEFAULT_DIMENSIONS",
     "HOLISTIC_DIMENSIONS",
     "HOLISTIC_DIMENSIONS_BY_LANG",
     "HOLISTIC_DIMENSION_PROMPTS",
     "HOLISTIC_REVIEW_SYSTEM_PROMPT",
-    "DEFAULT_DIMENSIONS",
-    "DIMENSION_PROMPTS",
     "LANG_GUIDANCE",
     "get_lang_guidance",
-    "REVIEW_SYSTEM_PROMPT",
     "load_dimensions_for_lang",
+    "resolve_dimensions",
     "resolve_per_file_dimensions",
     "resolve_holistic_dimensions",
     # policy

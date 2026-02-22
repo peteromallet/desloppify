@@ -36,11 +36,11 @@ from desloppify.languages.typescript.phases import (
     TS_SKIP_NAMES,
 )
 from desloppify.file_discovery import rel
+from desloppify.file_discovery import find_ts_files
 from desloppify.utils import (
     SRC_PATH,
     colorize,
     display_entries,
-    find_ts_files,
     print_table,
 )
 

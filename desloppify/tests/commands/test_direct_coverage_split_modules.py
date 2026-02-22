@@ -39,3 +39,89 @@ def test_split_module_direct_coverage_smoke_signals():
     assert callable(work_queue_helpers._subjective_dimension_aliases)
     assert callable(work_queue_ranking.item_sort_key)
     assert callable(work_queue_ranking.group_queue_items)
+
+
+# ---------------------------------------------------------------------------
+# Behavioral tests for key split-module functions
+# ---------------------------------------------------------------------------
+
+
+def test_merge_potentials_sums_across_langs():
+    """merge_potentials sums detector counts across language partitions."""
+    potentials = {
+        "python": {"smells": 10, "unused": 5},
+        "typescript": {"smells": 20, "deps": 3},
+    }
+    merged = scoring_detection.merge_potentials(potentials)
+    assert merged["smells"] == 30
+    assert merged["unused"] == 5
+    assert merged["deps"] == 3
+
+
+def test_merge_potentials_empty():
+    """merge_potentials returns empty dict for empty input."""
+    assert scoring_detection.merge_potentials({}) == {}
+
+
+def test_item_sort_key_tier_ordering():
+    """item_sort_key orders by tier (lower first)."""
+    t1_item = {"tier": 1, "effective_tier": 1, "confidence": "high", "id": "a"}
+    t3_item = {"tier": 3, "effective_tier": 3, "confidence": "high", "id": "b"}
+    assert work_queue_ranking.item_sort_key(t1_item) < work_queue_ranking.item_sort_key(
+        t3_item
+    )
+
+
+def test_item_sort_key_review_highest_priority():
+    """Review findings sort before all other items."""
+    review_item = {
+        "is_review": True,
+        "review_weight": 1.0,
+        "confidence": "high",
+        "id": "r1",
+    }
+    t1_item = {"tier": 1, "effective_tier": 1, "confidence": "high", "id": "a"}
+    assert work_queue_ranking.item_sort_key(
+        review_item
+    ) < work_queue_ranking.item_sort_key(t1_item)
+
+
+def test_group_queue_items_by_detector():
+    """group_queue_items groups items by detector field."""
+    items = [
+        {"detector": "smells", "file": "a.py"},
+        {"detector": "smells", "file": "b.py"},
+        {"detector": "unused", "file": "c.py"},
+    ]
+    grouped = work_queue_ranking.group_queue_items(items, "detector")
+    assert len(grouped["smells"]) == 2
+    assert len(grouped["unused"]) == 1
+
+
+def test_group_queue_items_by_tier():
+    """group_queue_items groups items by effective tier."""
+    items = [
+        {"effective_tier": 1, "tier": 1},
+        {"effective_tier": 2, "tier": 2},
+        {"effective_tier": 1, "tier": 1},
+    ]
+    grouped = work_queue_ranking.group_queue_items(items, "tier")
+    assert len(grouped["T1"]) == 2
+    assert len(grouped["T2"]) == 1
+
+
+def test_scoring_policy_dimensions_non_empty():
+    """DIMENSIONS list has real entries with required fields."""
+    assert len(scoring_policy.DIMENSIONS) > 0
+    first = scoring_policy.DIMENSIONS[0]
+    assert hasattr(first, "name")
+    assert hasattr(first, "tier")
+    assert hasattr(first, "detectors")
+
+
+def test_scorecard_theme_score_color():
+    """score_color returns a color tuple for any score value."""
+    color = scorecard_theme.score_color(0.0)
+    assert isinstance(color, tuple) and len(color) == 3
+    color_high = scorecard_theme.score_color(100.0)
+    assert isinstance(color_high, tuple) and len(color_high) == 3

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
 from collections.abc import Callable
 from typing import Any
 
 from desloppify.intelligence.narrative._constants import DETECTOR_TOOLS
 from desloppify.intelligence.narrative.action_models import ActionContext, ActionItem
+from desloppify.languages import get_lang
+from desloppify.scoring import compute_score_impact, get_dimension_for_detector, merge_potentials
 
 
 def supported_fixers(state: dict[str, Any], lang: str | None) -> set[str] | None:
@@ -21,8 +22,7 @@ def supported_fixers(state: dict[str, Any], lang: str | None) -> set[str] | None
         return {fixer for fixer in fixers if isinstance(fixer, str)}
 
     try:
-        lang_mod = importlib.import_module("desloppify.languages")
-        return set(lang_mod.get_lang(lang).fixers.keys())
+        return set(get_lang(lang).fixers.keys())
     except (ImportError, ValueError):
         return None
 
@@ -32,9 +32,7 @@ def _impact_calculator(
     state: dict[str, Any],
 ) -> Callable[[str, int], float]:
     """Build an impact estimator closure keyed by detector and count."""
-    scoring_mod = importlib.import_module("desloppify.scoring")
-
-    merged_potentials = scoring_mod.merge_potentials(state.get("potentials", {}))
+    merged_potentials = merge_potentials(state.get("potentials", {}))
     if not merged_potentials or not dimension_scores:
         return lambda _detector, _count: 0.0
 
@@ -48,7 +46,7 @@ def _impact_calculator(
     }
 
     def _impact(detector: str, count: int) -> float:
-        return scoring_mod.compute_score_impact(
+        return compute_score_impact(
             scoring_view, merged_potentials, detector, count
         )
 
@@ -57,8 +55,7 @@ def _impact_calculator(
 
 def _dimension_name(detector: str) -> str:
     """Resolve user-facing dimension name for a detector."""
-    scoring_mod = importlib.import_module("desloppify.scoring")
-    dimension = scoring_mod.get_dimension_for_detector(detector)
+    dimension = get_dimension_for_detector(detector)
     return dimension.name if dimension else "Unknown"
 
 

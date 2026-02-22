@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
 import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
 from desloppify.core.signal_patterns import DEPRECATION_MARKER_RE, MIGRATION_TODO_RE
+from desloppify.languages import get_lang
 
 
 class MigrationLangConfig(Protocol):
@@ -28,8 +28,7 @@ def gather_migration_signals_by_name(
     if not isinstance(lang_name, str) or not lang_name.strip():
         raise ValueError("lang_name must be a non-empty string")
     try:
-        lang_mod = importlib.import_module("desloppify.languages")
-        lang_cfg = lang_mod.get_lang(lang_name)
+        lang_cfg = get_lang(lang_name)
     except (ImportError, ValueError, TypeError, AttributeError) as exc:
         raise ValueError(f"Unsupported language for migration signals: {lang_name}") from exc
     return gather_migration_signals_by_config(file_contents, lang_cfg, rel_fn=rel_fn)

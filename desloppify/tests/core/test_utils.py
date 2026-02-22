@@ -9,17 +9,19 @@ import desloppify.core._internal.text_utils as utils_text_mod
 import desloppify.file_discovery as file_discovery_mod
 import desloppify.utils as utils_mod
 from desloppify.file_discovery import rel, resolve_path
+from desloppify.file_discovery import (
+    find_source_files,
+    get_exclusions,
+    matches_exclusion,
+    set_exclusions,
+)
 from desloppify.utils import (
     check_tool_staleness,
     compute_tool_hash,
-    find_source_files,
-    get_exclusions,
     grep_count_files,
     grep_files,
     grep_files_containing,
-    matches_exclusion,
     read_code_snippet,
-    set_exclusions,
 )
 
 
@@ -30,7 +32,7 @@ def patch_project_root(monkeypatch):
         monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
         monkeypatch.setattr(utils_text_mod, "PROJECT_ROOT", tmp_path)
         monkeypatch.setattr(file_discovery_mod, "PROJECT_ROOT", tmp_path)
-        utils_mod._find_source_files_cached.cache_clear()
+        file_discovery_mod._find_source_files_cached.cache_clear()
     return _patch
 
 
@@ -200,7 +202,7 @@ def test_set_exclusions(monkeypatch):
     finally:
         # Restore
         set_exclusions(list(original))
-        utils_mod._find_source_files_cached.cache_clear()
+        file_discovery_mod._find_source_files_cached.cache_clear()
 
 
 # ── grep_files() ─────────────────────────────────────────────

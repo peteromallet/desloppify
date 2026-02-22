@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from desloppify import state as state_mod
-from desloppify.engine._work_queue.core import (
+from desloppify.engine.work_queue import (
     QueueBuildOptions,
     build_work_queue,
 )

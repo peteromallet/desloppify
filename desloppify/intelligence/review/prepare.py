@@ -18,10 +18,7 @@ from desloppify.intelligence.review.context_holistic import build_holistic_conte
 from desloppify.intelligence.review._context.models import HolisticContext
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.intelligence.review.dimensions.lang import get_lang_guidance
-from desloppify.intelligence.review.dimensions.selection import (
-    resolve_holistic_dimensions,
-    resolve_per_file_dimensions,
-)
+from desloppify.intelligence.review.dimensions.selection import resolve_dimensions
 from desloppify.intelligence.review.prepare_batches import (
     batch_concerns as _batch_concerns,
 )
@@ -42,12 +39,12 @@ from desloppify.intelligence.review.selection import (
     get_file_findings,
     select_files_for_review,
 )
-from desloppify.file_discovery import rel
-from desloppify.utils import (
+from desloppify.file_discovery import (
     disable_file_cache,
     enable_file_cache,
     is_file_cache_enabled,
     read_file_text,
+    rel,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,7 +128,7 @@ def prepare_review(
             disable_file_cache()
 
     default_dims, dimension_prompts, system_prompt = load_dimensions_for_lang(lang.name)
-    dims = resolve_per_file_dimensions(
+    dims = resolve_dimensions(
         cli_dimensions=resolved_options.dimensions,
         config_dimensions=resolved_options.config_dimensions,
         default_dimensions=default_dims,
@@ -240,9 +237,9 @@ def prepare_holistic_review(
 
     default_dims, holistic_prompts, system_prompt = load_dimensions_for_lang(lang.name)
     _, per_file_prompts, _ = load_dimensions_for_lang(lang.name)
-    dims = resolve_holistic_dimensions(
-        lang_name=lang.name,
+    dims = resolve_dimensions(
         cli_dimensions=resolved_options.dimensions,
+        lang_name=lang.name,
         default_dimensions=default_dims,
     )
     lang_guide = get_lang_guidance(lang.name)

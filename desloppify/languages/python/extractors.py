@@ -15,7 +15,7 @@ from desloppify.languages.python.extractors_shared import (
     find_block_end,
     read_file,
 )
-from desloppify.utils import find_py_files
+from desloppify.file_discovery import find_py_files
 
 
 def _find_signature_end(lines: list[str], start: int) -> int | None:

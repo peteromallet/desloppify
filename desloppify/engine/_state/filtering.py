@@ -61,6 +61,7 @@ def matched_ignore_pattern(
 
 def remove_ignored_findings(state: dict, pattern: str) -> int:
     """Suppress findings matching an ignore pattern. Returns count affected."""
+    # deferred: avoid circular import with engine._state.scoring (it imports filtering)
     scoring_mod = importlib.import_module("desloppify.engine._state.scoring")
     ensure_state_defaults(state)
     matched_ids = [

@@ -127,8 +127,9 @@ def _update_objective_health(
     if not pots:
         return
 
+    # deferred: avoid circular import with desloppify.scoring
+    # (scoring -> _scoring/results/core -> _scoring/subjective/core -> review -> state -> _state/merge -> _state/scoring)
     scoring_mod = importlib.import_module("desloppify.scoring")
-
     merged = scoring_mod.merge_potentials(pots)
     if not merged:
         return

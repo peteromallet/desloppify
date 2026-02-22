@@ -9,7 +9,8 @@ from pathlib import Path
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.file_discovery import rel
-from desloppify.utils import colorize, find_ts_files, print_table
+from desloppify.file_discovery import find_ts_files
+from desloppify.utils import colorize, print_table
 
 logger = logging.getLogger(__name__)
 

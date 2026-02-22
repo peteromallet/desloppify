@@ -230,3 +230,80 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(ts_smell_effects.detect_swallowed_errors)
     assert callable(ts_deps_runtime.build_dynamic_import_targets)
     assert callable(ts_extractors_components.extract_ts_components)
+
+
+# ---------------------------------------------------------------------------
+# Behavioral tests for key functions (beyond assert callable)
+# ---------------------------------------------------------------------------
+
+
+def test_noise_budget_defaults():
+    """resolve_finding_noise_budget returns default for None config."""
+    assert noise.resolve_finding_noise_budget(None) == 10
+    assert noise.resolve_finding_noise_budget({}) == 10
+
+
+def test_noise_budget_from_config():
+    """resolve_finding_noise_budget reads the config value."""
+    assert noise.resolve_finding_noise_budget({"finding_noise_budget": 5}) == 5
+    assert noise.resolve_finding_noise_budget({"finding_noise_budget": 0}) == 0
+
+
+def test_noise_settings_invalid_config():
+    """resolve_finding_noise_settings returns warning for invalid values."""
+    per, glob, warning = noise.resolve_finding_noise_settings(
+        {"finding_noise_budget": "bad"}
+    )
+    assert per == 10  # default
+    assert warning is not None
+    assert "Invalid" in warning
+
+
+def test_serialize_item_minimal():
+    """serialize_item extracts expected fields from a minimal item dict."""
+    item = {
+        "id": "smells::foo.py::1",
+        "kind": "finding",
+        "tier": 2,
+        "confidence": "high",
+        "detector": "smells",
+        "file": "foo.py",
+        "summary": "Unused import",
+        "status": "open",
+    }
+    result = next_output.serialize_item(item)
+    assert result["id"] == "smells::foo.py::1"
+    assert result["kind"] == "finding"
+    assert result["tier"] == 2
+    assert result["detector"] == "smells"
+    assert result["file"] == "foo.py"
+    assert "explain" not in result
+
+
+def test_build_query_payload_structure():
+    """build_query_payload returns well-formed dict with queue metadata."""
+    items = [{"id": "f1", "kind": "finding", "tier": 1}]
+    queue = {"tier_counts": {1: 1}, "total": 1}
+    payload = next_output.build_query_payload(
+        queue, items, command="next", narrative=None
+    )
+    assert payload["command"] == "next"
+    assert len(payload["items"]) == 1
+    assert payload["queue"]["total"] == 1
+    assert payload["narrative"] is None
+
+
+def test_private_imports_is_dunder():
+    """_is_dunder correctly identifies dunder names."""
+    assert private_imports._is_dunder("__all__") is True
+    assert private_imports._is_dunder("__init__") is True
+    assert private_imports._is_dunder("_private") is False
+    assert private_imports._is_dunder("public") is False
+
+
+def test_command_registry_has_core_commands():
+    """get_command_handlers includes scan, status, next, plan."""
+    handlers = cmd_registry.get_command_handlers()
+    for cmd in ("scan", "status", "next", "plan"):
+        assert cmd in handlers, f"Missing command handler: {cmd}"
+        assert callable(handlers[cmd])

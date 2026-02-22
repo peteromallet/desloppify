@@ -51,7 +51,7 @@ from desloppify.scoring import (
     compute_dimension_scores,
 )
 from desloppify.state import MergeScanOptions, merge_scan
-from desloppify.utils import (
+from desloppify.file_discovery import (
     disable_file_cache,
     enable_file_cache,
     is_file_cache_enabled,

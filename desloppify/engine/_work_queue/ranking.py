@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
-
 from desloppify.engine.planning.common import CONFIDENCE_ORDER
+from desloppify.state import path_scoped_findings
 from desloppify.engine._work_queue.helpers import (
     is_review_finding as _is_review_finding,
 )
@@ -47,9 +46,7 @@ def build_finding_items(
     scope: str | None,
     chronic: bool,
 ) -> list[dict]:
-    state_mod = importlib.import_module("desloppify.state")
-
-    scoped = state_mod.path_scoped_findings(state.get("findings", {}), scan_path)
+    scoped = path_scoped_findings(state.get("findings", {}), scan_path)
     subjective_scores = _subjective_strict_scores(state)
     out: list[dict] = []
 

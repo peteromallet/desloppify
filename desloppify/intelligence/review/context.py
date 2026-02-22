@@ -19,12 +19,13 @@ from desloppify.intelligence.review.context_signals.auth import gather_auth_cont
 from desloppify.intelligence.review.context_signals.migration import (
     classify_error_strategy,
 )
-from desloppify.file_discovery import rel, resolve_path
-from desloppify.utils import (
+from desloppify.file_discovery import (
     disable_file_cache,
     enable_file_cache,
     is_file_cache_enabled,
     read_file_text,
+    rel,
+    resolve_path,
 )
 
 # ── Shared helpers ────────────────────────────────────────────────

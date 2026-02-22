@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from desloppify.engine._work_queue.core import (
+from desloppify.engine.work_queue import (
     QueueBuildOptions,
 )
-from desloppify.engine._work_queue.core import (
+from desloppify.engine.work_queue import (
     build_work_queue as _build_work_queue,
 )
 

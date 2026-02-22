@@ -15,7 +15,7 @@ from desloppify.languages.python.detectors.smells_ast import (
     detect_vestigial_parameter,
 )
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.utils import find_py_files
+from desloppify.file_discovery import find_py_files
 
 logger = logging.getLogger(__name__)
 

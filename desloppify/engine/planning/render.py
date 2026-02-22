@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-import importlib
 from collections import defaultdict
 from datetime import date
 
+from desloppify.app.output.scorecard_parts.projection import scorecard_dimension_rows
+from desloppify.core.registry import dimension_action_type
+from desloppify.engine._state.schema import get_objective_score, get_overall_score, get_strict_score
 from desloppify.engine.planning.common import TIER_LABELS
 from desloppify.engine.planning.types import PlanState
+from desloppify.engine.work_queue import QueueBuildOptions, build_work_queue
+from desloppify.scoring import DIMENSIONS, DISPLAY_NAMES
+from desloppify.utils import LOC_COMPACT_THRESHOLD
 
 
 def _plan_header(state: PlanState, stats: dict) -> list[str]:
     """Build the plan header: title, score line, and codebase metrics."""
-    schema_mod = importlib.import_module("desloppify.engine._state.schema")
-
-    overall_score = schema_mod.get_overall_score(state)
-    objective_score = schema_mod.get_objective_score(state)
-    strict_score = schema_mod.get_strict_score(state)
+    overall_score = get_overall_score(state)
+    objective_score = get_objective_score(state)
+    strict_score = get_strict_score(state)
 
     if (
         overall_score is not None
@@ -50,11 +53,9 @@ def _plan_header(state: PlanState, stats: dict) -> list[str]:
     ]
 
     if total_files:
-        utils_mod = importlib.import_module("desloppify.utils")
-
         loc_str = (
             f"{total_loc:,}"
-            if total_loc < utils_mod.LOC_COMPACT_THRESHOLD
+            if total_loc < LOC_COMPACT_THRESHOLD
             else f"{total_loc // 1000}K"
         )
         lines.append(
@@ -76,13 +77,10 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
         "| Dimension | Tier | Checks | Issues | Health | Strict | Action |",
         "|-----------|------|--------|--------|--------|--------|--------|",
     ]
-    registry_mod = importlib.import_module("desloppify.core.registry")
-    scoring_mod = importlib.import_module("desloppify.scoring")
-
     static_names: set[str] = set()
     rendered_names: set[str] = set()
     subjective_display_names = {
-        display.lower() for display in scoring_mod.DISPLAY_NAMES.values()
+        display.lower() for display in DISPLAY_NAMES.values()
     }
 
     def _looks_subjective(name: str, data: dict) -> bool:
@@ -92,7 +90,7 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
         lowered = name.strip().lower()
         return lowered in subjective_display_names or lowered.startswith("elegance")
 
-    for dim in scoring_mod.DIMENSIONS:
+    for dim in DIMENSIONS:
         ds = dim_scores.get(dim.name)
         if not ds:
             continue
@@ -103,16 +101,13 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
         score_val = ds.get("score", 100)
         strict_val = ds.get("strict", score_val)
         bold = "**" if score_val < 93 else ""
-        action = registry_mod.dimension_action_type(dim.name)
+        action = dimension_action_type(dim.name)
         lines.append(
             f"| {bold}{dim.name}{bold} | T{dim.tier} | "
             f"{checks:,} | {issues} | {score_val:.1f}% | {strict_val:.1f}% | {action} |"
         )
 
-    scorecard_projection_mod = importlib.import_module(
-        "desloppify.app.output.scorecard_parts.projection"
-    )
-    scorecard_rows = scorecard_projection_mod.scorecard_dimension_rows(state)
+    scorecard_rows = scorecard_dimension_rows(state)
     scorecard_subjective_rows = [
         (name, ds) for name, ds in scorecard_rows if _looks_subjective(name, ds)
     ]
@@ -135,7 +130,7 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
         strict_val = ds.get("strict", score_val)
         tier = int(ds.get("tier", 3) or 3)
         bold = "**" if score_val < 93 else ""
-        action = registry_mod.dimension_action_type(name)
+        action = dimension_action_type(name)
         lines.append(
             f"| {bold}{name}{bold} | T{tier} | "
             f"{checks:,} | {issues} | {score_val:.1f}% | {strict_val:.1f}% | {action} |"
@@ -175,7 +170,6 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
 
 def _plan_tier_sections(findings: dict, *, state: PlanState | None = None) -> list[str]:
     """Build per-tier sections from the shared work-queue backend."""
-    work_queue_mod = importlib.import_module("desloppify.engine._work_queue.core")
 
     queue_state: PlanState | dict = state or {"findings": findings}
     scan_path = state.get("scan_path") if state else None
@@ -192,9 +186,9 @@ def _plan_tier_sections(findings: dict, *, state: PlanState | None = None) -> li
     if "findings" not in queue_state:
         queue_state = {**queue_state, "findings": findings}
 
-    queue = work_queue_mod.build_work_queue(
+    queue = build_work_queue(
         queue_state,
-        options=work_queue_mod.QueueBuildOptions(
+        options=QueueBuildOptions(
             count=None,
             scan_path=scan_path,
             status="open",

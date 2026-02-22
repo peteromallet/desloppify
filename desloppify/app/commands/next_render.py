@@ -11,7 +11,7 @@ from desloppify.app.commands.scan.scan_reporting_subjective import (
 from desloppify.app.output.scorecard_parts.projection import (
     scorecard_subjective_entries,
 )
-from desloppify.engine._work_queue.core import ATTEST_EXAMPLE, group_queue_items
+from desloppify.engine.work_queue import ATTEST_EXAMPLE, group_queue_items
 from desloppify.intelligence.integrity import (
     is_holistic_subjective_finding,
     subjective_review_open_breakdown,

@@ -19,7 +19,7 @@ from desloppify.engine._state.schema import (
     validate_state_invariants,
 )
 from desloppify.engine._state.scoring import _recompute_stats
-from desloppify.utils import safe_write_text
+from desloppify.file_discovery import safe_write_text
 
 logger = logging.getLogger(__name__)
 

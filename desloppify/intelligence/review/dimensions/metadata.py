@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from functools import lru_cache
 
 from desloppify.core._internal.text_utils import is_numeric
-from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES
 from desloppify.intelligence.review.dimensions.data import (
     load_dimensions,
     load_dimensions_for_lang,
 )
+from desloppify.languages import available_langs
+from desloppify.scoring import DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +145,7 @@ def _merge_dimension_meta(
 
 def _available_languages() -> list[str]:
     try:
-        lang_mod = importlib.import_module("desloppify.languages")
-        return list(lang_mod.available_langs())
+        return list(available_langs())
     except (ImportError, ValueError, TypeError, RuntimeError):
         return []
 

@@ -38,7 +38,7 @@ def load_font(
     size: int, *, serif: bool = False, bold: bool = False, mono: bool = False
 ):
     """Load a font with cross-platform fallback."""
-    image_font_mod = importlib.import_module("PIL.ImageFont")
+    image_font_mod = importlib.import_module("PIL.ImageFont")  # deferred: optional dependency
 
     size = size * SCALE
     candidates = []

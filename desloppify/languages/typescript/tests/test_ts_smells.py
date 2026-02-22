@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import desloppify.languages.typescript.detectors.smells as smells_detector_mod
+import desloppify.file_discovery as file_discovery_mod
 import desloppify.utils as utils_mod
 from desloppify.languages.typescript.detectors.smells import detect_smells
 
@@ -20,7 +21,7 @@ def _set_project_root(tmp_path, monkeypatch):
     monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(smells_detector_mod, "PROJECT_ROOT", tmp_path)
     # Clear the lru_cache so file discovery uses the new PROJECT_ROOT
-    utils_mod._find_source_files_cached.cache_clear()
+    file_discovery_mod._find_source_files_cached.cache_clear()
 
 
 def _write(tmp_path: Path, name: str, content: str) -> Path:

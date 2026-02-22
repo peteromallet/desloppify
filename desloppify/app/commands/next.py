@@ -16,7 +16,7 @@ from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.app.output.scorecard_parts.projection import (
     scorecard_dimensions_payload,
 )
-from desloppify.engine._work_queue.core import (
+from desloppify.engine.work_queue import (
     QueueBuildOptions,
     build_work_queue,
 )

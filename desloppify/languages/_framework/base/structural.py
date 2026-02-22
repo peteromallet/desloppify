@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.state import Finding, make_finding
+from desloppify.engine._state.schema import Finding
+from desloppify.state import make_finding
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.file_discovery import resolve_path
 

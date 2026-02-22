@@ -2,28 +2,20 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
+
+from desloppify.languages import available_langs, get_lang
 
 logger = logging.getLogger(__name__)
 
 
 def _collect_holistic_dims_by_lang() -> dict[str, list[str]]:
     """Collect per-language holistic dimension defaults from language plugins."""
-    try:
-        lang_mod = importlib.import_module("desloppify.languages")
-    except ImportError as exc:
-        logger.debug(
-            "Language registry unavailable while collecting holistic dimensions: %s",
-            exc,
-        )
-        return {}
-
     out: dict[str, list[str]] = {}
-    for lang_name in lang_mod.available_langs():
+    for lang_name in available_langs():
         try:
             dims = list(
-                getattr(lang_mod.get_lang(lang_name), "holistic_review_dimensions", [])
+                getattr(get_lang(lang_name), "holistic_review_dimensions", [])
                 or []
             )
         except (ValueError, TypeError, AttributeError, ImportError) as exc:
@@ -39,19 +31,10 @@ HOLISTIC_DIMENSIONS_BY_LANG: dict[str, list[str]] = _collect_holistic_dims_by_la
 
 def _collect_lang_guidance() -> dict[str, dict[str, object]]:
     """Collect review guidance from registered language plugins."""
-    try:
-        lang_mod = importlib.import_module("desloppify.languages")
-    except ImportError as exc:
-        logger.debug(
-            "Language registry unavailable while collecting review guidance: %s",
-            exc,
-        )
-        return {}
-
     out: dict[str, dict[str, object]] = {}
-    for lang_name in lang_mod.available_langs():
+    for lang_name in available_langs():
         try:
-            guide = getattr(lang_mod.get_lang(lang_name), "review_guidance", {}) or {}
+            guide = getattr(get_lang(lang_name), "review_guidance", {}) or {}
         except (ValueError, TypeError, AttributeError, ImportError) as exc:
             logger.debug("Skipping review guidance for %s: %s", lang_name, exc)
             guide = {}
@@ -69,8 +52,7 @@ def get_lang_guidance(lang_name: str) -> dict[str, object]:
         return LANG_GUIDANCE[lang_name]
 
     try:
-        lang_mod = importlib.import_module("desloppify.languages")
-        guide = getattr(lang_mod.get_lang(lang_name), "review_guidance", {}) or {}
+        guide = getattr(get_lang(lang_name), "review_guidance", {}) or {}
     except (ImportError, ValueError, TypeError, AttributeError) as exc:
         logger.debug("Failed to load review guidance for %s: %s", lang_name, exc)
         guide = {}

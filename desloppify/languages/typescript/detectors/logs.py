@@ -17,9 +17,9 @@ from pathlib import Path
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.languages.typescript.detectors.contracts import DetectorResult
 from desloppify.file_discovery import rel, resolve_path
+from desloppify.file_discovery import find_ts_files
 from desloppify.utils import (
     colorize,
-    find_ts_files,
     grep_files,
     print_table,
 )

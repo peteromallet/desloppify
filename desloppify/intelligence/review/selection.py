@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
 import logging
 import re
 from dataclasses import dataclass
@@ -16,8 +15,8 @@ from desloppify.intelligence.review.context import (
     dep_graph_lookup,
     importer_count,
 )
-from desloppify.file_discovery import rel
-from desloppify.utils import read_file_text
+from desloppify.file_discovery import read_file_text, rel
+from desloppify.languages import get_lang
 
 logger = logging.getLogger(__name__)
 
@@ -181,9 +180,8 @@ def low_value_pattern(lang_or_name: Any = None) -> re.Pattern[str]:
 
     if isinstance(lang_or_name, str):
         try:
-            lang_mod = importlib.import_module("desloppify.languages")
             pattern = getattr(
-                lang_mod.get_lang(lang_or_name), "review_low_value_pattern", None
+                get_lang(lang_or_name), "review_low_value_pattern", None
             )
             if isinstance(pattern, re.Pattern):
                 return pattern

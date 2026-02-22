@@ -35,21 +35,21 @@ from desloppify.app.output.scorecard_parts.theme import (
     score_color,
 )
 from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.state import get_overall_score, get_strict_score
 
 logger = logging.getLogger(__name__)
 
 
 def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     """Render a landscape scorecard PNG from scan state. Returns the output path."""
-    image_mod = importlib.import_module("PIL.Image")
-    image_draw_mod = importlib.import_module("PIL.ImageDraw")
-    scorecard_draw_mod = importlib.import_module("desloppify.app.output.scorecard_parts.draw")
-    state_mod = importlib.import_module("desloppify.state")
+    image_mod = importlib.import_module("PIL.Image")  # deferred: optional dependency
+    image_draw_mod = importlib.import_module("PIL.ImageDraw")  # deferred: optional dependency
+    scorecard_draw_mod = importlib.import_module("desloppify.app.output.scorecard_parts.draw")  # deferred: depends on PIL
 
     output_path = Path(output_path)
 
-    main_score = state_mod.get_overall_score(state) or 0
-    strict_score = state_mod.get_strict_score(state) or 0
+    main_score = get_overall_score(state) or 0
+    strict_score = get_strict_score(state) or 0
 
     project_name = resolve_project_name(PROJECT_ROOT)
     package_version = resolve_package_version(

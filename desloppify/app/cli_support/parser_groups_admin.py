@@ -304,3 +304,17 @@ def _add_langs_parser(sub) -> None:
     sub.add_parser("langs", help="List all available language plugins with depth and tools")
 
 
+def _add_update_skill_parser(sub) -> None:
+    p = sub.add_parser(
+        "update-skill",
+        help="Install or update the desloppify skill/agent document",
+    )
+    p.add_argument(
+        "interface",
+        nargs="?",
+        default=None,
+        help="Agent interface (claude, codex, cursor, copilot, windsurf, gemini). "
+        "Auto-detected on updates if omitted.",
+    )
+
+

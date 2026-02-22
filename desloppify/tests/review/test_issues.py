@@ -14,7 +14,7 @@ from desloppify.app.commands.issues_cmd import (
     cmd_issues,
 )
 from desloppify.core.issues_render import finding_weight, render_issue_detail
-from desloppify.engine._work_queue.issues import (
+from desloppify.engine.work_queue import (
     expire_stale_holistic,
     impact_label,
     list_open_review_findings,

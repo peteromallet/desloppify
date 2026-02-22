@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from desloppify.core._internal.text_utils import PROJECT_ROOT
@@ -91,6 +92,48 @@ def resolve_path(filepath: str) -> str:
     if p.is_absolute():
         return str(p.resolve())
     return str((PROJECT_ROOT / filepath).resolve())
+
+
+def safe_write_text(filepath: str | Path, content: str) -> None:
+    """Atomically write text to a file using temp+rename."""
+    p = Path(filepath)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=p.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, str(p))
+    except OSError:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+# ── File content cache & reading ──────────────────────────────
+
+
+def enable_file_cache():
+    """Enable scan-scoped file content cache."""
+    runtime = current_runtime_context()
+    runtime.file_text_cache.enable()
+    runtime.cache_enabled.set(True)
+
+
+def disable_file_cache():
+    """Disable file content cache and free memory."""
+    runtime = current_runtime_context()
+    runtime.file_text_cache.disable()
+    runtime.cache_enabled.set(False)
+
+
+def is_file_cache_enabled() -> bool:
+    """Return whether scan-scoped file cache is currently enabled."""
+    return bool(current_runtime_context().cache_enabled)
+
+
+def read_file_text(filepath: str) -> str | None:
+    """Read a file as text, with optional caching."""
+    return current_runtime_context().file_text_cache.read(filepath)
 
 
 def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:

@@ -11,7 +11,7 @@ from desloppify import state as state_mod
 from desloppify import utils as utils_mod
 from desloppify.app.output.scorecard_parts import projection as scorecard_projection_mod
 from desloppify.core import registry as registry_mod
-from desloppify.engine._work_queue.helpers import ATTEST_EXAMPLE
+from desloppify.engine.work_queue import ATTEST_EXAMPLE
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 
@@ -191,6 +191,46 @@ def _print_narrative_status(narrative: dict | None) -> None:
     print()
 
 
+def _detect_agent_interface() -> str | None:
+    """Detect the current agent interface from environment variables."""
+    if os.environ.get("CLAUDE_CODE"):
+        return "claude"
+    return None
+
+
+def _auto_update_skill() -> None:
+    """Auto-install or auto-update the skill document during scan.
+
+    - First scan with no skill doc: auto-installs if we can detect the agent.
+    - Subsequent scans with stale doc: auto-updates.
+    - Unknown agent with no doc: silent (user runs ``update-skill`` manually).
+    """
+    install = utils_mod.find_installed_skill()
+
+    if install and not install.stale:
+        return  # Up to date.
+
+    try:
+        from desloppify.app.commands.update_skill import (
+            resolve_interface,
+            update_installed_skill,
+        )
+
+        if install:
+            # Stale — resolve interface from existing install.
+            interface = resolve_interface(install=install)
+        else:
+            # No install — detect from environment.
+            interface = _detect_agent_interface()
+
+        if interface:
+            update_installed_skill(interface)
+    except Exception:  # noqa: BLE001
+        # Network failure, permission error, etc. — don't break the scan.
+        if install:
+            print("Skill document is outdated. Run: desloppify update-skill")
+
+
 def _print_badge_hint(badge_path: Path | None) -> None:
     if not (badge_path and badge_path.exists()):
         return
@@ -251,9 +291,7 @@ def _print_llm_summary(
     _print_workflow_guide()
     _print_narrative_status(narrative)
     _print_badge_hint(badge_path)
-    skill_warning = utils_mod.check_skill_version()
-    if skill_warning:
-        print(f"\n⚠ {skill_warning}\n")
+    _auto_update_skill()
     print("─" * 60)
 
 

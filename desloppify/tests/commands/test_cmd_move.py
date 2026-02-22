@@ -13,7 +13,7 @@ from desloppify.app.commands.move.move_language import (
 )
 from desloppify.app.commands.move.move_planning import dedup_replacements, resolve_dest
 from desloppify.file_discovery import resolve_path
-from desloppify.utils import safe_write_text as safe_write
+from desloppify.file_discovery import safe_write_text as safe_write
 
 # ---------------------------------------------------------------------------
 # Module imports

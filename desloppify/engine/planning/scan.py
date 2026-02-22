@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import importlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.engine._state.schema import Finding
 from desloppify.engine.planning.common import is_subjective_phase
-from desloppify.engine.policy.zones import FileZoneMap
+from desloppify.engine.policy.zones import ZONE_POLICIES, FileZoneMap
 from desloppify.file_discovery import rel
+from desloppify.languages import auto_detect_lang, available_langs, get_lang
 from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages._framework.runtime import LangRun, make_lang_run
 from desloppify.utils import colorize
@@ -35,15 +36,13 @@ def _resolve_lang(
     if lang is not None:
         return lang
 
-    lang_mod = importlib.import_module("desloppify.languages")
-
-    detected = lang_mod.auto_detect_lang(project_root)
+    detected = auto_detect_lang(project_root)
     if detected is None:
-        langs = lang_mod.available_langs()
+        langs = available_langs()
         if not langs:
             raise ValueError("No language plugins available")
         detected = langs[0]
-    return lang_mod.get_lang(detected)
+    return get_lang(detected)
 
 
 def _build_zone_map(path: Path, lang: LangRun, zone_overrides: dict[str, str] | None) -> None:
@@ -81,8 +80,8 @@ def _select_phases(lang: LangRun, *, include_slow: bool, profile: str) -> list[D
     return phases
 
 
-def _run_phases(path: Path, lang: LangRun, phases: list[DetectorPhase]) -> tuple[list[dict], dict[str, int]]:
-    findings: list[dict] = []
+def _run_phases(path: Path, lang: LangRun, phases: list[DetectorPhase]) -> tuple[list[Finding], dict[str, int]]:
+    findings: list[Finding] = []
     all_potentials: dict[str, int] = {}
 
     total = len(phases)
@@ -95,14 +94,13 @@ def _run_phases(path: Path, lang: LangRun, phases: list[DetectorPhase]) -> tuple
     return findings, all_potentials
 
 
-def _stamp_finding_context(findings: list[dict], lang: LangRun) -> None:
+def _stamp_finding_context(findings: list[Finding], lang: LangRun) -> None:
     if not findings:
         return
 
     zone_policies = None
     if lang.zone_map is not None:
-        zones_mod = importlib.import_module("desloppify.engine.policy.zones")
-        zone_policies = zones_mod.ZONE_POLICIES
+        zone_policies = ZONE_POLICIES
 
     for finding in findings:
         finding["lang"] = lang.name
@@ -123,7 +121,7 @@ def _generate_findings_from_lang(
     include_slow: bool = True,
     zone_overrides: dict[str, str] | None = None,
     profile: str = "full",
-) -> tuple[list[dict], dict[str, int]]:
+) -> tuple[list[Finding], dict[str, int]]:
     """Run detector phases from a LangRun."""
     _build_zone_map(path, lang, zone_overrides)
     phases = _select_phases(lang, include_slow=include_slow, profile=profile)
@@ -138,7 +136,7 @@ def generate_findings(
     lang: LangConfig | LangRun | None = None,
     *,
     options: PlanScanOptions | None = None,
-) -> tuple[list[dict], dict[str, int]]:
+) -> tuple[list[Finding], dict[str, int]]:
     """Run all detectors and convert results to normalized findings."""
     resolved_options = options or PlanScanOptions()
 

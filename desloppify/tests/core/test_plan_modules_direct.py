@@ -9,7 +9,6 @@ import desloppify.engine.planning.common as plan_common_mod
 import desloppify.engine.planning.scan as plan_scan_mod
 import desloppify.engine.planning.select as plan_select_mod
 import desloppify.engine._state.filtering as filtering_mod
-import desloppify.languages as lang_mod
 
 
 class _Phase:
@@ -66,9 +65,9 @@ def test_resolve_lang_prefers_explicit_and_fallbacks(monkeypatch):
     explicit = object()
     assert plan_scan_mod._resolve_lang(explicit, Path(".")) is explicit
 
-    monkeypatch.setattr(lang_mod, "auto_detect_lang", lambda _root: None)
-    monkeypatch.setattr(lang_mod, "available_langs", lambda: ["python", "typescript"])
-    monkeypatch.setattr(lang_mod, "get_lang", lambda name: f"cfg:{name}")
+    monkeypatch.setattr(plan_scan_mod, "auto_detect_lang", lambda _root: None)
+    monkeypatch.setattr(plan_scan_mod, "available_langs", lambda: ["python", "typescript"])
+    monkeypatch.setattr(plan_scan_mod, "get_lang", lambda name: f"cfg:{name}")
     resolved = plan_scan_mod._resolve_lang(None, Path("."))
     assert resolved == "cfg:python"
 

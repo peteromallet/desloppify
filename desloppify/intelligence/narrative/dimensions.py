@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-import importlib
-
 from desloppify.intelligence.narrative._constants import STRUCTURAL_MERGE
+from desloppify.scoring import (
+    DIMENSIONS,
+    TIER_WEIGHTS,
+    compute_score_impact,
+    merge_potentials,
+)
+from desloppify.state import path_scoped_findings
 
 
 def _analyze_dimensions(dim_scores: dict, history: list[dict], state: dict) -> dict:
@@ -12,16 +17,15 @@ def _analyze_dimensions(dim_scores: dict, history: list[dict], state: dict) -> d
     if not dim_scores:
         return {}
 
-    scoring_mod = importlib.import_module("desloppify.scoring")
-    potentials = scoring_mod.merge_potentials(state.get("potentials", {}))
+    potentials = merge_potentials(state.get("potentials", {}))
     return {
-        "lowest_dimensions": _lowest_dimensions(dim_scores, scoring_mod, potentials),
+        "lowest_dimensions": _lowest_dimensions(dim_scores, potentials),
         "biggest_gap_dimensions": _biggest_gap_dimensions(dim_scores, state)[:3],
         "stagnant_dimensions": _stagnant_dimensions(dim_scores, history),
     }
 
 
-def _lowest_dimensions(dim_scores: dict, scoring_mod, potentials: dict) -> list[dict]:
+def _lowest_dimensions(dim_scores: dict, potentials: dict) -> list[dict]:
     """Build summary entries for the lowest strict-scoring dimensions."""
     sorted_dims = sorted(
         (
@@ -39,7 +43,6 @@ def _lowest_dimensions(dim_scores: dict, scoring_mod, potentials: dict) -> list[
         impact = _dominant_detector_impact(
             dim_scores=dim_scores,
             detectors=ds.get("detectors", {}),
-            scoring_mod=scoring_mod,
             potentials=potentials,
         )
         is_subjective = "subjective_assessment" in ds.get("detectors", {})
@@ -59,8 +62,7 @@ def _lowest_dimensions(dim_scores: dict, scoring_mod, potentials: dict) -> list[
 def _biggest_gap_dimensions(dim_scores: dict, state: dict) -> list[dict]:
     """Build summary entries for dimensions with the biggest strict gap."""
     biggest_gap = []
-    state_mod = importlib.import_module("desloppify.state")
-    scoped = state_mod.path_scoped_findings(
+    scoped = path_scoped_findings(
         state.get("findings", {}), state.get("scan_path")
     )
     for name, ds in dim_scores.items():
@@ -124,7 +126,6 @@ def _dominant_detector_impact(
     *,
     dim_scores: dict,
     detectors: dict,
-    scoring_mod,
     potentials: dict,
 ) -> float:
     """Estimate impact using the most consequential detector in a dimension."""
@@ -141,7 +142,7 @@ def _dominant_detector_impact(
         issue_count = int(detector_data.get("issues", 0) or 0)
         if issue_count <= 0:
             continue
-        detector_impact = scoring_mod.compute_score_impact(
+        detector_impact = compute_score_impact(
             normalized_scores,
             potentials,
             detector_name,
@@ -153,11 +154,10 @@ def _dominant_detector_impact(
 
 def _finding_in_dimension(finding: dict, dim_name: str, dim_scores: dict) -> bool:
     """Check if a finding's detector belongs to a dimension."""
-    scoring_mod = importlib.import_module("desloppify.scoring")
     detector = finding.get("detector", "")
     if detector in STRUCTURAL_MERGE:
         detector = "structural"
-    for dim in scoring_mod.DIMENSIONS:
+    for dim in DIMENSIONS:
         if dim.name == dim_name and detector in dim.detectors:
             return True
     return False
@@ -174,13 +174,12 @@ def _analyze_debt(dim_scores: dict, findings: dict, history: list[dict]) -> dict
     overall_lenient = 0.0
     overall_strict = 0.0
     if dim_scores:
-        scoring_mod = importlib.import_module("desloppify.scoring")
         w_sum_l = 0.0
         w_sum_s = 0.0
         w_total = 0.0
         for name, ds in dim_scores.items():
             tier = ds.get("tier", 3)
-            w = scoring_mod.TIER_WEIGHTS.get(tier, 2)
+            w = TIER_WEIGHTS.get(tier, 2)
             w_sum_l += ds["score"] * w
             w_sum_s += ds.get("strict", ds["score"]) * w
             w_total += w

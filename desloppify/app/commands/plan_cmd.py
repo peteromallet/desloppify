@@ -9,7 +9,8 @@ from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.core.fallbacks import warn_best_effort
 from desloppify.engine.planning import core as plan_mod
-from desloppify.utils import colorize, safe_write_text
+from desloppify.file_discovery import safe_write_text
+from desloppify.utils import colorize
 
 def cmd_plan_output(args: argparse.Namespace) -> None:
     """Generate a prioritized markdown plan from state."""

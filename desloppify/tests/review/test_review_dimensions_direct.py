@@ -17,9 +17,9 @@ from desloppify.intelligence.review.dimensions.file import DEFAULT_DIMENSIONS
 
 
 def test_collect_holistic_dims_by_lang_filters_empty_entries(monkeypatch):
-    monkeypatch.setattr(lang_mod, "available_langs", lambda: ["python", "typescript"])
+    monkeypatch.setattr(dimensions_mod, "available_langs", lambda: ["python", "typescript"])
     monkeypatch.setattr(
-        lang_mod,
+        dimensions_mod,
         "get_lang",
         lambda name: SimpleNamespace(
             holistic_review_dimensions=(
@@ -33,9 +33,9 @@ def test_collect_holistic_dims_by_lang_filters_empty_entries(monkeypatch):
 
 
 def test_collect_lang_guidance_and_get_lang_guidance_cache(monkeypatch):
-    monkeypatch.setattr(lang_mod, "available_langs", lambda: ["python"])
+    monkeypatch.setattr(dimensions_mod, "available_langs", lambda: ["python"])
     monkeypatch.setattr(
-        lang_mod,
+        dimensions_mod,
         "get_lang",
         lambda _name: SimpleNamespace(review_guidance={"patterns": ["check x"]}),
     )
@@ -130,7 +130,7 @@ def test_resolve_holistic_dimensions_precedence(monkeypatch):
     )
     monkeypatch.setattr(
         dimensions_selection_mod,
-        "HOLISTIC_DIMENSIONS",
+        "DIMENSIONS",
         ["cross_module_architecture"],
     )
 

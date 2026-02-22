@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from datetime import datetime as _dt
 from datetime import timezone as _tz
@@ -13,6 +12,7 @@ from desloppify.intelligence.narrative._constants import (
     _REMINDER_DECAY_THRESHOLD,
     STRUCTURAL_MERGE,
 )
+from desloppify.state import get_strict_score, path_scoped_findings
 
 logger = logging.getLogger(__name__)
 
@@ -453,11 +453,10 @@ def _compute_reminders(
 ) -> tuple[list[dict], dict]:
     """Compute context-specific reminders, suppressing those shown too many times."""
     del lang  # Reserved for future language-specific rules.
-    state_mod = importlib.import_module("desloppify.state")
 
-    strict_score = state_mod.get_strict_score(state)
+    strict_score = get_strict_score(state)
     reminder_history = state.get("reminder_history", {})
-    scoped_findings = state_mod.path_scoped_findings(
+    scoped_findings = path_scoped_findings(
         state.get("findings", {}), state.get("scan_path")
     )
     fp_rates = _compute_fp_rates(scoped_findings)

@@ -1,27 +1,33 @@
-"""Shared utilities: paths, colors, output formatting, file discovery."""
+"""Shared utilities: paths, colors, output formatting, grep helpers."""
 
 import hashlib
 import json
 import os
 import re
 import sys
-import tempfile
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from desloppify.core._internal import text_utils as _text_utils
-from desloppify.core.runtime_state import current_runtime_context
-from desloppify.file_discovery import (  # noqa: F401
-    DEFAULT_EXCLUSIONS,
-    _find_source_files_cached,
-    find_py_files,
-    find_source_files,
-    find_ts_files,
-    find_tsx_files,
-    matches_exclusion,
-    rel,
-    resolve_path,
+from desloppify.file_discovery import (
+    DEFAULT_EXCLUSIONS as DEFAULT_EXCLUSIONS,
+    _find_source_files_cached as _find_source_files_cached,
+    disable_file_cache as disable_file_cache,
+    enable_file_cache as enable_file_cache,
+    find_py_files as find_py_files,
+    find_source_files as find_source_files,
+    find_ts_files as find_ts_files,
+    find_tsx_files as find_tsx_files,
+    get_exclusions as get_exclusions,
+    is_file_cache_enabled as is_file_cache_enabled,
+    matches_exclusion as matches_exclusion,
+    read_file_text as read_file_text,
+    rel as rel,
+    resolve_path as resolve_path,
+    safe_write_text as safe_write_text,
+    set_exclusions as set_exclusions,
 )
 
 get_area = _text_utils.get_area
@@ -38,63 +44,8 @@ def read_code_snippet(filepath: str, line: int, context: int = 1) -> str | None:
         filepath, line, context, project_root=PROJECT_ROOT
     )
 
-def set_exclusions(patterns: list[str]):
-    """Set global exclusion patterns (called once from CLI at startup)."""
-    runtime = current_runtime_context()
-    runtime.exclusion_config.values = tuple(patterns)
-    runtime.source_file_cache.clear()
-
-
-def get_exclusions() -> tuple[str, ...]:
-    """Return current extra exclusion patterns.
-
-    Use this instead of accessing exclusion state directly —
-    from-imports bind to the initial value and become stale after set_exclusions().
-    """
-    return current_runtime_context().exclusion_config.values
-
-
-def enable_file_cache():
-    """Enable scan-scoped file content cache."""
-    runtime = current_runtime_context()
-    runtime.file_text_cache.enable()
-    runtime.cache_enabled.set(True)
-
-
-def disable_file_cache():
-    """Disable file content cache and free memory."""
-    runtime = current_runtime_context()
-    runtime.file_text_cache.disable()
-    runtime.cache_enabled.set(False)
-
-
-def is_file_cache_enabled() -> bool:
-    """Return whether scan-scoped file cache is currently enabled."""
-    return bool(current_runtime_context().cache_enabled)
-
-
-# ── Atomic file writes ─────────────────────────────────────
-def safe_write_text(filepath: str | Path, content: str) -> None:
-    """Atomically write text to a file using temp+rename."""
-    p = Path(filepath)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=p.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-        os.replace(tmp, str(p))
-    except OSError:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
-
 
 # ── Cross-platform grep replacements ────────────────────────
-
-
-def read_file_text(filepath: str) -> str | None:
-    """Read a file as text, with optional caching."""
-    return current_runtime_context().file_text_cache.read(filepath)
 
 
 def grep_files(
@@ -289,11 +240,14 @@ def check_tool_staleness(state: dict) -> str | None:
 # should pick up (new commands, changed workflows, removed sections).
 SKILL_VERSION = 1
 
-_SKILL_VERSION_RE = re.compile(r"<!--\s*desloppify-skill-version:\s*(\d+)\s*-->")
-_SKILL_UPDATE_RE = re.compile(r"<!--\s*desloppify-update:\s*(.+?)\s*-->")
+SKILL_VERSION_RE = re.compile(r"<!--\s*desloppify-skill-version:\s*(\d+)\s*-->")
+SKILL_OVERLAY_RE = re.compile(r"<!--\s*desloppify-overlay:\s*(\w+)\s*-->")
+
+SKILL_BEGIN = "<!-- desloppify-begin -->"
+SKILL_END = "<!-- desloppify-end -->"
 
 # Locations where the skill doc might be installed, relative to PROJECT_ROOT.
-_SKILL_SEARCH_PATHS = (
+SKILL_SEARCH_PATHS = (
     ".claude/skills/desloppify/SKILL.md",
     "AGENTS.md",
     "CLAUDE.md",
@@ -301,19 +255,31 @@ _SKILL_SEARCH_PATHS = (
     ".github/copilot-instructions.md",
 )
 
-_FALLBACK_UPDATE_HINT = "see https://github.com/peteromallet/desloppify#quick-start"
+# Interface name → (target file, overlay filename, dedicated).
+# Dedicated files are overwritten entirely; shared files get section replacement.
+SKILL_TARGETS: dict[str, tuple[str, str, bool]] = {
+    "claude": (".claude/skills/desloppify/SKILL.md", "CLAUDE", True),
+    "codex": ("AGENTS.md", "CODEX", False),
+    "cursor": (".cursor/rules/desloppify.md", "CURSOR", True),
+    "copilot": (".github/copilot-instructions.md", "COPILOT", False),
+    "windsurf": ("AGENTS.md", "WINDSURF", False),
+    "gemini": ("AGENTS.md", "GEMINI", False),
+}
 
 
-def check_skill_version() -> str | None:
-    """Return a warning if the installed skill doc is outdated, else None.
+@dataclass
+class SkillInstall:
+    """Detected skill document installation."""
 
-    Searches common install locations for the ``desloppify-skill-version``
-    comment.  When outdated, reads the ``desloppify-update`` comment from the
-    same file to return the exact reinstall command the user needs.  Each
-    overlay (CLAUDE.md, CURSOR.md, etc.) embeds its own update command, so
-    there is no parallel dictionary to maintain.
-    """
-    for rel_path in _SKILL_SEARCH_PATHS:
+    rel_path: str
+    version: int
+    overlay: str | None
+    stale: bool
+
+
+def find_installed_skill() -> SkillInstall | None:
+    """Find the installed skill document and return its metadata, or None."""
+    for rel_path in SKILL_SEARCH_PATHS:
         full = PROJECT_ROOT / rel_path
         if not full.is_file():
             continue
@@ -321,20 +287,28 @@ def check_skill_version() -> str | None:
             content = full.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        version_match = _SKILL_VERSION_RE.search(content)
+        version_match = SKILL_VERSION_RE.search(content)
         if not version_match:
             continue
         installed_version = int(version_match.group(1))
-        if installed_version >= SKILL_VERSION:
-            return None
-        # Read the update command embedded by the overlay (last match wins,
-        # since overlays are appended after SKILL.md).
-        update_cmd = _FALLBACK_UPDATE_HINT
-        for m in _SKILL_UPDATE_RE.finditer(content):
-            update_cmd = m.group(1)
-        return (
-            f"Your desloppify skill document is outdated "
-            f"(v{installed_version}, current v{SKILL_VERSION}). "
-            f"Update: {update_cmd}"
+        overlay_match = SKILL_OVERLAY_RE.search(content)
+        overlay = overlay_match.group(1) if overlay_match else None
+        return SkillInstall(
+            rel_path=rel_path,
+            version=installed_version,
+            overlay=overlay,
+            stale=installed_version < SKILL_VERSION,
         )
     return None
+
+
+def check_skill_version() -> str | None:
+    """Return a warning if the installed skill doc is outdated, else None."""
+    install = find_installed_skill()
+    if not install or not install.stale:
+        return None
+    return (
+        f"Your desloppify skill document is outdated "
+        f"(v{install.version}, current v{SKILL_VERSION}). "
+        f"Run: desloppify update-skill"
+    )

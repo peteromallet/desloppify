@@ -6,7 +6,7 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
-from desloppify.engine.planning.core import CONFIDENCE_ORDER
+from desloppify.engine.planning import CONFIDENCE_ORDER
 from desloppify.file_discovery import rel
 from desloppify.utils import colorize, read_code_snippet
 

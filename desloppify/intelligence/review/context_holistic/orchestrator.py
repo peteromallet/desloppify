@@ -12,11 +12,11 @@ from desloppify.intelligence.review.context_signals.auth import gather_auth_cont
 from desloppify.intelligence.review.context_signals.migration import (
     gather_migration_signals,
 )
-from desloppify.file_discovery import rel
-from desloppify.utils import (
+from desloppify.file_discovery import (
     disable_file_cache,
     enable_file_cache,
     is_file_cache_enabled,
+    rel,
 )
 
 from .budget import _abstractions_context, _codebase_stats

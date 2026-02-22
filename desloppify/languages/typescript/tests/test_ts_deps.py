@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import desloppify.languages.typescript.detectors.deps as deps_detector_mod
+import desloppify.file_discovery as file_discovery_mod
 import desloppify.utils as utils_mod
 from desloppify.engine.detectors import orphaned as orphaned_detector_mod
 
@@ -18,7 +19,7 @@ def _set_project_root(tmp_path, monkeypatch):
     monkeypatch.setattr(utils_mod, "SRC_PATH", tmp_path / "src")
     monkeypatch.setattr(deps_detector_mod, "PROJECT_ROOT", tmp_path)
     # Clear caches so each test starts fresh
-    utils_mod._find_source_files_cached.cache_clear()
+    file_discovery_mod._find_source_files_cached.cache_clear()
     deps_detector_mod._load_tsconfig_paths_cached.cache_clear()
 
 

@@ -12,6 +12,7 @@ from desloppify.app.cli_support.parser_groups_admin import (  # noqa: F401 (re-e
     _add_move_parser,
     _add_plan_parser,
     _add_review_parser,
+    _add_update_skill_parser,
     _add_viz_parser,
     _add_zone_parser,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "_add_show_parser",
     "_add_status_parser",
     "_add_tree_parser",
+    "_add_update_skill_parser",
     "_add_viz_parser",
     "_add_zone_parser",
 ]

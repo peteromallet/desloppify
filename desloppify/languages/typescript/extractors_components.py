@@ -12,7 +12,7 @@ from desloppify.engine.detectors.passthrough import (
     classify_passthrough_tier,
 )
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.utils import find_tsx_files
+from desloppify.file_discovery import find_tsx_files
 
 logger = logging.getLogger(__name__)
 

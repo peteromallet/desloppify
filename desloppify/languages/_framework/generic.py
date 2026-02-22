@@ -30,7 +30,7 @@ from desloppify.languages._framework.base.types import (
     LangConfig,
 )
 from desloppify.state import make_finding
-from desloppify.utils import find_source_files
+from desloppify.file_discovery import find_source_files
 
 logger = logging.getLogger(__name__)
 

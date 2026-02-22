@@ -641,6 +641,6 @@ class TestGenerateRemediationPlan:
 
     def test_writes_to_file(self, empty_state, tmp_path):
         out = tmp_path / "plan.md"
-        with patch("desloppify.utils.safe_write_text") as mock_write:
+        with patch("desloppify.intelligence.review._prepare.remediation_engine.safe_write_text") as mock_write:
             generate_remediation_plan(empty_state, "python", output_path=out)
             mock_write.assert_called_once()

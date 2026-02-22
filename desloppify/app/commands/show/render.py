@@ -11,8 +11,9 @@ from desloppify.app.commands.helpers.subjective import print_subjective_followup
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
-from desloppify.engine.planning.core import CONFIDENCE_ORDER
-from desloppify.utils import colorize, read_code_snippet, safe_write_text
+from desloppify.engine.planning import CONFIDENCE_ORDER
+from desloppify.file_discovery import safe_write_text
+from desloppify.utils import colorize, read_code_snippet
 
 from .formatting import format_detail
 

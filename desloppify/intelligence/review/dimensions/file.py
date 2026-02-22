@@ -1,7 +1,7 @@
-"""Per-file review dimension definitions and system prompt."""
+"""Backward-compat shim — all constants now live in holistic.py."""
 
-from __future__ import annotations
-
-from desloppify.intelligence.review.dimensions.data import load_dimensions
-
-DEFAULT_DIMENSIONS, DIMENSION_PROMPTS, REVIEW_SYSTEM_PROMPT = load_dimensions()
+from desloppify.intelligence.review.dimensions.holistic import (  # noqa: F401
+    DIMENSION_PROMPTS,
+    DIMENSIONS as DEFAULT_DIMENSIONS,
+    REVIEW_SYSTEM_PROMPT,
+)

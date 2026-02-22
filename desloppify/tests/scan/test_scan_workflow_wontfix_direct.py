@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-import desloppify.utils as utils_mod
+import desloppify.app.commands.scan.scan_workflow as scan_workflow_mod
 from desloppify.app.commands.scan.scan_workflow import (
     ScanRuntime,
     _augment_with_stale_wontfix_findings,
@@ -11,7 +11,7 @@ from desloppify.app.commands.scan.scan_workflow import (
 
 
 def test_stale_wontfix_adds_decay_and_drift_finding(tmp_path, monkeypatch):
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(scan_workflow_mod, "PROJECT_ROOT", tmp_path)
 
     runtime = ScanRuntime(
         args=SimpleNamespace(),
@@ -66,7 +66,7 @@ def test_stale_wontfix_adds_decay_and_drift_finding(tmp_path, monkeypatch):
 
 
 def test_stale_wontfix_not_added_when_recent_and_stable(tmp_path, monkeypatch):
-    monkeypatch.setattr(utils_mod, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(scan_workflow_mod, "PROJECT_ROOT", tmp_path)
 
     runtime = ScanRuntime(
         args=SimpleNamespace(),

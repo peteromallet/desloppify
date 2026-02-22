@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from desloppify.languages._framework.runtime import LangRun
 
 from desloppify import state as state_mod
-from desloppify import utils as utils_mod
 from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.runtime_options import resolve_lang_runtime_options
@@ -23,9 +22,17 @@ from desloppify.app.commands.scan.scan_helpers import (
     _resolve_scan_profile,
     _warn_explicit_lang_with_no_files,
 )
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.engine.planning import core as plan_mod
 from desloppify.engine.planning.scan import PlanScanOptions
-from desloppify.engine._work_queue import issues as issues_mod
+from desloppify.engine import work_queue as issues_mod
+from desloppify.file_discovery import (
+    disable_file_cache,
+    enable_file_cache,
+    get_exclusions,
+    rel,
+    resolve_path,
+)
 from desloppify.languages._framework.runtime import LangRunOverrides, make_lang_run
 from desloppify.utils import colorize
 
@@ -196,13 +203,13 @@ def _augment_with_stale_exclusion_findings(
     runtime: ScanRuntime,
 ) -> list[dict]:
     """Append stale exclude findings when excluded dirs are unreferenced."""
-    extra_exclusions = utils_mod.get_exclusions()
+    extra_exclusions = get_exclusions()
     if not (extra_exclusions and runtime.lang and runtime.lang.file_finder):
         return findings
 
     scanned_files = runtime.lang.file_finder(runtime.path)
     stale = _audit_excluded_dirs(
-        extra_exclusions, scanned_files, utils_mod.PROJECT_ROOT
+        extra_exclusions, scanned_files, PROJECT_ROOT
     )
     if not stale:
         return findings
@@ -215,9 +222,9 @@ def _augment_with_stale_exclusion_findings(
 
 
 def _in_scan_scope(filepath: str, scan_path: Path) -> bool:
-    if scan_path.resolve() == utils_mod.PROJECT_ROOT.resolve():
+    if scan_path.resolve() == PROJECT_ROOT.resolve():
         return True
-    full = Path(utils_mod.resolve_path(filepath))
+    full = Path(resolve_path(filepath))
     root = scan_path.resolve()
     return full == root or root in full.parents
 
@@ -378,7 +385,7 @@ def run_scan_generation(runtime: ScanRuntime) -> tuple[list[dict], dict, dict | 
         enable_parse_cache,
     )
 
-    utils_mod.enable_file_cache()
+    enable_file_cache()
     enable_parse_cache()
     try:
         findings, potentials = plan_mod.generate_findings(
@@ -392,7 +399,7 @@ def run_scan_generation(runtime: ScanRuntime) -> tuple[list[dict], dict, dict | 
         )
     finally:
         disable_parse_cache()
-        utils_mod.disable_file_cache()
+        disable_file_cache()
 
     codebase_metrics = _collect_codebase_metrics(runtime.lang, runtime.path)
     _warn_explicit_lang_with_no_files(
@@ -418,7 +425,7 @@ def merge_scan_results(
     codebase_metrics: dict | None,
 ) -> ScanMergeResult:
     """Merge findings into persistent state and return diff + previous score snapshot."""
-    scan_path_rel = utils_mod.rel(str(runtime.path))
+    scan_path_rel = rel(str(runtime.path))
     prev_scan_path = runtime.state.get("scan_path")
     path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
 
@@ -442,7 +449,7 @@ def merge_scan_results(
             lang=runtime.lang.name if runtime.lang else None,
             scan_path=scan_path_rel,
             force_resolve=getattr(runtime.args, "force_resolve", False),
-            exclude=utils_mod.get_exclusions(),
+            exclude=get_exclusions(),
             potentials=potentials,
             codebase_metrics=codebase_metrics,
             include_slow=runtime.effective_include_slow,

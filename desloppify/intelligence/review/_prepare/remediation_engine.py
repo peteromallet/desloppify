@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from typing import Any
 
-from desloppify.state import utc_now
+from desloppify.file_discovery import safe_write_text
+from desloppify.scoring import CONFIDENCE_WEIGHTS, HOLISTIC_MULTIPLIER
+from desloppify.state import get_objective_score, get_overall_score, get_strict_score, utc_now
 
 
 def _score_snapshot(state: dict[str, Any]) -> tuple[float, float, float]:
-    state_mod = importlib.import_module("desloppify.state")
-
     return (
-        state_mod.get_overall_score(state) or 0.0,
-        state_mod.get_objective_score(state) or 0.0,
-        state_mod.get_strict_score(state) or 0.0,
+        get_overall_score(state) or 0.0,
+        get_objective_score(state) or 0.0,
+        get_strict_score(state) or 0.0,
     )
 
 
@@ -55,10 +54,9 @@ def _review_potential(state: dict[str, Any]) -> int:
 
 
 def _entry_weight(confidence: str) -> float:
-    scoring_mod = importlib.import_module("desloppify.scoring")
     return (
-        scoring_mod.CONFIDENCE_WEIGHTS.get(confidence, 0.3)
-        * scoring_mod.HOLISTIC_MULTIPLIER
+        CONFIDENCE_WEIGHTS.get(confidence, 0.3)
+        * HOLISTIC_MULTIPLIER
     )
 
 
@@ -193,8 +191,7 @@ def generate_remediation_plan(
     if not holistic_findings:
         content = empty_plan(state, lang_name)
         if output_path:
-            utils_mod = importlib.import_module("desloppify.utils")
-            utils_mod.safe_write_text(output_path, content)
+            safe_write_text(output_path, content)
         return content
 
     overall, objective, strict = _score_snapshot(state)
@@ -209,6 +206,5 @@ def generate_remediation_plan(
 
     content = "\n".join(lines)
     if output_path:
-        utils_mod = importlib.import_module("desloppify.utils")
-        utils_mod.safe_write_text(output_path, content)
+        safe_write_text(output_path, content)
     return content

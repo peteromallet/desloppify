@@ -15,7 +15,8 @@ from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.state import get_objective_score, get_overall_score, get_strict_score
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.file_discovery import rel
-from desloppify.utils import colorize, safe_write_text
+from desloppify.file_discovery import safe_write_text
+from desloppify.utils import colorize
 
 D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ def _resolve_visualization_lang(path: Path, lang):
 def _fallback_source_files(path: Path) -> list[str]:
     """Collect source files using extensions from all registered language plugins."""
     from desloppify.languages import available_langs, get_lang
-    from desloppify.utils import find_source_files
+    from desloppify.file_discovery import find_source_files
 
     extensions: set[str] = set()
     for lang_name in available_langs():

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 
+from desloppify import file_discovery as file_discovery_mod
 from desloppify import utils as utils_mod
 from desloppify.app.cli_support.parser import create_parser as _create_parser
 from desloppify.app.commands.helpers.lang import LangResolutionError, resolve_lang
@@ -15,7 +16,7 @@ from desloppify.core.runtime_state import runtime_scope
 from desloppify.languages import available_langs
 from desloppify.state import load_state
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.utils import DEFAULT_PATH
+from desloppify.utils import DEFAULT_PATH, colorize
 
 _DETECTOR_NAMES: list[str] | None = None
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ def _apply_persisted_exclusions(args, config: dict):
     combined = list(cli_exclusions) + [e for e in persisted if e not in cli_exclusions]
     if not combined:
         return
-    utils_mod.set_exclusions(combined)
+    file_discovery_mod.set_exclusions(combined)
     if cli_exclusions:
         print(
             utils_mod.colorize(f"  Excluding: {', '.join(combined)}", "dim"),
@@ -136,8 +137,6 @@ def main() -> None:
             handler = _resolve_handler(args.command)
             handler(args)
     except LangResolutionError as exc:
-        from desloppify.utils import colorize
-
         print(colorize(f"  {exc.message}", "red"), file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:

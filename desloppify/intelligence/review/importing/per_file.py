@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
 from typing import Any
 
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.intelligence.review.importing.shared import (
     _lang_potentials,
@@ -13,8 +13,8 @@ from desloppify.intelligence.review.importing.shared import (
     extract_reviewed_files,
     store_assessments,
 )
+from desloppify.intelligence.review.selection import hash_file
 from desloppify.state import MergeScanOptions, make_finding, merge_scan, utc_now
-from desloppify.core._internal.text_utils import PROJECT_ROOT
 
 
 def parse_per_file_import_payload(data: dict) -> tuple[list[dict], dict | None]:
@@ -163,8 +163,6 @@ def update_review_cache(
     utc_now_fn=utc_now,
 ) -> None:
     """Update per-file review cache with timestamps and content hashes."""
-    selection_mod = importlib.import_module("desloppify.intelligence.review.selection")
-
     file_cache = _review_file_cache(state)
     now = utc_now_fn()
 
@@ -182,7 +180,7 @@ def update_review_cache(
     for file_path in reviewed_set:
         absolute = project_root / file_path
         content_hash = (
-            selection_mod.hash_file(str(absolute)) if absolute.exists() else ""
+            hash_file(str(absolute)) if absolute.exists() else ""
         )
         file_cache[file_path] = {
             "content_hash": content_hash,

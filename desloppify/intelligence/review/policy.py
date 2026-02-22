@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from desloppify.intelligence.review.dimensions import (
     DIMENSION_PROMPTS,
-    HOLISTIC_DIMENSION_PROMPTS,
     is_custom_dimension,
     is_known_dimension,
     normalize_dimension_name,
@@ -18,13 +17,21 @@ class DimensionPolicy:
     """Resolved review-dimension policy for one command execution."""
 
     allow_custom: bool
-    known_per_file: frozenset[str]
-    known_holistic: frozenset[str]
+    known: frozenset[str]
     allowed_custom: frozenset[str]
+
+    # Backward-compat properties
+    @property
+    def known_per_file(self) -> frozenset[str]:
+        return self.known
+
+    @property
+    def known_holistic(self) -> frozenset[str]:
+        return self.known
 
     @property
     def allowed_subjective(self) -> frozenset[str]:
-        return self.known_per_file | self.known_holistic | self.allowed_custom
+        return self.known | self.allowed_custom
 
 
 def _normalized_custom_allowlist(raw_values: list[str] | None) -> set[str]:
@@ -46,8 +53,7 @@ def build_dimension_policy(
     cfg = config if isinstance(config, dict) else {}
     st = state if isinstance(state, dict) else {}
 
-    known_per_file = frozenset(normalize_dimension_name(name) for name in DIMENSION_PROMPTS)
-    known_holistic = frozenset(normalize_dimension_name(name) for name in HOLISTIC_DIMENSION_PROMPTS)
+    known = frozenset(normalize_dimension_name(name) for name in DIMENSION_PROMPTS)
 
     configured_custom = _normalized_custom_allowlist(cfg.get("review_custom_dimensions"))
     discovered_custom = _normalized_custom_allowlist(st.get("custom_review_dimensions"))
@@ -57,19 +63,21 @@ def build_dimension_policy(
 
     return DimensionPolicy(
         allow_custom=allow_custom,
-        known_per_file=known_per_file,
-        known_holistic=known_holistic,
+        known=known,
         allowed_custom=allowed_custom,
     )
 
 
-def is_allowed_dimension(name: str, *, holistic: bool | None, policy: DimensionPolicy) -> bool:
-    """Check whether a normalized dimension is allowed under policy."""
+def is_allowed_dimension(name: str, *, holistic: bool | None = None, policy: DimensionPolicy) -> bool:
+    """Check whether a normalized dimension is allowed under policy.
+
+    The *holistic* parameter is accepted for backward compatibility but ignored.
+    """
     key = normalize_dimension_name(name)
     if not key:
         return False
 
-    if is_known_dimension(key, holistic=holistic):
+    if is_known_dimension(key):
         return True
     if not is_custom_dimension(key):
         return False
@@ -79,10 +87,13 @@ def is_allowed_dimension(name: str, *, holistic: bool | None, policy: DimensionP
 def normalize_dimension_inputs(
     raw_dimensions: list[str] | None,
     *,
-    holistic: bool,
+    holistic: bool = False,
     policy: DimensionPolicy,
 ) -> tuple[list[str], list[str]]:
-    """Normalize + validate requested dimensions against policy."""
+    """Normalize + validate requested dimensions against policy.
+
+    The *holistic* parameter is accepted for backward compatibility but ignored.
+    """
     if not raw_dimensions:
         return [], []
 
@@ -94,7 +105,7 @@ def normalize_dimension_inputs(
         canonical = normalize_dimension_name(str(raw))
         if not canonical:
             continue
-        if not is_allowed_dimension(canonical, holistic=holistic, policy=policy):
+        if not is_allowed_dimension(canonical, policy=policy):
             invalid.append(str(raw).strip())
             continue
         if canonical in seen:
@@ -126,7 +137,7 @@ def normalize_assessment_inputs(
         if not canonical:
             skipped.append(str(raw_name))
             continue
-        if not is_allowed_dimension(canonical, holistic=None, policy=policy):
+        if not is_allowed_dimension(canonical, policy=policy):
             skipped.append(str(raw_name))
             continue
         accepted[canonical] = value

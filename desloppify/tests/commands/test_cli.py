@@ -735,7 +735,7 @@ class TestApplyPersistedExclusions:
     def test_cli_exclusions_applied(self, monkeypatch):
         captured = []
         monkeypatch.setattr(
-            "desloppify.utils.set_exclusions", lambda pats: captured.extend(pats)
+            "desloppify.file_discovery.set_exclusions", lambda pats: captured.extend(pats)
         )
         args = SimpleNamespace(exclude=["node_modules", "dist"])
         config = {"exclude": []}
@@ -746,7 +746,7 @@ class TestApplyPersistedExclusions:
     def test_persisted_exclusions_merged(self, monkeypatch):
         captured = []
         monkeypatch.setattr(
-            "desloppify.utils.set_exclusions", lambda pats: captured.extend(pats)
+            "desloppify.file_discovery.set_exclusions", lambda pats: captured.extend(pats)
         )
         args = SimpleNamespace(exclude=["cli_only"])
         config = {"exclude": ["persisted_one"]}
@@ -757,7 +757,7 @@ class TestApplyPersistedExclusions:
     def test_no_duplicates_in_combined(self, monkeypatch):
         captured = []
         monkeypatch.setattr(
-            "desloppify.utils.set_exclusions", lambda pats: captured.extend(pats)
+            "desloppify.file_discovery.set_exclusions", lambda pats: captured.extend(pats)
         )
         args = SimpleNamespace(exclude=["shared"])
         config = {"exclude": ["shared"]}
@@ -767,7 +767,7 @@ class TestApplyPersistedExclusions:
     def test_no_exclusions_does_nothing(self, monkeypatch):
         called = []
         monkeypatch.setattr(
-            "desloppify.utils.set_exclusions", lambda pats: called.append(pats)
+            "desloppify.file_discovery.set_exclusions", lambda pats: called.append(pats)
         )
         args = SimpleNamespace(exclude=None)
         config = {"exclude": []}
@@ -779,7 +779,7 @@ class TestApplyPersistedExclusions:
         """Config with no 'exclude' key should not crash."""
         captured = []
         monkeypatch.setattr(
-            "desloppify.utils.set_exclusions", lambda pats: captured.extend(pats)
+            "desloppify.file_discovery.set_exclusions", lambda pats: captured.extend(pats)
         )
         args = SimpleNamespace(exclude=["foo"])
         config = {}

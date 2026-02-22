@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
+from desloppify.core.config import load_config as _load_config
 from desloppify.intelligence.narrative._constants import STRUCTURAL_MERGE
+from desloppify.state import get_overall_score, get_strict_score, path_scoped_findings
+from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.intelligence.narrative.action_engine import compute_actions
 from desloppify.intelligence.narrative.action_models import ActionContext
 from desloppify.intelligence.narrative.action_tools import compute_tools
@@ -123,9 +125,8 @@ def _resolve_badge_path(project_root: Path) -> tuple[str, Path]:
     default_rel = "scorecard.png"
     config = {}
     try:
-        config_mod = importlib.import_module("desloppify.core.config")
-        config = config_mod.load_config()
-    except (ImportError, AttributeError, OSError):
+        config = _load_config()
+    except (AttributeError, OSError):
         config = {}
 
     raw_path = default_rel
@@ -148,8 +149,7 @@ def _resolve_badge_path(project_root: Path) -> tuple[str, Path]:
 
 def _compute_badge_status() -> dict:
     """Check configured scorecard path and whether README references it."""
-    utils_mod = importlib.import_module("desloppify.utils")
-    project_root = utils_mod.PROJECT_ROOT
+    project_root = PROJECT_ROOT
 
     scorecard_rel, scorecard_path = _resolve_badge_path(project_root)
     generated = scorecard_path.exists()
@@ -284,15 +284,13 @@ def _history_for_lang(raw_history: list[dict], lang: str | None) -> list[dict]:
 
 
 def _scoped_findings(state: dict) -> dict:
-    state_mod = importlib.import_module("desloppify.state")
-    return state_mod.path_scoped_findings(
+    return path_scoped_findings(
         state.get("findings", {}), state.get("scan_path")
     )
 
 
 def _score_snapshot(state: dict) -> tuple[float | None, float | None]:
-    state_mod = importlib.import_module("desloppify.state")
-    return state_mod.get_strict_score(state), state_mod.get_overall_score(state)
+    return get_strict_score(state), get_overall_score(state)
 
 
 class NarrativeResult(TypedDict):

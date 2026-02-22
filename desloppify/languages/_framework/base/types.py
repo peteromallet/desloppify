@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from desloppify.core._internal.text_utils import is_numeric
 from desloppify.engine.detectors.base import FunctionInfo
-from desloppify.state import Finding
+from desloppify.engine._state.schema import Finding
 
 if TYPE_CHECKING:
     from desloppify.engine.policy.zones import FileZoneMap, ZoneRule

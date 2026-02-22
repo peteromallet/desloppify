@@ -9,9 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from desloppify import utils as _utils_mod
 from desloppify.core._internal.text_utils import PROJECT_ROOT
-from desloppify.file_discovery import rel, resolve_path
+from desloppify.file_discovery import get_exclusions, matches_exclusion, rel, resolve_path
 
 
 def finalize_graph(graph: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -20,7 +19,7 @@ def finalize_graph(graph: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]
     Also filters out nodes matching global --exclude patterns, and removes
     references to excluded files from all import/importer sets.
     """
-    exclusions = _utils_mod.get_exclusions()
+    exclusions = get_exclusions()
 
     # Remove excluded nodes and clean up references
     # Use relative paths for exclusion matching to avoid false positives
@@ -33,7 +32,7 @@ def finalize_graph(graph: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]
                 rel_k = str(Path(k).relative_to(PROJECT_ROOT))
             except ValueError:
                 rel_k = k
-            if any(_utils_mod.matches_exclusion(rel_k, ex) for ex in exclusions):
+            if any(matches_exclusion(rel_k, ex) for ex in exclusions):
                 excluded_keys.add(k)
         for k in excluded_keys:
             del graph[k]

@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-import importlib
 import re
 from fnmatch import fnmatch
+
+from desloppify.app.output.scorecard_parts.projection import (
+    scorecard_subjective_entries,
+)
+from desloppify.core.registry import DETECTORS
+from desloppify.intelligence.integrity import (
+    is_holistic_subjective_finding,
+    unassessed_subjective_dimensions,
+)
+from desloppify.scoring import DISPLAY_NAMES
 
 ALL_STATUSES = {"open", "fixed", "wontfix", "false_positive", "auto_resolved", "all"}
 ATTEST_EXAMPLE = (
@@ -88,9 +97,8 @@ def _canonical_subjective_dimension_key(display_name: str) -> str:
     """Map a display label (e.g. 'Mid Elegance') to its canonical dimension key."""
     cleaned = display_name.replace(" (subjective)", "").strip()
     target = cleaned.lower()
-    scoring_mod = importlib.import_module("desloppify.scoring")
 
-    for dim_key, label in scoring_mod.DISPLAY_NAMES.items():
+    for dim_key, label in DISPLAY_NAMES.items():
         if str(label).lower() == target:
             return str(dim_key)
     return slugify(cleaned)
@@ -132,13 +140,8 @@ def supported_fixers_for_item(state: dict, item: dict) -> set[str] | None:
 def primary_command_for_finding(
     item: dict, *, supported_fixers: set[str] | None = None
 ) -> str:
-    registry_mod = importlib.import_module("desloppify.core.registry")
-    subjective_integrity_mod = importlib.import_module(
-        "desloppify.intelligence.integrity"
-    )
-
     detector = item.get("detector", "")
-    meta = registry_mod.DETECTORS.get(detector)
+    meta = DETECTORS.get(detector)
     if meta and meta.action_type == "auto_fix" and meta.fixers:
         available_fixers = [
             fixer
@@ -150,7 +153,7 @@ def primary_command_for_finding(
     if detector == "review":
         return "desloppify issues"
     if detector == "subjective_review":
-        if subjective_integrity_mod.is_holistic_subjective_finding(item):
+        if is_holistic_subjective_finding(item):
             return "desloppify review --prepare"
         return "desloppify show subjective_review --status open"
     return f'desloppify resolve fixed "{item.get("id", "")}" --note "<what you did>" --attest "{ATTEST_EXAMPLE}"'
@@ -161,10 +164,7 @@ def subjective_strict_scores(state: dict) -> dict[str, float]:
     if not dim_scores:
         return {}
 
-    scorecard_projection_mod = importlib.import_module(
-        "desloppify.app.output.scorecard_parts.projection"
-    )
-    entries = scorecard_projection_mod.scorecard_subjective_entries(
+    entries = scorecard_subjective_entries(
         state, dim_scores=dim_scores
     )
     scores: dict[str, float] = {}
@@ -197,21 +197,14 @@ def build_subjective_items(
         return []
     threshold = max(0.0, min(100.0, float(threshold)))
 
-    scorecard_projection_mod = importlib.import_module(
-        "desloppify.app.output.scorecard_parts.projection"
-    )
-    subjective_integrity_mod = importlib.import_module(
-        "desloppify.intelligence.integrity"
-    )
-
-    subjective_entries = scorecard_projection_mod.scorecard_subjective_entries(
+    subjective_entries = scorecard_subjective_entries(
         state, dim_scores=dim_scores
     )
     if not subjective_entries:
         return []
     unassessed_dims = {
         str(name).strip()
-        for name in subjective_integrity_mod.unassessed_subjective_dimensions(
+        for name in unassessed_subjective_dimensions(
             dim_scores
         )
     }

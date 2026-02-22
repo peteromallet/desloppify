@@ -57,7 +57,10 @@ def build_scan_query_payload(
 
 
 def _load_scorecard_helpers():
-    """Load scorecard helper callables lazily via importlib."""
+    """Load scorecard helper callables lazily via importlib.
+
+    Deferred: scorecard depends on PIL (optional dependency).
+    """
     try:
         scorecard_module = importlib.import_module("desloppify.app.output.scorecard")
     except ImportError:

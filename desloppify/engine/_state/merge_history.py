@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
-
 from desloppify.engine._state.schema import ScanDiff
+from desloppify.utils import compute_tool_hash
 
 
 def _record_scan_metadata(
@@ -15,11 +14,9 @@ def _record_scan_metadata(
     include_slow: bool,
     scan_path: str | None,
 ) -> None:
-    utils_mod = importlib.import_module("desloppify.utils")
-
     state["last_scan"] = now
     state["scan_count"] = state.get("scan_count", 0) + 1
-    state["tool_hash"] = utils_mod.compute_tool_hash()
+    state["tool_hash"] = compute_tool_hash()
     state["scan_path"] = scan_path
     if lang:
         state.setdefault("scan_completeness", {})[lang] = (

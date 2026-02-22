@@ -60,6 +60,8 @@ def _primary_lang_from_findings(findings: dict) -> str | None:
 
 def _dimension_display_name(dim_name: str, *, lang_name: str | None) -> str:
     try:
+        # deferred: avoid circular import with desloppify.scoring
+        # (scoring -> _scoring/results/core -> _scoring/subjective/core -> review -> state -> scoring)
         metadata_mod = importlib.import_module(
             "desloppify.intelligence.review.dimensions.metadata"
         )
@@ -70,6 +72,7 @@ def _dimension_display_name(dim_name: str, *, lang_name: str | None) -> str:
 
 def _dimension_weight(dim_name: str, *, lang_name: str | None) -> float:
     try:
+        # deferred: avoid circular import with desloppify.scoring (see _dimension_display_name)
         metadata_mod = importlib.import_module(
             "desloppify.intelligence.review.dimensions.metadata"
         )
@@ -91,8 +94,9 @@ def append_subjective_dimensions(
     determine pass-rate, while imported assessment scores are retained as
     metadata for transparency.
     """
+    # deferred: avoid circular import with desloppify.scoring (see _dimension_display_name)
     review_mod = importlib.import_module("desloppify.intelligence.review")
-    raw_defaults = review_mod.DEFAULT_DIMENSIONS
+    raw_defaults = review_mod.DIMENSIONS
     allowed = (
         {_normalize_dimension_key(name) for name in allowed_dimensions}
         if allowed_dimensions is not None
