@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desloppify"
-version = "0.7.2"
+version = "0.7.3"
 description = "Multi-language codebase health scanner and technical debt tracker"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,11 @@ Issues = "https://github.com/peteromallet/desloppify/issues"
 
 [project.optional-dependencies]
 treesitter = ["tree-sitter-language-pack>=0.3"]
+python-security = ["bandit>=1.7.8"]
+full = [
+  "tree-sitter-language-pack>=0.3",
+  "bandit>=1.7.8",
+]
 
 [project.scripts]
 desloppify = "desloppify.cli:main"
@@ -69,7 +74,7 @@ select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unreachable = true
@@ -79,14 +84,22 @@ ignore_missing_imports = true
 follow_imports = "skip"
 pretty = true
 files = [
-  "desloppify/app/commands/review/cmd.py",
+  "desloppify/app/commands/review/entrypoint.py",
   "desloppify/app/commands/review/prepare.py",
   "desloppify/app/commands/review/batches.py",
+  "desloppify/app/commands/review/batch_core.py",
+  "desloppify/app/commands/review/batch_prompt_template.py",
   "desloppify/app/commands/review/import_cmd.py",
   "desloppify/app/commands/review/runtime.py",
   "desloppify/app/commands/scan/scan_reporting_dimensions.py",
+  "desloppify/app/commands/scan/scan_reporting_llm.py",
   "desloppify/app/commands/scan/scan_reporting_presentation.py",
-  "desloppify/app/commands/scan/scan_reporting_subjective_paths.py",
+  "desloppify/app/commands/scan/scan_reporting_text.py",
+  "desloppify/app/commands/scan/scan_reporting_subjective.py",
+  "desloppify/app/commands/scan/scan_wontfix.py",
+  "desloppify/app/commands/scan/scan_workflow.py",
   "desloppify/app/cli_support/parser.py",
   "desloppify/app/cli_support/parser_groups.py",
+  "desloppify/engine/concerns.py",
+  "desloppify/languages/_framework/generic.py",
 ]

@@ -1,14 +1,21 @@
-# Publish to PyPI on every push to main, but only when the version in
-# pyproject.toml has actually changed (i.e. doesn't already exist on PyPI).
+# Publish to PyPI from controlled release triggers only.
 
 name: Publish to PyPI
 
 on:
+  release:
+    types: [published]
   push:
-    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: publish-pypi-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -25,7 +32,9 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Get version from pyproject.toml
         id: version
@@ -33,23 +42,31 @@ jobs:
           VERSION=$(python -c "import tomllib; print(tomllib.loads(open('pyproject.toml').read())['project']['version'])")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Validate tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag version $TAG_VERSION does not match package version $PKG_VERSION"
+            exit 1
+          fi
+
       - name: Check if version exists on PyPI
         id: check
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/desloppify/${{ steps.version.outputs.version }}/json")
           if [ "$STATUS" = "200" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Version ${{ steps.version.outputs.version }} already on PyPI — skipping."
+            echo "Version ${{ steps.version.outputs.version }} already on PyPI — skipping publish."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "Version ${{ steps.version.outputs.version }} not on PyPI — will publish."
           fi
 
-      - name: Build release distributions
+      - name: Run packaging smoke gate
         if: steps.check.outputs.exists == 'false'
-        run: |
-          python -m pip install build
-          python -m build
+        run: make package-smoke
 
       - name: Publish to PyPI
         if: steps.check.outputs.exists == 'false'

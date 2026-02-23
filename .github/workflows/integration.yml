@@ -1,0 +1,32 @@
+name: Integration
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  roslyn-integration:
+    name: roslyn-integration
+    runs-on: ubuntu-latest
+    env:
+      DESLOPPIFY_TEST_CSHARP_ROSLYN_CMD: "python .github/scripts/roslyn_stub.py"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Run Roslyn integration/parity tests
+        run: make integration-roslyn
