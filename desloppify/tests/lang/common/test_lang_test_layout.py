@@ -6,8 +6,14 @@ import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
-import setuptools
 import tomllib
+
+import pytest
+
+try:
+    import setuptools
+except ImportError:
+    setuptools = None  # type: ignore[assignment]
 
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages import available_langs, get_lang
@@ -74,6 +80,8 @@ def test_colocated_lang_tests_are_classified_as_test_zone():
         )
 
 
+@pytest.mark.skipif(setuptools is None, reason="setuptools not installed")
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_packaging_includes_lang_plugin_tests():
     """Regression: pyproject.toml exclude patterns must not drop language plugin tests/.
 

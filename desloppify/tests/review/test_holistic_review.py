@@ -159,14 +159,14 @@ class TestHolisticDimensionsByLang:
                 )
 
     def test_unknown_lang_falls_back_to_full(self, tmp_path):
-        f1 = _make_file(str(tmp_path), "module.go", lines=50)
+        f1 = _make_file(str(tmp_path), "module.xx", lines=50)
         lang = _mock_lang([f1])
-        lang.name = "go"  # not in HOLISTIC_DIMENSIONS_BY_LANG
+        lang.name = "unknownlang"  # not in HOLISTIC_DIMENSIONS_BY_LANG
         state = empty_state()
 
         data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
 
-        assert len(data["dimensions"]) == 20
+        assert len(data["dimensions"]) == len(DIMENSIONS)
 
     def test_python_gets_eleven_dims(self, tmp_path):
         f1 = _make_file(str(tmp_path), "module.py", lines=50)

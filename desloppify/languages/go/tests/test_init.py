@@ -39,6 +39,11 @@ def test_has_core_phases():
     assert "go vet" in labels
 
 
+def test_integration_depth_full():
+    cfg = get_lang("go")
+    assert cfg.integration_depth == "full"
+
+
 def test_test_coverage_hooks_registered():
     assert get_lang_hook("go", "test_coverage") is not None
 

@@ -53,6 +53,7 @@ include-package-data = false
 "desloppify.languages.csharp" = ["review_data/*.json"]
 "desloppify.languages.dart" = ["review_data/*.json"]
 "desloppify.languages.gdscript" = ["review_data/*.json"]
+"desloppify.languages.go" = ["review_data/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

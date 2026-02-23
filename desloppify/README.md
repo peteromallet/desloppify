@@ -26,8 +26,8 @@ desloppify/
     ├── _framework/     # Shared plugin framework, generic_lang(), tree-sitter
     ├── python/         # Full plugins (custom detectors, fixers, review dims)
     ├── typescript/
-    ├── csharp/, dart/, gdscript/
-    └── go/, rust/, ruby/, java/, ... (23 generic plugins)
+    ├── csharp/, dart/, gdscript/, go/
+    └── rust/, ruby/, java/, ... (22 generic plugins)
 ```
 
 ## Architecture

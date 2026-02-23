@@ -1,6 +1,6 @@
 # Languages
 
-Desloppify supports 28 languages through a plugin system with two tiers: **full plugins** with hand-written detectors and subjective review, and **generic plugins** that wrap external linters and optionally use tree-sitter for AST analysis.
+Desloppify supports 28 languages through a plugin system with two tiers: **full plugins** (6) with hand-written detectors and subjective review, and **generic plugins** (22) that wrap external linters and optionally use tree-sitter for AST analysis.
 
 ## Full Plugins
 
@@ -13,6 +13,7 @@ These have custom detectors, language-specific smell analysis, subjective review
 | **C#/.NET** | `csharp/` | Structural + coupling + security, dotnet-based dep analysis |
 | **Dart** | `dart/` | Flutter-aware, pubspec integration, test coverage mapping |
 | **GDScript** | `gdscript/` | Godot scene-aware, tree-sitter phases, shared framework helpers |
+| **Go** | `go/` | golangci-lint + go vet adapters, regex function extraction, test coverage mapping |
 
 Example: `python/` — see `python/__init__.py` for the full `@register_lang()` config with 15+ detector phases, custom extractors, security hooks, and review guidance.
 
@@ -22,7 +23,6 @@ These are single-file plugins (~20-40 lines) that call `generic_lang()` with ext
 
 | Language | Path | Tools | Tree-sitter |
 |----------|------|-------|-------------|
-| Go | `go/` | golangci-lint, go vet | functions, methods, imports, structs |
 | Rust | `rust/` | cargo clippy, cargo check | functions, imports, structs |
 | Ruby | `ruby/` | rubocop | functions, methods, classes, imports |
 | Java | `java/` | checkstyle | functions, constructors, classes, imports |
@@ -46,7 +46,7 @@ These are single-file plugins (~20-40 lines) that call `generic_lang()` with ext
 | OCaml | `ocaml/` | ocaml compiler | functions, modules, imports |
 | F# | `fsharp/` | dotnet build | functions, imports |
 
-Example: `go/__init__.py` — 40 lines, wraps golangci-lint + go vet, adds Go-specific zone rules and test coverage hooks.
+Example: `rust/__init__.py` — wraps cargo clippy + cargo check, adds Rust-specific zone rules and test coverage hooks.
 
 ## What Each Tier Gets
 
@@ -78,7 +78,7 @@ All of the above, plus:
 
 ## The Difference
 
-A generic Go plugin runs golangci-lint and gets tree-sitter analysis — that covers most of what you need. A full Python plugin has 15+ hand-written detector phases that understand Python-specific patterns like mutable class variables, `lru_cache` on methods with mutable args, subprocess calls without timeouts, naive regex backtracking, and dozens more. It has auto-fixers that can rewrite imports. It has subjective review dimensions tuned for Python conventions.
+A generic Rust plugin runs cargo clippy and gets tree-sitter analysis — that covers most of what you need. A full Python plugin has 15+ hand-written detector phases that understand Python-specific patterns like mutable class variables, `lru_cache` on methods with mutable args, subprocess calls without timeouts, naive regex backtracking, and dozens more. It has auto-fixers that can rewrite imports. It has subjective review dimensions tuned for Python conventions.
 
 The generic system is the right starting point for any language. Only invest in a full plugin when you need detectors that understand language idioms beyond what AST pattern matching and external linters can catch.
 

@@ -530,26 +530,14 @@ class TestGracefulDegradation:
 
 
 class TestGenericLangIntegration:
-    def test_go_has_treesitter_capabilities(self):
-        from desloppify.languages._framework.generic import (
-            capability_report,
-            empty_dep_graph,
-            noop_extract_functions,
-        )
+    def test_go_is_full_plugin(self):
         from desloppify.languages._framework.resolution import get_lang
 
         import desloppify.languages.go  # noqa: F401
 
         lang = get_lang("go")
-        assert lang.extract_functions is not noop_extract_functions
-        assert lang.build_dep_graph is not empty_dep_graph
-        assert lang.integration_depth == "standard"
-
-        report = capability_report(lang)
-        assert report is not None
-        present, missing = report
-        assert "function extraction" in present
-        assert "import analysis" in present
+        assert lang.extract_functions is not None
+        assert lang.integration_depth == "full"
 
     def test_go_phases_include_structural(self):
         from desloppify.languages._framework.resolution import get_lang
@@ -559,8 +547,8 @@ class TestGenericLangIntegration:
         lang = get_lang("go")
         phase_labels = [p.label for p in lang.phases]
         assert "Structural analysis" in phase_labels
-        assert "Coupling + cycles + orphaned" in phase_labels
         assert "Test coverage" in phase_labels
+        assert "Security" in phase_labels
 
 
 

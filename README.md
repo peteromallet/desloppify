@@ -14,7 +14,7 @@ This produces a combined health score — our goal is that a score above 98 corr
 
 <img src="assets/scorecard.png" width="100%">
 
-Currently supports 28 languages — full plugin depth for TypeScript, Python, C#, Dart, and GDScript; generic linter + tree-sitter support for Go, Rust, Ruby, Java, Kotlin, and 18 more.
+Currently supports 28 languages — full plugin depth for TypeScript, Python, C#, Dart, GDScript, and Go; generic linter + tree-sitter support for Rust, Ruby, Java, Kotlin, and 17 more.
 
 ## For your agent's consideration...
 
