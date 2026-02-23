@@ -230,6 +230,10 @@ def _in_scan_scope(filepath: str, scan_path: Path) -> bool:
 
 
 def _to_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, int | float | str):
+        return None
     try:
         return float(value)
     except (TypeError, ValueError):

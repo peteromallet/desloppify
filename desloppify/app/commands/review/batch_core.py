@@ -106,7 +106,10 @@ def extract_json_payload(raw: str, *, log_fn) -> dict | None:
     return None
 
 
-def _validate_dimension_note(key: str, note_raw: object) -> tuple[str, str, str, str, str]:
+def _validate_dimension_note(
+    key: str,
+    note_raw: object,
+) -> tuple[list[object], str, str, str, str]:
     """Validate a single dimension_notes entry and return parsed fields.
 
     Returns (evidence, impact_scope, fix_scope, confidence, unreported_risk).
@@ -261,6 +264,7 @@ def normalize_batch_result(
         evidence, impact_scope, fix_scope, confidence, unreported_risk = (
             _validate_dimension_note(key, note_raw)
         )
+        assert isinstance(note_raw, dict)
         if score > 85 and not unreported_risk:
             high_score_without_risk += 1
 

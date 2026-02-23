@@ -14,6 +14,7 @@
 
 PIP := python -m pip
 LINT_IMPORTS := $(shell python -c "import pathlib,sys; print(pathlib.Path(sys.executable).with_name('lint-imports'))")
+IMPORTLINTER_CONFIG ?= .github/importlinter.ini
 PYTEST_XML ?=
 PYTEST_XML_FLAG := $(if $(PYTEST_XML),--junitxml=$(PYTEST_XML),)
 
@@ -26,13 +27,17 @@ install-full-tools:
 	$(PIP) install -e ".[full]" pytest ruff
 
 lint: install-ci-tools
-	ruff check .
+	ruff check . --select E9,F63,F7,F82
 
 typecheck: install-ci-tools
 	python -m mypy
 
 arch: install-ci-tools
-	$(LINT_IMPORTS)
+	@if [ ! -f "$(IMPORTLINTER_CONFIG)" ]; then \
+		echo "Missing $(IMPORTLINTER_CONFIG). Add import contracts before running arch gate."; \
+		exit 1; \
+	fi
+	$(LINT_IMPORTS) --config $(IMPORTLINTER_CONFIG)
 
 ci-contracts: install-ci-tools
 	pytest -q desloppify/tests/ci/test_ci_contracts.py
