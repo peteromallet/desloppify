@@ -9,6 +9,23 @@ from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.utils import colorize
 
 
+def _sole_existing_lang_state_file() -> Path | None:
+    """Return the only existing language-specific state file, if unambiguous."""
+    state_dir = PROJECT_ROOT / ".desloppify"
+    if not state_dir.exists():
+        return None
+    candidates = sorted(path for path in state_dir.glob("state-*.json") if path.is_file())
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _allow_lang_state_fallback(args) -> bool:
+    """Whether command can safely fallback to the sole existing lang state file."""
+    # Scan should always honor detected/explicit language mapping to avoid cross-lang merges.
+    return getattr(args, "command", None) != "scan"
+
+
 def state_path(args) -> Path | None:
     """Get state file path from args, or None for default."""
     path_arg = getattr(args, "state", None)
@@ -18,7 +35,18 @@ def state_path(args) -> Path | None:
     if not lang_name:
         lang_name = auto_detect_lang_name(args)
     if lang_name:
-        return PROJECT_ROOT / ".desloppify" / f"state-{lang_name}.json"
+        resolved = PROJECT_ROOT / ".desloppify" / f"state-{lang_name}.json"
+        if resolved.exists() or not _allow_lang_state_fallback(args):
+            return resolved
+        fallback = _sole_existing_lang_state_file()
+        if fallback is not None:
+            return fallback
+        return resolved
+
+    if _allow_lang_state_fallback(args):
+        fallback = _sole_existing_lang_state_file()
+        if fallback is not None:
+            return fallback
     return None
 
 
@@ -28,4 +56,3 @@ def require_completed_scan(state: dict) -> bool:
     if not has_completed_scan:
         print(colorize("No scans yet. Run: desloppify scan", "yellow"))
     return has_completed_scan
-

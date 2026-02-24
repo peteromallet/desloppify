@@ -575,6 +575,59 @@ class TestStatePath:
         result = state_path(args)
         assert result == Path("/tmp/override.json")
 
+    def test_non_scan_falls_back_to_sole_existing_lang_state(
+        self, monkeypatch, tmp_path
+    ):
+        state_dir = tmp_path / ".desloppify"
+        state_dir.mkdir()
+        existing = state_dir / "state-typescript.json"
+        existing.write_text("{}")
+        monkeypatch.setattr("desloppify.app.commands.helpers.state.PROJECT_ROOT", tmp_path)
+
+        args = SimpleNamespace(state=None, lang="python", command="status")
+        result = state_path(args)
+        assert result == existing
+
+    def test_scan_does_not_fallback_to_other_lang_state(self, monkeypatch, tmp_path):
+        state_dir = tmp_path / ".desloppify"
+        state_dir.mkdir()
+        (state_dir / "state-typescript.json").write_text("{}")
+        monkeypatch.setattr("desloppify.app.commands.helpers.state.PROJECT_ROOT", tmp_path)
+
+        args = SimpleNamespace(state=None, lang="python", command="scan")
+        result = state_path(args)
+        assert result == state_dir / "state-python.json"
+
+    def test_non_scan_without_lang_uses_sole_existing_state(
+        self, monkeypatch, tmp_path
+    ):
+        state_dir = tmp_path / ".desloppify"
+        state_dir.mkdir()
+        existing = state_dir / "state-python.json"
+        existing.write_text("{}")
+        monkeypatch.setattr("desloppify.app.commands.helpers.state.PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(
+            "desloppify.app.commands.helpers.state.auto_detect_lang_name",
+            lambda _args: None,
+        )
+
+        args = SimpleNamespace(state=None, lang=None, command="status")
+        result = state_path(args)
+        assert result == existing
+
+    def test_non_scan_with_ambiguous_existing_states_keeps_resolved_lang_path(
+        self, monkeypatch, tmp_path
+    ):
+        state_dir = tmp_path / ".desloppify"
+        state_dir.mkdir()
+        (state_dir / "state-python.json").write_text("{}")
+        (state_dir / "state-typescript.json").write_text("{}")
+        monkeypatch.setattr("desloppify.app.commands.helpers.state.PROJECT_ROOT", tmp_path)
+
+        args = SimpleNamespace(state=None, lang="csharp", command="status")
+        result = state_path(args)
+        assert result == state_dir / "state-csharp.json"
+
 
 class TestResolveDefaultPath:
     """Tests for _resolve_default_path — especially the review-command scan_path fix."""
