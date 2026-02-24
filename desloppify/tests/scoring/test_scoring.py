@@ -402,25 +402,29 @@ class TestComputeDimensionScores:
         # Duplication requires "dupes" which has no potential
         assert "Duplication" not in result
 
-    def test_no_potentials_unassessed_dims_start_clean(self):
-        """Unassessed dimensions with no review findings start at 100%."""
+    def test_no_potentials_unassessed_dims_start_at_zero(self):
+        """Unassessed dimensions with no review findings start at 0%."""
         result = compute_dimension_scores({}, {})
         # No mechanical dimensions
         assert "Code quality" not in result
-        # No evidence of subjective issues → clean default.
+        # Subjective placeholders are explicit 0% until assessed.
         assert "Naming Quality" in result
-        assert result["Naming Quality"]["score"] == 100.0
+        assert result["Naming Quality"]["score"] == 0.0
+        det = result["Naming Quality"]["detectors"]["subjective_assessment"]
+        assert det["placeholder"] is True
 
-    def test_unassessed_dim_with_review_findings_still_100(self):
-        """Review findings don't drive score — only assessments do."""
+    def test_unassessed_dim_with_review_findings_still_zero(self):
+        """Review findings don't drive score — unassessed placeholders stay at 0."""
         f = _finding("review", status="open", file="a.py")
         f["detail"] = {"dimension": "naming_quality"}
         findings = _findings_dict(f)
         result = compute_dimension_scores(findings, {})
-        # Review findings are tracked but don't affect score
+        # Review findings are tracked but don't change placeholder score.
         assert "Naming Quality" in result
-        assert result["Naming Quality"]["score"] == 100.0
+        assert result["Naming Quality"]["score"] == 0.0
         assert result["Naming Quality"]["issues"] == 1
+        det = result["Naming Quality"]["detectors"]["subjective_assessment"]
+        assert det["placeholder"] is True
 
     def test_with_some_findings(self):
         findings = _findings_dict(
@@ -909,7 +913,10 @@ class TestSubjectiveScoring:
         assert det["weighted_failures"] == pytest.approx(2.5)
         assert det["assessment_score"] == 75.0
 
-    def test_allowed_subjective_dimensions_filters_unknown(self):
+    def test_allowed_subjective_dimensions_scopes_defaults_not_assessments(self):
+        """allowed_subjective_dimensions gates which defaults get 0-score
+        placeholders but explicit assessments always count — they were
+        deliberately imported and should not be silently discarded."""
         assessments = {
             "naming_quality": {"score": 75},
             "custom_domain_fit": {"score": 60},
@@ -921,7 +928,10 @@ class TestSubjectiveScoring:
             allowed_subjective_dimensions={"naming_quality"},
         )
         assert "Naming Quality" in result
-        assert "Custom Domain Fit" not in result
+        # Explicit assessment for custom_domain_fit still counts even though
+        # it is not in the allowed set.
+        assert "Custom Domain Fit" in result
+        assert result["Custom Domain Fit"]["score"] == 60.0
 
     def test_multiple_assessment_dimensions(self):
         """Two assessments show up independently."""

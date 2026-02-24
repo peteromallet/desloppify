@@ -17,6 +17,23 @@ _EMPTY_COUNTERS = ("open", "fixed", "auto_resolved", "wontfix", "false_positive"
 _SUBJECTIVE_TARGET_RESET_THRESHOLD = 2
 
 
+def _resolve_lang_from_state(state: StateModel) -> str | None:
+    """Best-effort language detection from state (scan_history > lang_capabilities)."""
+    history = state.get("scan_history")
+    if isinstance(history, list):
+        for entry in reversed(history):
+            if isinstance(entry, dict):
+                lang = entry.get("lang")
+                if isinstance(lang, str) and lang.strip():
+                    return lang.strip().lower()
+    capabilities = state.get("lang_capabilities")
+    if isinstance(capabilities, dict) and len(capabilities) == 1:
+        only_lang = next(iter(capabilities.keys()))
+        if isinstance(only_lang, str) and only_lang.strip():
+            return only_lang.strip().lower()
+    return None
+
+
 def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str, int]]]:
     """Tally per-status counters and per-tier breakdowns."""
     counters = dict.fromkeys(_EMPTY_COUNTERS, 0)
@@ -305,10 +322,30 @@ def _update_objective_health(
         state["verified_strict_score"] = 100.0
         return
 
+    # Derive language-scoped subjective dimensions so only dimensions with
+    # a review pathway get 0-score placeholders.  Explicit assessments
+    # outside this set still count (append_subjective_dimensions handles
+    # that).  Without this, all 20 global default dimensions would get
+    # placeholders — including ones the language's review never covers.
+    allowed_subjective: set[str] | None = None
+    lang_name = _resolve_lang_from_state(state)
+    if lang_name:
+        try:
+            from desloppify.intelligence.review.dimensions.lang import (
+                HOLISTIC_DIMENSIONS_BY_LANG,
+            )
+
+            lang_dims = HOLISTIC_DIMENSIONS_BY_LANG.get(lang_name)
+            if lang_dims:
+                allowed_subjective = set(lang_dims)
+        except (ImportError, AttributeError):
+            pass
+
     bundle = compute_score_bundle(
         findings,
         merged,
         subjective_assessments=subjective_assessments,
+        allowed_subjective_dimensions=allowed_subjective,
     )
     lenient_scores = bundle.dimension_scores
     strict_scores = bundle.strict_dimension_scores

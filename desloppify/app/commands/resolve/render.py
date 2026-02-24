@@ -9,7 +9,8 @@ from desloppify.utils import colorize
 
 
 def _print_resolve_summary(*, status: str, all_resolved: list[str]) -> None:
-    print(colorize(f"\nResolved {len(all_resolved)} finding(s) as {status}:", "green"))
+    verb = "Reopened" if status == "open" else "Resolved"
+    print(colorize(f"\n{verb} {len(all_resolved)} finding(s) as {status}:", "green"))
     for fid in all_resolved[:20]:
         print(f"  {fid}")
     if len(all_resolved) > 20:

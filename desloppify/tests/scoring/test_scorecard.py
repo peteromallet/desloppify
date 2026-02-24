@@ -392,7 +392,9 @@ class TestScorecardDimensionPolicy:
         assert combined["strict"] == 70.0
         assert combined["issues"] == 3
 
-    def test_limit_scorecard_dimensions_python_keeps_contracts_not_type_safety(self):
+    def test_limit_scorecard_dimensions_python_drops_highest_score_extra(self):
+        """When budget forces truncation, extras are sorted ascending by score
+        so the lowest-score (worst) dimensions are shown first."""
         active_dims = [
             ("File health", _mk_dim(99, subjective=False)),
             ("Code quality", _mk_dim(95, subjective=False)),
@@ -413,8 +415,10 @@ class TestScorecardDimensionPolicy:
         )
         names = {name for name, _ in limited}
         assert len(limited) == 12
-        assert "Contracts" in names
-        assert "Type Safety" not in names
+        # Contracts has the highest score among non-preferred extras, so it's
+        # dropped first when budget is exhausted.
+        assert "Contracts" not in names
+        assert "Type Safety" in names
 
     def test_limit_scorecard_dimensions_typescript_keeps_type_safety_not_contracts(
         self,
@@ -442,7 +446,7 @@ class TestScorecardDimensionPolicy:
         assert "Type Safety" in names
         assert "Contracts" not in names
 
-    def test_prepare_scorecard_dimensions_caps_to_twelve_and_collapses_elegance(self):
+    def test_prepare_scorecard_dimensions_collapses_elegance(self):
         state = {
             "scan_history": [{"lang": "typescript"}],
             "dimension_scores": {
@@ -466,13 +470,16 @@ class TestScorecardDimensionPolicy:
 
         rows = prepare_scorecard_dimensions(state)
         names = [name for name, _ in rows]
-        assert len(rows) == 12
+        # 5 mechanical + 7 non-elegance subjective + 1 collapsed Elegance = 13
+        assert len(rows) == 13
         assert "Elegance" in names
         assert "High Elegance" not in names
         assert "Mid Elegance" not in names
         assert "Low Elegance" not in names
 
-    def test_prepare_scorecard_dimensions_shows_zero_for_missing_lang_dimensions(self):
+    def test_prepare_scorecard_dimensions_omits_missing_dimensions(self):
+        """Dynamic scorecard only shows dimensions with real data — missing
+        dimensions are not fabricated as 0-score placeholders."""
         state = {
             "scan_history": [{"lang": "typescript"}],
             "dimension_scores": {
@@ -492,8 +499,7 @@ class TestScorecardDimensionPolicy:
 
         rows = prepare_scorecard_dimensions(state)
         values = dict(rows)
-        assert len(rows) == 12
-        assert values["Type Safety"]["score"] == 0.0
-        assert values["Type Safety"]["strict"] == 0.0
-        assert values["Elegance"]["score"] == 0.0
-        assert values["Elegance"]["strict"] == 0.0
+        # 5 mechanical + 5 subjective = 10 (no fabricated placeholders)
+        assert len(rows) == 10
+        assert "Type Safety" not in values
+        assert "Elegance" not in values

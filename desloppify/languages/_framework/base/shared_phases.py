@@ -395,6 +395,10 @@ def phase_subjective_review(
         lang.name,
         low_value_pattern=lang.review_low_value_pattern,
         max_age_days=max_age,
+        holistic_cache=review_cache.get("holistic")
+        if isinstance(review_cache, dict)
+        else None,
+        holistic_total_files=len(files),
     )
 
     # Also check holistic review staleness.

@@ -83,13 +83,14 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 | `status` | Score + per-tier progress |
 | `show <pattern>` | Findings by file, directory, detector, or ID |
 | `next [--tier N] [--explain]` | Highest-priority open finding (--explain: with score context) |
-| `resolve <status> <patterns>` | Mark fixed / wontfix / false_positive / ignore |
+| `resolve <status> <patterns>` | Mark open / fixed / wontfix / false_positive |
 | `fix <fixer> [--dry-run]` | Auto-fix mechanical issues |
 | `review --prepare` | Generate subjective review packet (`query.json`) |
+| `review --run-batches --runner codex --parallel` | Run blind subjective batch assessments, merge/import, optionally `--scan-after-import` |
 | `review --import <file> [--allow-partial]` | Import subjective review findings (fails closed on invalid findings by default) |
 | `review --external-start --external-runner claude` | Start Claude cloud blind-review session (creates session/token/template) |
 | `review --external-submit --session-id <id> --import <file>` | Submit Claude session output (from generated template); CLI injects canonical provenance |
-| `issues` | Review findings queue (list/show/update) |
+| `issues` | Review issues queue (review findings; list/show/update) |
 | `zone` | Show/set/clear zone classifications |
 | `config` | Show/set/unset project configuration |
 | `move <src> <dst>` | Move file/directory, update all imports |
@@ -103,8 +104,20 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 
 - Findings must match `query.json` / packet `system_prompt` schema exactly:
   `dimension`, `identifier`, `summary`, `related_files`, `evidence`, `suggestion`, `confidence`.
+- Score/feedback consistency is enforced:
+  - scores below `100.0` require explicit same-dimension feedback (finding suggestion or `dimension_notes` evidence)
+  - scores below `95.0` require at least one same-dimension finding
 - `desloppify review --import` is fail-closed: if any finding is invalid/skipped, the import aborts and state is not saved.
 - Use `--allow-partial` only when you explicitly want to accept skipped findings.
+
+#### Review Batch Runtime Logs
+
+- `review --run-batches` always writes a live run log while executing.
+- Add `--retrospective` to include historical issue status/notes in the review packet so reviewers can distinguish root causes from symptom-level repeats.
+- Default path: `.desloppify/subagents/runs/<run-stamp>/run.log`
+- Per-batch live logs stream to `.desloppify/subagents/runs/<run-stamp>/logs/batch-<n>.log` while each batch is running.
+- Override path with `--run-log-file <path>`.
+- Launch output now includes a runtime upper-bound estimate and prints the active log path so agents can monitor long runs without being blind.
 
 #### Detectors
 
@@ -199,12 +212,12 @@ Outside these zones, use static imports.
 - `desloppify/languages/_framework/runtime.py` (`LangRun`) owns per-run mutable execution state
 - command modules may read/write state through state APIs, but should not define ad-hoc persisted fields
 
-</details>
-
-### Optional Dependencies (Coverage)
+#### Optional Dependencies (Coverage)
 
 - `pip install "desloppify[python-security]"` installs `bandit` for Python-specific security checks.
 - `pip install "desloppify[treesitter]"` installs tree-sitter language-pack for deeper AST analysis in generic plugins.
 - `pip install "desloppify[full]"` installs both.
 
-If optional tools are missing, scan now warns at start and end, and marks score confidence as reduced for affected detectors.
+If optional tools are missing, scan warns at start and end, and marks score confidence as reduced for affected detectors.
+
+</details>

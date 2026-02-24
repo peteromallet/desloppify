@@ -175,6 +175,46 @@ class TestCmdResolve:
         assert "Resolved 1" in out
         assert "Scores:" in out
 
+    def test_reopen_without_attestation_allowed(self, monkeypatch, capsys):
+        monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")
+        monkeypatch.setattr(resolve_apply_mod, "write_query", lambda payload: None)
+
+        fake_state = {
+            "findings": {"f1": {"status": "open"}},
+            "overall_score": 60,
+            "objective_score": 58,
+            "strict_score": 50,
+            "verified_strict_score": 49,
+            "stats": {},
+            "scan_count": 1,
+            "last_scan": "2025-01-01",
+        }
+        monkeypatch.setattr(state_mod, "load_state", lambda sp: fake_state)
+        monkeypatch.setattr(state_mod, "save_state", lambda state, sp: None)
+        monkeypatch.setattr(
+            state_mod,
+            "resolve_findings",
+            lambda state, pattern, status, note, **kwargs: ["f1"],
+        )
+        monkeypatch.setattr(
+            narrative_mod,
+            "compute_narrative",
+            lambda state, **kw: {"headline": "test", "milestone": None},
+        )
+        monkeypatch.setattr(cli_mod, "resolve_lang", lambda args: None)
+
+        class FakeArgs:
+            status = "open"
+            note = "reopened for follow-up"
+            attest = None
+            patterns = ["f1"]
+            lang = None
+            path = "."
+
+        cmd_resolve(FakeArgs())
+        out = capsys.readouterr().out
+        assert "Reopened 1" in out
+
     def test_large_wontfix_batch_requires_confirmation(self, monkeypatch, capsys):
         monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")
 

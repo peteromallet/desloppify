@@ -118,7 +118,17 @@ def append_subjective_dimensions(
         dim = _normalize_dimension_key(raw_dim)
         if not dim:
             continue
-        if allowed is not None and dim not in allowed:
+        # Real assessments (from review imports) always count regardless of
+        # allowed_dimensions — they were deliberately imported and should not
+        # be silently discarded.  However, system-generated placeholders
+        # (scan_reset_subjective) are not real assessments and should respect
+        # the allowed_dimensions scope like defaults.
+        is_placeholder = isinstance(payload, dict) and (
+            payload.get("placeholder") is True
+            or payload.get("source") == "scan_reset_subjective"
+            or payload.get("reset_by") == "scan_reset_subjective"
+        )
+        if is_placeholder and allowed is not None and dim not in allowed:
             continue
         assessed[dim] = payload
     existing_lower = {k.lower() for k in results}
@@ -132,6 +142,7 @@ def append_subjective_dimensions(
     for dim_name in all_dims:
         is_default = dim_name in default_dimensions
         assessment = assessed.get(dim_name)
+        has_assessment = isinstance(assessment, dict)
         if not is_default and not assessment:
             continue
 
@@ -176,16 +187,17 @@ def append_subjective_dimensions(
         elif integrity_penalty == "target_match_reset":
             score = 0.0
             pass_rate = 0.0
-        elif isinstance(assessment, dict):
+        elif has_assessment:
             # Assessment score drives the dimension score directly.
             # Resolving review findings does NOT change this score —
             # only a fresh review import updates it.
             score = assessment_score
             pass_rate = score / 100.0
         else:
-            # No assessment yet — clean default (no evidence = no penalty).
-            score = 100.0
-            pass_rate = 1.0
+            # No assessment yet: explicit unassessed placeholder.
+            # Subjective dimensions start at 0 until an assessment is imported.
+            score = 0.0
+            pass_rate = 0.0
         components: list[str] = []
         component_scores: dict[str, float] = {}
         if isinstance(assessment, dict):
@@ -220,7 +232,7 @@ def append_subjective_dimensions(
                     "issues": issue_count,
                     "weighted_failures": round(SUBJECTIVE_CHECKS * (1 - pass_rate), 4),
                     "assessment_score": round(assessment_score, 1),
-                    "placeholder": reset_pending,
+                    "placeholder": reset_pending or not has_assessment,
                     "dimension_key": dim_name,
                     "configured_weight": round(
                         _dimension_weight(dim_name, lang_name=lang_name), 6

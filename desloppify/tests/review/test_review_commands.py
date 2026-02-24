@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from desloppify import state as state_mod
+from desloppify.app.commands.review import batches as review_batches_mod
 from desloppify.app.commands.review.batch import (
     _do_run_batches,
 )
@@ -29,6 +31,44 @@ from desloppify.tests.review.shared_review_fixtures import (
     _as_review_payload,
     prepare_review,
 )
+
+
+class TestBatchDimensionCoverageNotices:
+    def test_preflight_notice_warns_when_scope_is_subset(self, capsys):
+        review_batches_mod._print_preflight_dimension_scope_notice(
+            selected_dims=["high_level_elegance", "mid_level_elegance"],
+            scored_dims=[
+                "high_level_elegance",
+                "mid_level_elegance",
+                "low_level_elegance",
+            ],
+            explicit_selection=False,
+            scan_path=".",
+            colorize_fn=lambda text, _tone: text,
+        )
+
+        out = capsys.readouterr().out
+        assert "targets 2/3 scored subjective dimensions" in out
+        assert "Missing from this run: low_level_elegance" in out
+        assert "--dimensions low_level_elegance" in out
+
+    def test_import_notice_warns_and_returns_missing_dimensions(self, capsys):
+        missing = review_batches_mod._print_import_dimension_coverage_notice(
+            assessed_dims=["naming_quality", "logic_clarity"],
+            scored_dims=[
+                "naming_quality",
+                "logic_clarity",
+                "type_safety",
+            ],
+            scan_path="src",
+            colorize_fn=lambda text, _tone: text,
+        )
+
+        out = capsys.readouterr().out
+        assert missing == ["type_safety"]
+        assert "imported assessments for 2/3 scored subjective dimensions" in out
+        assert "Still missing: type_safety" in out
+        assert "--path src --dimensions type_safety" in out
 
 
 class TestCmdReviewPrepare:
@@ -290,6 +330,72 @@ class TestCmdReviewPrepare:
         assert "provisional_override" not in saved
         assert "provisional_until_scan" not in saved
 
+    def test_do_import_rebases_on_latest_saved_state(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        from desloppify.app.commands.review.import_cmd import do_import as _do_import
+
+        state_file = tmp_path / "state.json"
+        latest_state = build_empty_state()
+        latest_state["subjective_assessments"] = {
+            "abstraction_fitness": {
+                "score": 88,
+                "source": "holistic",
+                "assessed_at": "2026-02-24T00:00:00+00:00",
+            }
+        }
+        latest_state["assessment_import_audit"] = [
+            {
+                "timestamp": "2026-02-24T00:00:00+00:00",
+                "mode": "trusted_internal",
+                "trusted": True,
+                "reason": "seed",
+                "override_used": False,
+                "attested_external": False,
+                "provisional": False,
+                "provisional_count": 0,
+                "attest": "",
+                "import_file": "seed.json",
+            }
+        ]
+        state_mod.save_state(latest_state, state_file)
+
+        stale_state = build_empty_state()
+        stale_state["subjective_assessments"] = {
+            "naming_quality": {
+                "score": 42,
+                "source": "holistic",
+                "assessed_at": "2026-02-01T00:00:00+00:00",
+            }
+        }
+
+        payload = {
+            "assessments": {"logic_clarity": 100},
+            "findings": [],
+        }
+        findings_file = tmp_path / "findings_rebase.json"
+        findings_file.write_text(json.dumps(payload))
+
+        lang = MagicMock()
+        lang.name = "typescript"
+
+        _do_import(
+            str(findings_file),
+            stale_state,
+            lang,
+            state_file,
+            trusted_assessment_source=True,
+            trusted_assessment_label="trusted-rebase-test",
+        )
+
+        assessments = stale_state["subjective_assessments"]
+        assert "abstraction_fitness" in assessments
+        assert "logic_clarity" in assessments
+        assert "naming_quality" not in assessments
+        audit = stale_state.get("assessment_import_audit", [])
+        assert len(audit) == 2
+        assert audit[-1]["import_file"] == str(findings_file)
+
     def test_attested_external_import_applies_durable_assessment(
         self, empty_state, tmp_path
     ):
@@ -515,6 +621,8 @@ class TestCmdReviewPrepare:
         args.packet = None
         args.only_batches = None
         args.scan_after_import = False
+        args.save_run_log = True
+        args.run_log_file = None
 
         prepared = {
             "command": "review",
@@ -532,6 +640,24 @@ class TestCmdReviewPrepare:
                     "dimensions": ["high_level_elegance"],
                     "files_to_read": ["src/foo.ts"],
                     "why": "test",
+                    "historical_issue_focus": {
+                        "dimensions": ["high_level_elegance"],
+                        "max_items": 20,
+                        "selected_count": 1,
+                        "issues": [
+                            {
+                                "dimension": "high_level_elegance",
+                                "status": "open",
+                                "summary": "Legacy surface remains primary",
+                                "suggestion": "consolidate interfaces",
+                                "related_files": ["src/a.ts"],
+                                "note": "",
+                                "confidence": "high",
+                                "first_seen": "2026-02-20T10:00:00+00:00",
+                                "last_seen": "2026-02-24T10:00:00+00:00",
+                            }
+                        ],
+                    },
                 },
                 {
                     "name": "Conventions & Errors",
@@ -589,6 +715,13 @@ class TestCmdReviewPrepare:
         prompt_text = prompt_files[0].read_text()
         assert "Blind packet:" in prompt_text
         assert str(blind_packet) in prompt_text
+        assert "Previously flagged issues" in prompt_text
+        assert "Legacy surface remains primary" in prompt_text
+        run_logs = sorted(runs_dir.glob("*/run.log"))
+        assert len(run_logs) == 1
+        run_log_text = run_logs[0].read_text()
+        assert "run-start" in run_log_text
+        assert "run-finished dry-run" in run_log_text
 
     def test_do_run_batches_merges_outputs_and_imports(self, empty_state, tmp_path):
         packet = {
@@ -654,14 +787,14 @@ class TestCmdReviewPrepare:
                             "impact_scope": "subsystem",
                             "fix_scope": "multi_file_refactor",
                             "confidence": "high",
-                            "unreported_risk": "Cross-cutting regression risk remains.",
+                            "issues_preventing_higher_score": "Cross-cutting regression risk remains.",
                         },
                         "mid_level_elegance": {
                             "evidence": ["handoff adapters are inconsistent"],
                             "impact_scope": "module",
                             "fix_scope": "single_edit",
                             "confidence": "medium",
-                            "unreported_risk": "",
+                            "issues_preventing_higher_score": "",
                         },
                     },
                     "findings": [
@@ -669,10 +802,24 @@ class TestCmdReviewPrepare:
                             "dimension": "high_level_elegance",
                             "identifier": "dup",
                             "summary": "shared",
+                            "related_files": ["src/a.ts", "src/b.ts"],
+                            "evidence": ["shared orchestration crosses module seams"],
+                            "suggestion": "extract orchestration boundary policy into one module",
                             "confidence": "high",
                             "impact_scope": "subsystem",
                             "fix_scope": "multi_file_refactor",
-                        }
+                        },
+                        {
+                            "dimension": "mid_level_elegance",
+                            "identifier": "handoff_adapter_drift",
+                            "summary": "Handoff adapters drift between sibling modules",
+                            "related_files": ["src/a.ts", "src/b.ts"],
+                            "evidence": ["handoff adapters are inconsistent"],
+                            "suggestion": "standardize one adapter protocol for handoff boundaries",
+                            "confidence": "medium",
+                            "impact_scope": "module",
+                            "fix_scope": "single_edit",
+                        },
                     ],
                 }
             else:
@@ -687,14 +834,14 @@ class TestCmdReviewPrepare:
                             "impact_scope": "module",
                             "fix_scope": "single_edit",
                             "confidence": "medium",
-                            "unreported_risk": "Some edge seams are still brittle.",
+                            "issues_preventing_higher_score": "Some edge seams are still brittle.",
                         },
                         "low_level_elegance": {
                             "evidence": ["local internals remain concise"],
                             "impact_scope": "local",
                             "fix_scope": "single_edit",
                             "confidence": "medium",
-                            "unreported_risk": "",
+                            "issues_preventing_higher_score": "",
                         },
                     },
                     "findings": [
@@ -702,6 +849,9 @@ class TestCmdReviewPrepare:
                             "dimension": "high_level_elegance",
                             "identifier": "dup",
                             "summary": "shared",
+                            "related_files": ["src/c.ts", "src/d.ts"],
+                            "evidence": ["seam handling differs between sibling modules"],
+                            "suggestion": "standardize orchestration seams through shared adapter",
                             "confidence": "high",
                             "impact_scope": "module",
                             "fix_scope": "single_edit",
@@ -710,6 +860,9 @@ class TestCmdReviewPrepare:
                             "dimension": "low_level_elegance",
                             "identifier": "new",
                             "summary": "unique",
+                            "related_files": ["src/c.ts", "src/d.ts"],
+                            "evidence": ["local flow uses repetitive branching boilerplate"],
+                            "suggestion": "extract one local helper to remove repeated branches",
                             "confidence": "medium",
                             "impact_scope": "local",
                             "fix_scope": "single_edit",
@@ -757,13 +910,13 @@ class TestCmdReviewPrepare:
         payload = captured["payload"]
         assert isinstance(payload, dict)
         assert payload["assessments"]["high_level_elegance"] == 71.5
-        assert payload["assessments"]["mid_level_elegance"] == 65.0
+        assert payload["assessments"]["mid_level_elegance"] == 62.1
         assert payload["assessments"]["low_level_elegance"] == 77.8
         assert payload["reviewed_files"] == ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"]
         assert "dimension_notes" in payload
         assert "review_quality" in payload
         assert payload["review_quality"]["dimension_coverage"] == 0.667
-        assert len(payload["findings"]) == 2
+        assert len(payload["findings"]) == 3
         provenance = payload.get("provenance", {})
         assert provenance.get("kind") == "blind_review_batch_import"
         assert provenance.get("blind") is True
@@ -775,6 +928,11 @@ class TestCmdReviewPrepare:
             == "trusted internal run-batches import"
         )
         assert captured["kwargs"]["allow_partial"] is False
+        summary_files = sorted(runs_dir.glob("*/run_summary.json"))
+        assert len(summary_files) == 1
+        summary_payload = json.loads(summary_files[0].read_text())
+        assert summary_payload["failed_batches"] == []
+        assert summary_payload["successful_batches"] == [1, 2]
 
     def test_do_run_batches_forwards_allow_partial_when_enabled(
         self, empty_state, tmp_path
@@ -828,7 +986,7 @@ class TestCmdReviewPrepare:
                         "impact_scope": "module",
                         "fix_scope": "single_edit",
                         "confidence": "medium",
-                        "unreported_risk": "",
+                        "issues_preventing_higher_score": "",
                     }
                 },
                 "findings": [
@@ -836,6 +994,9 @@ class TestCmdReviewPrepare:
                         "dimension": "mid_level_elegance",
                         "identifier": "seam_style_drift",
                         "summary": "Seam style drifts across adjacent modules",
+                        "related_files": ["src/a.ts"],
+                        "evidence": ["adjacent modules use incompatible seam conventions"],
+                        "suggestion": "standardize one seam pattern for sibling modules",
                         "confidence": "medium",
                         "impact_scope": "module",
                         "fix_scope": "single_edit",
@@ -881,6 +1042,203 @@ class TestCmdReviewPrepare:
             _do_run_batches(args, empty_state, lang, "fake_sp", config={})
 
         assert captured["kwargs"]["allow_partial"] is True
+
+    def test_do_run_batches_allow_partial_imports_successful_batches_when_one_fails(
+        self, empty_state, tmp_path
+    ):
+        packet = {
+            "command": "review",
+            "mode": "holistic",
+            "language": "typescript",
+            "dimensions": ["mid_level_elegance"],
+            "investigation_batches": [
+                {
+                    "name": "Batch A",
+                    "dimensions": ["mid_level_elegance"],
+                    "files_to_read": ["src/a.ts"],
+                    "why": "A",
+                },
+                {
+                    "name": "Batch B",
+                    "dimensions": ["mid_level_elegance"],
+                    "files_to_read": ["src/b.ts"],
+                    "why": "B",
+                },
+            ],
+        }
+        packet_path = tmp_path / "packet.json"
+        packet_path.write_text(json.dumps(packet))
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.dimensions = None
+        args.runner = "codex"
+        args.parallel = False
+        args.dry_run = False
+        args.packet = str(packet_path)
+        args.only_batches = None
+        args.scan_after_import = False
+        args.allow_partial = True
+
+        review_packet_dir = tmp_path / ".desloppify" / "review_packets"
+        runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
+
+        def fake_subprocess_run(
+            cmd,
+            capture_output=False,
+            text=False,
+            timeout=None,
+            cwd=None,
+        ):
+            _ = capture_output, text, timeout, cwd
+            out_path = Path(cmd[cmd.index("-o") + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            if out_path.name == "batch-1.raw.txt":
+                out_path.write_text(
+                    json.dumps(
+                        {
+                            "assessments": {"mid_level_elegance": 77},
+                            "dimension_notes": {
+                                "mid_level_elegance": {
+                                    "evidence": ["explicit seams"],
+                                    "impact_scope": "module",
+                                    "fix_scope": "single_edit",
+                                    "confidence": "medium",
+                                    "issues_preventing_higher_score": "",
+                                }
+                            },
+                            "findings": [
+                                {
+                                    "dimension": "mid_level_elegance",
+                                    "identifier": "seam_style",
+                                    "summary": "Seams drift slightly",
+                                    "related_files": ["src/a.ts"],
+                                    "evidence": ["interface seam style differs across nearby modules"],
+                                    "suggestion": "normalize seam style to one interface pattern",
+                                    "confidence": "medium",
+                                    "impact_scope": "module",
+                                    "fix_scope": "single_edit",
+                                }
+                            ],
+                        }
+                    )
+                )
+                return MagicMock(returncode=0, stdout="ok", stderr="")
+            return MagicMock(returncode=124, stdout="", stderr="timed out")
+
+        captured: dict[str, object] = {}
+
+        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+            captured["holistic"] = holistic
+            captured["config"] = config
+            captured["kwargs"] = kwargs
+            captured["payload"] = json.loads(Path(import_file).read_text())
+
+        lang = MagicMock()
+        lang.name = "typescript"
+
+        with (
+            patch(
+                "desloppify.app.commands.review.batch.subprocess.run",
+                side_effect=fake_subprocess_run,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.PROJECT_ROOT",
+                tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.REVIEW_PACKET_DIR",
+                review_packet_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.SUBAGENT_RUNS_DIR",
+                runs_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch._do_import",
+                side_effect=fake_import,
+            ),
+        ):
+            _do_run_batches(args, empty_state, lang, "fake_sp", config={})
+
+        payload = captured["payload"]
+        assert payload["assessments"]["mid_level_elegance"] == pytest.approx(74.1, abs=0.1)
+        assert payload["reviewed_files"] == ["src/a.ts"]
+        assert captured["kwargs"]["allow_partial"] is True
+        summary_files = sorted(runs_dir.glob("*/run_summary.json"))
+        assert len(summary_files) == 1
+        summary_payload = json.loads(summary_files[0].read_text())
+        assert summary_payload["failed_batches"] == [2]
+        assert summary_payload["successful_batches"] == [1]
+
+    def test_do_run_batches_allow_partial_exits_when_no_batch_succeeds(
+        self, empty_state, tmp_path
+    ):
+        packet = {
+            "command": "review",
+            "mode": "holistic",
+            "language": "typescript",
+            "dimensions": ["mid_level_elegance"],
+            "investigation_batches": [
+                {
+                    "name": "Batch A",
+                    "dimensions": ["mid_level_elegance"],
+                    "files_to_read": ["src/a.ts"],
+                    "why": "A",
+                }
+            ],
+        }
+        packet_path = tmp_path / "packet.json"
+        packet_path.write_text(json.dumps(packet))
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.dimensions = None
+        args.runner = "codex"
+        args.parallel = False
+        args.dry_run = False
+        args.packet = str(packet_path)
+        args.only_batches = None
+        args.scan_after_import = False
+        args.allow_partial = True
+
+        review_packet_dir = tmp_path / ".desloppify" / "review_packets"
+        runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
+
+        def fake_subprocess_run(
+            _cmd,
+            capture_output=False,
+            text=False,
+            timeout=None,
+            cwd=None,
+        ):
+            _ = capture_output, text, timeout, cwd
+            return MagicMock(returncode=124, stdout="", stderr="timed out")
+
+        lang = MagicMock()
+        lang.name = "typescript"
+
+        with (
+            patch(
+                "desloppify.app.commands.review.batch.subprocess.run",
+                side_effect=fake_subprocess_run,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.PROJECT_ROOT",
+                tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.REVIEW_PACKET_DIR",
+                review_packet_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.SUBAGENT_RUNS_DIR",
+                runs_dir,
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                _do_run_batches(args, empty_state, lang, "fake_sp", config={})
+        assert exc_info.value.code == 1
 
     def test_do_run_batches_keeps_abstraction_component_breakdown(
         self, empty_state, tmp_path
@@ -933,7 +1291,7 @@ class TestCmdReviewPrepare:
                         "impact_scope": "subsystem",
                         "fix_scope": "multi_file_refactor",
                         "confidence": "high",
-                        "unreported_risk": "",
+                        "issues_preventing_higher_score": "",
                         "sub_axes": {
                             "abstraction_leverage": 68,
                             "indirection_cost": 62,
@@ -946,6 +1304,9 @@ class TestCmdReviewPrepare:
                         "dimension": "abstraction_fitness",
                         "identifier": "wrapper_chain",
                         "summary": "Wrapper stack adds indirection cost",
+                        "related_files": ["src/a.py", "src/b.py"],
+                        "evidence": ["3 wrapper layers before reaching domain behavior"],
+                        "suggestion": "collapse wrapper chain and expose one direct boundary",
                         "confidence": "high",
                         "impact_scope": "subsystem",
                         "fix_scope": "multi_file_refactor",
@@ -1024,6 +1385,72 @@ class TestCmdReviewPrepare:
         assert code == 127
         assert "RUNNER ERROR" in log_file.read_text()
 
+    def test_run_codex_batch_retries_stream_disconnect(self, tmp_path):
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
+        log_file = tmp_path / "batch.log"
+        attempts = [
+            MagicMock(
+                returncode=1,
+                stdout="",
+                stderr=(
+                    "ERROR: stream disconnected before completion: "
+                    "error sending request for url (https://chatgpt.com/backend-api/codex/responses)"
+                ),
+            ),
+            MagicMock(returncode=0, stdout="ok", stderr=""),
+        ]
+        mock_run = MagicMock(side_effect=attempts)
+        code = runner_helpers_mod.run_codex_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=tmp_path / "out.txt",
+            log_file=log_file,
+            deps=runner_helpers_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=mock_run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=lambda p, t: p.write_text(t),
+                max_retries=1,
+                retry_backoff_seconds=0.0,
+                sleep_fn=lambda _seconds: None,
+            ),
+        )
+        assert code == 0
+        assert mock_run.call_count == 2
+        raw_log = log_file.read_text()
+        assert "ATTEMPT 1/2" in raw_log
+        assert "ATTEMPT 2/2" in raw_log
+        assert "Transient runner failure detected" in raw_log
+
+    def test_run_codex_batch_writes_live_status_before_completion(self, tmp_path):
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
+        log_file = tmp_path / "batch.log"
+        live_snapshot = {"text": ""}
+
+        def fake_run(_cmd, *, capture_output, text, timeout):  # noqa: ARG001
+            if log_file.exists():
+                live_snapshot["text"] = log_file.read_text()
+            return MagicMock(returncode=0, stdout="ok", stderr="")
+
+        code = runner_helpers_mod.run_codex_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=tmp_path / "out.txt",
+            log_file=log_file,
+            deps=runner_helpers_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=fake_run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=lambda p, t: p.write_text(t),
+            ),
+        )
+        assert code == 0
+        assert "STATUS: running" in live_snapshot["text"]
+        assert "ATTEMPT 1/1" in live_snapshot["text"]
+        assert "STDOUT:" in log_file.read_text()
+
     def test_print_failures_and_exit_shows_codex_missing_hint(self, tmp_path, capsys):
         from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
 
@@ -1063,6 +1490,48 @@ class TestCmdReviewPrepare:
         err = capsys.readouterr().err
         assert "Environment hints:" in err
         assert "codex login" in err
+
+    def test_print_failures_reports_categories_without_exit(self, tmp_path, capsys):
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text("$ codex ...\nTIMEOUT after 60s\n")
+        (logs_dir / "batch-2.log").write_text(
+            "$ codex ...\nSTDERR:\nAuthentication failed: please login first.\n"
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0, 1, 2],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Failure categories:" in err
+        assert "timeout=1" in err
+        assert "runner auth=1" in err
+        assert "missing log=1" in err
+
+    def test_print_failures_reports_stream_disconnect_category(self, tmp_path, capsys):
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "$ codex ...\nSTDERR:\nERROR: stream disconnected before completion\n"
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Failure categories:" in err
+        assert "stream disconnect=1" in err
+        assert "Connectivity tuning:" in err
 
     def test_run_followup_scan_returns_nonzero_code(self, tmp_path):
         from desloppify.app.commands.review import runner_helpers as runner_helpers_mod

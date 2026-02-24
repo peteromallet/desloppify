@@ -398,6 +398,9 @@ class TestReviewParser:
         assert args.session_ttl_hours == 24
         assert args.allow_partial is False
         assert args.dimensions is None
+        assert args.retrospective is False
+        assert args.retrospective_max_issues == 30
+        assert args.retrospective_max_batch_items == 20
         assert args.run_batches is False
         assert args.runner == "codex"
         assert args.parallel is False

@@ -595,6 +595,25 @@ class TestUpdateHolisticReviewCache:
         rc = empty_state.get("review_cache", {})
         assert rc["holistic"]["file_count_at_review"] == 267
 
+    def test_review_scope_total_files_overrides_metric_fallback(self, empty_state):
+        empty_state["codebase_metrics"] = {"python": {"total_files": 267}}
+        update_holistic_review_cache(
+            empty_state,
+            [],
+            lang_name="python",
+            review_scope={
+                "total_files": 999,
+                "reviewed_files_count": 42,
+                "full_sweep_included": True,
+            },
+            utc_now_fn=lambda: "2026-02-01",
+        )
+
+        rc = empty_state.get("review_cache", {})
+        assert rc["holistic"]["file_count_at_review"] == 999
+        assert rc["holistic"]["reviewed_files_count"] == 42
+        assert rc["holistic"]["full_sweep_included"] is True
+
 
 # ── remediation.py tests ─────────────────────────────────────────
 

@@ -110,6 +110,67 @@ class TestReviewCoverageNoCache:
         assert len(entries) == 0
 
 
+class TestReviewCoverageHolisticBaseline:
+    """Fresh holistic baselines suppress per-file unreviewed markers."""
+
+    def test_fresh_holistic_suppresses_unreviewed(self, tmp_path):
+        f = _make_file(str(tmp_path), "module.py")
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        entries, potential = detect_review_coverage(
+            [f],
+            zone_map=None,
+            review_cache={},
+            lang_name="python",
+            holistic_cache={
+                "reviewed_at": now,
+                "file_count_at_review": 1,
+                "finding_count": 0,
+            },
+            holistic_total_files=1,
+        )
+        assert potential == 1
+        assert entries == []
+
+    def test_stale_holistic_does_not_suppress_unreviewed(self, tmp_path):
+        f = _make_file(str(tmp_path), "module.py")
+        old = (datetime.now(UTC) - timedelta(days=45)).isoformat(timespec="seconds")
+        entries, potential = detect_review_coverage(
+            [f],
+            zone_map=None,
+            review_cache={},
+            lang_name="python",
+            holistic_cache={
+                "reviewed_at": old,
+                "file_count_at_review": 1,
+                "finding_count": 0,
+            },
+            holistic_total_files=1,
+        )
+        assert potential == 1
+        assert len(entries) == 1
+        assert entries[0]["name"] == "unreviewed"
+
+    def test_partial_holistic_without_full_sweep_does_not_suppress(self, tmp_path):
+        f = _make_file(str(tmp_path), "module.py")
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        entries, potential = detect_review_coverage(
+            [f],
+            zone_map=None,
+            review_cache={},
+            lang_name="python",
+            holistic_cache={
+                "reviewed_at": now,
+                "file_count_at_review": 1,
+                "finding_count": 0,
+                "full_sweep_included": False,
+            },
+            holistic_total_files=1,
+        )
+        assert potential == 1
+        assert len(entries) == 1
+        assert entries[0]["name"] == "unreviewed"
+
+
 class TestReviewCoverageZoneFiltering:
     """Zone filtering: only production files are flagged."""
 

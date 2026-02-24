@@ -280,7 +280,8 @@ def test_load_dimensions_for_lang_applies_override_patch(
     assert dims == ["shared_dim", "lang_dim"]
     assert "shared_dim" in prompts
     assert "lang_dim" in prompts
-    assert system_prompt.endswith("lang-tail")
+    assert "lang-tail" in system_prompt
+    assert "GLOBAL REVIEW CONTRACT" in system_prompt
 
 
 def test_load_dimensions_for_lang_override_remove_and_append(

@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.intelligence.review.feedback_contract import (
+    ASSESSMENT_FEEDBACK_THRESHOLD,
+    LOW_SCORE_FINDING_THRESHOLD,
+    score_requires_dimension_finding,
+    score_requires_explicit_feedback,
+)
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.state import coerce_assessment_score
 
@@ -451,23 +457,48 @@ def _feedback_dimensions_from_findings(findings: object) -> set[str]:
     return dims
 
 
-def _validate_assessment_feedback(findings_data: dict[str, Any]) -> list[str]:
-    """Return dimensions that scored <100 without explicit improvement feedback."""
+def _feedback_dimensions_from_dimension_notes(dimension_notes: object) -> set[str]:
+    """Return dimensions with concrete review evidence in dimension_notes payload."""
+    if not isinstance(dimension_notes, dict):
+        return set()
+    dims: set[str] = set()
+    for dim, note in dimension_notes.items():
+        if not isinstance(dim, str) or not dim.strip():
+            continue
+        if not isinstance(note, dict):
+            continue
+        if not _has_non_empty_strings(note.get("evidence")):
+            continue
+        dims.add(dim.strip())
+    return dims
+
+
+def _validate_assessment_feedback(
+    findings_data: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Return dimensions missing required feedback and required low-score findings."""
     assessments = findings_data.get("assessments")
     if not isinstance(assessments, dict) or not assessments:
-        return []
+        return [], []
 
-    feedback_dims = _feedback_dimensions_from_findings(findings_data.get("findings"))
-    missing: list[str] = []
+    finding_dims = _feedback_dimensions_from_findings(findings_data.get("findings"))
+    feedback_dims = set(finding_dims)
+    feedback_dims.update(
+        _feedback_dimensions_from_dimension_notes(findings_data.get("dimension_notes"))
+    )
+    missing_feedback: list[str] = []
+    missing_low_score_findings: list[str] = []
     for dim_name, payload in assessments.items():
         if not isinstance(dim_name, str) or not dim_name.strip():
             continue
         score = coerce_assessment_score(payload)
-        if score is None or score >= 100.0:
+        if score is None:
             continue
-        if dim_name not in feedback_dims:
-            missing.append(f"{dim_name} ({score:.1f})")
-    return sorted(missing)
+        if score_requires_dimension_finding(score) and dim_name not in finding_dims:
+            missing_low_score_findings.append(f"{dim_name} ({score:.1f})")
+        if score_requires_explicit_feedback(score) and dim_name not in feedback_dims:
+            missing_feedback.append(f"{dim_name} ({score:.1f})")
+    return sorted(missing_feedback), sorted(missing_low_score_findings)
 
 
 def _parse_and_validate_import(
@@ -539,15 +570,29 @@ def _parse_and_validate_import(
         return None, policy_errors
     assert findings_data is not None
 
-    missing_feedback = _validate_assessment_feedback(findings_data)
+    missing_feedback, missing_low_score_findings = _validate_assessment_feedback(
+        findings_data
+    )
+    if missing_low_score_findings:
+        if override_enabled:
+            if not isinstance(override_attest, str) or not override_attest.strip():
+                return None, ["--manual-override requires --attest"]
+            return findings_data, []
+        return None, [
+            f"assessments below {LOW_SCORE_FINDING_THRESHOLD:.1f} must include at "
+            "least one finding for that same dimension with a concrete suggestion. "
+            f"Missing: {', '.join(missing_low_score_findings)}"
+        ]
+
     if missing_feedback:
         if override_enabled:
             if not isinstance(override_attest, str) or not override_attest.strip():
                 return None, ["--manual-override requires --attest"]
             return findings_data, []
         return None, [
-            "assessments below 100 must include explicit feedback "
-            "(finding with same dimension and non-empty suggestion). "
+            f"assessments below {ASSESSMENT_FEEDBACK_THRESHOLD:.1f} must include explicit feedback "
+            "(finding with same dimension and non-empty suggestion, or "
+            "dimension_notes evidence for that dimension). "
             f"Missing: {', '.join(missing_feedback)}"
         ]
 
@@ -789,7 +834,8 @@ def print_open_review_summary(state: dict[str, Any], *, colorize_fn) -> str:
         return "desloppify scan"
     print(
         colorize_fn(
-            f"\n  {len(open_review)} review finding{'s' if len(open_review) != 1 else ''} open total",
+            f"\n  {len(open_review)} review issue{'s' if len(open_review) != 1 else ''} open total "
+            f"({len(open_review)} review finding{'s' if len(open_review) != 1 else ''} open total)",
             "bold",
         )
     )

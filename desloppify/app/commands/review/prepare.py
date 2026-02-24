@@ -19,6 +19,18 @@ def _redacted_review_config(config: dict | None) -> dict:
     return {key: value for key, value in config.items() if key != "target_strict_score"}
 
 
+def _coerce_positive_int(value: object, *, default: int) -> int:
+    if value is None:
+        return default
+    if not isinstance(value, int | float | str):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def do_prepare(
     args,
     state,
@@ -31,6 +43,15 @@ def do_prepare(
     path = Path(args.path)
     dims_str = getattr(args, "dimensions", None)
     dimensions = dims_str.split(",") if dims_str else None
+    retrospective = bool(getattr(args, "retrospective", False))
+    retrospective_max_issues = _coerce_positive_int(
+        getattr(args, "retrospective_max_issues", None),
+        default=30,
+    )
+    retrospective_max_batch_items = _coerce_positive_int(
+        getattr(args, "retrospective_max_batch_items", None),
+        default=20,
+    )
 
     lang_run, found_files = review_runtime_mod.setup_lang_concrete(lang, path, config)
 
@@ -46,13 +67,23 @@ def do_prepare(
         options=review_mod.HolisticReviewPrepareOptions(
             dimensions=dimensions,
             files=found_files or None,
+            include_issue_history=retrospective,
+            issue_history_max_issues=retrospective_max_issues,
+            issue_history_max_batch_items=retrospective_max_batch_items,
         ),
     )
-    data["config"] = _redacted_review_config(config)
-    data["narrative"] = narrative
-    data["next_command"] = (
+    next_command = (
         "desloppify review --run-batches --runner codex --parallel --scan-after-import"
     )
+    if retrospective:
+        next_command += (
+            " --retrospective"
+            f" --retrospective-max-issues {retrospective_max_issues}"
+            f" --retrospective-max-batch-items {retrospective_max_batch_items}"
+        )
+    data["config"] = _redacted_review_config(config)
+    data["narrative"] = narrative
+    data["next_command"] = next_command
     total = data.get("total_files", 0)
     if total == 0:
         print(
@@ -85,6 +116,13 @@ def do_prepare(
     write_query(data)
     batches = data.get("investigation_batches", [])
     print(colorize(f"\n  Holistic review prepared: {total} files in codebase", "bold"))
+    if retrospective:
+        print(
+            colorize(
+                "  Retrospective context enabled: historical review issues injected into packet.",
+                "dim",
+            )
+        )
     if batches:
         print(
             colorize(
@@ -105,7 +143,7 @@ def do_prepare(
     print(colorize("\n  AGENT PLAN:", "yellow"))
     print(
         colorize(
-            "  1. Preferred: `desloppify review --run-batches --runner codex --parallel --scan-after-import`",
+            f"  1. Preferred: `{next_command}`",
             "dim",
         )
     )
@@ -136,14 +174,14 @@ def do_prepare(
     print(
         colorize(
             "  Next command to improve subjective scores: "
-            "`desloppify review --run-batches --runner codex --parallel --scan-after-import`",
+            f"`{next_command}`",
             "dim",
         )
     )
     print(
         colorize(
             "\n  → query.json updated. "
-            "Preferred next step: desloppify review --run-batches --runner codex --parallel --scan-after-import",
+            f"Preferred next step: {next_command}",
             "cyan",
         )
     )

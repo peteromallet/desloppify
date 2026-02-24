@@ -305,12 +305,14 @@ def compute_score_bundle(
     potentials: dict[str, int],
     *,
     subjective_assessments: dict | None = None,
+    allowed_subjective_dimensions: set[str] | None = None,
 ) -> ScoreBundle:
     """Compute all score channels from one scoring engine pass."""
     by_mode = compute_dimension_scores_by_mode(
         findings,
         potentials,
         subjective_assessments=subjective_assessments,
+        allowed_subjective_dimensions=allowed_subjective_dimensions,
     )
 
     lenient_scores = by_mode["lenient"]

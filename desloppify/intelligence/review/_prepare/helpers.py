@@ -11,12 +11,11 @@ HOLISTIC_WORKFLOW = [
     "For each batch: read the listed files, evaluate the batch's dimensions (batches are independent — parallelize)",
     "Cross-reference findings with the sibling_behavior and convention data",
     "IMPORTANT: findings must be defects only — never positive observations. High scores capture quality; findings capture problems.",
-    "For simple issues (missing import, wrong name): fix directly in code, then note as resolved",
-    "For cross-cutting issues: write to findings.json (format described in system_prompt)",
+    "Write ALL findings to findings.json — do NOT fix code before importing. Import creates tracked state entries that let desloppify correlate fixes to findings.",
     "Preferred local Codex path: desloppify review --run-batches --runner codex --parallel --scan-after-import",
     "Claude cloud durable path: run `desloppify review --external-start --external-runner claude`, follow the session template/instructions, then run the printed `--external-submit` command",
     "Fallback path: `desloppify review --import findings.json` (findings only). Use manual override only for emergency/provisional imports.",
-    "Run `desloppify issues` to see the work queue, then fix each finding and resolve",
+    "AFTER importing: run `desloppify issues` to see the work queue, then fix each finding in code and `desloppify resolve fixed <id>`",
 ]
 
 

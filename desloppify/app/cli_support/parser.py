@@ -32,7 +32,7 @@ workflow:
   status                        Score dashboard with per-tier progress
   tree                          Annotated codebase tree (zoom with --focus)
   show <pattern>                Dig into findings by file/dir/detector/ID
-  resolve <pattern> <status>    Mark findings as fixed/wontfix/false_positive
+  resolve <pattern> <status>    Mark findings as open/fixed/wontfix/false_positive
   ignore <pattern>              Suppress findings matching a pattern
   zone show                     Show zone classifications for all files
   zone set <file> <zone>        Override zone for a file
@@ -61,6 +61,7 @@ examples:
   desloppify review --validate-import findings.json --attested-external --attest "I validated this review was completed without awareness of overall score and is unbiased."
   desloppify review --external-start --external-runner claude
   desloppify review --external-submit --session-id <session_id> --import findings.json
+  desloppify review --run-batches --runner codex --parallel --scan-after-import --retrospective
   desloppify dev scaffold-lang go --extension .go --marker go.mod --default-src .
   desloppify move src/shared/hooks/useFoo.ts src/shared/hooks/video/useFoo.ts --dry-run
   desloppify move scripts/foo/bar.py scripts/foo/baz/bar.py

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import sys
+from pathlib import Path
 
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query
@@ -233,7 +234,13 @@ def do_import(
     )
 
     # Transactional import: only persist if all post-import guards pass.
-    working_state = copy.deepcopy(state)
+    # Rebase on the latest on-disk state when available so long-running review
+    # sessions don't clobber newer imports/scans that completed while batches ran.
+    state_path = Path(state_file) if state_file is not None else None
+    if state_path is not None and state_path.exists():
+        working_state = copy.deepcopy(state_mod.load_state(state_path))
+    else:
+        working_state = copy.deepcopy(state)
     diff = review_mod.import_holistic_findings(findings_data, working_state, lang.name)
     label = "Holistic review"
     imported_assessment_keys = _imported_assessment_keys(findings_data)
@@ -303,9 +310,11 @@ def do_import(
     )
 
     print(colorize(f"\n  {label} imported:", "bold"))
+    issue_count = int(diff.get("new", 0) or 0)
     print(
         colorize(
-            f"  +{diff['new']} new findings, "
+            f"  +{issue_count} new issue{'s' if issue_count != 1 else ''} "
+            f"(review findings), "
             f"{diff['auto_resolved']} resolved, "
             f"{diff['reopened']} reopened",
             "dim",

@@ -443,6 +443,108 @@ def test_import_accepts_perfect_assessment_without_feedback(tmp_path):
     assert parsed["_assessment_policy"]["mode"] == "findings_only"
 
 
+def test_import_trusted_internal_accepts_dimension_notes_feedback(tmp_path):
+    payload = {
+        "findings": [],
+        "dimension_notes": {
+            "naming_quality": {
+                "evidence": ["Names in payment flow are generic and overloaded."],
+                "impact_scope": "module",
+                "fix_scope": "multi_file_refactor",
+                "confidence": "high",
+            }
+        },
+        "assessments": {"naming_quality": 95},
+    }
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(json.dumps(payload))
+
+    parsed = load_import_findings_data(
+        str(findings_path),
+        colorize_fn=_colorize,
+        trusted_assessment_source=True,
+        trusted_assessment_label="internal batch import test",
+    )
+    assert parsed["assessments"]["naming_quality"] == 95
+    policy = parsed.get("_assessment_policy", {})
+    assert policy["mode"] == "trusted_internal"
+
+
+def test_import_trusted_internal_rejects_sub100_without_feedback(tmp_path, capsys):
+    payload = {
+        "findings": [],
+        "assessments": {"naming_quality": 95},
+    }
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(json.dumps(payload))
+
+    with pytest.raises(SystemExit) as exc:
+        load_import_findings_data(
+            str(findings_path),
+            colorize_fn=_colorize,
+            trusted_assessment_source=True,
+            trusted_assessment_label="internal batch import test",
+        )
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "assessments below 100.0 must include explicit feedback" in err
+
+
+def test_import_trusted_internal_rejects_low_score_without_finding(tmp_path, capsys):
+    payload = {
+        "findings": [],
+        "dimension_notes": {
+            "naming_quality": {
+                "evidence": ["Naming drifts in key workflows."],
+                "impact_scope": "module",
+                "fix_scope": "multi_file_refactor",
+                "confidence": "high",
+            }
+        },
+        "assessments": {"naming_quality": 90},
+    }
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(json.dumps(payload))
+
+    with pytest.raises(SystemExit) as exc:
+        load_import_findings_data(
+            str(findings_path),
+            colorize_fn=_colorize,
+            trusted_assessment_source=True,
+            trusted_assessment_label="internal batch import test",
+        )
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "assessments below 95.0 must include at least one finding" in err
+
+
+def test_import_trusted_internal_accepts_low_score_with_finding(tmp_path):
+    payload = {
+        "findings": [
+            {
+                "dimension": "naming_quality",
+                "identifier": "payment_flow_names",
+                "summary": "Generic names in payment flow hide intent",
+                "related_files": ["src/payments/service.ts"],
+                "evidence": ["processData is used for invoice reconciliation logic"],
+                "suggestion": "rename processData to reconcileInvoiceFlow",
+                "confidence": "high",
+            }
+        ],
+        "assessments": {"naming_quality": 90},
+    }
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(json.dumps(payload))
+
+    parsed = load_import_findings_data(
+        str(findings_path),
+        colorize_fn=_colorize,
+        trusted_assessment_source=True,
+        trusted_assessment_label="internal batch import test",
+    )
+    assert parsed["assessments"]["naming_quality"] == 90
+
+
 def test_write_packet_snapshot_redacts_target_from_blind_packet(tmp_path):
     packet = {
         "command": "review",

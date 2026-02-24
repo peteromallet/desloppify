@@ -7,6 +7,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from desloppify.intelligence.review.feedback_contract import ensure_prompt_contract
 from desloppify.intelligence.review.dimensions.validation import (
     parse_dimensions_payload,
 )
@@ -185,7 +186,10 @@ def _load_payload_for_lang(
 def load_dimensions() -> tuple[list[str], dict[str, dict[str, object]], str]:
     """Load and validate the unified review dimension definitions."""
     payload = _load_json_payload(_DIMENSIONS_FILE)
-    return parse_dimensions_payload(payload, context_prefix=_DIMENSIONS_FILE)
+    dims, prompts, system_prompt = parse_dimensions_payload(
+        payload, context_prefix=_DIMENSIONS_FILE
+    )
+    return dims, prompts, ensure_prompt_contract(system_prompt)
 
 
 @lru_cache(maxsize=16)
@@ -198,5 +202,7 @@ def load_dimensions_for_lang(
         _DIMENSIONS_FILE,
         dims_key="default_dimensions",
     )
-    return parse_dimensions_payload(payload, context_prefix=context)
-
+    dims, prompts, system_prompt = parse_dimensions_payload(
+        payload, context_prefix=context
+    )
+    return dims, prompts, ensure_prompt_contract(system_prompt)

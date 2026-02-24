@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
+import threading
 from hashlib import sha256
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -32,6 +34,19 @@ _BLIND_CONFIG_SCORE_HINT_KEYS = {
     "verified_strict_score",
 }
 
+_TRANSIENT_RUNNER_PHRASES = (
+    "stream disconnected before completion",
+    "error sending request for url",
+    "connection reset by peer",
+    "connection reset",
+    "connection aborted",
+    "temporarily unavailable",
+    "network is unreachable",
+    "connection refused",
+    "timed out while",
+    "no last agent message; wrote empty content",
+)
+
 
 @dataclass(frozen=True)
 class CodexBatchRunnerDeps:
@@ -39,6 +54,9 @@ class CodexBatchRunnerDeps:
     subprocess_run: object
     timeout_error: type[BaseException]
     safe_write_text_fn: object
+    max_retries: int = 0
+    retry_backoff_seconds: float = 0.0
+    sleep_fn: object = time.sleep
 
 
 @dataclass(frozen=True)
@@ -109,37 +127,85 @@ def run_codex_batch(
 ) -> int:
     """Execute one codex batch and return a stable CLI-style status code."""
     cmd = codex_batch_command(prompt=prompt, repo_root=repo_root, output_file=output_file)
-    try:
-        result = deps.subprocess_run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=deps.timeout_seconds,
-        )
-    except deps.timeout_error as exc:
-        deps.safe_write_text_fn(
-            log_file,
-            f"$ {' '.join(cmd)}\n\nTIMEOUT after {deps.timeout_seconds}s\n{exc}\n",
-        )
-        return 124
-    except OSError as exc:
-        deps.safe_write_text_fn(
-            log_file,
-            f"$ {' '.join(cmd)}\n\nRUNNER ERROR:\n{exc}\n",
-        )
-        return 127
-    except (RuntimeError, ValueError) as exc:  # pragma: no cover - defensive boundary
-        deps.safe_write_text_fn(
-            log_file,
-            f"$ {' '.join(cmd)}\n\nUNEXPECTED RUNNER ERROR:\n{exc}\n",
-        )
-        return 1
-
-    deps.safe_write_text_fn(
-        log_file,
-        f"$ {' '.join(cmd)}\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n",
+    retries_raw = deps.max_retries if isinstance(deps.max_retries, int) else 0
+    max_retries = max(0, retries_raw)
+    max_attempts = max_retries + 1
+    backoff_raw = (
+        float(deps.retry_backoff_seconds)
+        if isinstance(deps.retry_backoff_seconds, int | float)
+        else 0.0
     )
-    return int(result.returncode)
+    retry_backoff_seconds = max(0.0, backoff_raw)
+    log_sections: list[str] = []
+
+    for attempt in range(1, max_attempts + 1):
+        header = f"ATTEMPT {attempt}/{max_attempts}\n$ {' '.join(cmd)}"
+        live_started_at = datetime.now(UTC).isoformat(timespec="seconds")
+        deps.safe_write_text_fn(
+            log_file,
+            "\n\n".join(
+                log_sections
+                + [
+                    (
+                        f"{header}\n\n"
+                        "STATUS: running\n"
+                        f"STARTED AT: {live_started_at}\n"
+                    )
+                ]
+            ),
+        )
+        try:
+            result = deps.subprocess_run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=deps.timeout_seconds,
+            )
+        except deps.timeout_error as exc:
+            log_sections.append(
+                f"{header}\n\nTIMEOUT after {deps.timeout_seconds}s\n{exc}\n"
+            )
+            deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+            return 124
+        except OSError as exc:
+            log_sections.append(f"{header}\n\nRUNNER ERROR:\n{exc}\n")
+            deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+            return 127
+        except (RuntimeError, ValueError) as exc:  # pragma: no cover - defensive boundary
+            log_sections.append(f"{header}\n\nUNEXPECTED RUNNER ERROR:\n{exc}\n")
+            deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+            return 1
+
+        stdout_text = result.stdout or ""
+        stderr_text = result.stderr or ""
+        log_sections.append(
+            f"{header}\n\nSTDOUT:\n{stdout_text}\n\nSTDERR:\n{stderr_text}\n"
+        )
+        code = int(result.returncode)
+        if code == 0:
+            deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+            return 0
+
+        combined = f"{stdout_text}\n{stderr_text}".lower()
+        is_transient = any(needle in combined for needle in _TRANSIENT_RUNNER_PHRASES)
+        if not is_transient or attempt >= max_attempts:
+            deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+            return code
+
+        delay_seconds = retry_backoff_seconds * (2 ** (attempt - 1))
+        log_sections.append(
+            "Transient runner failure detected; "
+            f"retrying in {delay_seconds:.1f}s (attempt {attempt + 1}/{max_attempts})."
+        )
+        try:
+            if delay_seconds > 0:
+                deps.sleep_fn(delay_seconds)
+        except Exception:  # pragma: no cover - defensive boundary
+            # Retry should proceed even if delay hook fails.
+            pass
+
+    deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+    return 1
 
 
 def run_followup_scan(
@@ -346,42 +412,145 @@ def execute_batches(
     run_batch_fn,
     safe_write_text_fn,
     progress_fn=None,
+    max_parallel_workers: int | None = None,
+    heartbeat_seconds: float | None = 15.0,
+    clock_fn=time.monotonic,
 ) -> list[int]:
     """Execute batch prompts and return failed index list."""
+
+    def _emit_progress(
+        batch_index: int,
+        event: str,
+        code: int | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if not callable(progress_fn):
+            return
+        payload = details or {}
+        try:
+            progress_fn(batch_index, event, code, **payload)
+        except TypeError:
+            progress_fn(batch_index, event, code)
+
     failures: list[int] = []
     if run_parallel:
-        max_workers = max(1, min(len(selected_indexes), 8))
+        requested_workers = (
+            int(max_parallel_workers)
+            if isinstance(max_parallel_workers, int) and max_parallel_workers > 0
+            else 8
+        )
+        max_workers = max(1, min(len(selected_indexes), requested_workers))
+        heartbeat = (
+            float(heartbeat_seconds)
+            if isinstance(heartbeat_seconds, int | float) and heartbeat_seconds > 0
+            else None
+        )
+        started_at: dict[int, float] = {}
+        started_at_lock = threading.Lock()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
             for idx in selected_indexes:
-                if callable(progress_fn):
-                    progress_fn(idx, "start", None)
-                future = executor.submit(
-                    run_batch_fn,
-                    prompt=prompt_files[idx].read_text(),
-                    output_file=output_files[idx],
-                    log_file=log_files[idx],
+                _emit_progress(
+                    idx,
+                    "queued",
+                    None,
+                    details={"max_workers": max_workers},
                 )
+
+                def _run_one(batch_index: int) -> int:
+                    with started_at_lock:
+                        started_at[batch_index] = float(clock_fn())
+                    _emit_progress(
+                        batch_index,
+                        "start",
+                        None,
+                        details={"max_workers": max_workers},
+                    )
+                    return run_batch_fn(
+                        prompt=prompt_files[batch_index].read_text(),
+                        output_file=output_files[batch_index],
+                        log_file=log_files[batch_index],
+                    )
+
+                future = executor.submit(_run_one, idx)
                 futures[future] = idx
-            for future in as_completed(futures):
+
+            pending = set(futures.keys())
+
+            def _handle_completed_future(future) -> None:
                 idx = futures[future]
+                with started_at_lock:
+                    started_at_value = started_at.get(idx, float(clock_fn()))
                 try:
                     code = future.result()
                 except Exception as exc:  # future.result() can raise any exception from the batch runner
                     safe_write_text_fn(log_files[idx], f"Runner exception:\n{exc}\n")
                     failures.append(idx)
-                    if callable(progress_fn):
-                        progress_fn(idx, "done", 1)
-                    continue
+                    _emit_progress(
+                        idx,
+                        "done",
+                        1,
+                        details={"elapsed_seconds": int(max(0.0, clock_fn() - started_at_value))},
+                    )
+                    return
                 if code != 0:
                     failures.append(idx)
-                if callable(progress_fn):
-                    progress_fn(idx, "done", code)
+                _emit_progress(
+                    idx,
+                    "done",
+                    code,
+                    details={"elapsed_seconds": int(max(0.0, clock_fn() - started_at_value))},
+                )
+
+            if heartbeat is None:
+                for future in as_completed(pending):
+                    pending.discard(future)
+                    _handle_completed_future(future)
+                return failures
+
+            while pending:
+                try:
+                    future = next(as_completed(pending, timeout=heartbeat))
+                except FuturesTimeoutError:
+                    with started_at_lock:
+                        active_indexes = sorted(
+                            futures[fut] for fut in pending if futures[fut] in started_at
+                        )
+                    active_index_set = set(active_indexes)
+                    queued_indexes = sorted(
+                        futures[fut] for fut in pending if futures[fut] not in active_index_set
+                    )
+                    elapsed_seconds = {
+                        idx: int(
+                            max(
+                                0.0,
+                                clock_fn() - started_at.get(idx, clock_fn()),
+                            )
+                        )
+                        for idx in active_indexes
+                    }
+                    _emit_progress(
+                        -1,
+                        "heartbeat",
+                        None,
+                        details={
+                            "active_batches": active_indexes,
+                            "queued_batches": queued_indexes,
+                            "elapsed_seconds": elapsed_seconds,
+                            "active_count": len(active_indexes),
+                            "queued_count": len(queued_indexes),
+                            "total_count": len(selected_indexes),
+                        },
+                    )
+                    continue
+                pending.discard(future)
+                _handle_completed_future(future)
         return failures
 
     for idx in selected_indexes:
-        if callable(progress_fn):
-            progress_fn(idx, "start", None)
+        started_at = float(clock_fn())
+        _emit_progress(idx, "start", None, details={"max_workers": 1})
         code = run_batch_fn(
             prompt=prompt_files[idx].read_text(),
             output_file=output_files[idx],
@@ -389,8 +558,12 @@ def execute_batches(
         )
         if code != 0:
             failures.append(idx)
-        if callable(progress_fn):
-            progress_fn(idx, "done", code)
+        _emit_progress(
+            idx,
+            "done",
+            code,
+            details={"elapsed_seconds": int(max(0.0, clock_fn() - started_at))},
+        )
     return failures
 
 
@@ -437,6 +610,53 @@ def collect_batch_results(
     return batch_results, sorted(failure_set)
 
 
+def _classify_runner_failure(log_text: str) -> str:
+    """Classify batch failure type from log contents."""
+    text = log_text.lower()
+    if "timeout after" in text:
+        return "timeout"
+    if any(phrase in text for phrase in _TRANSIENT_RUNNER_PHRASES):
+        return "stream_disconnect"
+    if (
+        "codex not found" in text
+        or ("no such file or directory" in text and "$ codex " in text)
+        or ("errno 2" in text and "codex" in text)
+    ):
+        return "runner_missing"
+    if any(
+        phrase in text
+        for phrase in (
+            "not authenticated",
+            "authentication failed",
+            "unauthorized",
+            "forbidden",
+            "login required",
+            "please login",
+            "access token",
+        )
+    ):
+        return "runner_auth"
+    if "runner exception" in text:
+        return "runner_exception"
+    return "unknown"
+
+
+def _summarize_failure_categories(*, failures: list[int], logs_dir: Path) -> dict[str, int]:
+    """Return counts by failure category for failed batches."""
+    categories: dict[str, int] = {}
+    for idx in sorted(set(failures)):
+        log_file = logs_dir / f"batch-{idx + 1}.log"
+        if not log_file.exists():
+            category = "missing_log"
+        else:
+            try:
+                category = _classify_runner_failure(log_file.read_text())
+            except OSError:
+                category = "log_read_error"
+        categories[category] = categories.get(category, 0) + 1
+    return categories
+
+
 def _runner_failure_hints(*, failures: list[int], logs_dir: Path) -> list[str]:
     """Infer common runner environment failures from batch logs."""
     hints: list[str] = []
@@ -472,20 +692,76 @@ def _runner_failure_hints(*, failures: list[int], logs_dir: Path) -> list[str]:
             hint = "codex runner appears unauthenticated. Run `codex login` and retry."
             if hint not in hints:
                 hints.append(hint)
+        if any(phrase in text for phrase in _TRANSIENT_RUNNER_PHRASES):
+            hint = (
+                "Transient Codex connectivity issue detected. Retry with "
+                "`--batch-max-retries 2 --batch-retry-backoff-seconds 2` and, if needed, "
+                "lower concurrency via `--max-parallel-batches 1`."
+            )
+            if hint not in hints:
+                hints.append(hint)
+        if "failed to load skill" in text and "missing yaml frontmatter" in text:
+            hint = (
+                "Codex loaded an invalid local skill file. Fix/remove malformed "
+                "SKILL.md entries under `~/.codex/skills` to reduce runner noise."
+            )
+            if hint not in hints:
+                hints.append(hint)
     return hints
 
 
-def print_failures_and_exit(
+def _print_failures_report(
     *,
     failures: list[int],
     packet_path: Path,
     logs_dir: Path,
     colorize_fn,
 ) -> None:
-    """Render retry guidance for failed batches and exit non-zero."""
+    """Render retry guidance for failed batches."""
     failed_1 = sorted({idx + 1 for idx in failures})
     failed_csv = ",".join(str(i) for i in failed_1)
     print(colorize_fn(f"\n  Failed batches: {failed_1}", "red"), file=sys.stderr)
+    categories = _summarize_failure_categories(failures=failures, logs_dir=logs_dir)
+    if categories:
+        labels = {
+            "timeout": "timeout",
+            "stream_disconnect": "stream disconnect",
+            "runner_missing": "runner missing",
+            "runner_auth": "runner auth",
+            "runner_exception": "runner exception",
+            "missing_log": "missing log",
+            "log_read_error": "log read error",
+            "unknown": "unknown",
+        }
+        category_segments = [
+            f"{labels.get(name, name)}={count}"
+            for name, count in sorted(categories.items())
+        ]
+        print(
+            colorize_fn(
+                f"  Failure categories: {', '.join(category_segments)}",
+                "yellow",
+            ),
+            file=sys.stderr,
+        )
+        if categories.get("timeout", 0) > 0:
+            print(
+                colorize_fn(
+                    "  Timeout tuning: lower concurrency with `--max-parallel-batches 1..3` "
+                    "or increase `--batch-timeout-seconds` for long-running reviews.",
+                    "yellow",
+                ),
+                file=sys.stderr,
+            )
+        if categories.get("stream_disconnect", 0) > 0:
+            print(
+                colorize_fn(
+                    "  Connectivity tuning: enable retries with `--batch-max-retries 2` "
+                    "and `--batch-retry-backoff-seconds 2`, then retry failed batches.",
+                    "yellow",
+                ),
+                file=sys.stderr,
+            )
     print(colorize_fn("  Retry command:", "yellow"), file=sys.stderr)
     print(
         colorize_fn(
@@ -502,6 +778,38 @@ def print_failures_and_exit(
         print(colorize_fn("  Environment hints:", "yellow"), file=sys.stderr)
         for hint in hints:
             print(colorize_fn(f"    {hint}", "dim"), file=sys.stderr)
+
+
+def print_failures(
+    *,
+    failures: list[int],
+    packet_path: Path,
+    logs_dir: Path,
+    colorize_fn,
+) -> None:
+    """Render retry guidance for failed batches without exiting."""
+    _print_failures_report(
+        failures=failures,
+        packet_path=packet_path,
+        logs_dir=logs_dir,
+        colorize_fn=colorize_fn,
+    )
+
+
+def print_failures_and_exit(
+    *,
+    failures: list[int],
+    packet_path: Path,
+    logs_dir: Path,
+    colorize_fn,
+) -> None:
+    """Render retry guidance for failed batches and exit non-zero."""
+    _print_failures_report(
+        failures=failures,
+        packet_path=packet_path,
+        logs_dir=logs_dir,
+        colorize_fn=colorize_fn,
+    )
     sys.exit(1)
 
 
@@ -516,6 +824,7 @@ __all__ = [
     "collect_batch_results",
     "execute_batches",
     "prepare_run_artifacts",
+    "print_failures",
     "print_failures_and_exit",
     "run_codex_batch",
     "run_followup_scan",

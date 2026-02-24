@@ -14,8 +14,12 @@ Workflow:
 2. Split dimensions across N agents, send all Task calls in one message.
 3. Each agent writes its output to a separate file.
 4. Merge assessments (average where dimensions overlap) and findings.
-5. Preferred local path (Codex runner): `desloppify review --run-batches --runner codex --parallel --scan-after-import`.
-6. Claude/cloud path:
+5. Import findings — do NOT fix code before this step. Import creates tracked state
+   entries that let desloppify correlate fixes to findings.
+6. Fix imported findings via the core loop: `desloppify issues` → fix code →
+   `desloppify resolve fixed "<id>"` → rescan.
+7. Preferred local path (Codex runner): `desloppify review --run-batches --runner codex --parallel --scan-after-import`.
+8. Claude/cloud path:
    - robust session flow (recommended): `desloppify review --external-start --external-runner claude`; use the generated `claude_launch_prompt.md` and `review_result.template.json`, then run the printed `desloppify review --external-submit --session-id <id> --import <file>` command
    - preflight validation (optional legacy): `desloppify review --validate-import findings.json --attested-external --attest "I validated this review was completed without awareness of overall score and is unbiased."`
    - durable scored import (legacy): `desloppify review --import findings.json --attested-external --attest "I validated this review was completed without awareness of overall score and is unbiased."`

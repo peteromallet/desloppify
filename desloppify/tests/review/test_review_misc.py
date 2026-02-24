@@ -387,6 +387,21 @@ class TestCLI:
                 "--runner",
                 "codex",
                 "--parallel",
+                "--max-parallel-batches",
+                "3",
+                "--batch-timeout-seconds",
+                "90",
+                "--batch-max-retries",
+                "2",
+                "--batch-retry-backoff-seconds",
+                "1.5",
+                "--batch-heartbeat-seconds",
+                "2.5",
+                "--batch-stall-warning-seconds",
+                "45",
+                "--save-run-log",
+                "--run-log-file",
+                ".desloppify/subagents/runs/custom.log",
                 "--dry-run",
                 "--only-batches",
                 "1,3",
@@ -395,6 +410,14 @@ class TestCLI:
         assert args.run_batches is True
         assert args.runner == "codex"
         assert args.parallel is True
+        assert args.max_parallel_batches == 3
+        assert args.batch_timeout_seconds == 90
+        assert args.batch_max_retries == 2
+        assert args.batch_retry_backoff_seconds == 1.5
+        assert args.batch_heartbeat_seconds == 2.5
+        assert args.batch_stall_warning_seconds == 45
+        assert args.save_run_log is True
+        assert args.run_log_file == ".desloppify/subagents/runs/custom.log"
         assert args.dry_run is True
         assert args.only_batches == "1,3"
 

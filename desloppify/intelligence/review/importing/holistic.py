@@ -209,6 +209,13 @@ def import_holistic_findings(
     findings_list, assessments, reviewed_files = parse_holistic_import_payload(
         findings_data
     )
+    review_scope = (
+        findings_data.get("review_scope", {})
+        if isinstance(findings_data, dict)
+        else {}
+    )
+    if not isinstance(review_scope, dict):
+        review_scope = {}
     if assessments:
         store_assessments(
             state,
@@ -288,6 +295,7 @@ def import_holistic_findings(
         state,
         findings_list,
         lang_name=lang_name,
+        review_scope=review_scope,
         utc_now_fn=utc_now_fn,
     )
     resolve_holistic_coverage_findings(state, diff, utc_now_fn=utc_now_fn)
@@ -332,6 +340,7 @@ def update_holistic_review_cache(
     findings_data: list[dict],
     *,
     lang_name: str | None = None,
+    review_scope: dict[str, Any] | None = None,
     utc_now_fn=utc_now,
 ) -> None:
     """Store holistic review metadata in review_cache."""
@@ -349,11 +358,39 @@ def update_holistic_review_cache(
         and finding["dimension"] in holistic_prompts
     ]
 
-    review_cache["holistic"] = {
+    resolved_total_files: int
+    total_override = (
+        review_scope.get("total_files")
+        if isinstance(review_scope, dict)
+        else None
+    )
+    if (
+        isinstance(total_override, int)
+        and not isinstance(total_override, bool)
+        and total_override > 0
+    ):
+        resolved_total_files = total_override
+    else:
+        resolved_total_files = _resolve_total_files(state, lang_name)
+
+    holistic_entry: dict[str, Any] = {
         "reviewed_at": now,
-        "file_count_at_review": _resolve_total_files(state, lang_name),
+        "file_count_at_review": resolved_total_files,
         "finding_count": len(valid),
     }
+    if isinstance(review_scope, dict):
+        reviewed_files_count = review_scope.get("reviewed_files_count")
+        if (
+            isinstance(reviewed_files_count, int)
+            and not isinstance(reviewed_files_count, bool)
+            and reviewed_files_count >= 0
+        ):
+            holistic_entry["reviewed_files_count"] = reviewed_files_count
+        full_sweep_included = review_scope.get("full_sweep_included")
+        if isinstance(full_sweep_included, bool):
+            holistic_entry["full_sweep_included"] = full_sweep_included
+
+    review_cache["holistic"] = holistic_entry
 
 
 def resolve_holistic_coverage_findings(

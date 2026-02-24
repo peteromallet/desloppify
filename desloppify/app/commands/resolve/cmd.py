@@ -57,7 +57,13 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 
     all_resolved = _resolve_all_patterns(state, args, attestation=attestation)
     if not all_resolved:
-        print(colorize(f"No open findings matching: {' '.join(args.patterns)}", "yellow"))
+        status_label = "resolved" if args.status == "open" else "open"
+        print(
+            colorize(
+                f"No {status_label} findings matching: {' '.join(args.patterns)}",
+                "yellow",
+            )
+        )
         return
 
     state_mod.save_state(state, state_file)

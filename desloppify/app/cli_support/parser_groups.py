@@ -198,9 +198,11 @@ def _add_next_parser(sub) -> None:
 
 def _add_resolve_parser(sub) -> None:
     p_resolve = sub.add_parser(
-        "resolve", help="Mark finding(s) as fixed/wontfix/false_positive"
+        "resolve", help="Mark finding(s) as fixed/wontfix/false_positive/open"
     )
-    p_resolve.add_argument("status", choices=["fixed", "wontfix", "false_positive"])
+    p_resolve.add_argument(
+        "status", choices=["open", "fixed", "wontfix", "false_positive"]
+    )
     p_resolve.add_argument(
         "patterns",
         nargs="+",
@@ -239,5 +241,4 @@ def _add_ignore_parser(sub) -> None:
         ),
     )
     p_ignore.add_argument("--state", type=str, default=None)
-
 

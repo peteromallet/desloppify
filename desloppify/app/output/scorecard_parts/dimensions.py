@@ -5,8 +5,6 @@ from __future__ import annotations
 from desloppify.app.output.scorecard_parts.dimension_policy import (
     _DEFAULT_ELEGANCE_COMPONENTS,
     _ELEGANCE_COMPONENTS_BY_LANG,
-    _MECHANICAL_SCORECARD_DIMENSIONS,
-    _SCORECARD_DIMENSIONS_BY_LANG,
     _SUBJECTIVE_SCORECARD_ORDER_BY_LANG,
     _SUBJECTIVE_SCORECARD_ORDER_DEFAULT,
 )
@@ -88,6 +86,14 @@ def collapse_elegance_dimensions(
     checks_total = sum(int(data.get("checks", 0)) for _, data in elegance_rows)
     issues_total = sum(int(data.get("issues", 0)) for _, data in elegance_rows)
     tier = max(int(data.get("tier", 4)) for _, data in elegance_rows)
+    placeholder_flags = [
+        bool(
+            data.get("detectors", {})
+            .get("subjective_assessment", {})
+            .get("placeholder")
+        )
+        for _, data in elegance_rows
+    ]
 
     label = "Elegance"
     if any(name.lower() == label.lower() for name, _ in remaining_rows):
@@ -111,6 +117,7 @@ def collapse_elegance_dimensions(
                         "issues": issues_total,
                         "weighted_failures": round(checks_total * (1 - pass_rate), 4),
                         "components": [name for name, _ in elegance_rows],
+                        "placeholder": any(placeholder_flags),
                     }
                 },
             },
@@ -171,7 +178,13 @@ def limit_scorecard_dimensions(
 
 
 def prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
-    """Prepare scorecard rows (active, elegance-collapsed, capped)."""
+    """Prepare scorecard rows (active, elegance-collapsed, capped).
+
+    Dimensions are derived dynamically from what the scoring engine produced
+    in ``dimension_scores`` — no per-language hard-coded dimension list.
+    Unassessed subjective placeholders (score 0, no issues) are excluded so
+    the scorecard only shows dimensions that have real data.
+    """
     dim_scores = state.get("dimension_scores", {})
     if not isinstance(dim_scores, dict):
         return []
@@ -182,47 +195,8 @@ def prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
 
     lang_key = resolve_scorecard_lang(state)
     all_dims = collapse_elegance_dimensions(all_dims, lang_key=lang_key)
-    dims_by_name = {name: data for name, data in all_dims}
 
-    target_names = _SCORECARD_DIMENSIONS_BY_LANG.get(lang_key or "")
-    if target_names:
-        selected: list[tuple[str, dict]] = []
-        for name in target_names:
-            data = dims_by_name.get(name)
-            if data is None:
-                is_subjective = name not in _MECHANICAL_SCORECARD_DIMENSIONS
-                if is_subjective:
-                    data = {
-                        "score": 0.0,
-                        "strict": 0.0,
-                        "checks": 0,
-                        "issues": 0,
-                        "tier": 4,
-                        "detectors": {
-                            "subjective_assessment": {
-                                "potential": 0,
-                                "pass_rate": 0.0,
-                                "issues": 0,
-                                "weighted_failures": 0.0,
-                                "components": [],
-                            }
-                        },
-                    }
-                else:
-                    data = {
-                        "score": 0.0,
-                        "strict": 0.0,
-                        "checks": 0,
-                        "issues": 0,
-                        "tier": 3,
-                        "detectors": {},
-                    }
-            selected.append((name, data))
-
-        selected.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
-        return selected[:SCORECARD_MAX_DIMENSIONS]
-
-    # Unknown language fallback: keep prior behavior for active dimensions only.
+    # Show dimensions with real data; skip unassessed subjective placeholders.
     active_dims = [
         (name, data)
         for name, data in all_dims

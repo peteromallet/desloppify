@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from desloppify.app.commands.review.batch_scoring import (
     DimensionMergeScorer,
     ScoreInputs,
 )
 from desloppify.app.commands.review import batch_core as batch_core_mod
+from desloppify.intelligence.review.feedback_contract import (
+    LOW_SCORE_FINDING_THRESHOLD,
+    max_batch_findings_for_dimension_count,
+)
 
 _ABSTRACTION_SUB_AXES = (
     "abstraction_leverage",
@@ -41,7 +47,7 @@ def test_merge_penalizes_high_scores_when_severe_findings_exist():
                         "impact_scope": "codebase",
                         "fix_scope": "architectural_change",
                         "confidence": "high",
-                        "unreported_risk": "major refactor required",
+                        "issues_preventing_higher_score": "major refactor required",
                     }
                 },
                 "findings": [
@@ -75,7 +81,7 @@ def test_merge_keeps_scores_without_findings():
                         "impact_scope": "module",
                         "fix_scope": "single_edit",
                         "confidence": "medium",
-                        "unreported_risk": "minor seam churn remains",
+                        "issues_preventing_higher_score": "minor seam churn remains",
                     }
                 },
                 "findings": [],
@@ -154,7 +160,7 @@ def test_merge_batch_results_merges_same_identifier_findings():
                         "impact_scope": "module",
                         "fix_scope": "single_edit",
                         "confidence": "medium",
-                        "unreported_risk": "",
+                        "issues_preventing_higher_score": "",
                     }
                 },
                 "findings": [
@@ -180,7 +186,7 @@ def test_merge_batch_results_merges_same_identifier_findings():
                         "impact_scope": "module",
                         "fix_scope": "single_edit",
                         "confidence": "medium",
-                        "unreported_risk": "",
+                        "issues_preventing_higher_score": "",
                     }
                 },
                 "findings": [
@@ -207,3 +213,98 @@ def test_merge_batch_results_merges_same_identifier_findings():
     assert finding["summary"] == "Processing predicate mismatch across hooks"
     assert set(finding["related_files"]) == {"src/a.ts", "src/b.ts", "src/c.ts"}
     assert set(finding["evidence"]) == {"branch A uses OR", "branch B uses AND"}
+
+
+def test_normalize_batch_result_rejects_low_score_without_same_dimension_finding():
+    with pytest.raises(ValueError) as exc:
+        batch_core_mod.normalize_batch_result(
+            payload={
+                "assessments": {"logic_clarity": LOW_SCORE_FINDING_THRESHOLD - 10.0},
+                "dimension_notes": {
+                    "logic_clarity": {
+                        "evidence": ["branching logic diverges across handlers"],
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                        "confidence": "high",
+                        "issues_preventing_higher_score": "",
+                    }
+                },
+                "findings": [],
+            },
+            allowed_dims={"logic_clarity"},
+            max_batch_findings=max_batch_findings_for_dimension_count(1),
+            abstraction_sub_axes=_ABSTRACTION_SUB_AXES,
+        )
+    assert "low-score dimensions must include at least one explicit finding" in str(exc.value)
+
+
+def test_normalize_batch_result_accepts_low_score_with_same_dimension_finding():
+    assessments, findings, _notes, _quality = batch_core_mod.normalize_batch_result(
+        payload={
+            "assessments": {"logic_clarity": LOW_SCORE_FINDING_THRESHOLD - 10.0},
+            "dimension_notes": {
+                "logic_clarity": {
+                    "evidence": ["branching logic diverges across handlers"],
+                    "impact_scope": "module",
+                    "fix_scope": "single_edit",
+                    "confidence": "high",
+                    "issues_preventing_higher_score": "",
+                }
+            },
+            "findings": [
+                {
+                    "dimension": "logic_clarity",
+                    "identifier": "divergent_predicates",
+                    "summary": "Predicate branches diverge in equivalent handlers",
+                    "related_files": ["src/a.ts", "src/b.ts"],
+                    "evidence": ["handler A uses OR, handler B uses AND"],
+                    "suggestion": "extract a shared predicate helper and reuse it",
+                    "confidence": "high",
+                    "impact_scope": "module",
+                    "fix_scope": "single_edit",
+                }
+            ],
+        },
+        allowed_dims={"logic_clarity"},
+        max_batch_findings=max_batch_findings_for_dimension_count(1),
+        abstraction_sub_axes=_ABSTRACTION_SUB_AXES,
+    )
+    assert assessments["logic_clarity"] == LOW_SCORE_FINDING_THRESHOLD - 10.0
+    assert len(findings) == 1
+
+
+def test_normalize_batch_result_accepts_legacy_unreported_risk_key():
+    _assessments, _findings, notes, _quality = batch_core_mod.normalize_batch_result(
+        payload={
+            "assessments": {"logic_clarity": 90.0},
+            "dimension_notes": {
+                "logic_clarity": {
+                    "evidence": ["legacy payload compatibility path"],
+                    "impact_scope": "module",
+                    "fix_scope": "single_edit",
+                    "confidence": "medium",
+                    "unreported_risk": "legacy note still provided",
+                }
+            },
+            "findings": [
+                {
+                    "dimension": "logic_clarity",
+                    "identifier": "legacy_note_path",
+                    "summary": "Legacy note field still accepted",
+                    "related_files": ["src/a.ts", "src/b.ts"],
+                    "evidence": ["legacy payload uses unreported_risk"],
+                    "suggestion": "continue normalizing onto the new field",
+                    "confidence": "medium",
+                    "impact_scope": "module",
+                    "fix_scope": "single_edit",
+                }
+            ],
+        },
+        allowed_dims={"logic_clarity"},
+        max_batch_findings=max_batch_findings_for_dimension_count(1),
+        abstraction_sub_axes=_ABSTRACTION_SUB_AXES,
+    )
+    assert (
+        notes["logic_clarity"]["issues_preventing_higher_score"]
+        == "legacy note still provided"
+    )

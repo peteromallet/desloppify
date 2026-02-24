@@ -135,6 +135,7 @@ class TestHolisticConstants:
     def test_system_prompt_exists(self):
         assert "IMPORT GUARD" in REVIEW_SYSTEM_PROMPT
         assert "related_files" in REVIEW_SYSTEM_PROMPT
+        assert "GLOBAL REVIEW CONTRACT" in REVIEW_SYSTEM_PROMPT
 
 
 # ===================================================================

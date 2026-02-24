@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-_SCORECARD_MAX_DIMENSIONS = 12
+_SCORECARD_MAX_DIMENSIONS = 20
 _DEFAULT_ELEGANCE_COMPONENTS: tuple[str, ...] = (
     "High Elegance",
     "Mid Elegance",
@@ -13,43 +13,69 @@ _ELEGANCE_COMPONENTS_BY_LANG: dict[str, tuple[str, ...]] = {
     "typescript": _DEFAULT_ELEGANCE_COMPONENTS,
     "csharp": _DEFAULT_ELEGANCE_COMPONENTS,
 }
+
+# Display ordering preferences for subjective dimensions on the scorecard.
+# These are cosmetic only — they control sort priority when the scorecard
+# needs to truncate, not which dimensions appear.  The actual dimensions
+# shown are derived dynamically from dimension_scores in state.
 _SUBJECTIVE_SCORECARD_ORDER_DEFAULT: tuple[str, ...] = (
-    "Naming Quality",
-    "Error Consistency",
+    "Elegance",
     "Abstraction Fit",
-    "Logic Clarity",
+    "Error Consistency",
     "AI Generated Debt",
+    "Cross-Module Arch",
+    "Convention Drift",
+    "Dep Health",
+    "Test Strategy",
+    "Structure Nav",
+    "Design Coherence",
+    "API Coherence",
+    "Auth Consistency",
+    "Stale Migration",
+    "Init Coupling",
+    "Naming Quality",
+    "Logic Clarity",
     "Type Safety",
     "Contracts",
-    "Elegance",
 )
 _SUBJECTIVE_SCORECARD_ORDER_BY_LANG: dict[str, tuple[str, ...]] = {
     "python": (
-        "Naming Quality",
-        "Error Consistency",
-        "Abstraction Fit",
-        "Logic Clarity",
-        "AI Generated Debt",
-        "Contracts",
         "Elegance",
+        "Abstraction Fit",
+        "Error Consistency",
+        "AI Generated Debt",
+        "Cross-Module Arch",
+        "Convention Drift",
+        "Dep Health",
+        "Test Strategy",
+        "Structure Nav",
+        "Design Coherence",
     ),
     "typescript": (
-        "Naming Quality",
-        "Error Consistency",
-        "Abstraction Fit",
-        "Logic Clarity",
-        "AI Generated Debt",
-        "Type Safety",
         "Elegance",
+        "Abstraction Fit",
+        "Error Consistency",
+        "AI Generated Debt",
+        "Cross-Module Arch",
+        "Convention Drift",
+        "API Coherence",
+        "Auth Consistency",
+        "Stale Migration",
+        "Structure Nav",
+        "Design Coherence",
     ),
     "csharp": (
-        "Naming Quality",
-        "Error Consistency",
-        "Abstraction Fit",
-        "Logic Clarity",
-        "AI Generated Debt",
-        "Type Safety",
         "Elegance",
+        "Abstraction Fit",
+        "Error Consistency",
+        "AI Generated Debt",
+        "Cross-Module Arch",
+        "Convention Drift",
+        "API Coherence",
+        "Auth Consistency",
+        "Stale Migration",
+        "Structure Nav",
+        "Design Coherence",
     ),
 }
 _MECHANICAL_SCORECARD_DIMENSIONS: tuple[str, ...] = (
@@ -59,37 +85,20 @@ _MECHANICAL_SCORECARD_DIMENSIONS: tuple[str, ...] = (
     "Test health",
     "Security",
 )
+
+
+def _compose_scorecard_dimensions(subjective_order: tuple[str, ...]) -> tuple[str, ...]:
+    merged: list[str] = []
+    for name in (*_MECHANICAL_SCORECARD_DIMENSIONS, *subjective_order):
+        if name not in merged:
+            merged.append(name)
+    return tuple(merged[:_SCORECARD_MAX_DIMENSIONS])
+
+
 _SCORECARD_DIMENSIONS_BY_LANG: dict[str, tuple[str, ...]] = {
-    "python": (
-        *_MECHANICAL_SCORECARD_DIMENSIONS,
-        "Naming Quality",
-        "Error Consistency",
-        "Abstraction Fit",
-        "Logic Clarity",
-        "AI Generated Debt",
-        "Contracts",
-        "Elegance",
-    ),
-    "typescript": (
-        *_MECHANICAL_SCORECARD_DIMENSIONS,
-        "Naming Quality",
-        "Error Consistency",
-        "Abstraction Fit",
-        "Logic Clarity",
-        "AI Generated Debt",
-        "Type Safety",
-        "Elegance",
-    ),
-    "csharp": (
-        *_MECHANICAL_SCORECARD_DIMENSIONS,
-        "Naming Quality",
-        "Error Consistency",
-        "Abstraction Fit",
-        "Logic Clarity",
-        "AI Generated Debt",
-        "Type Safety",
-        "Elegance",
-    ),
+    "python": _compose_scorecard_dimensions(_SUBJECTIVE_SCORECARD_ORDER_BY_LANG["python"]),
+    "typescript": _compose_scorecard_dimensions(_SUBJECTIVE_SCORECARD_ORDER_BY_LANG["typescript"]),
+    "csharp": _compose_scorecard_dimensions(_SUBJECTIVE_SCORECARD_ORDER_BY_LANG["csharp"]),
 }
 
 

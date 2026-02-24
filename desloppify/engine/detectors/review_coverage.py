@@ -51,6 +51,8 @@ def detect_review_coverage(
     lang_name: str,
     max_age_days: int = 30,
     low_value_pattern: re.Pattern | None = None,
+    holistic_cache: dict | None = None,
+    holistic_total_files: int | None = None,
 ) -> tuple[list[dict], int]:
     """Detect production files missing or with stale design reviews.
 
@@ -66,8 +68,7 @@ def detect_review_coverage(
     """
     now = datetime.now(UTC)
     entries: list[dict] = []
-    potential = 0
-
+    candidates: list[tuple[str, str, int]] = []
     for filepath in files:
         rpath = rel(filepath)
 
@@ -90,11 +91,36 @@ def detect_review_coverage(
         if loc < MIN_REVIEW_LOC:
             continue
 
-        potential += 1
+        candidates.append((abs_path, rpath, loc))
+
+    potential = len(candidates)
+    holistic_fresh = False
+    if isinstance(holistic_cache, dict) and holistic_cache:
+        full_sweep_included = holistic_cache.get("full_sweep_included")
+        if full_sweep_included is not False:
+            resolved_total_files = (
+                holistic_total_files
+                if isinstance(holistic_total_files, int) and holistic_total_files > 0
+                else potential
+            )
+            holistic_fresh = (
+                len(
+                    detect_holistic_review_staleness(
+                        {"holistic": holistic_cache},
+                        total_files=resolved_total_files,
+                        max_age_days=max_age_days,
+                    )
+                )
+                == 0
+            )
+
+    for abs_path, rpath, loc in candidates:
 
         # Check review cache
         cached = review_cache.get(rpath)
         if cached is None:
+            if holistic_fresh:
+                continue
             entries.append(
                 {
                     "file": abs_path,

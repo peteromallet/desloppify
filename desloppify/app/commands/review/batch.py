@@ -16,6 +16,9 @@ from desloppify.core.fallbacks import print_error
 from desloppify.file_discovery import safe_write_text
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.intelligence import review as review_mod
+from desloppify.intelligence.review.feedback_contract import (
+    max_batch_findings_for_dimension_count,
+)
 from desloppify.utils import colorize, log
 
 from .import_cmd import do_import as _do_import
@@ -23,9 +26,8 @@ from .runtime import setup_lang_concrete as _setup_lang
 
 REVIEW_PACKET_DIR = PROJECT_ROOT / ".desloppify" / "review_packets"
 SUBAGENT_RUNS_DIR = PROJECT_ROOT / ".desloppify" / "subagents" / "runs"
-CODEX_BATCH_TIMEOUT_SECONDS = 20 * 60
+CODEX_BATCH_TIMEOUT_SECONDS = 2 * 60 * 60
 FOLLOWUP_SCAN_TIMEOUT_SECONDS = 45 * 60
-MAX_BATCH_FINDINGS = 10
 ABSTRACTION_SUB_AXES = (
     "abstraction_leverage",
     "indirection_cost",
@@ -47,6 +49,32 @@ def _coerce_review_batch_file_limit(config: dict | None) -> int | None:
     except (TypeError, ValueError):
         return DEFAULT_REVIEW_BATCH_MAX_FILES
     return value if value > 0 else None
+
+
+def _coerce_positive_int(value: object, *, default: int, minimum: int = 1) -> int:
+    """Parse positive integer CLI/config inputs with safe defaults."""
+    if value is None:
+        return default
+    if not isinstance(value, int | float | str):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= minimum else default
+
+
+def _coerce_non_negative_float(value: object, *, default: float) -> float:
+    """Parse non-negative float CLI/config inputs with safe defaults."""
+    if value is None:
+        return default
+    if not isinstance(value, int | float | str):
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0.0 else default
 
 
 def _merge_batch_results(batch_results: list[object]) -> dict[str, object]:
@@ -97,6 +125,17 @@ def _load_or_prepare_packet(
     path = Path(args.path)
     dims_str = getattr(args, "dimensions", None)
     dimensions = dims_str.split(",") if dims_str else None
+    retrospective = bool(getattr(args, "retrospective", False))
+    retrospective_max_issues = _coerce_positive_int(
+        getattr(args, "retrospective_max_issues", None),
+        default=30,
+        minimum=1,
+    )
+    retrospective_max_batch_items = _coerce_positive_int(
+        getattr(args, "retrospective_max_batch_items", None),
+        default=20,
+        minimum=1,
+    )
     lang_run, found_files = _setup_lang(lang, path, config)
     lang_name = lang_run.name
     narrative = narrative_mod.compute_narrative(
@@ -113,10 +152,20 @@ def _load_or_prepare_packet(
             dimensions=dimensions,
             files=found_files or None,
             max_files_per_batch=_coerce_review_batch_file_limit(config),
+            include_issue_history=retrospective,
+            issue_history_max_issues=retrospective_max_issues,
+            issue_history_max_batch_items=retrospective_max_batch_items,
         ),
     )
     packet["narrative"] = narrative
-    packet["next_command"] = "desloppify review --run-batches --runner codex --parallel"
+    next_command = "desloppify review --run-batches --runner codex --parallel"
+    if retrospective:
+        next_command += (
+            " --retrospective"
+            f" --retrospective-max-issues {retrospective_max_issues}"
+            f" --retrospective-max-batch-items {retrospective_max_batch_items}"
+        )
+    packet["next_command"] = next_command
     write_query(packet)
     packet_path, blind_saved = runner_helpers_mod.write_packet_snapshot(
         packet,
@@ -132,6 +181,20 @@ def _load_or_prepare_packet(
 
 def _do_run_batches(args, state, lang, state_file, config: dict | None = None) -> None:
     """Run holistic investigation batches with a local subagent runner."""
+    batch_timeout_seconds = _coerce_positive_int(
+        getattr(args, "batch_timeout_seconds", None),
+        default=CODEX_BATCH_TIMEOUT_SECONDS,
+        minimum=1,
+    )
+    batch_max_retries = _coerce_positive_int(
+        getattr(args, "batch_max_retries", None),
+        default=1,
+        minimum=0,
+    )
+    batch_retry_backoff_seconds = _coerce_non_negative_float(
+        getattr(args, "batch_retry_backoff_seconds", None),
+        default=2.0,
+    )
 
     def _prepare_run_artifacts(*, stamp, selected_indexes, batches, packet_path, run_root, repo_root):
         return runner_helpers_mod.prepare_run_artifacts(
@@ -156,7 +219,9 @@ def _do_run_batches(args, state, lang, state_file, config: dict | None = None) -
             normalize_result_fn=lambda payload, dims: batch_core_mod.normalize_batch_result(
                 payload,
                 dims,
-                max_batch_findings=MAX_BATCH_FINDINGS,
+                max_batch_findings=max_batch_findings_for_dimension_count(
+                    len(dims)
+                ),
                 abstraction_sub_axes=ABSTRACTION_SUB_AXES,
             ),
         )
@@ -182,14 +247,17 @@ def _do_run_batches(args, state, lang, state_file, config: dict | None = None) -
             output_file=output_file,
             log_file=log_file,
             deps=runner_helpers_mod.CodexBatchRunnerDeps(
-                timeout_seconds=CODEX_BATCH_TIMEOUT_SECONDS,
+                timeout_seconds=batch_timeout_seconds,
                 subprocess_run=subprocess.run,
                 timeout_error=subprocess.TimeoutExpired,
                 safe_write_text_fn=safe_write_text,
+                max_retries=batch_max_retries,
+                retry_backoff_seconds=batch_retry_backoff_seconds,
             ),
         ),
         execute_batches_fn=runner_helpers_mod.execute_batches,
         collect_batch_results_fn=_collect_batch_results,
+        print_failures_fn=runner_helpers_mod.print_failures,
         print_failures_and_exit_fn=runner_helpers_mod.print_failures_and_exit,
         merge_batch_results_fn=_merge_batch_results,
         build_import_provenance_fn=runner_helpers_mod.build_batch_import_provenance,

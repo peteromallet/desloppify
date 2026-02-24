@@ -207,6 +207,26 @@ def _add_review_parser(sub) -> None:
         help="Comma-separated dimensions to evaluate",
     )
     p_review.add_argument(
+        "--retrospective",
+        action="store_true",
+        help=(
+            "Include historical review issue status/note context in the packet "
+            "to support root-cause vs symptom analysis during review"
+        ),
+    )
+    p_review.add_argument(
+        "--retrospective-max-issues",
+        type=int,
+        default=30,
+        help="Max recent historical issues to include in review context (default: 30)",
+    )
+    p_review.add_argument(
+        "--retrospective-max-batch-items",
+        type=int,
+        default=20,
+        help="Max history items included per batch focus slice (default: 20)",
+    )
+    p_review.add_argument(
         "--holistic",
         action=_DeprecatedBoolAction,
         help="Deprecated: holistic is now the only review mode",
@@ -260,9 +280,77 @@ def _add_review_parser(sub) -> None:
         "--parallel", action="store_true", help="Run selected batches in parallel"
     )
     p_review.add_argument(
+        "--max-parallel-batches",
+        type=int,
+        default=3,
+        help=(
+            "Max concurrent subagent batches when --parallel is enabled "
+            "(default: 3)"
+        ),
+    )
+    p_review.add_argument(
+        "--batch-timeout-seconds",
+        type=int,
+        default=2 * 60 * 60,
+        help="Per-batch runner timeout in seconds (default: 7200)",
+    )
+    p_review.add_argument(
+        "--batch-max-retries",
+        type=int,
+        default=1,
+        help=(
+            "Retries per failed batch for transient runner/network errors "
+            "(default: 1)"
+        ),
+    )
+    p_review.add_argument(
+        "--batch-retry-backoff-seconds",
+        type=float,
+        default=2.0,
+        help=(
+            "Base backoff delay for transient batch retries in seconds "
+            "(default: 2.0)"
+        ),
+    )
+    p_review.add_argument(
+        "--batch-heartbeat-seconds",
+        type=float,
+        default=15.0,
+        help=(
+            "Progress heartbeat interval during parallel batch runs in seconds "
+            "(default: 15.0)"
+        ),
+    )
+    p_review.add_argument(
+        "--batch-stall-warning-seconds",
+        type=int,
+        default=0,
+        help=(
+            "Emit warning when a running batch exceeds this elapsed time "
+            "(0 disables warnings; does not terminate the batch)"
+        ),
+    )
+    p_review.add_argument(
         "--dry-run",
         action="store_true",
         help="Generate packet/prompts only (skip runner/import)",
+    )
+    p_review.add_argument(
+        "--save-run-log",
+        action="store_true",
+        help=(
+            "Deprecated no-op: run logs are now always saved while running "
+            "(default location: run artifacts dir)"
+        ),
+    )
+    p_review.add_argument(
+        "--run-log-file",
+        type=str,
+        default=None,
+        help=(
+            "Optional explicit path for live run log output "
+            "(overrides default run artifacts path)"
+        ),
     )
     p_review.add_argument(
         "--packet",
@@ -284,7 +372,7 @@ def _add_review_parser(sub) -> None:
 
 
 def _add_issues_parser(sub) -> None:
-    p_issues = sub.add_parser("issues", help="Review findings work queue")
+    p_issues = sub.add_parser("issues", help="Review issues (findings) work queue")
     p_issues.add_argument(
         "--state-file",
         dest="state",
@@ -300,7 +388,7 @@ def _add_issues_parser(sub) -> None:
         help=argparse.SUPPRESS,
     )
     issues_sub = p_issues.add_subparsers(dest="issues_action")
-    issues_sub.add_parser("list", help="List open review findings")
+    issues_sub.add_parser("list", help="List open review issues")
     iss_show = issues_sub.add_parser("show", help="Show issue details")
     iss_show.add_argument("number", type=int)
     iss_update = issues_sub.add_parser("update", help="Add investigation to an issue")

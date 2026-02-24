@@ -73,6 +73,8 @@ def _validate_resolve_inputs(args: argparse.Namespace, attestation: str | None) 
             )
         )
         sys.exit(1)
+    if args.status == "open":
+        return
     if not _validate_attestation(attestation):
         _show_attestation_requirement("Manual resolve", attestation, ATTEST_EXAMPLE)
         sys.exit(1)

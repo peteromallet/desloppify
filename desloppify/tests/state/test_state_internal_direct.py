@@ -313,3 +313,39 @@ def test_resolve_wontfix_captures_snapshot_metadata():
     assert resolved["wontfix_snapshot"]["scan_count"] == 17
     assert resolved["wontfix_snapshot"]["detail"]["loc"] == 210
     assert resolved["wontfix_snapshot"]["detail"]["complexity_score"] == 42
+
+
+def test_resolve_open_reopens_non_open_finding_and_increments_reopen_count():
+    state = schema_mod.empty_state()
+    finding = filtering_mod.make_finding(
+        "review",
+        "pkg/a.py",
+        "naming",
+        tier=3,
+        confidence="high",
+        summary="naming issue",
+        detail={"dimension": "naming_quality"},
+    )
+    finding["status"] = "fixed"
+    finding["resolved_at"] = "2026-01-01T10:00:00+00:00"
+    finding["note"] = "fixed earlier"
+    finding["reopen_count"] = 2
+    state["findings"] = {finding["id"]: finding}
+
+    resolved_ids = resolution_mod.resolve_findings(
+        state,
+        "review::",
+        status="open",
+        note="needs deeper fix",
+        attestation=None,
+    )
+
+    assert resolved_ids == [finding["id"]]
+    reopened = state["findings"][finding["id"]]
+    assert reopened["status"] == "open"
+    assert reopened["resolved_at"] is None
+    assert reopened["note"] == "needs deeper fix"
+    assert reopened["reopen_count"] == 3
+    attestation = reopened.get("resolution_attestation") or {}
+    assert attestation.get("kind") == "manual_reopen"
+    assert attestation.get("previous_status") == "fixed"

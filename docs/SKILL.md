@@ -54,8 +54,9 @@ desloppify show <pattern>                  # filter by file/detector/ID
 desloppify plan                            # prioritized plan
 desloppify fix <fixer> --dry-run           # auto-fix (dry-run first!)
 desloppify move <src> <dst> --dry-run      # move + update imports
-desloppify resolve fixed|wontfix|false_positive "<pat>"   # classify finding outcome
+desloppify resolve open|fixed|wontfix|false_positive "<pat>"   # classify/reopen findings
 desloppify review --run-batches --runner codex --parallel --scan-after-import  # preferred blind review path
+desloppify review --run-batches --runner codex --parallel --scan-after-import --retrospective  # include historical issue context for root-cause loop
 desloppify review --prepare                # generate subjective review data (cloud/manual path)
 desloppify review --external-start --external-runner claude  # recommended cloud durable path
 desloppify review --external-submit --session-id <id> --import review_result.json  # submit cloud session output with canonical provenance
@@ -118,6 +119,20 @@ Score = 40% mechanical + 60% subjective. Subjective starts at 0% until reviewed.
    }
    ```
    For non-session legacy imports (`review --import ... --attested-external`), `session` may be omitted.
+
+4. **Fix findings via the core loop.** After importing, findings become tracked state
+   entries. Fix each one in code, then resolve:
+   ```bash
+   desloppify issues                    # see the work queue
+   # ... fix the code ...
+   desloppify resolve fixed "<id>"      # mark as fixed
+   desloppify scan --path .             # verify
+   ```
+
+**Do NOT fix findings before importing.** Import creates tracked state entries that
+let desloppify correlate fixes to findings, track resolution history, and verify fixes
+on rescan. If you fix code first and then import, the findings arrive as orphan issues
+with no connection to the work already done.
 
 Need a clean subjective rerun from zero? Run `desloppify scan --path src/ --reset-subjective` before preparing/importing fresh review data.
 

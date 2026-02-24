@@ -228,8 +228,12 @@ def _render_subjective_dimensions(
         focus = colorize(" ←", "yellow") if name == lowest_name else "  "
         checks_str = f"{'—':>7}"
         stale_tag = colorize(" [stale]", "yellow") if entry.get("stale") else ""
+        placeholder_tag = (
+            colorize(" [unassessed]", "yellow") if entry.get("placeholder") else ""
+        )
         print(
             f"  {name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{tier}  {'review'}{focus}{stale_tag}"
+            f"{placeholder_tag}"
         )
 
 

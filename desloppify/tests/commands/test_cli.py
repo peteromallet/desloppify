@@ -168,6 +168,12 @@ class TestCreateParser:
         assert args.status == "fixed"
         assert args.patterns == ["id1", "id2"]
 
+    def test_resolve_open_command(self, parser):
+        args = parser.parse_args(["resolve", "open", "id1"])
+        assert args.command == "resolve"
+        assert args.status == "open"
+        assert args.patterns == ["id1"]
+
     def test_resolve_with_note(self, parser):
         args = parser.parse_args(["resolve", "wontfix", "id1", "--note", "intentional"])
         assert args.note == "intentional"
@@ -316,6 +322,9 @@ class TestCreateParser:
         assert args.manual_override is False
         assert args.attested_external is False
         assert args.attest is None
+        assert args.retrospective is False
+        assert args.retrospective_max_issues == 30
+        assert args.retrospective_max_batch_items == 20
 
     def test_review_prepare_flag(self, parser):
         args = parser.parse_args(["review", "--prepare"])

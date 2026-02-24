@@ -19,6 +19,11 @@ from desloppify.intelligence.review._prepare.helpers import (
     HOLISTIC_WORKFLOW,
     append_full_sweep_batch,
 )
+from desloppify.intelligence.review._prepare.issue_history import (
+    ReviewHistoryOptions,
+    build_batch_issue_focus,
+    build_issue_history_context,
+)
 from desloppify.intelligence.review.context import (
     abs_path,
     build_review_context,
@@ -70,6 +75,9 @@ class HolisticReviewPrepareOptions:
     files: list[str] | None = None
     include_full_sweep: bool = True
     max_files_per_batch: int | None = None
+    include_issue_history: bool = False
+    issue_history_max_issues: int = 30
+    issue_history_max_batch_items: int = 20
 
 def _rel_list(s) -> list[str]:
     """Normalize a set or list of paths to sorted relative paths (max 10)."""
@@ -296,7 +304,7 @@ def prepare_holistic_review(
             continue
         selected_prompts[dim] = prompt
 
-    return {
+    payload = {
         "command": "review",
         "mode": "holistic",
         "language": lang.name,
@@ -314,3 +322,21 @@ def prepare_holistic_review(
             "default": invalid_default,
         },
     }
+    if resolved_options.include_issue_history:
+        history_payload = build_issue_history_context(
+            state,
+            options=ReviewHistoryOptions(
+                max_issues=resolved_options.issue_history_max_issues,
+            ),
+        )
+        payload["historical_review_issues"] = history_payload
+        for batch in batches:
+            if not isinstance(batch, dict):
+                continue
+            batch_dims = batch.get("dimensions", [])
+            batch["historical_issue_focus"] = build_batch_issue_focus(
+                history_payload,
+                dimensions=batch_dims,
+                max_items=resolved_options.issue_history_max_batch_items,
+            )
+    return payload

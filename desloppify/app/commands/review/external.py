@@ -58,6 +58,18 @@ def _split_dimensions(raw: object) -> list[str] | None:
     return cleaned or None
 
 
+def _coerce_positive_int(value: object, *, default: int) -> int:
+    if value is None:
+        return default
+    if not isinstance(value, int | float | str):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def _session_id() -> str:
     return f"ext_{runner_helpers_mod.run_stamp()}_{secrets.token_hex(4)}"
 
@@ -125,6 +137,15 @@ def _prepare_packet_snapshot(
     """Prepare holistic review packet and persist immutable+blind snapshots."""
     path = Path(getattr(args, "path", ".") or ".")
     dimensions = _split_dimensions(getattr(args, "dimensions", None))
+    retrospective = bool(getattr(args, "retrospective", False))
+    retrospective_max_issues = _coerce_positive_int(
+        getattr(args, "retrospective_max_issues", None),
+        default=30,
+    )
+    retrospective_max_batch_items = _coerce_positive_int(
+        getattr(args, "retrospective_max_batch_items", None),
+        default=20,
+    )
     lang_run, found_files = setup_lang_concrete(lang, path, config)
     narrative = narrative_mod.compute_narrative(
         state,
@@ -137,10 +158,20 @@ def _prepare_packet_snapshot(
         options=review_mod.HolisticReviewPrepareOptions(
             dimensions=dimensions,
             files=found_files or None,
+            include_issue_history=retrospective,
+            issue_history_max_issues=retrospective_max_issues,
+            issue_history_max_batch_items=retrospective_max_batch_items,
         ),
     )
     packet["narrative"] = narrative
-    packet["next_command"] = "desloppify review --external-submit --session-id <id> --import <file>"
+    next_command = "desloppify review --external-submit --session-id <id> --import <file>"
+    if retrospective:
+        next_command += (
+            " --retrospective"
+            f" --retrospective-max-issues {retrospective_max_issues}"
+            f" --retrospective-max-batch-items {retrospective_max_batch_items}"
+        )
+    packet["next_command"] = next_command
     write_query(packet)
 
     stamp = runner_helpers_mod.run_stamp()

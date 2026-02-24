@@ -8,6 +8,14 @@ from typing import Any
 
 from desloppify.app.commands.review.batch_scoring import DimensionMergeScorer
 from desloppify.app.commands.review.batch_prompt_template import render_batch_prompt
+from desloppify.intelligence.review.feedback_contract import (
+    DIMENSION_NOTE_ISSUES_KEY,
+    HIGH_SCORE_ISSUES_NOTE_THRESHOLD,
+    LEGACY_DIMENSION_NOTE_ISSUES_KEY,
+    LEGACY_REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY,
+    LOW_SCORE_FINDING_THRESHOLD,
+    REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY,
+)
 
 _DIMENSION_SCORER = DimensionMergeScorer()
 
@@ -69,7 +77,7 @@ def _validate_dimension_note(
 ) -> tuple[list[object], str, str, str, str]:
     """Validate a single dimension_notes entry and return parsed fields.
 
-    Returns (evidence, impact_scope, fix_scope, confidence, unreported_risk).
+    Returns (evidence, impact_scope, fix_scope, confidence, issues_preventing_higher_score).
     Raises ValueError on invalid structure.
     """
     if not isinstance(note_raw, dict):
@@ -96,8 +104,10 @@ def _validate_dimension_note(
     confidence = (
         confidence_raw if confidence_raw in {"high", "medium", "low"} else "medium"
     )
-    unreported_risk = str(note_raw.get("unreported_risk", "")).strip()
-    return evidence, impact_scope, fix_scope, confidence, unreported_risk
+    issues_note = str(note_raw.get(DIMENSION_NOTE_ISSUES_KEY, "")).strip()
+    if not issues_note:
+        issues_note = str(note_raw.get(LEGACY_DIMENSION_NOTE_ISSUES_KEY, "")).strip()
+    return evidence, impact_scope, fix_scope, confidence, issues_note
 
 
 def _normalize_abstraction_sub_axes(
@@ -137,6 +147,7 @@ def _normalize_findings(
     dimension_notes: dict[str, dict[str, Any]],
     *,
     max_batch_findings: int,
+    low_score_dimensions: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Validate and normalize the findings array from a batch payload."""
     if not isinstance(raw_findings, list):
@@ -147,6 +158,27 @@ def _normalize_findings(
         if not isinstance(item, dict):
             continue
         dim = str(item.get("dimension", "")).strip()
+        if not dim:
+            continue
+        identifier = str(item.get("identifier", "")).strip()
+        summary = str(item.get("summary", "")).strip()
+        suggestion = str(item.get("suggestion", "")).strip()
+        confidence = str(item.get("confidence", "")).strip().lower()
+        if not identifier or not summary or not suggestion:
+            continue
+        if confidence not in {"high", "medium", "low"}:
+            continue
+        related_files = item.get("related_files")
+        evidence = item.get("evidence")
+        if not isinstance(related_files, list) or not any(
+            isinstance(path, str) and path.strip() for path in related_files
+        ):
+            continue
+        if not isinstance(evidence, list) or not any(
+            isinstance(line, str) and line.strip() for line in evidence
+        ):
+            continue
+
         note = dimension_notes.get(dim, {})
         impact_scope = str(
             item.get("impact_scope", note.get("impact_scope", ""))
@@ -154,10 +186,77 @@ def _normalize_findings(
         fix_scope = str(item.get("fix_scope", note.get("fix_scope", ""))).strip()
         if not impact_scope or not fix_scope:
             continue
-        findings.append({**item, "impact_scope": impact_scope, "fix_scope": fix_scope})
-        if len(findings) >= max_batch_findings:
+        findings.append(
+            {
+                **item,
+                "dimension": dim,
+                "identifier": identifier,
+                "summary": summary,
+                "suggestion": suggestion,
+                "confidence": confidence,
+                "impact_scope": impact_scope,
+                "fix_scope": fix_scope,
+            }
+        )
+    if len(findings) <= max_batch_findings:
+        return findings
+
+    required_dims = set(low_score_dimensions or set())
+    if not required_dims:
+        return findings[:max_batch_findings]
+
+    # Preserve at least one finding per low-score dimension before trimming.
+    selected: list[dict[str, Any]] = []
+    selected_indexes: set[int] = set()
+    covered: set[str] = set()
+    for idx, finding in enumerate(findings):
+        if len(selected) >= max_batch_findings:
             break
-    return findings
+        dim = str(finding.get("dimension", "")).strip()
+        if dim not in required_dims or dim in covered:
+            continue
+        selected.append(finding)
+        selected_indexes.add(idx)
+        covered.add(dim)
+
+    for idx, finding in enumerate(findings):
+        if len(selected) >= max_batch_findings:
+            break
+        if idx in selected_indexes:
+            continue
+        selected.append(finding)
+    return selected
+
+
+def _low_score_dimensions(assessments: dict[str, float]) -> set[str]:
+    """Return assessed dimensions requiring explicit defect findings."""
+    return {
+        dim
+        for dim, score in assessments.items()
+        if score < LOW_SCORE_FINDING_THRESHOLD
+    }
+
+
+def _enforce_low_score_findings(
+    *,
+    assessments: dict[str, float],
+    findings: list[dict[str, Any]],
+) -> None:
+    """Fail closed when low scores do not report explicit findings."""
+    required_dims = _low_score_dimensions(assessments)
+    if not required_dims:
+        return
+    finding_dims = {
+        str(finding.get("dimension", "")).strip() for finding in findings if isinstance(finding, dict)
+    }
+    missing = sorted(dim for dim in required_dims if dim not in finding_dims)
+    if not missing:
+        return
+    joined = ", ".join(missing)
+    raise ValueError(
+        "low-score dimensions must include at least one explicit finding: "
+        f"{joined} (threshold {LOW_SCORE_FINDING_THRESHOLD:.1f})"
+    )
 
 
 def _compute_batch_quality(
@@ -165,7 +264,7 @@ def _compute_batch_quality(
     findings: list[dict[str, Any]],
     dimension_notes: dict[str, dict[str, Any]],
     allowed_dims: set[str],
-    high_score_without_risk: float,
+    high_score_missing_issue_note: float,
 ) -> dict[str, float]:
     """Compute quality metrics for a single batch result."""
     return {
@@ -178,7 +277,7 @@ def _compute_batch_quality(
             / max(len(findings), 1),
             3,
         ),
-        "high_score_without_risk": high_score_without_risk,
+        REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY: high_score_missing_issue_note,
     }
 
 
@@ -210,7 +309,7 @@ def normalize_batch_result(
 
     assessments: dict[str, float] = {}
     dimension_notes: dict[str, dict[str, Any]] = {}
-    high_score_without_risk = 0.0
+    high_score_missing_issue_note = 0.0
     for key, value in raw_assessments.items():
         if not isinstance(key, str) or not key:
             continue
@@ -223,12 +322,12 @@ def normalize_batch_result(
         score = round(max(0.0, min(100.0, float(value))), 1)
 
         note_raw = raw_dimension_notes.get(key)
-        evidence, impact_scope, fix_scope, confidence, unreported_risk = (
+        evidence, impact_scope, fix_scope, confidence, issues_note = (
             _validate_dimension_note(key, note_raw)
         )
         assert isinstance(note_raw, dict)
-        if score > 85 and not unreported_risk:
-            high_score_without_risk += 1
+        if score > HIGH_SCORE_ISSUES_NOTE_THRESHOLD and not issues_note:
+            high_score_missing_issue_note += 1
 
         normalized_sub_axes: dict[str, float] = {}
         if key == "abstraction_fitness" and isinstance(note_raw, dict):
@@ -242,7 +341,7 @@ def normalize_batch_result(
             "impact_scope": impact_scope.strip(),
             "fix_scope": fix_scope.strip(),
             "confidence": confidence,
-            "unreported_risk": unreported_risk,
+            DIMENSION_NOTE_ISSUES_KEY: issues_note,
         }
         if normalized_sub_axes:
             dimension_notes[key]["sub_axes"] = normalized_sub_axes
@@ -251,10 +350,16 @@ def normalize_batch_result(
         payload.get("findings"),
         dimension_notes,
         max_batch_findings=max_batch_findings,
+        low_score_dimensions=_low_score_dimensions(assessments),
     )
+    _enforce_low_score_findings(assessments=assessments, findings=findings)
 
     quality = _compute_batch_quality(
-        assessments, findings, dimension_notes, allowed_dims, high_score_without_risk
+        assessments,
+        findings,
+        dimension_notes,
+        allowed_dims,
+        high_score_missing_issue_note,
     )
     return assessments, findings, dimension_notes, quality
 
@@ -418,18 +523,26 @@ def _accumulate_batch_quality(
     coverage_values: list[float],
     evidence_density_values: list[float],
 ) -> float:
-    """Accumulate quality metrics from one batch. Returns high_score_without_risk delta."""
+    """Accumulate quality metrics from one batch. Returns high-score-missing-issues delta."""
     quality = result.get("quality", {})
     if not isinstance(quality, dict):
         return 0.0
     coverage = quality.get("dimension_coverage")
     density = quality.get("evidence_density")
-    no_risk = quality.get("high_score_without_risk")
+    missing_issue_note = quality.get(REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY)
+    if not isinstance(missing_issue_note, int | float):
+        missing_issue_note = quality.get(
+            LEGACY_REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY
+        )
     if isinstance(coverage, int | float):
         coverage_values.append(float(coverage))
     if isinstance(density, int | float):
         evidence_density_values.append(float(density))
-    return float(no_risk) if isinstance(no_risk, int | float) else 0.0
+    return (
+        float(missing_issue_note)
+        if isinstance(missing_issue_note, int | float)
+        else 0.0
+    )
 
 
 def _compute_merged_assessments(
@@ -491,7 +604,7 @@ def merge_batch_results(
     merged_dimension_notes: dict[str, dict[str, Any]] = {}
     coverage_values: list[float] = []
     evidence_density_values: list[float] = []
-    high_score_without_risk_total = 0.0
+    high_score_missing_issue_note_total = 0.0
     abstraction_axis_scores: dict[str, list[tuple[float, float]]] = {
         axis: [] for axis in abstraction_sub_axes
     }
@@ -506,7 +619,7 @@ def merge_batch_results(
             abstraction_sub_axes=abstraction_sub_axes,
         )
         _accumulate_batch_findings(result, finding_map)
-        high_score_without_risk_total += _accumulate_batch_quality(
+        high_score_missing_issue_note_total += _accumulate_batch_quality(
             result,
             coverage_values=coverage_values,
             evidence_density_values=evidence_density_values,
@@ -552,7 +665,9 @@ def merge_batch_results(
                 sum(evidence_density_values) / max(len(evidence_density_values), 1),
                 3,
             ),
-            "high_score_without_risk": int(high_score_without_risk_total),
+            REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY: int(
+                high_score_missing_issue_note_total
+            ),
             "finding_pressure": round(sum(finding_pressure_by_dim.values()), 3),
             "dimensions_with_findings": len(finding_count_by_dim),
         },

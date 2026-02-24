@@ -99,7 +99,12 @@ def unassessed_subjective_dimensions(dim_scores: dict | None) -> list[str]:
 
     unassessed: list[str] = []
     for name, info in dim_scores.items():
-        if "subjective_assessment" not in info.get("detectors", {}):
+        detectors = info.get("detectors", {})
+        if "subjective_assessment" not in detectors:
+            continue
+        assessment_meta = detectors.get("subjective_assessment", {})
+        if isinstance(assessment_meta, dict) and assessment_meta.get("placeholder"):
+            unassessed.append(name)
             continue
         strict_val = float(info.get("strict", info.get("score", 100.0)))
         issues = int(info.get("issues", 0))

@@ -101,13 +101,17 @@ def resolve_findings(
     note: str | None = None,
     attestation: str | None = None,
 ) -> list[str]:
-    """Resolve open findings matching pattern and return resolved IDs."""
+    """Set finding status for matches and return affected finding IDs."""
     ensure_state_defaults(state)
     now = utc_now()
     resolved: list[str] = []
     resolved_findings: list[dict] = []
+    status_filter = "all" if status == "open" else "open"
+    for finding in match_findings(state, pattern, status_filter=status_filter):
+        previous_status = str(finding.get("status", "open")).strip() or "open"
+        if status == "open" and previous_status == "open":
+            continue
 
-    for finding in match_findings(state, pattern, status_filter="open"):
         extra_updates: dict[str, object] = {}
         if status == "wontfix":
             snapshot_scan_count = int(state.get("scan_count", 0) or 0)
@@ -119,21 +123,38 @@ def resolve_findings(
                 "confidence": finding.get("confidence"),
                 "detail": copy.deepcopy(finding.get("detail", {})),
             }
-        finding.update(
-            status=status,
-            note=note,
-            resolved_at=now,
-            suppressed=False,
-            suppressed_at=None,
-            suppression_pattern=None,
-            resolution_attestation={
+        if status == "open":
+            finding["reopen_count"] = int(finding.get("reopen_count", 0) or 0) + 1
+            finding.pop("wontfix_scan_count", None)
+            finding.pop("wontfix_snapshot", None)
+            previous_note = finding.get("note")
+            next_note = note if note is not None else previous_note
+            extra_updates["resolved_at"] = None
+            extra_updates["note"] = next_note
+            extra_updates["resolution_attestation"] = {
+                "kind": "manual_reopen",
+                "text": attestation or note,
+                "attested_at": now,
+                "scan_verified": False,
+                "previous_status": previous_status,
+            }
+
+        updates: dict[str, object] = {
+            "status": status,
+            "note": note,
+            "resolved_at": now,
+            "suppressed": False,
+            "suppressed_at": None,
+            "suppression_pattern": None,
+            "resolution_attestation": {
                 "kind": "manual",
                 "text": attestation,
                 "attested_at": now,
                 "scan_verified": False,
             },
-            **extra_updates,
-        )
+        }
+        updates.update(extra_updates)
+        finding.update(updates)
         resolved.append(finding["id"])
         resolved_findings.append(finding)
 
