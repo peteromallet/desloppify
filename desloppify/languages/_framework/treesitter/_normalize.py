@@ -49,7 +49,7 @@ def _remove_byte_ranges(source: bytes, ranges: list[tuple[int, int]]) -> str:
         # Replace comment bytes with spaces (preserves line positions).
         chunk = source[start:end]
         # Keep newlines, replace everything else with space.
-        replacement = bytes(b"\n" if b == ord(b"\n") else b" "[0] for b in chunk)
+        replacement = bytes(0x0A if b == 0x0A else 0x20 for b in chunk)
         parts.append(replacement)
         pos = end
     if pos < len(source):
