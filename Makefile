@@ -59,7 +59,8 @@ package-smoke: install-ci-tools
 	. .pkg-smoke/bin/activate && \
 		python -m pip install --upgrade pip && \
 		WHEEL=$$(ls -t dist/desloppify-*.whl | head -n 1) && \
-		python -m pip install "$$WHEEL" && \
+		python -m pip install "$$WHEEL[full]" && \
+		python -c "import importlib.metadata as m,sys; extras=set(m.metadata('desloppify').get_all('Provides-Extra') or []); required={'full','treesitter','python-security','scorecard'}; missing=required-extras; print('missing extras metadata:', sorted(missing)) if missing else None; sys.exit(1 if missing else 0)" && \
 		desloppify --help > /dev/null
 	rm -rf .pkg-smoke
 
