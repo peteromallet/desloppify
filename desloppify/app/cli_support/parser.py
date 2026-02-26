@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib.metadata import version as get_version
 
 from desloppify.app.cli_support.parser_groups import (
     _add_config_parser,
@@ -76,7 +77,9 @@ class _NoAbbrevArgumentParser(argparse.ArgumentParser):
         super().__init__(*args, **kwargs)
 
 
-def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.ArgumentParser:
+def create_parser(
+    *, langs: list[str], detector_names: list[str]
+) -> argparse.ArgumentParser:
     """Build top-level CLI parser with all subcommands."""
     lang_help = ", ".join(langs) if langs else "registered languages"
 
@@ -98,6 +101,12 @@ def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.Ar
         default=None,
         metavar="PATTERN",
         help="Path pattern to exclude (component/prefix match; repeatable)",
+    )
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"desloppify {get_version('desloppify')}",
     )
     sub = parser.add_subparsers(
         dest="command",

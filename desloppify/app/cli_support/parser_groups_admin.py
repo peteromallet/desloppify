@@ -284,7 +284,8 @@ def _add_review_parser(sub) -> None:
         type=int,
         default=3,
         help=(
-            "Max concurrent subagent batches when --parallel is enabled (default: 3)"
+            "Max concurrent subagent batches when --parallel is enabled "
+            "(default: 3)"
         ),
     )
     p_review.add_argument(
@@ -298,7 +299,8 @@ def _add_review_parser(sub) -> None:
         type=int,
         default=1,
         help=(
-            "Retries per failed batch for transient runner/network errors (default: 1)"
+            "Retries per failed batch for transient runner/network errors "
+            "(default: 1)"
         ),
     )
     p_review.add_argument(
@@ -306,7 +308,8 @@ def _add_review_parser(sub) -> None:
         type=float,
         default=2.0,
         help=(
-            "Base backoff delay for transient batch retries in seconds (default: 2.0)"
+            "Base backoff delay for transient batch retries in seconds "
+            "(default: 2.0)"
         ),
     )
     p_review.add_argument(
@@ -532,9 +535,7 @@ def _add_dev_parser(sub) -> None:
 
 
 def _add_langs_parser(sub) -> None:
-    sub.add_parser(
-        "langs", help="List all available language plugins with depth and tools"
-    )
+    sub.add_parser("langs", help="List all available language plugins with depth and tools")
 
 
 def _add_update_skill_parser(sub) -> None:
@@ -546,6 +547,6 @@ def _add_update_skill_parser(sub) -> None:
         "interface",
         nargs="?",
         default=None,
-        help="Agent interface (claude, codex, cursor, copilot, windsurf, gemini, opencode). "
+        help="Agent interface (claude, codex, cursor, copilot, windsurf, gemini). "
         "Auto-detected on updates if omitted.",
     )
