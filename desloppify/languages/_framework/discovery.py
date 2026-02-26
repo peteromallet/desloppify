@@ -21,19 +21,33 @@ def raise_load_errors() -> None:
     errors = registry_state.get_load_errors()
     if not errors:
         return
+    summaries: list[str] = []
     for module_name, ex in sorted(errors.items()):
+        ex_type = type(ex).__name__
         logger.warning(
             "Language plugin %s failed to load: %s: %s",
             module_name,
-            type(ex).__name__,
+            ex_type,
             ex,
         )
+        summaries.append(f"{module_name}: {ex_type}: {ex}")
+    raise ImportError("; ".join(summaries))
+
+
+def _report_load_errors_for_load_all() -> None:
+    """Emit warning diagnostics for plugin failures without aborting discovery."""
+    try:
+        raise_load_errors()
+    except ImportError:
+        # load_all historically logs plugin failures and continues so command
+        # startup can proceed with the languages that did load successfully.
+        return
 
 
 def load_all() -> None:
     """Import all language modules to trigger registration."""
     if registry_state.was_load_attempted():
-        raise_load_errors()
+        _report_load_errors_for_load_all()
         return
 
     lang_dir = Path(__file__).resolve().parent
@@ -91,4 +105,4 @@ def load_all() -> None:
 
     registry_state.set_load_attempted(True)
     registry_state.set_load_errors(failures)
-    raise_load_errors()
+    _report_load_errors_for_load_all()

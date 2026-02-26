@@ -11,7 +11,7 @@ from desloppify.languages._framework.base.shared_phases import (
 )
 from desloppify.languages._framework.runtime import LangRun
 from desloppify.languages.dart.detectors.deps import build_dep_graph
-from desloppify.utils import log
+from desloppify.core.output_api import log
 
 DART_COMPLEXITY_SIGNALS = [
     ComplexitySignal(

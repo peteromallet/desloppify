@@ -11,7 +11,7 @@ from desloppify.languages._framework.base.shared_phases import (
 )
 from desloppify.languages._framework.runtime import LangRun
 from desloppify.languages.gdscript.detectors.deps import build_dep_graph
-from desloppify.utils import log
+from desloppify.core.output_api import log
 
 GDSCRIPT_COMPLEXITY_SIGNALS = [
     ComplexitySignal("funcs", r"(?m)^\s*func\s+\w+\s*\(", weight=1, threshold=20),
