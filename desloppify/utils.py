@@ -106,6 +106,7 @@ SKILL_END = "<!-- desloppify-end -->"
 # Locations where the skill doc might be installed, relative to PROJECT_ROOT.
 SKILL_SEARCH_PATHS = (
     ".claude/skills/desloppify/SKILL.md",
+    ".opencode/skills/desloppify/SKILL.md",
     "AGENTS.md",
     "CLAUDE.md",
     ".cursor/rules/desloppify.md",
@@ -116,6 +117,8 @@ SKILL_SEARCH_PATHS = (
 # Dedicated files are overwritten entirely; shared files get section replacement.
 SKILL_TARGETS: dict[str, tuple[str, str, bool]] = {
     "claude": (".claude/skills/desloppify/SKILL.md", "CLAUDE", True),
+    # OpenCode support added with thanks to @H3xKatana.
+    "opencode": (".opencode/skills/desloppify/SKILL.md", "OPENCODE", True),
     "codex": ("AGENTS.md", "CODEX", False),
     "cursor": (".cursor/rules/desloppify.md", "CURSOR", True),
     "copilot": (".github/copilot-instructions.md", "COPILOT", False),

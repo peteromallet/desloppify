@@ -766,6 +766,18 @@ class TestResolveInterface:
         result = resolve_interface(None, install=install)
         assert result == "claude"
 
+    def test_from_install_path_match_opencode(self):
+        from desloppify.utils import SkillInstall
+
+        install = SkillInstall(
+            rel_path=".opencode/skills/desloppify/SKILL.md",
+            version=1,
+            overlay=None,
+            stale=False,
+        )
+        result = resolve_interface(None, install=install)
+        assert result == "opencode"
+
     def test_from_install_no_match(self):
         from desloppify.utils import SkillInstall
         install = SkillInstall(

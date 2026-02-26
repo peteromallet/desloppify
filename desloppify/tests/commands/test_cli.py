@@ -99,6 +99,20 @@ class TestCreateParser:
         )
         assert args.exclude == ["node_modules", "dist"]
 
+    def test_top_level_version_flag(self, parser, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parser.parse_args(["--version"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out.strip()
+        assert out.startswith("desloppify")
+
+    def test_top_level_short_version_flag(self, parser, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parser.parse_args(["-V"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out.strip()
+        assert out.startswith("desloppify")
+
     def test_status_command(self, parser):
         args = parser.parse_args(["status"])
         assert args.command == "status"

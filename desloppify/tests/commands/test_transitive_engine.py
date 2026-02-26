@@ -671,6 +671,14 @@ class TestLangsAndUpdateSkillParsers:
         args = parser.parse_args(["update-skill", "claude"])
         assert args.interface == "claude"
 
+    def test_update_skill_parser_with_opencode_interface(self):
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        parser_admin_mod._add_update_skill_parser(sub)
+
+        args = parser.parse_args(["update-skill", "opencode"])
+        assert args.interface == "opencode"
+
 
 # =====================================================================
 # Module 4: move_apply.py
