@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,8 @@ INTEGRATION_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "integration.yml"
 PUBLISH_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "python-publish.yml"
 CI_PLAN = REPO_ROOT / "docs" / "ci_plan.md"
 MAKEFILE = REPO_ROOT / "Makefile"
+README = REPO_ROOT / "README.md"
+PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 
 def _load_yaml(path: Path) -> dict:
@@ -31,6 +34,12 @@ def _run_commands(job: dict) -> list[str]:
 
 def _step_names(job: dict) -> list[str]:
     return [step.get("name", "") for step in job.get("steps", [])]
+
+
+def _optional_dependencies() -> dict[str, list[str]]:
+    doc = tomllib.loads(PYPROJECT.read_text())
+    optional = doc.get("project", {}).get("optional-dependencies", {})
+    return {str(key): list(value) for key, value in optional.items()}
 
 
 def test_ci_workflow_jobs_are_bound_to_make_targets() -> None:
@@ -114,6 +123,34 @@ def test_makefile_contains_ci_gate_targets() -> None:
         "ci",
     }
     assert expected.issubset(targets)
+
+
+def test_readme_optional_extras_exist_in_pyproject() -> None:
+    readme = README.read_text()
+    referenced = set(re.findall(r"desloppify\[([a-zA-Z0-9_-]+)\]", readme))
+    optional = _optional_dependencies()
+    missing = sorted(extra for extra in referenced if extra not in optional)
+    assert not missing, (
+        "README references optional extras that are not defined in pyproject.toml: "
+        f"{missing}"
+    )
+
+
+def test_full_extra_includes_all_optional_dependency_groups() -> None:
+    optional = _optional_dependencies()
+    full = set(optional.get("full", []))
+    missing_dependencies: dict[str, list[str]] = {}
+    for extra, deps in optional.items():
+        if extra == "full":
+            continue
+        extra_missing = sorted(dep for dep in deps if dep not in full)
+        if extra_missing:
+            missing_dependencies[extra] = extra_missing
+
+    assert not missing_dependencies, (
+        "Optional extras must stay represented in [full] so README install guidance "
+        f"does not drift: {missing_dependencies}"
+    )
 
 
 def test_ci_plan_required_checks_match_ci_workflow() -> None:
