@@ -121,6 +121,7 @@ SKILL_TARGETS: dict[str, tuple[str, str, bool]] = {
     "copilot": (".github/copilot-instructions.md", "COPILOT", False),
     "windsurf": ("AGENTS.md", "WINDSURF", False),
     "gemini": ("AGENTS.md", "GEMINI", False),
+    "opencode": (".opencode/skills/desloppify/SKILL.md", "OPENCODE", True),
 }
 
 
