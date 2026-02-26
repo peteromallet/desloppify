@@ -25,6 +25,8 @@ from desloppify.intelligence.review.importing.shared import (
 from desloppify.intelligence.review.selection import hash_file
 from desloppify.state import MergeScanOptions, make_finding, merge_scan, utc_now
 
+PROJECT_ROOT: Path | None = None
+
 
 def parse_per_file_import_payload(
     data: ReviewImportPayload | dict[str, Any],
@@ -42,6 +44,13 @@ def _absolutize_review_path(file_path: str, *, project_root: Path) -> str:
     return str((project_root / candidate).resolve())
 
 
+def _resolve_per_file_project_root(project_root: Path | str | None) -> Path:
+    """Resolve import root with legacy module-level override support for tests."""
+    if project_root is None and isinstance(PROJECT_ROOT, Path):
+        return PROJECT_ROOT
+    return resolve_import_project_root(project_root)
+
+
 def import_review_findings(
     findings_data: ReviewImportPayload,
     state: dict[str, Any],
@@ -57,7 +66,7 @@ def import_review_findings(
     findings_list = payload.findings
     assessments = payload.assessments
     reviewed_files = payload.reviewed_files
-    resolved_project_root = resolve_import_project_root(project_root)
+    resolved_project_root = _resolve_per_file_project_root(project_root)
     if assessments:
         store_assessments(
             state,

@@ -154,7 +154,7 @@ def normalize_review_confidence(value: object) -> str:
 def review_tier(confidence: str, *, holistic: bool) -> int:
     """Derive natural tier from review confidence and scope."""
     if confidence == "high":
-        return 1 if holistic else 2
+        return 1 if holistic else 3
     if confidence == "medium":
         return 2 if holistic else 3
     return 3

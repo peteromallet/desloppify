@@ -641,14 +641,72 @@ def do_run_batches(
             return
         _append_run_log(f"execution-error batch={batch_index + 1} error={exc}")
 
-    execution_failures = execute_batches_fn(
-        tasks=tasks,
-        run_parallel=run_parallel,
-        progress_fn=_report_progress,
-        error_log_fn=_record_execution_issue,
-        max_parallel_workers=max_parallel_batches,
-        heartbeat_seconds=heartbeat_seconds,
-    )
+    run_summary_path = run_dir / "run_summary.json"
+
+    def _write_run_summary(
+        *,
+        successful_batches: list[int],
+        failed_batches: list[int],
+        interrupted: bool = False,
+        interruption_reason: str | None = None,
+    ) -> None:
+        run_summary: dict[str, object] = {
+            "created_at": summary_created_at,
+            "run_stamp": stamp,
+            "runner": runner,
+            "parallel": run_parallel,
+            "selected_batches": [idx + 1 for idx in selected_indexes],
+            "successful_batches": successful_batches,
+            "failed_batches": failed_batches,
+            "allow_partial": allow_partial,
+            "max_parallel_batches": max_parallel_batches if run_parallel else 1,
+            "batch_timeout_seconds": batch_timeout_seconds,
+            "batch_max_retries": batch_max_retries,
+            "batch_retry_backoff_seconds": batch_retry_backoff_seconds,
+            "batch_heartbeat_seconds": heartbeat_seconds if run_parallel else None,
+            "batch_stall_warning_seconds": stall_warning_seconds if run_parallel else None,
+            "batch_stall_kill_seconds": stall_kill_seconds,
+            "immutable_packet": str(immutable_packet_path),
+            "blind_packet": str(prompt_packet_path),
+            "run_dir": str(run_dir),
+            "logs_dir": str(logs_dir),
+            "run_log": str(run_log_path),
+            "batches": batch_status,
+        }
+        if interrupted:
+            run_summary["interrupted"] = True
+            if interruption_reason:
+                run_summary["interruption_reason"] = interruption_reason
+        safe_write_text_fn(run_summary_path, json.dumps(run_summary, indent=2) + "\n")
+        print(colorize_fn(f"  Run summary: {run_summary_path}", "dim"))
+        _append_run_log(f"run-summary {run_summary_path}")
+
+    try:
+        execution_failures = execute_batches_fn(
+            tasks=tasks,
+            run_parallel=run_parallel,
+            progress_fn=_report_progress,
+            error_log_fn=_record_execution_issue,
+            max_parallel_workers=max_parallel_batches,
+            heartbeat_seconds=heartbeat_seconds,
+        )
+    except KeyboardInterrupt:
+        for idx in selected_indexes:
+            key = str(idx + 1)
+            state = batch_status.setdefault(
+                key,
+                {"position": batch_positions.get(idx, 0), "status": "pending"},
+            )
+            if state.get("status") in {"pending", "queued", "running"}:
+                state["status"] = "interrupted"
+        _write_run_summary(
+            successful_batches=[],
+            failed_batches=[],
+            interrupted=True,
+            interruption_reason="keyboard_interrupt",
+        )
+        _append_run_log("run-interrupted reason=keyboard_interrupt")
+        raise SystemExit(130) from None
 
     allowed_dims = {
         str(dim) for dim in packet.get("dimensions", []) if isinstance(dim, str)
@@ -680,33 +738,10 @@ def do_run_batches(
             continue
         state["status"] = "parse_failed"
 
-    run_summary = {
-        "created_at": summary_created_at,
-        "run_stamp": stamp,
-        "runner": runner,
-        "parallel": run_parallel,
-        "selected_batches": [idx + 1 for idx in selected_indexes],
-        "successful_batches": [idx + 1 for idx in successful_indexes],
-        "failed_batches": [idx + 1 for idx in sorted(failure_set)],
-        "allow_partial": allow_partial,
-        "max_parallel_batches": max_parallel_batches if run_parallel else 1,
-        "batch_timeout_seconds": batch_timeout_seconds,
-        "batch_max_retries": batch_max_retries,
-        "batch_retry_backoff_seconds": batch_retry_backoff_seconds,
-        "batch_heartbeat_seconds": heartbeat_seconds if run_parallel else None,
-        "batch_stall_warning_seconds": stall_warning_seconds if run_parallel else None,
-        "batch_stall_kill_seconds": stall_kill_seconds,
-        "immutable_packet": str(immutable_packet_path),
-        "blind_packet": str(prompt_packet_path),
-        "run_dir": str(run_dir),
-        "logs_dir": str(logs_dir),
-        "run_log": str(run_log_path),
-        "batches": batch_status,
-    }
-    run_summary_path = run_dir / "run_summary.json"
-    safe_write_text_fn(run_summary_path, json.dumps(run_summary, indent=2) + "\n")
-    print(colorize_fn(f"  Run summary: {run_summary_path}", "dim"))
-    _append_run_log(f"run-summary {run_summary_path}")
+    _write_run_summary(
+        successful_batches=[idx + 1 for idx in successful_indexes],
+        failed_batches=[idx + 1 for idx in sorted(failure_set)],
+    )
 
     if failures and (not allow_partial or not batch_results):
         _append_run_log(
