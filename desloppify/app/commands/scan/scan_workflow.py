@@ -433,7 +433,7 @@ def merge_scan_results(
             sync_unscored_dimensions,
         )
 
-        plan_path = runtime.state_path.parent / "plan.json"
+        plan_path = runtime.state_path.parent / "plan.json" if runtime.state_path else None
         plan = load_plan(plan_path)
         dirty = False
 
