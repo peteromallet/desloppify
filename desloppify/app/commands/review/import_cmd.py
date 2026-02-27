@@ -9,6 +9,7 @@ from pathlib import Path
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
+from desloppify.app.commands.helpers.score_update import print_score_update
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
@@ -195,6 +196,8 @@ def do_import(
         colorize_fn=colorize,
     )
 
+    prev = state_mod.score_snapshot(state)
+
     # Transactional import: only persist if all post-import guards pass.
     # Rebase on the latest on-disk state when available so long-running review
     # sessions don't clobber newer imports/scans that completed while batches ran.
@@ -294,6 +297,7 @@ def do_import(
     next_command = import_helpers_mod.print_open_review_summary(
         state, colorize_fn=colorize
     )
+    print_score_update(state, prev, config=config)
     at_target = import_helpers_mod.print_review_import_scores_and_integrity(
         state,
         config or {},

@@ -9,6 +9,7 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
+from desloppify.app.commands.helpers.score_update import print_score_update
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core import config as config_mod
 from desloppify.core.fallbacks import print_error
@@ -147,6 +148,7 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
 
     state_file = state_path(args)
     state = state_mod.load_state(state_file)
+    prev = state_mod.score_snapshot(state)
 
     config = command_runtime(args).config
     config_mod.add_ignore_pattern(config, args.pattern)
@@ -167,20 +169,7 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     print(colorize(f"Added ignore pattern: {args.pattern}", "green"))
     if removed:
         print(f"  Removed {removed} matching findings from state.")
-    scores = state_mod.score_snapshot(state)
-    if (
-        scores.overall is not None
-        and scores.objective is not None
-        and scores.strict is not None
-        and scores.verified is not None
-    ):
-        print(
-            f"  Scores: overall {scores.overall:.1f}/100"
-            + colorize(f"  objective: {scores.objective:.1f}/100", "dim")
-            + colorize(f"  strict: {scores.strict:.1f}/100", "dim")
-            + colorize(f"  verified: {scores.verified:.1f}/100", "dim")
-        )
-    print()
+    print_score_update(state, prev)
 
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None
@@ -188,6 +177,7 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
         state,
         context=narrative_mod.NarrativeContext(lang=lang_name, command="ignore"),
     )
+    scores = state_mod.score_snapshot(state)
     write_query(
         {
             "command": "ignore",

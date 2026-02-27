@@ -930,17 +930,7 @@ def print_review_import_scores_and_integrity(
     subjective_rerun_command_fn,
     colorize_fn,
 ) -> list[dict[str, Any]]:
-    """Print score snapshot plus subjective integrity warnings."""
-    scores = state_mod.score_snapshot(state)
-    if scores.overall is not None and scores.objective is not None and scores.strict is not None:
-        print(
-            colorize_fn(
-                f"\n  Current scores: overall {scores.overall:.1f}/100 · "
-                f"objective {scores.objective:.1f}/100 · strict {scores.strict:.1f}/100",
-                "dim",
-            )
-        )
-
+    """Print subjective integrity warnings (score line handled by print_score_update)."""
     target_strict = target_strict_score_from_config_fn(config, fallback=95.0)
     at_target = subjective_at_target_fn(
         state,

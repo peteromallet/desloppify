@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 
+from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
+from desloppify.app.commands.helpers.score_update import print_score_update
 from desloppify.core.issues_render import finding_weight
 from desloppify.core.output_api import colorize
 from desloppify.engine.work_queue import list_open_review_findings
@@ -168,6 +170,7 @@ def do_merge(args: argparse.Namespace) -> None:
         return
 
     dry_run = bool(getattr(args, "dry_run", False))
+    prev = state_mod.score_snapshot(state)
     timestamp = utc_now()
     merged_pairs: list[tuple[str, list[str]]] = []
     for group in merge_groups:
@@ -214,7 +217,8 @@ def do_merge(args: argparse.Namespace) -> None:
         return
 
     save_state(state, state_file)
-    print(colorize("\n  State updated with merged issue groups.\n", "green"))
+    print(colorize("\n  State updated with merged issue groups.", "green"))
+    print_score_update(state, prev)
     write_query(
         {
             "command": "review",

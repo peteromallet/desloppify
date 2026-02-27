@@ -12,6 +12,7 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
+from desloppify.app.commands.helpers.score_update import print_score_update
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core.discovery_api import rel
 from desloppify.intelligence import narrative as narrative_mod
@@ -82,20 +83,7 @@ def _apply_and_report(
 
     new = state_mod.score_snapshot(state)
     print(f"\n  Auto-resolved {len(resolved_ids)} findings in state")
-    if new.overall is not None and new.objective is not None and new.strict is not None:
-        overall_delta = new.overall - (prev.overall or 0)
-        delta_str = (
-            f" ({'+' if overall_delta > 0 else ''}{overall_delta:.1f})"
-            if overall_delta
-            else ""
-        )
-        print(
-            f"  Scores: overall {new.overall:.1f}/100{delta_str}"
-            + colorize(f"  objective {new.objective:.1f}/100", "dim")
-            + colorize(f"  strict {new.strict:.1f}/100", "dim")
-        )
-    else:
-        print(colorize("  Scores unavailable — run `desloppify scan`.", "yellow"))
+    print_score_update(state, prev)
 
     if fixer.post_fix:
         fixer.post_fix(path, state, prev.overall or 0, False, lang=lang)
