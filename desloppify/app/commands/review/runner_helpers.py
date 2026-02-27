@@ -1093,7 +1093,7 @@ def _heartbeat(
     if heartbeat_error is not None and callable(error_log_fn):
         try:
             error_log_fn(-1, heartbeat_error)
-        except (OSError, TypeError, ValueError):
+        except Exception:
             pass  # error-logging callback failed; don't crash the batch
 
 
