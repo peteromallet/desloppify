@@ -17,6 +17,7 @@ from desloppify.engine.work_queue import ATTEST_EXAMPLE
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.state import coerce_assessment_score
 from desloppify.core.output_api import colorize
+from desloppify.core.tooling import check_config_staleness
 
 from .apply import _resolve_all_patterns, _write_resolve_query_entry
 from .render import (
@@ -30,8 +31,8 @@ from .selection import (
     ResolveQueryContext,
     _enforce_batch_wontfix_confirmation,
     _previous_score_snapshot,
-    _show_attestation_requirement,
-    _validate_attestation,
+    show_attestation_requirement,
+    validate_attestation,
     _validate_resolve_inputs,
 )
 
@@ -87,7 +88,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 
     _save_state_or_exit(state, state_file)
 
-    # Remove resolved items from the living plan queue
+    # Remove resolved items from the living plan queue (best-effort)
     try:
         from desloppify.engine.plan import has_living_plan, load_plan, purge_ids, save_plan
 
@@ -97,8 +98,8 @@ def cmd_resolve(args: argparse.Namespace) -> None:
             if purged:
                 save_plan(plan)
                 print(colorize(f"  Plan updated: {purged} item(s) removed from queue.", "dim"))
-    except Exception:
-        pass
+    except (OSError, ValueError, KeyError, TypeError):
+        print(colorize("  Warning: could not update living plan.", "yellow"), file=sys.stderr)
 
     _print_resolve_summary(status=args.status, all_resolved=all_resolved)
     _print_wontfix_batch_warning(
@@ -156,16 +157,18 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     """Add a pattern to the ignore list."""
     attestation = getattr(args, "attest", None)
-    if not _validate_attestation(attestation):
-        _show_attestation_requirement("Ignore", attestation, ATTEST_EXAMPLE)
+    if not validate_attestation(attestation):
+        show_attestation_requirement("Ignore", attestation, ATTEST_EXAMPLE)
         sys.exit(1)
 
-    state_file = state_path(args)
-    state = state_mod.load_state(state_file)
+    runtime = command_runtime(args)
+    state_file = runtime.state_path
+    state = runtime.state
     prev = state_mod.score_snapshot(state)
 
-    config = command_runtime(args).config
+    config = runtime.config
     config_mod.add_ignore_pattern(config, args.pattern)
+    config["needs_rescan"] = True
     _save_config_or_exit(config)
 
     removed = state_mod.remove_ignored_findings(state, args.pattern)
@@ -183,6 +186,9 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     print(colorize(f"Added ignore pattern: {args.pattern}", "green"))
     if removed:
         print(f"  Removed {removed} matching findings from state.")
+    config_warning = check_config_staleness(config)
+    if config_warning:
+        print(colorize(f"  {config_warning}", "yellow"))
     print_score_update(state, prev)
 
     lang = resolve_lang(args)

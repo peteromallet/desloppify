@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from desloppify.core.discovery_api import DEFAULT_EXCLUSIONS, get_exclusions
+from desloppify.core.discovery_api import collect_exclude_dirs, get_exclusions
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +68,17 @@ def _as_jscpd_globs(pattern: str) -> list[str]:
     return globs
 
 
-def _jscpd_ignore_arg() -> str:
+def _jscpd_ignore_arg(scan_path: Path) -> str:
     """Build jscpd ignore globs from defaults + runtime excludes."""
     patterns = set(_BASE_IGNORES)
-    for pattern in (*DEFAULT_EXCLUSIONS, *get_exclusions()):
-        patterns.update(_as_jscpd_globs(pattern))
+    # Use collect_exclude_dirs for the directory-name portion, then convert
+    # the remaining runtime globs (patterns with '*') to jscpd format.
+    for dirname in collect_exclude_dirs(scan_path):
+        base = Path(dirname).name
+        patterns.update(_as_jscpd_globs(base))
+    for pattern in get_exclusions():
+        if "*" in pattern:
+            patterns.update(_as_jscpd_globs(pattern))
     return ",".join(sorted(patterns))
 
 
@@ -171,7 +177,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                     "--min-tokens",
                     "50",
                     "--ignore",
-                    _jscpd_ignore_arg(),
+                    _jscpd_ignore_arg(path),
                     "--silent",
                 ],
                 capture_output=True,

@@ -1,5 +1,5 @@
 <!-- desloppify-begin -->
-<!-- desloppify-skill-version: 1 -->
+<!-- desloppify-skill-version: 2 -->
 ---
 name: desloppify
 description: >
@@ -15,162 +15,98 @@ allowed-tools: Bash(desloppify *)
 
 ## 1. Your Job
 
-**Improve code quality by fixing findings and maximizing strict score honestly.**
-Never hide debt with suppression patterns just to improve lenient score. After
-every scan, show the user ALL scores:
+Improve code quality by maximising the **strict score** honestly.
 
-| What | How |
-|------|-----|
-| Overall health | lenient + strict |
-| 5 mechanical dimensions | File health, Code quality, Duplication, Test health, Security |
-| 7 subjective dimensions | Naming Quality, Error Consistency, Abstraction Fit, Logic Clarity, AI Generated Debt, Type Safety, Contract Coherence |
+**The main thing you do is run `desloppify next`** — it tells you exactly what to fix and how. Fix it, resolve it, run `next` again. Keep going.
 
-Never skip scores. The user tracks progress through them.
+Follow the scan output's **INSTRUCTIONS FOR AGENTS** — don't substitute your own analysis.
 
-## 2. Core Loop
+## 2. The Workflow
 
-```
-scan → follow the tool's strategy → fix or wontfix → rescan
-```
+Two loops. The **outer loop** rescans periodically to measure progress.
+The **inner loop** is where you spend most of your time: fixing issues one by one.
 
-1. `desloppify scan --path .` — the scan output ends with **INSTRUCTIONS FOR AGENTS**. Follow them. Don't substitute your own analysis.
-2. Fix the issue the tool recommends.
-3. `desloppify resolve fixed "<id>"` — or if it's intentional/acceptable:
-   `desloppify resolve wontfix "<id>" --note "reason why"`
-4. Rescan to verify.
-
-**Wontfix is not free.** It lowers the strict score. The gap between lenient and strict IS wontfix debt. Call it out when:
-- Wontfix count is growing — challenge whether past decisions still hold
-- A dimension is stuck 3+ scans — suggest a different approach
-- Auto-fixers exist for open findings — ask why they haven't been run
-
-## 3. Commands
+### Outer loop — scan and check
 
 ```bash
-desloppify scan --path src/               # full scan
-desloppify scan --path src/ --reset-subjective  # reset subjective baseline to 0, then scan
-desloppify next --count 5                  # top priorities
-desloppify show <pattern>                  # filter by file/detector/ID
-desloppify plan                            # prioritized plan
-desloppify fix <fixer> --dry-run           # auto-fix (dry-run first!)
-desloppify move <src> <dst> --dry-run      # move + update imports
-desloppify resolve open|fixed|wontfix|false_positive "<pat>"   # classify/reopen findings
-desloppify review --run-batches --runner codex --parallel --scan-after-import  # preferred blind review path
-desloppify review --run-batches --runner codex --parallel --scan-after-import --retrospective  # include historical issue context for root-cause loop
-desloppify review --prepare                # generate subjective review data (cloud/manual path)
-desloppify review --external-start --external-runner claude  # recommended cloud durable path
-desloppify review --external-submit --session-id <id> --import review_result.json  # submit cloud session output with canonical provenance
-desloppify review --import file.json       # import review results
-desloppify review --validate-import file.json  # validate payload/mode without mutating state
+desloppify scan --path .       # analyse the codebase
+desloppify status              # check scores — are we at target?
+```
+If not at target, work the inner loop. Rescan periodically — especially after clearing a cluster or batch of related fixes. Issues cascade-resolve and new ones may surface.
+
+### Inner loop — fix issues
+
+Repeat until the queue is clear:
+
+```
+1. desloppify next              ← tells you exactly what to fix next
+2. Fix the issue in code
+3. Resolve it (next shows you the exact command including required attestation)
 ```
 
-## 4. Subjective Reviews (biggest score lever)
+Score may temporarily drop after fixes — cascade effects are normal, keep going.
+If `next` suggests an auto-fixer, run `desloppify fix <fixer> --dry-run` to preview, then apply.
 
-Score = 40% mechanical + 60% subjective. Subjective starts at 0% until reviewed.
+**To be strategic**, use `plan` to shape what `next` gives you:
+```bash
+desloppify plan                        # see the full ordered queue
+desloppify plan move <pat> top         # reorder — what unblocks the most?
+desloppify plan cluster create <name>  # group related issues to batch-fix
+desloppify plan focus <cluster>        # scope next to one cluster
+desloppify plan defer <pat>            # push low-value items aside
+desloppify plan skip <pat>             # hide from next
+desloppify plan done <pat>             # mark complete
+desloppify plan reopen <pat>           # reopen
+```
 
-1. Preferred local path: `desloppify review --run-batches --runner codex --parallel --scan-after-import`.
-   This prepares blind packets, runs isolated subagent batches, merges, imports, and rescans in one flow.
+### Subjective reviews
 
-2. **Review each dimension independently.** For best results, review dimensions in
-   isolation so scores don't bleed across concerns. If your agent supports parallel
-   execution, use it — your agent-specific overlay (appended below, if installed)
-   has the optimal approach. Each reviewer needs:
-   - The codebase path and the dimensions to score
-   - What each dimension means (from `query.json`'s `dimension_prompts`)
-   - The output format (below)
-   - Nothing else — let them decide what to read and how
+The scan will prompt you when a subjective review is needed — just follow its instructions.
+If you need to trigger one manually:
+```bash
+desloppify review --run-batches --runner codex --parallel --scan-after-import
+```
 
-3. Cloud/manual path: run `desloppify review --prepare`, perform isolated reviews,
-   merge assessments (average scores if multiple reviewers cover the same dimension)
-   and findings, then import:
-   ```bash
-   desloppify review --import findings.json
-   ```
-   Import is fail-closed by default: if any finding is invalid/skipped, import aborts.
-   Use `--allow-partial` only for explicit exceptions.
-   External imports ingest findings by default. For durable cloud-subagent scores,
-   prefer the session flow:
-   `desloppify review --external-start --external-runner claude` then use the generated
-   `claude_launch_prompt.md` + `review_result.template.json`, and run the printed
-   `desloppify review --external-submit --session-id <id> --import <file>` command.
-   Legacy durable import remains available via
-   `--attested-external --attest "I validated this review was completed without awareness of overall score and is unbiased."`
-   (with valid blind packet provenance in the payload).
-   Use `desloppify review --validate-import findings.json ...` to preflight schema
-   and import mode before mutating state.
-   Manual override cannot be combined with `--allow-partial`, and those manual
-   assessment scores are provisional: they expire on the next `scan` unless
-   replaced by trusted internal or attested-external imports.
+### Other useful commands
 
-   Required output format per reviewer:
-   ```json
-   {
-     "session": { "id": "<session_id_from_template>", "token": "<session_token_from_template>" },
-     "assessments": { "naming_quality": 75.0, "logic_clarity": 82.0 },
-     "findings": [{
-       "dimension": "naming_quality",
-       "identifier": "short_id",
-       "summary": "one line",
-       "related_files": ["path/to/file.py"],
-       "evidence": ["specific observation"],
-       "suggestion": "concrete action",
-       "confidence": "high|medium|low"
-     }]
-   }
-   ```
-   For non-session legacy imports (`review --import ... --attested-external`), `session` may be omitted.
+```bash
+desloppify next --count 5                         # top 5 priorities
+desloppify next --cluster <name>                  # drill into a cluster
+desloppify show <pattern>                         # filter by file/detector/ID
+desloppify show --status open                     # all open findings
+desloppify plan skip --permanent "<id>" --note "reason" # accept debt (lowers strict score)
+desloppify scan --path . --reset-subjective       # reset subjective baseline to 0
+```
 
-4. **Fix findings via the core loop.** After importing, findings become tracked state
-   entries. Fix each one in code, then resolve:
-   ```bash
-   desloppify issues                    # see the work queue
-   # ... fix the code ...
-   desloppify resolve fixed "<id>"      # mark as fixed
-   desloppify scan --path .             # verify
-   ```
+## 3. Reference
 
-**Do NOT fix findings before importing.** Import creates tracked state entries that
-let desloppify correlate fixes to findings, track resolution history, and verify fixes
-on rescan. If you fix code first and then import, the findings arrive as orphan issues
-with no connection to the work already done.
+### How scoring works
 
-Need a clean subjective rerun from zero? Run `desloppify scan --path src/ --reset-subjective` before preparing/importing fresh review data.
+Overall score = **40% mechanical** + **60% subjective**.
 
-Even moderate scores (60-80) dramatically improve overall health.
+- **Mechanical (40%)**: auto-detected issues — duplication, dead code, smells, unused imports, security. Fixed by changing code and rescanning.
+- **Subjective (60%)**: design quality review — naming, error handling, abstractions, clarity. Starts at **0%** until reviewed. The scan will prompt you when a review is needed.
+- **Strict score** is the north star: wontfix items count as open. The gap between overall and strict is your wontfix debt.
+- **Score types**: overall (lenient), strict (wontfix counts), objective (mechanical only), verified (confirmed fixes only).
 
-Integrity safeguard:
-- If one subjective dimension lands exactly on the strict target, the scanner warns and asks for re-review.
-- If two or more subjective dimensions land on the strict target in the same scan, those dimensions are auto-reset to 0 for that scan and must be re-reviewed/imported.
-- Reviewers should score from evidence only (not from target-seeking).
+### Subjective reviews in detail
 
-## 5. Living Plan
+- **Preferred**: `desloppify review --run-batches --runner codex --parallel --scan-after-import` — does everything in one command.
+- **Manual path**: `desloppify review --prepare` → review per dimension → `desloppify review --import file.json`.
+- Import first, fix after — import creates tracked state entries for correlation.
+- Integrity: reviewers score from evidence only. Scores hitting exact targets trigger auto-reset.
+- Even moderate scores (60-80) dramatically improve overall health.
+- Stale dimensions auto-surface in `next` — just follow the queue.
 
-If a living plan exists (`.desloppify/plan.json`), it is the **single source of truth**
-for work order. The plan lets users reorder, cluster, defer, and annotate findings.
+### Key concepts
 
-- `desloppify next` respects the plan — items appear in plan order, not mechanical rank.
-- `desloppify plan` shows the full ordered queue with clusters and deferred items.
-- `desloppify plan show` shows plan metadata (clusters, focus, counts).
-- `desloppify plan move <pattern> top` reorders items.
-- `desloppify plan cluster create <name>` groups related findings.
-- `desloppify plan focus <cluster>` auto-scopes `next` to a cluster.
-- `desloppify plan defer <pattern>` hides items from `next` (score-neutral).
-
-When a plan is active, follow it instead of `narrative.actions`. The plan overrides
-strategy hints and action recommendations.
-
-## 6. Quick Reference
-
-- **Tiers**: T1 auto-fix, T2 quick manual, T3 judgment call, T4 major refactor
+- **Tiers**: T1 auto-fix → T2 quick manual → T3 judgment call → T4 major refactor.
+- **Auto-clusters**: related findings are auto-grouped in `next`. Drill in with `next --cluster <name>`.
 - **Zones**: production/script (scored), test/config/generated/vendor (not scored). Fix with `zone set`.
-- **Auto-fixers** (TS only): `unused-imports`, `unused-vars`, `debug-logs`, `dead-exports`, etc.
-- **query.json**: After any command, has `narrative.actions` with prioritized next steps.
-- `--skip-slow` skips duplicate detection for faster iteration.
-- `--lang python`, `--lang typescript`, or `--lang csharp` to force language.
-- C# defaults to `--profile objective`; use `--profile full` to include subjective review.
+- **Wontfix cost**: widens the lenient↔strict gap. Challenge past decisions when the gap grows.
 - Score can temporarily drop after fixes (cascade effects are normal).
 
-## 7. Escalate Tool Issues Upstream
+## 4. Escalate Tool Issues Upstream
 
 When desloppify itself appears wrong or inconsistent:
 

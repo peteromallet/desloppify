@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from desloppify import state as state_mod
-from desloppify.app.commands.scan.scan_helpers import _format_delta
+from desloppify.app.commands.scan.scan_helpers import format_delta
 from desloppify.app.commands.status_parts.strict_target import format_strict_target_progress
 from desloppify.core.output_api import colorize
 
@@ -33,10 +33,10 @@ def print_score_update(
         print(colorize(f"\n  {label} unavailable — run `desloppify scan`.", "yellow"))
         return
 
-    overall_s, overall_c = _format_delta(new.overall, prev.overall)
-    objective_s, objective_c = _format_delta(new.objective, prev.objective)
-    strict_s, strict_c = _format_delta(new.strict, prev.strict)
-    verified_s, verified_c = _format_delta(new.verified, prev.verified)
+    overall_s, overall_c = format_delta(new.overall, prev.overall)
+    objective_s, objective_c = format_delta(new.objective, prev.objective)
+    strict_s, strict_c = format_delta(new.strict, prev.strict)
+    verified_s, verified_c = format_delta(new.verified, prev.verified)
 
     print(
         f"\n  {label}: "

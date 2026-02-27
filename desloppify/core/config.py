@@ -78,6 +78,9 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         0,
         "Global cap for surfaced findings after per-detector budget (0 = unlimited)",
     ),
+    "needs_rescan": ConfigKey(
+        bool, False, "Set when config changes may have invalidated cached scores"
+    ),
     "languages": ConfigKey(
         dict, {}, "Language-specific settings {lang_name: {key: value}}"
     ),
@@ -152,6 +155,13 @@ def add_ignore_pattern(config: dict, pattern: str) -> None:
     ignores = config.setdefault("ignore", [])
     if pattern not in ignores:
         ignores.append(pattern)
+
+
+def add_exclude_pattern(config: dict, pattern: str) -> None:
+    """Append a pattern to the exclude list (deduplicates)."""
+    excludes = config.setdefault("exclude", [])
+    if pattern not in excludes:
+        excludes.append(pattern)
 
 
 def set_ignore_metadata(config: dict, pattern: str, *, note: str, added_at: str) -> None:

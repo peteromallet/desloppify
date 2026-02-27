@@ -68,7 +68,7 @@ class TestCmdPlanOutput:
             lambda args: type("Ctx", (), {"state": {
                 "findings": {},
                 "last_scan": "2025-01-01",
-            }})(),
+            }, "config": {}})(),
         )
         monkeypatch.setattr(
             plan_mod, "generate_plan_md", lambda state: "# Plan\n\nNothing to do."
@@ -96,7 +96,7 @@ class TestCmdPlanOutput:
             lambda args: type("Ctx", (), {"state": {
                 "findings": {},
                 "last_scan": "2025-01-01",
-            }})(),
+            }, "config": {}})(),
         )
         monkeypatch.setattr(
             plan_mod, "generate_plan_md", lambda state: "# Plan\n\n## Tier 1"

@@ -412,6 +412,79 @@ class TestBanditAdapter:
         # _totals should be excluded; 2 actual files
         assert files_scanned == 2
 
+    def test_exclude_dirs_passed_to_subprocess(self):
+        """When exclude_dirs is provided, bandit receives --exclude flag."""
+        captured_cmd = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = self._bandit_result([])
+            return mock_result
+
+        with patch("subprocess.run", side_effect=_capture_run):
+            detect_with_bandit(
+                Path("/project"),
+                zone_map=None,
+                exclude_dirs=["/project/.venv", "/project/node_modules"],
+            )
+
+        assert "--exclude" in captured_cmd
+        idx = captured_cmd.index("--exclude")
+        exclude_value = captured_cmd[idx + 1]
+        assert "/project/.venv" in exclude_value
+        assert "/project/node_modules" in exclude_value
+
+    def test_no_exclude_flag_when_exclude_dirs_empty(self):
+        """When exclude_dirs is empty, --exclude is not added."""
+        captured_cmd = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = self._bandit_result([])
+            return mock_result
+
+        with patch("subprocess.run", side_effect=_capture_run):
+            detect_with_bandit(Path("/project"), zone_map=None, exclude_dirs=[])
+
+        assert "--exclude" not in captured_cmd
+
+
+class TestBanditExcludeIntegration:
+    """Verify PythonConfig passes exclusion dirs to bandit."""
+
+    def test_detect_lang_security_passes_exclusions_to_bandit(self):
+        from desloppify.languages.python import PythonConfig
+
+        config = PythonConfig()
+        captured_kwargs = {}
+
+        def _fake_bandit(path, zone_map, **kwargs):
+            from desloppify.languages.python.detectors.bandit_adapter import (
+                BanditRunStatus,
+                BanditScanResult,
+            )
+
+            captured_kwargs.update(kwargs)
+            return BanditScanResult(
+                entries=[], files_scanned=0, status=BanditRunStatus(state="ok")
+            )
+
+        fake_exclude_dirs = ["/project/src/.venv", "/project/src/__pycache__", "/project/src/vendor"]
+        files = ["/project/src/app.py", "/project/src/utils.py"]
+        with patch(
+            "desloppify.languages.python.detect_with_bandit", _fake_bandit
+        ), patch(
+            "desloppify.languages.python.collect_exclude_dirs",
+            return_value=fake_exclude_dirs,
+        ):
+            config.detect_lang_security_detailed(files, zone_map=None)
+
+        exclude_dirs = captured_kwargs.get("exclude_dirs", [])
+        # Should pass through whatever collect_exclude_dirs returns.
+        assert exclude_dirs == fake_exclude_dirs
+
 
 # ── jscpd adapter ────────────────────────────────────────────────────────────
 
@@ -575,15 +648,27 @@ class TestJscpdAdapter:
         report_file = tmp_path / "jscpd-report.json"
         report_file.write_text(json.dumps({"duplicates": []}))
 
+        fake_dirs = [
+            str(tmp_path / "build"),
+            str(tmp_path / "node_modules"),
+        ]
+
         def _fake_run(cmd, **kwargs):
             assert "--ignore" in cmd
             ignore_value = cmd[cmd.index("--ignore") + 1]
             assert "**/.desloppify/**" in ignore_value
             assert "**/.claude/**" in ignore_value
             assert "**/build/**" in ignore_value
+            assert "**/node_modules/**" in ignore_value
             return MagicMock(returncode=0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=_fake_run), patch(
+            "desloppify.engine.detectors.jscpd_adapter.collect_exclude_dirs",
+            return_value=fake_dirs,
+        ), patch(
+            "desloppify.engine.detectors.jscpd_adapter.get_exclusions",
+            return_value=(),
+        ), patch(
             "tempfile.TemporaryDirectory"
         ) as mock_td:
             mock_td.return_value.__enter__.return_value = str(tmp_path)
@@ -755,3 +840,166 @@ class TestImportLinterAdapter:
             "subprocess.run", side_effect=subprocess.TimeoutExpired("lint-imports", 60)
         ):
             assert detect_with_import_linter(tmp_path) is None
+
+
+# ── collect_exclude_dirs ─────────────────────────────────────────────────────
+
+
+from desloppify.core.source_discovery import collect_exclude_dirs  # noqa: E402
+
+
+class TestCollectExcludeDirs:
+    def test_returns_absolute_paths(self, tmp_path):
+        with patch(
+            "desloppify.core.source_discovery.get_exclusions", return_value=()
+        ):
+            result = collect_exclude_dirs(tmp_path)
+        assert all(p.startswith(str(tmp_path)) for p in result)
+
+    def test_includes_default_non_glob_entries(self, tmp_path):
+        with patch(
+            "desloppify.core.source_discovery.get_exclusions", return_value=()
+        ):
+            result = collect_exclude_dirs(tmp_path)
+        basenames = {p.rsplit("/", 1)[-1] for p in result}
+        assert "node_modules" in basenames
+        assert "__pycache__" in basenames
+        assert ".git" in basenames
+        assert ".venv" in basenames
+        assert "venv" in basenames
+
+    def test_excludes_glob_patterns(self, tmp_path):
+        with patch(
+            "desloppify.core.source_discovery.get_exclusions", return_value=()
+        ):
+            result = collect_exclude_dirs(tmp_path)
+        basenames = {p.rsplit("/", 1)[-1] for p in result}
+        # *.egg-info and .venv* are glob patterns and should be excluded
+        assert not any("*" in p for p in result)
+
+    def test_includes_runtime_exclusions(self, tmp_path):
+        with patch(
+            "desloppify.core.source_discovery.get_exclusions",
+            return_value=("vendor", "third_party"),
+        ):
+            result = collect_exclude_dirs(tmp_path)
+        basenames = {p.rsplit("/", 1)[-1] for p in result}
+        assert "vendor" in basenames
+        assert "third_party" in basenames
+
+    def test_skips_runtime_glob_exclusions(self, tmp_path):
+        with patch(
+            "desloppify.core.source_discovery.get_exclusions",
+            return_value=("vendor/**",),
+        ):
+            result = collect_exclude_dirs(tmp_path)
+        # glob pattern should not appear
+        assert not any("vendor" in p for p in result)
+
+    def test_deduplicates(self, tmp_path):
+        """Runtime exclusion that overlaps with DEFAULT_EXCLUSIONS doesn't produce dupes."""
+        with patch(
+            "desloppify.core.source_discovery.get_exclusions",
+            return_value=("node_modules",),
+        ):
+            result = collect_exclude_dirs(tmp_path)
+        node_entries = [p for p in result if p.endswith("/node_modules")]
+        assert len(node_entries) == 1
+
+
+# ── Ruff --exclude integration ───────────────────────────────────────────────
+
+
+from desloppify.languages.python.detectors.unused import detect_unused  # noqa: E402
+
+
+class TestRuffSmellsExcludeFlag:
+    """Verify ruff smells passes --exclude to subprocess."""
+
+    def test_ruff_smells_passes_exclude_flag(self, tmp_path):
+        captured_cmd = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = "[]"
+            return mock_result
+
+        fake_dirs = [str(tmp_path / ".venv"), str(tmp_path / "node_modules")]
+        with patch("subprocess.run", side_effect=_capture_run), patch(
+            "desloppify.languages.python.detectors.ruff_smells._collect_exclude_dirs",
+            return_value=fake_dirs,
+        ):
+            detect_with_ruff_smells(tmp_path)
+
+        assert "--exclude" in captured_cmd
+        idx = captured_cmd.index("--exclude")
+        exclude_value = captured_cmd[idx + 1]
+        assert str(tmp_path / ".venv") in exclude_value
+        assert str(tmp_path / "node_modules") in exclude_value
+
+    def test_ruff_smells_no_exclude_when_empty(self, tmp_path):
+        captured_cmd = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = "[]"
+            return mock_result
+
+        with patch("subprocess.run", side_effect=_capture_run), patch(
+            "desloppify.languages.python.detectors.ruff_smells._collect_exclude_dirs",
+            return_value=[],
+        ):
+            detect_with_ruff_smells(tmp_path)
+
+        assert "--exclude" not in captured_cmd
+
+
+class TestRuffUnusedExcludeFlag:
+    """Verify ruff unused passes --exclude to subprocess."""
+
+    def test_ruff_unused_passes_exclude_flag(self, tmp_path):
+        captured_cmd = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = "[]"
+            return mock_result
+
+        fake_dirs = [str(tmp_path / ".venv"), str(tmp_path / "__pycache__")]
+        with patch("subprocess.run", side_effect=_capture_run), patch(
+            "desloppify.languages.python.detectors.unused._collect_exclude_dirs",
+            return_value=fake_dirs,
+        ), patch(
+            "desloppify.languages.python.detectors.unused.find_py_files",
+            return_value=[],
+        ):
+            detect_unused(tmp_path)
+
+        assert "--exclude" in captured_cmd
+        idx = captured_cmd.index("--exclude")
+        exclude_value = captured_cmd[idx + 1]
+        assert str(tmp_path / ".venv") in exclude_value
+        assert str(tmp_path / "__pycache__") in exclude_value
+
+    def test_ruff_unused_no_exclude_when_empty(self, tmp_path):
+        captured_cmd = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = "[]"
+            return mock_result
+
+        with patch("subprocess.run", side_effect=_capture_run), patch(
+            "desloppify.languages.python.detectors.unused._collect_exclude_dirs",
+            return_value=[],
+        ), patch(
+            "desloppify.languages.python.detectors.unused.find_py_files",
+            return_value=[],
+        ):
+            detect_unused(tmp_path)
+
+        assert "--exclude" not in captured_cmd

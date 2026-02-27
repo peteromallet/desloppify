@@ -295,7 +295,7 @@ def _print_llm_summary(
         _plan = load_plan()
         _has_plan = bool(
             _plan.get("queue_order") or _plan.get("clusters")
-            or _plan.get("skipped") or _plan.get("deferred")
+            or _plan.get("skipped")
         )
     except Exception:
         _plan = {}
@@ -303,7 +303,7 @@ def _print_llm_summary(
 
     if _has_plan:
         ordered = len(_plan.get("queue_order", []))
-        skipped = len(_plan.get("skipped", {})) + len(_plan.get("deferred", []))
+        skipped = len(_plan.get("skipped", {}))
         active = _plan.get("active_cluster")
         print(f"LIVING PLAN ACTIVE: {ordered} ordered, {skipped} skipped.")
         if active:

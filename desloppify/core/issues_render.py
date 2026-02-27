@@ -122,7 +122,7 @@ def _append_footer(
         lines.append("## Ready to Fix\n")
         lines.append("When done:\n")
         lines.append("```bash")
-        lines.append(f'desloppify resolve fixed "{finding_id}"')
+        lines.append(f'desloppify plan done "{finding_id}"')
         lines.append("```\n")
         return
 
@@ -130,7 +130,7 @@ def _append_footer(
     lines.append("Investigate the files above, then resolve with a note:\n")
     lines.append("```bash")
     lines.append(
-        f'desloppify resolve fixed "{finding_id}" --note "description of fix"'
+        f'desloppify plan done "{finding_id}" --note "description of fix"'
     )
     lines.append("```\n")
     lines.append("Or save detailed analysis first:\n")

@@ -942,7 +942,7 @@ class TestScoreAntiGaming:
         )
         assert st["verified_strict_score"] > before_verified
 
-    def test_ignore_pattern_does_not_remove_score_penalty(self):
+    def test_ignore_pattern_suppresses_and_excludes_from_scoring(self):
         from desloppify.state import remove_ignored_findings
 
         st = empty_state()
@@ -953,10 +953,9 @@ class TestScoreAntiGaming:
             MergeScanOptions(lang="python", potentials={"unused": 1}, force_resolve=True),
         )
         strict_before = st["strict_score"]
-        verified_before = st["verified_strict_score"]
 
         removed = remove_ignored_findings(st, "unused::*")
         assert removed == 1
         assert st["findings"]["unused::a.py::x"]["suppressed"] is True
-        assert st["strict_score"] == strict_before
-        assert st["verified_strict_score"] == verified_before
+        # Suppressed findings are invisible to scoring — score should improve
+        assert st["strict_score"] >= strict_before

@@ -11,6 +11,7 @@ from desloppify.core.file_paths import (
 )
 from desloppify.core.source_discovery import (
     clear_source_file_cache_for_tests,
+    collect_exclude_dirs,
     DEFAULT_EXCLUSIONS,
     disable_file_cache,
     enable_file_cache,
@@ -26,6 +27,7 @@ from desloppify.core.source_discovery import (
 
 __all__ = [
     "DEFAULT_EXCLUSIONS",
+    "collect_exclude_dirs",
     "set_exclusions",
     "get_exclusions",
     "matches_exclusion",

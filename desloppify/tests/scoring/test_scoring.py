@@ -933,6 +933,38 @@ class TestSubjectiveScoring:
         assert "Custom Domain Fit" in result
         assert result["Custom Domain Fit"]["score"] == 60.0
 
+    def test_scoring_allowed_subjective_uses_full_scorecard(self):
+        """Scoring placeholders use all scorecard dimensions (load_dimensions_for_lang),
+        not the curated per-language subset (HOLISTIC_DIMENSIONS_BY_LANG)."""
+        from desloppify.intelligence.review.dimensions.data import (
+            load_dimensions_for_lang,
+        )
+        from desloppify.intelligence.review.dimensions.lang import (
+            HOLISTIC_DIMENSIONS_BY_LANG,
+        )
+
+        # The full scorecard must be a superset of every curated subset
+        for lang_name, curated in HOLISTIC_DIMENSIONS_BY_LANG.items():
+            full_dims, _, _ = load_dimensions_for_lang(lang_name)
+            missing = set(curated) - set(full_dims)
+            assert not missing, (
+                f"{lang_name}: curated dims {missing} not in full scorecard"
+            )
+            # Full scorecard must be strictly larger than curated subset
+            assert len(full_dims) > len(curated), (
+                f"{lang_name}: full scorecard ({len(full_dims)}) should be "
+                f"larger than curated subset ({len(curated)})"
+            )
+
+        # Verify scoring.py references load_dimensions_for_lang, not
+        # HOLISTIC_DIMENSIONS_BY_LANG (regression guard)
+        import inspect
+        import desloppify.engine._state.scoring as state_scoring_mod
+
+        src = inspect.getsource(state_scoring_mod._update_objective_health)
+        assert "load_dimensions_for_lang" in src
+        assert "HOLISTIC_DIMENSIONS_BY_LANG" not in src
+
     def test_multiple_assessment_dimensions(self):
         """Two assessments show up independently."""
         assessments = {

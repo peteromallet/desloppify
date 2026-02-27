@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 from desloppify.app.cli_support.parser_groups_admin import (  # noqa: F401 (re-exports)
     _add_config_parser,
     _add_detect_parser,
@@ -20,13 +22,13 @@ __all__ = [
     "_add_config_parser",
     "_add_detect_parser",
     "_add_dev_parser",
+    "_add_exclude_parser",
     "_add_fix_parser",
     "_add_ignore_parser",
     "_add_langs_parser",
     "_add_move_parser",
     "_add_next_parser",
     "_add_plan_parser",
-    "_add_resolve_parser",
     "_add_review_parser",
     "_add_scan_parser",
     "_add_show_parser",
@@ -39,9 +41,19 @@ __all__ = [
 
 
 def _add_scan_parser(sub) -> None:
-    p_scan = sub.add_parser("scan", help="Run all detectors, update state, show diff")
-    p_scan.add_argument("--path", type=str, default=None)
-    p_scan.add_argument("--state", type=str, default=None)
+    p_scan = sub.add_parser(
+        "scan",
+        help="Run all detectors, update state, show diff",
+        epilog="""\
+examples:
+  desloppify scan
+  desloppify scan --skip-slow
+  desloppify scan --profile ci
+  desloppify scan --force-resolve""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_scan.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    p_scan.add_argument("--state", type=str, default=None, help="Path to state file")
     p_scan.add_argument(
         "--reset-subjective",
         action="store_true",
@@ -84,14 +96,14 @@ def _add_scan_parser(sub) -> None:
 
 def _add_status_parser(sub) -> None:
     p_status = sub.add_parser("status", help="Score dashboard with per-tier progress")
-    p_status.add_argument("--state", type=str, default=None)
-    p_status.add_argument("--json", action="store_true")
+    p_status.add_argument("--state", type=str, default=None, help="Path to state file")
+    p_status.add_argument("--json", action="store_true", help="Output as JSON")
 
 
 def _add_tree_parser(sub) -> None:
     p_tree = sub.add_parser("tree", help="Annotated codebase tree (text)")
-    p_tree.add_argument("--path", type=str, default=None)
-    p_tree.add_argument("--state", type=str, default=None)
+    p_tree.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    p_tree.add_argument("--state", type=str, default=None, help="Path to state file")
     p_tree.add_argument("--depth", type=int, default=2, help="Max depth (default: 2)")
     p_tree.add_argument(
         "--focus",
@@ -103,7 +115,8 @@ def _add_tree_parser(sub) -> None:
         "--min-loc", type=int, default=0, help="Hide items below this LOC"
     )
     p_tree.add_argument(
-        "--sort", choices=["loc", "findings", "coupling"], default="loc"
+        "--sort", choices=["loc", "findings", "coupling"], default="loc",
+        help="Sort order (default: loc)",
     )
     p_tree.add_argument(
         "--detail", action="store_true", help="Show finding summaries per file"
@@ -112,7 +125,15 @@ def _add_tree_parser(sub) -> None:
 
 def _add_show_parser(sub) -> None:
     p_show = sub.add_parser(
-        "show", help="Dig into findings by file, directory, detector, or ID"
+        "show",
+        help="Dig into findings by file, directory, detector, or ID",
+        epilog="""\
+examples:
+  desloppify show src/components/Modal.tsx
+  desloppify show unused --top 50
+  desloppify show --chronic
+  desloppify show --status all""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_show.add_argument(
         "pattern",
@@ -120,11 +141,12 @@ def _add_show_parser(sub) -> None:
         default=None,
         help="File path, directory, detector name, finding ID, or glob",
     )
-    p_show.add_argument("--state", type=str, default=None)
+    p_show.add_argument("--state", type=str, default=None, help="Path to state file")
     p_show.add_argument(
         "--status",
         choices=["open", "fixed", "wontfix", "false_positive", "auto_resolved", "all"],
         default="open",
+        help="Filter by status (default: open)",
     )
     p_show.add_argument(
         "--top", type=int, default=20, help="Max files to show (default: 20)"
@@ -153,9 +175,26 @@ def _add_show_parser(sub) -> None:
 
 
 def _add_next_parser(sub) -> None:
-    p_next = sub.add_parser("next", help="Show next highest-priority open finding")
-    p_next.add_argument("--state", type=str, default=None)
-    p_next.add_argument("--tier", type=int, choices=[1, 2, 3, 4], default=None)
+    p_next = sub.add_parser(
+        "next",
+        help="Show next highest-priority open finding",
+        epilog="""\
+tiers (highest to lowest priority):
+  T1  critical    security issues, data loss risks
+  T2  important   bugs, correctness, major smells
+  T3  moderate    code quality, duplication, dead code
+  T4  cosmetic    style, subjective review dimensions
+
+examples:
+  desloppify next                       # single highest-priority item
+  desloppify next --count 10            # top 10 items
+  desloppify next --tier 1              # only tier 1
+  desloppify next --group file          # group by file
+  desloppify next --cluster my-cluster  # items in a cluster""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_next.add_argument("--state", type=str, default=None, help="Path to state file")
+    p_next.add_argument("--tier", type=int, choices=[1, 2, 3, 4], default=None, help="Show only this tier")
     p_next.add_argument(
         "--count", type=int, default=1, help="Number of items to show (default: 1)"
     )
@@ -201,10 +240,9 @@ def _add_next_parser(sub) -> None:
         help="Filter to a specific plan cluster",
     )
     p_next.add_argument(
-        "--include-deferred",
         "--include-skipped",
         action="store_true",
-        help="Include skipped/deferred items in the queue",
+        help="Include skipped items in the queue",
     )
     p_next.add_argument(
         "--output",
@@ -212,41 +250,6 @@ def _add_next_parser(sub) -> None:
         metavar="FILE",
         help="Write JSON/Markdown to file (with --format json|md)",
     )
-
-
-def _add_resolve_parser(sub) -> None:
-    p_resolve = sub.add_parser(
-        "resolve", help="Mark finding(s) as fixed/wontfix/false_positive/open"
-    )
-    p_resolve.add_argument(
-        "status", choices=["open", "fixed", "wontfix", "false_positive"]
-    )
-    p_resolve.add_argument(
-        "patterns",
-        nargs="+",
-        metavar="PATTERN",
-        help="Finding ID(s), prefix, detector name, file path, or glob",
-    )
-    p_resolve.add_argument(
-        "--note", type=str, default=None, help="Explanation (required for wontfix)"
-    )
-    p_resolve.add_argument(
-        "--attest",
-        type=str,
-        default=None,
-        help=(
-            "Required anti-gaming attestation. Must include BOTH keywords "
-            "'I have actually' and 'not gaming'. Example: "
-            '--attest "I have actually [DESCRIBE THE CONCRETE CHANGE YOU MADE] and I am not gaming the score by resolving without fixing."'
-        ),
-    )
-    p_resolve.add_argument(
-        "--confirm-batch-wontfix",
-        action="store_true",
-        default=False,
-        help="Confirm large wontfix batch (>10 findings)",
-    )
-    p_resolve.add_argument("--state", type=str, default=None)
 
 
 def _add_ignore_parser(sub) -> None:
@@ -264,5 +267,11 @@ def _add_ignore_parser(sub) -> None:
             '--attest "I have actually [DESCRIBE THE CONCRETE CHANGE YOU MADE] and I am not gaming the score by resolving without fixing."'
         ),
     )
-    p_ignore.add_argument("--state", type=str, default=None)
+    p_ignore.add_argument("--state", type=str, default=None, help="Path to state file")
 
+
+def _add_exclude_parser(sub) -> None:
+    p_exclude = sub.add_parser(
+        "exclude", help="Add path pattern to exclude list"
+    )
+    p_exclude.add_argument("pattern", help="Path pattern to exclude from scanning")

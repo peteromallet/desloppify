@@ -15,12 +15,13 @@ def _build_handlers() -> dict[str, CommandHandler]:
     from desloppify.app.commands.config_cmd import cmd_config
     from desloppify.app.commands.detect import cmd_detect
     from desloppify.app.commands.dev_cmd import cmd_dev
+    from desloppify.app.commands.exclude_cmd import cmd_exclude
     from desloppify.app.commands.fix import cmd_fix
     from desloppify.app.commands.langs import cmd_langs
     from desloppify.app.commands.move import cmd_move
     from desloppify.app.commands.next import cmd_next
     from desloppify.app.commands.plan import cmd_plan
-    from desloppify.app.commands.resolve import cmd_ignore_pattern, cmd_resolve
+    from desloppify.app.commands.resolve import cmd_ignore_pattern
     from desloppify.app.commands.review import cmd_review
     from desloppify.app.commands.scan import cmd_scan
     from desloppify.app.commands.show import cmd_show
@@ -34,8 +35,8 @@ def _build_handlers() -> dict[str, CommandHandler]:
         "status": cmd_status,
         "show": cmd_show,
         "next": cmd_next,
-        "resolve": cmd_resolve,
         "ignore": cmd_ignore_pattern,
+        "exclude": cmd_exclude,
         "fix": cmd_fix,
         "plan": cmd_plan,
         "detect": cmd_detect,

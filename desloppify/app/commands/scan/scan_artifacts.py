@@ -71,14 +71,12 @@ def build_scan_query_payload(
     try:
         from desloppify.engine.plan import load_plan
         plan = load_plan()
-        if plan.get("queue_order") or plan.get("clusters") or plan.get("skipped") or plan.get("deferred"):
-            total_skipped = len(plan.get("skipped", {})) + len(plan.get("deferred", []))
+        if plan.get("queue_order") or plan.get("clusters") or plan.get("skipped"):
             payload["plan"] = {
                 "active": True,
                 "focus": plan.get("active_cluster"),
                 "total_ordered": len(plan.get("queue_order", [])),
-                "total_skipped": total_skipped,
-                "total_deferred": total_skipped,  # backwards compat
+                "total_skipped": len(plan.get("skipped", {})),
                 "plan_overrides_narrative": True,
             }
     except Exception:

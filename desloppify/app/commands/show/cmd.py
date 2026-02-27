@@ -12,7 +12,7 @@ from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
 from desloppify.core.output_api import colorize
 from desloppify.core.skill_docs import check_skill_version
-from desloppify.core.tooling import check_tool_staleness
+from desloppify.core.tooling import check_config_staleness, check_tool_staleness
 
 from .payload import ShowPayloadMeta, build_show_payload
 from .render import (
@@ -207,6 +207,9 @@ def cmd_show(args: argparse.Namespace) -> None:
     skill_warning = check_skill_version()
     if skill_warning:
         print(colorize(f"  {skill_warning}", "yellow"))
+    config_warning = check_config_staleness(config)
+    if config_warning:
+        print(colorize(f"  {config_warning}", "yellow"))
 
     pattern_raw = getattr(args, "pattern", "")
     show_code = getattr(args, "code", False)

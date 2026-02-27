@@ -42,6 +42,7 @@ from desloppify.core.source_discovery import (
 )
 from desloppify.languages._framework.base.types import DetectorCoverageRecord
 from desloppify.languages._framework.runtime import LangRunOverrides, make_lang_run
+from desloppify.core.config import save_config as _save_config
 from desloppify.core.output_api import colorize
 
 _WONTFIX_DECAY_SCANS_DEFAULT = 20
@@ -414,6 +415,14 @@ def merge_scan_results(
         subjective_integrity_target=target_score,
     )
 
+    # Clear needs_rescan flag after successful scan merge (best-effort)
+    if runtime.config.get("needs_rescan"):
+        try:
+            runtime.config["needs_rescan"] = False
+            _save_config(runtime.config)
+        except OSError:
+            pass
+
     # Reconcile living plan + sync stale subjective dimensions
     try:
         from desloppify.engine.plan import (
@@ -421,6 +430,7 @@ def merge_scan_results(
             reconcile_plan_after_scan,
             save_plan,
             sync_stale_dimensions,
+            sync_unscored_dimensions,
         )
 
         plan_path = runtime.state_path.parent / "plan.json"
@@ -433,7 +443,6 @@ def merge_scan_results(
             or plan.get("overrides")
             or plan.get("clusters")
             or plan.get("skipped")
-            or plan.get("deferred")
         ):
             recon = reconcile_plan_after_scan(plan, runtime.state)
             if recon.changes:
@@ -443,6 +452,16 @@ def merge_scan_results(
                     f"  Plan: {len(recon.resurfaced)} skipped item(s) re-surfaced after review period.",
                     "cyan",
                 ))
+
+        # Unscored dimension sync (prepend to front, unconditional)
+        unscored_sync = sync_unscored_dimensions(plan, runtime.state)
+        if unscored_sync.changes:
+            dirty = True
+        if unscored_sync.injected:
+            print(colorize(
+                f"  Plan: {len(unscored_sync.injected)} unscored subjective dimension(s) queued for initial review.",
+                "cyan",
+            ))
 
         # Stale dimension sync (always — handles both cleanup and injection)
         dim_sync = sync_stale_dimensions(plan, runtime.state)
@@ -458,6 +477,13 @@ def merge_scan_results(
                 f"  Plan: {len(dim_sync.injected)} stale subjective dimension(s) queued for refresh.",
                 "cyan",
             ))
+
+        # Auto-cluster findings into task groups
+        from desloppify.engine._plan.auto_cluster import auto_cluster_findings
+
+        ac_changes = auto_cluster_findings(plan, runtime.state)
+        if ac_changes:
+            dirty = True
 
         if dirty:
             save_plan(plan, plan_path)

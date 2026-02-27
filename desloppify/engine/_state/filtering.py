@@ -60,6 +60,8 @@ def open_scope_breakdown(
     out_of_scope = 0
 
     for finding in findings.values():
+        if finding.get("suppressed"):
+            continue
         if finding.get("status") != "open":
             continue
         if detector is not None and finding.get("detector") != detector:
@@ -118,12 +120,6 @@ def remove_ignored_findings(state: StateModel, pattern: str) -> int:
         finding["suppressed"] = True
         finding["suppressed_at"] = now
         finding["suppression_pattern"] = pattern
-        if finding.get("status") in ("fixed", "auto_resolved", "false_positive"):
-            finding["status"] = "open"
-            finding["resolved_at"] = None
-            finding["note"] = (
-                "Suppressed by ignore pattern — remains unresolved for score integrity"
-            )
     # Deferred import to avoid circular dependency with engine._state.scoring
     from desloppify.engine._state.scoring import _recompute_stats
 

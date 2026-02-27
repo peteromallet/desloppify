@@ -15,7 +15,7 @@ HOLISTIC_WORKFLOW = [
     "Preferred local Codex path: desloppify review --run-batches --runner codex --parallel --scan-after-import",
     "Claude cloud durable path: run `desloppify review --external-start --external-runner claude`, follow the session template/instructions, then run the printed `--external-submit` command",
     "Fallback path: `desloppify review --import findings.json` (findings only). Use manual override only for emergency/provisional imports.",
-    "AFTER importing: run `desloppify show review --status open` to see the work queue, then fix each finding in code and `desloppify resolve fixed <id>`",
+    "AFTER importing: run `desloppify show review --status open` to see the work queue, then fix each finding in code and `desloppify plan done <id>`",
 ]
 
 

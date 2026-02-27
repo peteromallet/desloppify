@@ -21,6 +21,7 @@ DEFAULT_EXCLUSIONS = frozenset(
         "node_modules",
         ".git",
         "__pycache__",
+        ".venv",
         ".venv*",
         "venv",
         ".env",
@@ -79,6 +80,21 @@ def read_file_text(filepath: str) -> str | None:
 
 def clear_source_file_cache_for_tests() -> None:
     current_runtime_context().source_file_cache.clear()
+
+
+def collect_exclude_dirs(scan_root: Path) -> list[str]:
+    """All exclusion directories as absolute paths, for passing to external tools.
+
+    Combines DEFAULT_EXCLUSIONS (non-glob entries) + get_exclusions() (runtime/config),
+    resolves each against *scan_root*. Filters out glob patterns (``*`` in name)
+    since most CLI tools want plain directory paths.
+    """
+    patterns = set()
+    for pat in DEFAULT_EXCLUSIONS:
+        if "*" not in pat:
+            patterns.add(pat)
+    patterns.update(p for p in get_exclusions() if p and "*" not in p)
+    return [str(scan_root / p) for p in sorted(patterns) if p]
 
 
 def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
@@ -166,6 +182,7 @@ def find_py_files(path: str | Path) -> list[str]:
 
 __all__ = [
     "DEFAULT_EXCLUSIONS",
+    "collect_exclude_dirs",
     "set_exclusions",
     "get_exclusions",
     "enable_file_cache",

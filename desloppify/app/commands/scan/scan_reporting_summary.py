@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from desloppify import state as state_mod
-from desloppify.app.commands.scan.scan_helpers import _format_delta
+from desloppify.app.commands.scan.scan_helpers import format_delta
 from desloppify.app.commands.status_parts.strict_target import (
     format_strict_target_progress,
 )
@@ -83,10 +83,10 @@ def show_score_delta(
         )
         return
 
-    overall_delta_str, overall_color = _format_delta(new.overall, prev_overall)
-    objective_delta_str, objective_color = _format_delta(new.objective, prev_objective)
-    strict_delta_str, strict_color = _format_delta(new.strict, prev_strict)
-    verified_delta_str, verified_color = _format_delta(new.verified, prev_verified)
+    overall_delta_str, overall_color = format_delta(new.overall, prev_overall)
+    objective_delta_str, objective_color = format_delta(new.objective, prev_objective)
+    strict_delta_str, strict_color = format_delta(new.strict, prev_strict)
+    verified_delta_str, verified_color = format_delta(new.verified, prev_verified)
     print(
         "  Scores: "
         + colorize(f"overall {new.overall:.1f}/100{overall_delta_str}", overall_color)

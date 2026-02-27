@@ -1,8 +1,11 @@
-"""Sync stale subjective dimensions into the plan queue.
+"""Sync subjective dimensions into the plan queue.
 
-Handles both directions:
-  1. **Cleanup** — remove ``subjective::*`` IDs whose dimension is no longer stale.
-  2. **Inject**  — when the queue is empty after cleanup, add stale dimensions.
+Two independent sync functions:
+
+- **sync_unscored_dimensions** — prepend never-scored (placeholder) dimensions
+  to the *front* of the queue unconditionally (onboarding priority).
+- **sync_stale_dimensions** — append stale (previously-scored) dimensions to
+  the *back* of the queue when no objective items remain.
 """
 
 from __future__ import annotations
@@ -15,6 +18,10 @@ from desloppify.engine._state.schema import StateModel
 SUBJECTIVE_PREFIX = "subjective::"
 
 
+# ---------------------------------------------------------------------------
+# Result dataclasses
+# ---------------------------------------------------------------------------
+
 @dataclass
 class StaleDimensionSyncResult:
     """What changed during a stale-dimension sync."""
@@ -26,6 +33,22 @@ class StaleDimensionSyncResult:
     def changes(self) -> int:
         return len(self.injected) + len(self.pruned)
 
+
+@dataclass
+class UnscoredDimensionSyncResult:
+    """What changed during an unscored-dimension sync."""
+
+    injected: list[str] = field(default_factory=list)
+    pruned: list[str] = field(default_factory=list)
+
+    @property
+    def changes(self) -> int:
+        return len(self.injected) + len(self.pruned)
+
+
+# ---------------------------------------------------------------------------
+# ID helpers
+# ---------------------------------------------------------------------------
 
 def _current_stale_ids(state: StateModel) -> set[str]:
     """Return the set of ``subjective::<slug>`` IDs that are currently stale."""
@@ -48,6 +71,78 @@ def _current_stale_ids(state: StateModel) -> set[str]:
     return stale
 
 
+def _current_unscored_ids(state: StateModel) -> set[str]:
+    """Return the set of ``subjective::<slug>`` IDs that are currently unscored (placeholder).
+
+    Checks ``subjective_assessments`` directly because
+    ``scorecard_subjective_entries`` filters out placeholder dimensions
+    (they are hidden from the scorecard display).
+    """
+    from desloppify.engine._work_queue.helpers import slugify
+
+    assessments = state.get("subjective_assessments")
+    if not isinstance(assessments, dict) or not assessments:
+        return set()
+
+    unscored: set[str] = set()
+    for dim_key, payload in assessments.items():
+        if not isinstance(payload, dict):
+            continue
+        if not payload.get("placeholder"):
+            continue
+        if dim_key:
+            unscored.add(f"{SUBJECTIVE_PREFIX}{slugify(dim_key)}")
+    return unscored
+
+
+# ---------------------------------------------------------------------------
+# Unscored dimension sync (front of queue, unconditional)
+# ---------------------------------------------------------------------------
+
+def sync_unscored_dimensions(
+    plan: PlanModel,
+    state: StateModel,
+) -> UnscoredDimensionSyncResult:
+    """Keep the plan queue in sync with unscored (placeholder) subjective dimensions.
+
+    1. **Prune** — remove ``subjective::*`` IDs from ``queue_order`` that are
+       no longer unscored AND not stale (avoids pruning stale IDs — that is
+       ``sync_stale_dimensions``' responsibility).
+    2. **Inject** — unconditionally prepend currently-unscored IDs to the
+       *front* of ``queue_order`` so initial reviews are the first priority.
+    """
+    ensure_plan_defaults(plan)
+    result = UnscoredDimensionSyncResult()
+    unscored_ids = _current_unscored_ids(state)
+    stale_ids = _current_stale_ids(state)
+    order: list[str] = plan["queue_order"]
+
+    # --- Cleanup: prune subjective IDs that are no longer unscored --------
+    # Only prune IDs that are neither unscored nor stale (stale sync owns those).
+    to_remove: list[str] = [
+        fid for fid in order
+        if fid.startswith(SUBJECTIVE_PREFIX)
+        and fid not in unscored_ids
+        and fid not in stale_ids
+    ]
+    for fid in to_remove:
+        order.remove(fid)
+        result.pruned.append(fid)
+
+    # --- Inject: prepend unscored IDs to front ----------------------------
+    existing = set(order)
+    for uid in reversed(sorted(unscored_ids)):
+        if uid not in existing:
+            order.insert(0, uid)
+            result.injected.append(uid)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Stale dimension sync (back of queue, conditional)
+# ---------------------------------------------------------------------------
+
 def sync_stale_dimensions(
     plan: PlanModel,
     state: StateModel,
@@ -55,26 +150,32 @@ def sync_stale_dimensions(
     """Keep the plan queue in sync with stale subjective dimensions.
 
     1. Remove any ``subjective::*`` IDs from ``queue_order`` that are no
-       longer stale (the user refreshed them, or mechanical evidence changed).
-    2. If the queue is empty after cleanup, inject all currently-stale
+       longer stale and not unscored (avoids pruning IDs owned by
+       ``sync_unscored_dimensions``).
+    2. If no objective items remain after cleanup, inject all currently-stale
        dimension IDs so the plan surfaces them as actionable work.
     """
     ensure_plan_defaults(plan)
     result = StaleDimensionSyncResult()
     stale_ids = _current_stale_ids(state)
+    unscored_ids = _current_unscored_ids(state)
     order: list[str] = plan["queue_order"]
 
     # --- Cleanup: prune resolved subjective IDs --------------------------
+    # Only prune IDs that are neither stale nor unscored.
     to_remove: list[str] = [
         fid for fid in order
-        if fid.startswith(SUBJECTIVE_PREFIX) and fid not in stale_ids
+        if fid.startswith(SUBJECTIVE_PREFIX)
+        and fid not in stale_ids
+        and fid not in unscored_ids
     ]
     for fid in to_remove:
         order.remove(fid)
         result.pruned.append(fid)
 
-    # --- Inject: populate when queue is empty ----------------------------
-    if not order and stale_ids:
+    # --- Inject: populate when no objective items remain -----------------
+    has_real_items = any(fid for fid in order if not fid.startswith(SUBJECTIVE_PREFIX))
+    if not has_real_items and stale_ids:
         existing = set(order)
         for sid in sorted(stale_ids):
             if sid not in existing:
@@ -85,6 +186,10 @@ def sync_stale_dimensions(
 
 
 __all__ = [
+    "SUBJECTIVE_PREFIX",
     "StaleDimensionSyncResult",
+    "UnscoredDimensionSyncResult",
+    "_current_unscored_ids",
     "sync_stale_dimensions",
+    "sync_unscored_dimensions",
 ]

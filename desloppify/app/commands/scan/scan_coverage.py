@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from desloppify import state as state_mod
 from desloppify.languages._framework.base.types import DetectorCoverageRecord
 from desloppify.languages._framework.runtime import LangRun

@@ -97,7 +97,6 @@ def has_living_plan(path: Path | None = None) -> bool:
     plan = load_plan(plan_path)
     return bool(
         plan.get("queue_order")
-        or plan.get("deferred")
         or plan.get("overrides")
         or plan.get("clusters")
     )

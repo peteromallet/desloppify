@@ -89,10 +89,76 @@ def _effort_tag(item: dict) -> str:
     return ""
 
 
+_ACTION_TYPE_LABELS = {
+    "auto_fix": "Auto-fixable batch",
+    "reorganize": "Reorganize batch",
+    "refactor": "Refactor batch",
+    "manual_fix": "Grouped task",
+}
+
+
+def _render_cluster_item(item: dict) -> None:
+    """Render an auto-cluster task card."""
+    member_count = int(item.get("member_count", 0))
+    action_type = item.get("action_type", "manual_fix")
+    cluster_name = item.get("id", "")
+    if cluster_name == "auto/initial-review":
+        type_label = "Initial subjective review"
+    elif cluster_name == "auto/stale-review":
+        type_label = "Stale subjective review"
+    else:
+        type_label = _ACTION_TYPE_LABELS.get(action_type, "Grouped task")
+    print(colorize(f"  ({type_label}, {member_count} findings)", "bold"))
+    print(colorize("  " + "─" * 60, "dim"))
+    print(f"  {colorize(item.get('summary', ''), 'yellow')}")
+
+    # Show breakdown by file (compact) + representative members
+    members = item.get("members", [])
+    if members:
+        # File distribution
+        from collections import Counter
+        file_counts = Counter(m.get("file", "?") for m in members)
+        if len(file_counts) <= 5:
+            print(colorize("\n  Files:", "dim"))
+            for f, c in file_counts.most_common():
+                print(f"    {f} ({c})")
+        else:
+            print(colorize(f"\n  Spread across {len(file_counts)} files:", "dim"))
+            for f, c in file_counts.most_common(3):
+                print(f"    {f} ({c})")
+            remaining = len(file_counts) - 3
+            print(colorize(f"    ... and {remaining} more files", "dim"))
+
+        # Sample IDs
+        print(colorize("\n  Sample:", "dim"))
+        for m in members[:3]:
+            print(f"    - {m.get('id', '')}")
+        if len(members) > 3:
+            print(colorize(f"    ... and {len(members) - 3} more", "dim"))
+
+    # Action
+    cluster_name = item.get("id", "")
+    primary_command = item.get("primary_command")
+    if primary_command:
+        print(colorize(f"\n  Action: {primary_command}", "cyan"))
+
+    # Resolution hints
+    print(colorize(f'\n  Resolve all:   desloppify plan done "{cluster_name}" '
+                   f'--note "<what>" --attest "{ATTEST_EXAMPLE}"', "dim"))
+    print(colorize(f"  Drill in:      desloppify next --cluster {cluster_name} --count 10",
+                   "dim"))
+    print(colorize(f"  Skip cluster:  desloppify plan skip {cluster_name}", "dim"))
+
+
 def _render_item(
     item: dict, dim_scores: dict, findings_scoped: dict, explain: bool,
     potentials: dict | None = None,
 ) -> None:
+    # Delegate to cluster renderer for cluster meta-items
+    if item.get("kind") == "cluster":
+        _render_cluster_item(item)
+        return
+
     tier = int(item.get("effective_tier", item.get("tier", 3)))
     confidence = item.get("confidence", "medium")
     print(colorize(f"  (Tier {tier}, {confidence} confidence)", "bold"))
@@ -340,7 +406,11 @@ def render_terminal_items(
 
 
 def render_single_item_resolution_hint(items: list[dict]) -> None:
-    if len(items) != 1 or items[0].get("kind") != "finding":
+    if len(items) != 1:
+        return
+    if items[0].get("kind") == "cluster":
+        return  # Cluster card already includes resolution hints
+    if items[0].get("kind") != "finding":
         return
     item = items[0]
     detector_name = item.get("detector", "")
@@ -363,11 +433,11 @@ def render_single_item_resolution_hint(items: list[dict]) -> None:
         print(colorize("\n  Resolve with:", "dim"))
 
     print(
-        f'    desloppify resolve fixed "{item["id"]}" --note "<what you did>" '
+        f'    desloppify plan done "{item["id"]}" --note "<what you did>" '
         f'--attest "{ATTEST_EXAMPLE}"'
     )
     print(
-        f'    desloppify resolve wontfix "{item["id"]}" --note "<why>" '
+        f'    desloppify plan skip --permanent "{item["id"]}" --note "<why>" '
         f'--attest "{ATTEST_EXAMPLE}"'
     )
 
@@ -389,7 +459,6 @@ def render_followup_nudges(
         max_quality_items=3,
         max_integrity_items=5,
     )
-    low_assessed = followup.low_assessed
     unassessed_subjective = unassessed_subjective_dimensions(dim_scores)
     if strict_score is not None:
         gap = round(float(target_strict_score) - float(strict_score), 1)

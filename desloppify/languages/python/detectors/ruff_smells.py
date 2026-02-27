@@ -33,6 +33,9 @@ from pathlib import Path
 
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.core.discovery_api import (
+    collect_exclude_dirs as _collect_exclude_dirs,
+)
+from desloppify.core.discovery_api import (
     get_exclusions as _get_exclusions,
 )
 from desloppify.core.discovery_api import (
@@ -73,18 +76,23 @@ def detect_with_ruff_smells(path: Path) -> list[dict] | None:
             "matches": [{"file": str, "line": int}, ...],
         }
     """
+    exclude_dirs = _collect_exclude_dirs(path)
+    cmd = [
+        "ruff",
+        "check",
+        "--select",
+        _SELECT,
+        "--output-format",
+        "json",
+        "--no-fix",
+    ]
+    if exclude_dirs:
+        cmd.extend(["--exclude", ",".join(exclude_dirs)])
+    cmd.append(str(path))
+
     try:
         result = subprocess.run(
-            [
-                "ruff",
-                "check",
-                "--select",
-                _SELECT,
-                "--output-format",
-                "json",
-                "--no-fix",
-                str(path),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,

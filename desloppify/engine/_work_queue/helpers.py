@@ -165,7 +165,7 @@ def primary_command_for_finding(
         if is_holistic_subjective_finding(item):
             return "desloppify review --prepare"
         return "desloppify show subjective"
-    return f'desloppify resolve fixed "{item.get("id", "")}" --note "<what you did>" --attest "{ATTEST_EXAMPLE}"'
+    return f'desloppify plan done "{item.get("id", "")}" --note "<what you did>" --attest "{ATTEST_EXAMPLE}"'
 
 
 def subjective_strict_scores(state: dict) -> dict[str, float]:

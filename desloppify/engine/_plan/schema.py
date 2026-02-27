@@ -37,6 +37,10 @@ class Cluster(TypedDict, total=False):
     finding_ids: list[str]
     created_at: str
     updated_at: str
+    auto: bool  # True for auto-generated clusters
+    cluster_key: str  # Deterministic grouping key (for regeneration)
+    action: str | None  # Primary resolution command/guidance text
+    user_modified: bool  # True when user manually edits membership
 
 
 class SupersededEntry(TypedDict, total=False):
@@ -122,11 +126,15 @@ def ensure_plan_defaults(plan: dict[str, Any]) -> None:
                 }
         deferred.clear()
 
-    # Normalize cluster finding_ids
+    # Normalize cluster fields
     for cluster in plan["clusters"].values():
         if isinstance(cluster, dict):
             if not isinstance(cluster.get("finding_ids"), list):
                 cluster["finding_ids"] = []
+            cluster.setdefault("auto", False)
+            cluster.setdefault("cluster_key", "")
+            cluster.setdefault("action", None)
+            cluster.setdefault("user_modified", False)
 
 
 def validate_plan(plan: dict[str, Any]) -> None:

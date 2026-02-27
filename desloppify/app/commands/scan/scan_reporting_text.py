@@ -11,23 +11,29 @@ def build_workflow_guide(attest_example: str) -> str:
         f"""
         ## Workflow Guide
 
-        1. **Run auto-fixers** (if available): `desloppify fix <fixer> --dry-run` to preview, then apply
-        2. **Manual fixes**: `desloppify next` — highest-priority item. Fix it, then:
-           `desloppify resolve fixed "<id>" --note "<what you did>" --attest "{attest_example}"`
+        Work the two loops: **outer** (scan → score → at target? → rescan) and
+        **inner** (plan → fix next → update plan → repeat until plan clear).
+
+        1. **Follow `next`**: `desloppify next` — the single source of truth for what to work on.
+           It respects the plan, surfaces auto-clustered batches, and tells you exactly what to do.
+        2. **Fix & resolve**: Fix the issue, then:
+           `desloppify plan done "<id>" --note "<what you did>" --attest "{attest_example}"`
            Required attestation keywords: 'I have actually' and 'not gaming'.
-        3. **Rescan**: `desloppify scan --path <path>` — verify improvements, catch cascading effects
-        4. **Subjective review**: `desloppify review --prepare` → import → `desloppify show subjective`
-        5. **Reset subjective baseline when needed**:
-           `desloppify scan --path <path> --reset-subjective` (then run a fresh review/import cycle)
-        6. **Check progress**: `desloppify status` — dimension scores dashboard
+        3. **Plan strategically**: `desloppify plan` — reorder, cluster related issues, defer low-value work.
+           Think about sequencing: what unblocks the most? What cascades? What can be batched?
+        4. **Run auto-fixers** (if available): `desloppify fix <fixer> --dry-run` to preview, then apply.
+        5. **Rescan**: `desloppify scan --path <path>` — verify improvements, catch cascading effects.
+        6. **Subjective review**: `desloppify review --run-batches --runner codex --parallel --scan-after-import`
+           (or `review --prepare` → review → import for manual path).
+        7. **Check progress**: `desloppify status` — dimension scores dashboard.
 
         ### Decision Guide
         - **Tackle**: T1/T2 (high impact), auto-fixable, security findings
         - **Consider skipping**: T4 low-confidence, test/config zone findings (lower impact)
         - **Wontfix**: Intentional patterns, false positives →
-          `desloppify resolve wontfix "<id>" --note "<why>" --attest "{attest_example}"`
+          `desloppify plan skip --permanent "<id>" --note "<why>" --attest "{attest_example}"`
         - **Batch wontfix**: Multiple intentional patterns →
-          `desloppify resolve wontfix "<detector>::*::<category>" --note "<why>" --attest "{attest_example}"`
+          `desloppify plan skip --permanent "<detector>::*::<category>" --note "<why>" --attest "{attest_example}"`
 
         ### Understanding Scores
         - **Overall**: 40% mechanical + 60% subjective. Lenient — wontfix doesn't count against you.

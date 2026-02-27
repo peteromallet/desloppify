@@ -12,7 +12,7 @@ from desloppify.app.commands.scan.scan import (
     _audit_excluded_dirs,
     _collect_codebase_metrics,
     _effective_include_slow,
-    _format_delta,
+    format_delta,
     _resolve_scan_profile,
     _warn_explicit_lang_with_no_files,
     cmd_scan,
@@ -38,7 +38,7 @@ class TestScanModuleSanity:
     def test_helper_functions_callable(self):
         assert callable(_audit_excluded_dirs)
         assert callable(_collect_codebase_metrics)
-        assert callable(_format_delta)
+        assert callable(format_delta)
         assert callable(show_diff_summary)
         assert callable(_warn_explicit_lang_with_no_files)
 
@@ -277,36 +277,36 @@ class TestScanProfiles:
 
 
 # ---------------------------------------------------------------------------
-# _format_delta
+# format_delta
 # ---------------------------------------------------------------------------
 
 
 class TestFormatDelta:
-    """_format_delta returns (delta_str, color) for score changes."""
+    """format_delta returns (delta_str, color) for score changes."""
 
     def test_positive_delta(self):
-        delta_str, color = _format_delta(80.0, 70.0)
+        delta_str, color = format_delta(80.0, 70.0)
         assert "+10.0" in delta_str
         assert color == "green"
 
     def test_negative_delta(self):
-        delta_str, color = _format_delta(60.0, 70.0)
+        delta_str, color = format_delta(60.0, 70.0)
         assert "-10.0" in delta_str
         assert color == "red"
 
     def test_zero_delta(self):
-        delta_str, color = _format_delta(70.0, 70.0)
+        delta_str, color = format_delta(70.0, 70.0)
         assert delta_str == ""
         assert color == "dim"
 
     def test_none_prev(self):
         """When prev is None, delta should be 0."""
-        delta_str, color = _format_delta(70.0, None)
+        delta_str, color = format_delta(70.0, None)
         assert delta_str == ""
         assert color == "dim"
 
     def test_fractional_delta(self):
-        delta_str, color = _format_delta(70.5, 70.0)
+        delta_str, color = format_delta(70.5, 70.0)
         assert "+0.5" in delta_str
         assert color == "green"
 

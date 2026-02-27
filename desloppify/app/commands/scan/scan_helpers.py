@@ -151,7 +151,7 @@ def _warn_explicit_lang_with_no_files(
     )
 
 
-def _format_delta(value: float, prev: float | None) -> tuple[str, str]:
+def format_delta(value: float, prev: float | None) -> tuple[str, str]:
     """Return (delta_str, color) for a score change."""
     delta = value - prev if prev is not None else 0
     delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if delta != 0 else ""
@@ -163,7 +163,7 @@ __all__ = [
     "_audit_excluded_dirs",
     "_collect_codebase_metrics",
     "_effective_include_slow",
-    "_format_delta",
+    "format_delta",
     "_format_hidden_by_detector",
     "_resolve_scan_profile",
     "_warn_explicit_lang_with_no_files",

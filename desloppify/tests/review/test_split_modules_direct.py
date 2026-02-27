@@ -95,4 +95,4 @@ def test_issues_render_builds_markdown_payload():
 
     rendered = render_issue_detail(finding, "python")
     assert "Suggested Fix" in rendered
-    assert "desloppify resolve fixed" in rendered
+    assert "desloppify plan done" in rendered

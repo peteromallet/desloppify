@@ -80,7 +80,24 @@ def build_finding_items(
     return out
 
 
+_CLUSTER_ACTION_PRIORITY = {"auto_fix": 0, "reorganize": 1, "refactor": 2, "manual_fix": 3}
+
+
 def item_sort_key(item: dict) -> tuple:
+    if item.get("kind") == "cluster":
+        # Clusters sort before individual findings, ordered by action type
+        # (auto_fix first, then reorganize, refactor, manual_fix),
+        # then bigger clusters first within the same action type.
+        action_pri = _CLUSTER_ACTION_PRIORITY.get(
+            item.get("action_type", "manual_fix"), 3
+        )
+        return (
+            0,  # All clusters before all individual findings
+            action_pri,
+            -int(item.get("member_count", 0)),
+            item.get("id", ""),
+        )
+
     if item.get("kind") == "subjective_dimension" or item.get("is_subjective"):
         return (
             int(item.get("effective_tier", 4)),
@@ -156,6 +173,12 @@ def item_explain(item: dict) -> dict:
 def tier_counts(items: list[dict]) -> dict[int, int]:
     counts = {1: 0, 2: 0, 3: 0, 4: 0}
     for item in items:
+        if item.get("kind") == "cluster":
+            # Count each member at its own tier
+            for member in item.get("members", []):
+                tier = int(member.get("effective_tier", member.get("tier", 3)))
+                counts[tier] = counts.get(tier, 0) + 1
+            continue
         tier = int(item.get("effective_tier", item.get("tier", 3)))
         counts[tier] = counts.get(tier, 0) + 1
     return counts

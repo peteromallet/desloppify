@@ -2,15 +2,13 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/desloppify)](https://pypi.org/project/desloppify/) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 
-Desloppify gives your AI coding agent the tools to identify, understand, and systematically improve codebase quality. It finds issues in two ways:
+Desloppify gives your AI coding agent the tools to identify, understand, and systematically improve codebase quality. It combines mechanical detection (dead code, duplication, complexity) with subjective LLM review (naming, abstractions, module boundaries), then works through a prioritized fix loop. State persists across scans so it chips away over multiple sessions, and the scoring is designed to resist gaming.
 
-1. **Subjective** — Examines the codebase from multiple subjective perspectives: abstraction quality, naming consistency, module boundaries, error handling patterns, convention drift, and language-specific questions. LLM evaluation scores these and tracks them as findings.
+<img src="assets/explained.png" width="100%">
 
-2. **Mechanical** — Detects common mechanical issues like unused imports, dead code, overly long functions, duplication, and dependency cycles. Questionable issues are also flagged to the subjective agent for review.
+The score gives your agent a north-star, and the tooling helps it plan, execute, and resolve issues until it hits your target — with a lot of tricks to keep it on track. A score above 98 should correlate with a codebase a seasoned engineer would call beautiful.
 
-Your agent works through a prioritized list — auto-fixing what it can, presenting the rest for your judgment. State persists across scans so it chips away over multiple sessions, and the scoring is designed to resist gaming: attestation requirements, strict scoring that penalizes dismissed issues, and cross-checked subjective assessments.
-
-This produces a combined health score — our goal is that a score above 98 correlates with a codebase a seasoned engineer would call beautiful. That score generates a scorecard badge for your GitHub profile or README:
+That score generates a scorecard badge for your GitHub profile or README:
 
 <img src="assets/scorecard.png" width="100%">
 
@@ -21,39 +19,24 @@ Currently supports 28 languages — full plugin depth for TypeScript, Python, C#
 Paste this prompt into your agent:
 
 ```
-Install or update desloppify, then scan this codebase for code quality issues (dead code,
-duplication, complexity, smells). It tracks findings persistently across sessions and reports
-a health score — state is cumulative, so each scan builds on previous progress.
+I want you to improve the quality of this codebase. To do this, install and run desloppify.
+Run ALL of the following (requires Python 3.11+):
 
-Requires Python 3.11+. Install from PyPI:
-
-pip install --upgrade desloppify
-# Recommended for deepest coverage (tree-sitter + Python security adapter):
 pip install --upgrade "desloppify[full]"
-desloppify update-skill claude    # pick yours: claude, cursor, codex, copilot, windsurf, gemini
+desloppify update-skill claude    # IMPORTANT — installs the workflow guide. Pick yours: claude, cursor, codex, copilot, windsurf, gemini
 desloppify scan --path .
-desloppify status
 desloppify next
 
 --path is the directory to scan (use "." for the whole project, or "src/" etc).
-Language is auto-detected. To override: desloppify --lang python scan --path .
-(note: --lang goes BEFORE the subcommand)
 
-Fix what it finds, then "desloppify resolve fixed <id> --note 'what changed' --attest 'I have actually [DESCRIBE THE CONCRETE CHANGE YOU MADE] and I am not gaming the score by resolving without fixing.'" and rescan.
-For false positives: "desloppify resolve wontfix <id> --note 'reason' --attest 'I have actually verified this is intentional/false-positive and I am not gaming the score by resolving without fixing.'" (note is required — don't skip work; attestation must include the keywords "I have actually" and "not gaming").
-Keep going until all issues are resolved.
+Your goal is to get the strict score that Desloppify produces as high as possible. Don't be lazy. Fix things properly
+and fix things deep. Large refactors are fine if that's what it takes but also small fixes are great. The scoring is designed
+to resist gaming, so the only way to improve it is to actually make the code better. Don't cheat.
 
-If subjective scores feel stale or inflated, force a clean baseline:
-desloppify scan --path . --reset-subjective
-
-Because state persists, desloppify works best when run regularly. Ask the user if they'd
-like to add a desloppify scan to their workflow — for example, adding "run desloppify scan
-before each git push" to their CLAUDE.md, AGENTS.md, or equivalent agent instructions file,
-so code health is checked at a natural interval.
-
-If you notice anything wrong or confusing about
-desloppify itself, tell me and ask if I want you to log an issue. If you need to understand
-how desloppify works or debug an issue: git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify
+Follow `next` — it tells you exactly what to fix, which file, and the resolve command to run
+when done. Fix the issue, resolve it, run `next` again. Keep going until done.
+Use `plan` to reorder priorities or cluster related issues.
+You can scan to refresh things. The scan output includes agent instructions — follow them, don't augment with your own analysis but follow its plan.
 ```
 
 ## From Vibe Coding to Vibe Engineering
@@ -90,7 +73,7 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 | `review --import <file> [--allow-partial]` | Import subjective review findings (fails closed on invalid findings by default) |
 | `review --external-start --external-runner claude` | Start Claude cloud blind-review session (creates session/token/template) |
 | `review --external-submit --session-id <id> --import <file>` | Submit Claude session output (from generated template); CLI injects canonical provenance |
-| `issues` | Review issues queue (review findings; list/show/update) |
+| `next [--tier N] [--cluster <name>]` | Next priority item (respects plan, shows clusters) |
 | `zone` | Show/set/clear zone classifications |
 | `config` | Show/set/unset project configuration |
 | `move <src> <dst>` | Move file/directory, update all imports |

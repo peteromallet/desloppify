@@ -26,6 +26,7 @@ from desloppify.languages._framework.base.types import (
 )
 from desloppify.languages.python import test_coverage as py_test_coverage_hooks
 from desloppify.languages.python.commands import get_detect_commands
+from desloppify.core.source_discovery import collect_exclude_dirs
 from desloppify.languages.python.detectors.bandit_adapter import detect_with_bandit
 from desloppify.languages.python.detectors.deps import build_dep_graph
 from desloppify.languages.python.detectors.private_imports import (
@@ -146,7 +147,9 @@ class PythonConfig(LangConfig):
         if scan_root is None:
             return LangSecurityResult(entries=[], files_scanned=0)
 
-        result = detect_with_bandit(scan_root, zone_map)
+        exclude_dirs = collect_exclude_dirs(scan_root)
+
+        result = detect_with_bandit(scan_root, zone_map, exclude_dirs=exclude_dirs)
         coverage = result.status.coverage()
         return LangSecurityResult(
             entries=result.entries,

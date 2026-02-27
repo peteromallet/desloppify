@@ -35,7 +35,6 @@ from desloppify.engine._plan.operations import (
     annotate_finding,
     clear_focus,
     create_cluster,
-    defer_items,
     delete_cluster,
     describe_finding,
     move_cluster,
@@ -46,7 +45,6 @@ from desloppify.engine._plan.operations import (
     resurface_stale_skips,
     set_focus,
     skip_items,
-    undefer_items,
     unskip_items,
 )
 
@@ -56,10 +54,18 @@ from desloppify.engine._plan.reconcile import (
     reconcile_plan_after_scan,
 )
 
+# --- auto-clustering --------------------------------------------------------
+from desloppify.engine._plan.auto_cluster import (
+    AUTO_PREFIX,
+    auto_cluster_findings,
+)
+
 # --- stale dimensions -------------------------------------------------------
 from desloppify.engine._plan.stale_dimensions import (
     StaleDimensionSyncResult,
+    UnscoredDimensionSyncResult,
     sync_stale_dimensions,
+    sync_unscored_dimensions,
 )
 
 __all__ = [
@@ -85,7 +91,6 @@ __all__ = [
     "annotate_finding",
     "clear_focus",
     "create_cluster",
-    "defer_items",
     "delete_cluster",
     "describe_finding",
     "move_cluster",
@@ -96,12 +101,16 @@ __all__ = [
     "resurface_stale_skips",
     "set_focus",
     "skip_items",
-    "undefer_items",
     "unskip_items",
     # reconcile
     "ReconcileResult",
     "reconcile_plan_after_scan",
+    # auto-clustering
+    "AUTO_PREFIX",
+    "auto_cluster_findings",
     # stale dimensions
     "StaleDimensionSyncResult",
+    "UnscoredDimensionSyncResult",
     "sync_stale_dimensions",
+    "sync_unscored_dimensions",
 ]

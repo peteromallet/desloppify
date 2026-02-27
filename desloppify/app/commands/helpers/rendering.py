@@ -36,7 +36,7 @@ def _print_plan_agent_block(plan: dict, *, header: str = "  AGENT PLAN:") -> Non
     """Render the living plan as the agent plan block."""
     active = plan.get("active_cluster")
     ordered = len(plan.get("queue_order", []))
-    skipped = len(plan.get("skipped", {})) + len(plan.get("deferred", []))
+    skipped = len(plan.get("skipped", {}))
 
     print(colorize(header, "yellow"))
     print(colorize(f"  Living plan active: {ordered} ordered, {skipped} skipped.", "dim"))
@@ -85,8 +85,12 @@ def print_ranked_actions(
     for action in ranked[:limit]:
         detector = action.get("detector", "unknown")
         count = int(action.get("count", 0))
-        command = action.get("command", "desloppify next")
-        print(colorize(f"    - {detector}: {count} open — `{command}`", "dim"))
+        cluster_count = action.get("cluster_count")
+        if cluster_count:
+            print(colorize(f"    - {detector}: {count} open in {cluster_count} cluster(s) — `desloppify next`", "dim"))
+        else:
+            command = action.get("command", "desloppify next")
+            print(colorize(f"    - {detector}: {count} open — `{command}`", "dim"))
     return True
 
 

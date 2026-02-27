@@ -186,18 +186,31 @@ def detect_with_bandit(
     path: Path,
     zone_map: FileZoneMap | None,
     timeout: int = 120,
+    exclude_dirs: list[str] | None = None,
 ) -> BanditScanResult:
-    """Run bandit on *path* and return findings + typed execution status."""
+    """Run bandit on *path* and return findings + typed execution status.
+
+    Parameters
+    ----------
+    exclude_dirs:
+        Absolute directory paths to pass to bandit's ``--exclude`` flag.
+        When non-empty, bandit will skip these directories during its
+        recursive scan.
+    """
+    cmd = [
+        "bandit",
+        "-r",
+        "-f",
+        "json",
+        "--quiet",
+    ]
+    if exclude_dirs:
+        cmd.extend(["--exclude", ",".join(exclude_dirs)])
+    cmd.append(str(path))
+
     try:
         result = subprocess.run(
-            [
-                "bandit",
-                "-r",
-                "-f",
-                "json",
-                "--quiet",
-                str(path),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,

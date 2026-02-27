@@ -82,14 +82,11 @@ def _supersede_id(
 
     plan["superseded"][finding_id] = entry
 
-    # Remove from queue_order, deferred, skipped, cluster finding_ids
+    # Remove from queue_order, skipped, cluster finding_ids
     order: list[str] = plan.get("queue_order", [])
-    deferred: list[str] = plan.get("deferred", [])
     skipped: dict = plan.get("skipped", {})
     if finding_id in order:
         order.remove(finding_id)
-    if finding_id in deferred:
-        deferred.remove(finding_id)
     skipped.pop(finding_id, None)
     for cluster in plan.get("clusters", {}).values():
         ids = cluster.get("finding_ids", [])
@@ -141,7 +138,6 @@ def reconcile_plan_after_scan(
     # Collect all finding IDs referenced by the plan
     referenced_ids: set[str] = set()
     referenced_ids.update(plan.get("queue_order", []))
-    referenced_ids.update(plan.get("deferred", []))
     referenced_ids.update(plan.get("skipped", {}).keys())
     for override_id in plan.get("overrides", {}):
         referenced_ids.add(override_id)

@@ -21,7 +21,7 @@ from desloppify.engine.work_queue import (
 )
 from desloppify.core.output_api import colorize
 from desloppify.core.skill_docs import check_skill_version
-from desloppify.core.tooling import check_tool_staleness
+from desloppify.core.tooling import check_config_staleness, check_tool_staleness
 from desloppify.core.discovery_api import safe_write_text
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
 
@@ -72,6 +72,9 @@ def cmd_next(args: argparse.Namespace) -> None:
     skill_warning = check_skill_version()
     if skill_warning:
         print(colorize(f"  {skill_warning}", "yellow"))
+    config_warning = check_config_staleness(config)
+    if config_warning:
+        print(colorize(f"  {config_warning}", "yellow"))
 
     _get_items(args, state, config)
 
@@ -86,7 +89,7 @@ def _get_items(args, state: dict, config: dict) -> None:
     explain = bool(getattr(args, "explain", False))
     no_tier_fallback = bool(getattr(args, "no_tier_fallback", False))
     cluster_arg = getattr(args, "cluster", None)
-    include_deferred = bool(getattr(args, "include_deferred", False))
+    include_skipped = bool(getattr(args, "include_skipped", False))
 
     target_strict = target_strict_score_from_config(config, fallback=95.0)
 
@@ -96,7 +99,6 @@ def _get_items(args, state: dict, config: dict) -> None:
     plan_data: dict | None = None
     if (
         plan.get("queue_order")
-        or plan.get("deferred")
         or plan.get("overrides")
         or plan.get("clusters")
     ):
@@ -122,7 +124,7 @@ def _get_items(args, state: dict, config: dict) -> None:
             no_tier_fallback=no_tier_fallback,
             explain=explain,
             plan=plan_data,
-            include_deferred=include_deferred,
+            include_skipped=include_skipped,
             cluster=effective_cluster,
         ),
     )
@@ -132,7 +134,7 @@ def _get_items(args, state: dict, config: dict) -> None:
     lang_name = lang.name if lang else None
     narrative = compute_narrative(
         state,
-        context=NarrativeContext(lang=lang_name, command="next"),
+        context=NarrativeContext(lang=lang_name, command="next", plan=plan_data),
     )
 
     payload = next_output_mod.build_query_payload(

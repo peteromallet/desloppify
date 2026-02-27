@@ -152,6 +152,16 @@ def test_resolve_dimensions_holistic_precedence(monkeypatch):
     assert resolved == ["cross_module_architecture"]
 
 
+def test_resolve_dimensions_holistic_default_is_scorecard_complete():
+    """Without lang_name, default_dimensions (full scorecard) is used."""
+    full_scorecard = ["dim_a", "dim_b", "dim_c"]
+    resolved = dimensions_selection_mod.resolve_dimensions(
+        cli_dimensions=None,
+        default_dimensions=full_scorecard,
+    )
+    assert resolved == full_scorecard
+
+
 def test_load_dimensions_for_lang_override_replaces_dimension_list(
     tmp_path, monkeypatch
 ):

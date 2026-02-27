@@ -3,24 +3,27 @@
 VS Code Copilot supports native subagents via `.github/agents/` definitions.
 Use them for context-isolated subjective reviews.
 
-### Parallel review
+### Subjective review
 
-Define a reviewer agent in `.github/agents/desloppify-reviewer.md`:
+1. **Preferred**: `desloppify review --run-batches --runner codex --parallel --scan-after-import`.
+2. **Copilot/cloud path**: `desloppify review --external-start --external-runner claude` → use generated prompt/template → run printed `--external-submit` command.
+3. **Manual path**: define a reviewer agent, split dimensions, merge, import.
+
+For the manual path, define a reviewer in `.github/agents/desloppify-reviewer.md`:
 
 ```yaml
 ---
 name: desloppify-reviewer
 tools: ['read', 'search']
 ---
-```
-
 You are a code quality reviewer. You will be given a codebase path, a set of
 dimensions to score, and what each dimension means. Read the code, score each
 dimension 0-100 from evidence only, and return JSON in the required format.
 Do not anchor to target thresholds. When evidence is mixed, score lower and
 explain uncertainty.
+```
 
-To run reviews in parallel, define an orchestrator in `.github/agents/desloppify-review-orchestrator.md`:
+And an orchestrator in `.github/agents/desloppify-review-orchestrator.md`:
 
 ```yaml
 ---
@@ -30,53 +33,15 @@ agents: ['desloppify-reviewer']
 ---
 ```
 
-Workflow:
-1. Read `dimension_prompts` from `query.json` for dimension definitions.
-2. Split dimensions across multiple `desloppify-reviewer` subagent calls.
-   Copilot runs `runSubagent` calls concurrently.
-3. Each reviewer writes its output to a separate file.
-4. Merge assessments (average where dimensions overlap) and findings.
-5. Preferred local path (Codex runner): `desloppify review --run-batches --runner codex --parallel --scan-after-import`.
-6. Copilot/cloud/manual path:
-   - robust session flow (recommended): `desloppify review --external-start --external-runner claude`; use generated `claude_launch_prompt.md` + `review_result.template.json`, then run printed `desloppify review --external-submit --session-id <id> --import <file>`
-   - durable scored import (legacy): `desloppify review --import findings.json --attested-external --attest "I validated this review was completed without awareness of overall score and is unbiased."`
-   - findings-only fallback: `desloppify review --import findings.json`
+Split dimensions across `desloppify-reviewer` calls (Copilot runs them concurrently), merge assessments (average overlaps) and findings, then import.
 
 ### Review integrity
 
 1. Do not use prior chat context, score history, or target-threshold anchoring while scoring.
-2. Score from evidence only; when evidence is mixed, score lower and explain uncertainty.
-3. Return machine-readable JSON only for review imports. For `--external-submit`, include `session` from the generated template:
-
-```json
-{
-  "session": {
-    "id": "<session_id_from_template>",
-    "token": "<session_token_from_template>"
-  },
-  "assessments": {
-    "naming_quality": 0,
-    "error_consistency": 0,
-    "abstraction_fit": 0,
-    "logic_clarity": 0,
-    "ai_generated_debt": 0
-  },
-  "findings": [
-    {
-      "dimension": "naming_quality",
-      "identifier": "short_id",
-      "summary": "one-line defect summary",
-      "related_files": ["relative/path/to/file.py"],
-      "evidence": ["specific code observation"],
-      "suggestion": "concrete fix recommendation",
-      "confidence": "high|medium|low"
-    }
-  ]
-}
-```
-4. `findings` MUST match `query.system_prompt` exactly. Use `"findings": []` only when no defects are found.
-5. Import is fail-closed by default: invalid/skipped findings abort `desloppify review --import` unless `--allow-partial` is explicitly passed.
-6. Assessment scores are auto-applied from trusted internal run-batches imports, or via Claude cloud session imports (`--external-start` + printed `--external-submit`). Legacy attested external import via `--attested-external` remains supported.
+2. Score from evidence only; when mixed, score lower and explain uncertainty.
+3. Return JSON matching the format in the base skill doc. For `--external-submit`, include `session` from the generated template.
+4. `findings` MUST match `query.system_prompt` exactly. Use `"findings": []` when no defects found.
+5. Import is fail-closed: invalid findings abort unless `--allow-partial` is passed.
 
 <!-- desloppify-overlay: copilot -->
 <!-- desloppify-end -->

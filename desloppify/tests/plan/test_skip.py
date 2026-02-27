@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import warnings
-
 from desloppify.engine._plan.operations import (
-    defer_items,
     move_items,
     purge_ids,
     skip_items,
-    undefer_items,
     unskip_items,
     resurface_stale_skips,
 )
@@ -308,30 +304,3 @@ def test_skip_and_unskip_roundtrip():
     assert plan["skipped"] == {}
 
 
-# ---------------------------------------------------------------------------
-# Deprecated defer_items / undefer_items delegate
-# ---------------------------------------------------------------------------
-
-def test_defer_items_delegates_to_skip():
-    plan = _plan_with_queue("a", "b")
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        count = defer_items(plan, ["a"])
-        assert count == 1
-        assert len(w) == 1
-        assert "deprecated" in str(w[0].message).lower()
-    assert "a" in plan["skipped"]
-    assert plan["skipped"]["a"]["kind"] == "temporary"
-
-
-def test_undefer_items_delegates_to_unskip():
-    plan = _plan_with_queue("a")
-    skip_items(plan, ["a"], kind="temporary")
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        count = undefer_items(plan, ["a"])
-        assert count == 1
-        assert len(w) == 1
-        assert "deprecated" in str(w[0].message).lower()
-    assert "a" in plan["queue_order"]
-    assert "a" not in plan["skipped"]

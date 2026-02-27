@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from desloppify import state as state_mod
+from desloppify.engine.plan import has_living_plan, load_plan
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.core.output_api import colorize
 
@@ -87,6 +88,12 @@ def show_post_scan_analysis(
     if warnings:
         print()
 
+    # Load plan for narrative cluster awareness
+    _plan_data = None
+    _plan = load_plan()
+    if _plan.get("queue_order") or _plan.get("clusters"):
+        _plan_data = _plan
+
     # Single narrative headline
     lang_name = lang.name if lang else None
     narrative = narrative_mod.compute_narrative(
@@ -95,17 +102,14 @@ def show_post_scan_analysis(
             diff=diff,
             lang=lang_name,
             command="scan",
+            plan=_plan_data,
         ),
     )
     if narrative.get("headline"):
         print(colorize(f"  → {narrative['headline']}", "cyan"))
 
     # Pointers — include plan reference when active
-    try:
-        from desloppify.engine.plan import has_living_plan
-        _has_plan = has_living_plan()
-    except Exception:
-        _has_plan = False
+    _has_plan = _plan_data is not None or has_living_plan()
 
     print(colorize("  Run `desloppify next` for the highest-priority item.", "dim"))
     if _has_plan:

@@ -119,8 +119,7 @@ def write_status_query(
                 "active": True,
                 "focus": plan.get("active_cluster"),
                 "total_ordered": len(plan.get("queue_order", [])),
-                "total_skipped": len(plan.get("skipped", {})) + len(plan.get("deferred", [])),
-                "total_deferred": len(plan.get("skipped", {})) + len(plan.get("deferred", [])),  # backwards compat
+                "total_skipped": len(plan.get("skipped", {})),
                 "plan_overrides_narrative": True,
             }} if plan and (plan.get("queue_order") or plan.get("clusters") or plan.get("skipped")) else {}),
         }

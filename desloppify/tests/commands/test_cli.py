@@ -179,33 +179,34 @@ class TestCreateParser:
         assert args.explain is True
         assert args.no_tier_fallback is True
 
-    def test_resolve_command(self, parser):
-        args = parser.parse_args(["resolve", "fixed", "id1", "id2"])
-        assert args.command == "resolve"
-        assert args.status == "fixed"
+    def test_plan_done_command(self, parser):
+        args = parser.parse_args(["plan", "done", "id1", "id2"])
+        assert args.command == "plan"
+        assert args.plan_action == "done"
         assert args.patterns == ["id1", "id2"]
 
-    def test_resolve_open_command(self, parser):
-        args = parser.parse_args(["resolve", "open", "id1"])
-        assert args.command == "resolve"
-        assert args.status == "open"
-        assert args.patterns == ["id1"]
+    def test_plan_done_with_note(self, parser):
+        args = parser.parse_args(["plan", "done", "id1", "--note", "removed import"])
+        assert args.note == "removed import"
 
-    def test_resolve_with_note(self, parser):
-        args = parser.parse_args(["resolve", "wontfix", "id1", "--note", "intentional"])
-        assert args.note == "intentional"
-
-    def test_resolve_with_attest(self, parser):
+    def test_plan_done_with_attest(self, parser):
         args = parser.parse_args(
             [
-                "resolve",
-                "fixed",
+                "plan",
+                "done",
                 "id1",
                 "--attest",
                 "I have actually fixed this and I am not gaming",
             ]
         )
         assert args.attest is not None
+
+    def test_resolve_not_top_level(self, parser):
+        """resolve is no longer a top-level command."""
+        import pytest
+
+        with pytest.raises(SystemExit):
+            parser.parse_args(["resolve", "fixed", "id1"])
 
     def test_ignore_command(self, parser):
         args = parser.parse_args(["ignore", "smells::*::async_no_await"])

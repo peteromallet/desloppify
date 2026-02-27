@@ -11,6 +11,23 @@ from desloppify.core.fallbacks import print_write_error
 
 def serialize_item(item: Mapping[str, Any]) -> dict[str, Any]:
     """Build a serializable output dict from a queue item."""
+    # Cluster meta-items get their own serialization
+    if item.get("kind") == "cluster":
+        members_raw = item.get("members", [])
+        serialized_members = [serialize_item(m) for m in members_raw]
+        return {
+            "id": item.get("id"),
+            "kind": "cluster",
+            "action_type": item.get("action_type", "manual_fix"),
+            "summary": item.get("summary"),
+            "member_count": item.get("member_count", len(serialized_members)),
+            "members": serialized_members,
+            "primary_command": item.get("primary_command"),
+            "cluster_name": item.get("cluster_name", item.get("id")),
+            "cluster_auto": item.get("cluster_auto", True),
+            "detector": item.get("detector"),
+        }
+
     serialized: dict[str, Any] = {
         "id": item.get("id"),
         "kind": item.get("kind", "finding"),
@@ -42,9 +59,6 @@ def serialize_item(item: Mapping[str, Any]) -> dict[str, Any]:
         serialized["plan_skip_kind"] = item.get("plan_skip_kind", "temporary")
         if item.get("plan_skip_reason"):
             serialized["plan_skip_reason"] = item["plan_skip_reason"]
-    # Backwards compat
-    if item.get("plan_deferred"):
-        serialized["plan_deferred"] = True
 
     return serialized
 
@@ -76,7 +90,6 @@ def build_query_payload(
     if plan and (
         plan.get("queue_order")
         or plan.get("skipped")
-        or plan.get("deferred")
         or plan.get("clusters")
     ):
         clusters_summary = []
@@ -87,14 +100,12 @@ def build_query_payload(
                 "description": cluster.get("description"),
                 "item_count": len(member_ids),
             })
-        total_skipped = len(plan.get("skipped", {}))
         payload["plan"] = {
             "active": True,
             "focus": plan.get("active_cluster"),
             "clusters": clusters_summary,
             "total_ordered": len(plan.get("queue_order", [])),
-            "total_skipped": total_skipped,
-            "total_deferred": total_skipped,  # backwards compat
+            "total_skipped": len(plan.get("skipped", {})),
             "plan_overrides_narrative": True,
         }
 

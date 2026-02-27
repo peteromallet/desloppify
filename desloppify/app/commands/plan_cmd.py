@@ -15,14 +15,20 @@ from desloppify.core.fallbacks import warn_best_effort
 from desloppify.engine import planning as planning_mod
 from desloppify.core.discovery_api import safe_write_text
 from desloppify.core.output_api import colorize
+from desloppify.core.tooling import check_config_staleness
 
 
 def cmd_plan_output(args: argparse.Namespace) -> None:
     """Generate a prioritized markdown plan from state."""
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
 
     if not require_completed_scan(state):
         return
+
+    config_warning = check_config_staleness(runtime.config)
+    if config_warning:
+        print(colorize(f"  {config_warning}", "yellow"))
 
     plan_md = planning_mod.generate_plan_md(state)
     next_command = "desloppify next --count 20"

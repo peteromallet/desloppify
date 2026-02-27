@@ -11,6 +11,22 @@ from desloppify.core.output_contract import OutputResult
 from .selection import ResolveQueryContext
 
 
+def _try_expand_cluster(pattern: str) -> list[str] | None:
+    """If pattern matches a cluster name, return its finding IDs."""
+    try:
+        from desloppify.engine.plan import has_living_plan, load_plan
+
+        if not has_living_plan():
+            return None
+        plan = load_plan()
+        cluster = plan.get("clusters", {}).get(pattern)
+        if cluster and cluster.get("finding_ids"):
+            return list(cluster["finding_ids"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
 def _resolve_all_patterns(
     state: dict,
     args: argparse.Namespace,
@@ -19,6 +35,20 @@ def _resolve_all_patterns(
 ) -> list[str]:
     all_resolved: list[str] = []
     for pattern in args.patterns:
+        # Check if pattern is a cluster name — expand to member IDs
+        cluster_ids = _try_expand_cluster(pattern)
+        if cluster_ids:
+            for fid in cluster_ids:
+                resolved = state_mod.resolve_findings(
+                    state,
+                    fid,
+                    args.status,
+                    args.note,
+                    attestation=attestation,
+                )
+                all_resolved.extend(resolved)
+            continue
+
         resolved = state_mod.resolve_findings(
             state,
             pattern,

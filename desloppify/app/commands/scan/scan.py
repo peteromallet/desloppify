@@ -19,7 +19,7 @@ from desloppify.app.commands.scan.scan_helpers import (  # noqa: F401 (re-export
     _audit_excluded_dirs,
     _collect_codebase_metrics,
     _effective_include_slow,
-    _format_delta,
+    format_delta,
     _resolve_scan_profile,
     _warn_explicit_lang_with_no_files,
 )

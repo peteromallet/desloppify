@@ -25,11 +25,11 @@ def test_formatting_helpers():
     assert "smells: +3" in hidden
     assert "dupes: +1" in hidden
 
-    delta, color = scan_helpers_mod._format_delta(95.0, 94.0)
+    delta, color = scan_helpers_mod.format_delta(95.0, 94.0)
     assert delta == " (+1.0)"
     assert color == "green"
 
-    delta, color = scan_helpers_mod._format_delta(94.0, 95.0)
+    delta, color = scan_helpers_mod.format_delta(94.0, 95.0)
     assert delta == " (-1.0)"
     assert color == "red"
 

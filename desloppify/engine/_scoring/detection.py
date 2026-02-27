@@ -39,6 +39,8 @@ def _iter_scoring_candidates(
 ):
     """Yield in-scope findings for a detector (zone-filtered)."""
     for finding in findings.values():
+        if finding.get("suppressed"):
+            continue
         if finding.get("detector") != detector:
             continue
         if finding.get("zone", "production") in excluded_zones:

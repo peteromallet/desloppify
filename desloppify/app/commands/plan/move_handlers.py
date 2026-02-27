@@ -21,12 +21,11 @@ def cmd_plan_move(args: argparse.Namespace) -> None:
     position: str = getattr(args, "position", "top")
     target: str | None = getattr(args, "target", None)
 
-    finding_ids = resolve_ids_from_patterns(state, patterns)
+    plan = load_plan()
+    finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not finding_ids:
         print(colorize("  No matching findings found.", "yellow"))
         return
-
-    plan = load_plan()
 
     offset: int | None = None
     if position in ("up", "down") and target is not None:

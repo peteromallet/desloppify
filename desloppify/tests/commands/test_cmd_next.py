@@ -150,7 +150,7 @@ class TestCmdNextOutput:
                         "summary": "Thing to fix",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -247,7 +247,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -306,7 +306,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -363,7 +363,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -421,7 +421,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -475,7 +475,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -543,7 +543,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,
@@ -660,7 +660,7 @@ class TestCmdNextOutput:
                         "summary": "Fix smell",
                         "detail": {},
                         "status": "open",
-                        "primary_command": "desloppify resolve fixed ...",
+                        "primary_command": "desloppify plan done ...",
                     }
                 ],
                 "total": 1,

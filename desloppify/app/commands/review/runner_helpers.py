@@ -862,8 +862,8 @@ def _record_execution_error(
     if callable(error_log_fn):
         try:
             error_log_fn(idx, exc)
-        except Exception:
-            pass
+        except (OSError, TypeError, ValueError):
+            pass  # error-logging callback failed; don't crash the batch
     failures.add(idx)
 
 
@@ -976,8 +976,8 @@ def _execute_parallel(
         if callable(error_log_fn):
             try:
                 error_log_fn(idx, err)
-            except Exception:
-                pass
+            except (OSError, TypeError, ValueError):
+                pass  # error-logging callback failed; don't crash the batch
 
     def _run_one(idx: int) -> int:
         with lock:
@@ -1093,8 +1093,8 @@ def _heartbeat(
     if heartbeat_error is not None and callable(error_log_fn):
         try:
             error_log_fn(-1, heartbeat_error)
-        except Exception:
-            pass
+        except (OSError, TypeError, ValueError):
+            pass  # error-logging callback failed; don't crash the batch
 
 
 def _extract_payload_from_log(

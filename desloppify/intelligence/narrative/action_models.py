@@ -71,3 +71,4 @@ class ActionContext:
     state: StateModel
     debt: dict[str, float]
     lang: str | None
+    clusters: dict | None = None

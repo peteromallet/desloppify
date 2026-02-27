@@ -43,9 +43,9 @@ def _add_detect_parser(sub, detector_names: list[str]) -> None:
         epilog=f"detectors: {', '.join(detector_names)}",
     )
     p_detect.add_argument("detector", type=str, help="Detector to run")
-    p_detect.add_argument("--top", type=int, default=20)
-    p_detect.add_argument("--path", type=str, default=None)
-    p_detect.add_argument("--json", action="store_true")
+    p_detect.add_argument("--top", type=int, default=20, help="Max items to show (default: 20)")
+    p_detect.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    p_detect.add_argument("--json", action="store_true", help="Output as JSON")
     p_detect.add_argument(
         "--fix",
         action="store_true",
@@ -90,30 +90,43 @@ def _add_move_parser(sub) -> None:
 
 def _add_review_parser(sub) -> None:
     p_review = sub.add_parser(
-        "review", help="Prepare or import holistic subjective review"
+        "review",
+        help="Prepare or import holistic subjective review",
+        description="Run holistic subjective reviews using LLM-based analysis.",
+        epilog="""\
+examples:
+  desloppify review --prepare
+  desloppify review --run-batches --runner codex --parallel --scan-after-import
+  desloppify review --external-start --external-runner claude
+  desloppify review --external-submit --session-id <id> --import findings.json
+  desloppify review --merge --similarity 0.8""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_review.add_argument("--path", type=str, default=None)
-    p_review.add_argument("--state", type=str, default=None)
-    p_review.add_argument(
+
+    # -- core options --
+    g_core = p_review.add_argument_group("core options")
+    g_core.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    g_core.add_argument("--state", type=str, default=None, help="Path to state file")
+    g_core.add_argument(
         "--prepare",
         action="store_true",
         help="Prepare review data (output to query.json)",
     )
-    p_review.add_argument(
+    g_core.add_argument(
         "--import",
         dest="import_file",
         type=str,
         metavar="FILE",
         help="Import review findings from JSON file",
     )
-    p_review.add_argument(
+    g_core.add_argument(
         "--validate-import",
         dest="validate_import_file",
         type=str,
         metavar="FILE",
         help="Validate review import payload and selected trust mode without mutating state",
     )
-    p_review.add_argument(
+    g_core.add_argument(
         "--allow-partial",
         action="store_true",
         help=(
@@ -121,7 +134,186 @@ def _add_review_parser(sub) -> None:
             "(default: fail on any skipped finding)"
         ),
     )
-    p_review.add_argument(
+    g_core.add_argument(
+        "--dimensions",
+        type=str,
+        default=None,
+        help="Comma-separated dimensions to evaluate",
+    )
+    g_core.add_argument(
+        "--retrospective",
+        action="store_true",
+        help=(
+            "Include historical review issue status/note context in the packet "
+            "to support root-cause vs symptom analysis during review"
+        ),
+    )
+    g_core.add_argument(
+        "--retrospective-max-issues",
+        type=int,
+        default=30,
+        help="Max recent historical issues to include in review context (default: 30)",
+    )
+    g_core.add_argument(
+        "--retrospective-max-batch-items",
+        type=int,
+        default=20,
+        help="Max history items included per batch focus slice (default: 20)",
+    )
+    g_core.add_argument(
+        "--force-review-rerun",
+        action="store_true",
+        help="Bypass the objective-plan-drained gate for review reruns",
+    )
+
+    # -- external review --
+    g_external = p_review.add_argument_group("external review")
+    g_external.add_argument(
+        "--external-start",
+        action="store_true",
+        help=(
+            "Start a cloud external review session (generates blind packet, "
+            "session id/token, and reviewer template)"
+        ),
+    )
+    g_external.add_argument(
+        "--external-submit",
+        action="store_true",
+        help=(
+            "Submit external reviewer JSON via a started session; "
+            "CLI injects canonical provenance before import"
+        ),
+    )
+    g_external.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="External review session id for --external-submit",
+    )
+    g_external.add_argument(
+        "--external-runner",
+        choices=["claude"],
+        default="claude",
+        help="External reviewer runner for --external-start (default: claude)",
+    )
+    g_external.add_argument(
+        "--session-ttl-hours",
+        type=int,
+        default=24,
+        help="External review session expiration in hours (default: 24)",
+    )
+
+    # -- batch execution --
+    g_batch = p_review.add_argument_group("batch execution")
+    g_batch.add_argument(
+        "--run-batches",
+        action="store_true",
+        help="Run holistic investigation batches with subagents and merge/import output",
+    )
+    g_batch.add_argument(
+        "--runner",
+        choices=["codex"],
+        default="codex",
+        help="Subagent runner backend (default: codex)",
+    )
+    g_batch.add_argument(
+        "--parallel", action="store_true", help="Run selected batches in parallel"
+    )
+    g_batch.add_argument(
+        "--max-parallel-batches",
+        type=int,
+        default=3,
+        help=(
+            "Max concurrent subagent batches when --parallel is enabled "
+            "(default: 3)"
+        ),
+    )
+    g_batch.add_argument(
+        "--batch-timeout-seconds",
+        type=int,
+        default=20 * 60,
+        help="Per-batch runner timeout in seconds (default: 1200)",
+    )
+    g_batch.add_argument(
+        "--batch-max-retries",
+        type=int,
+        default=1,
+        help=(
+            "Retries per failed batch for transient runner/network errors "
+            "(default: 1)"
+        ),
+    )
+    g_batch.add_argument(
+        "--batch-retry-backoff-seconds",
+        type=float,
+        default=2.0,
+        help=(
+            "Base backoff delay for transient batch retries in seconds "
+            "(default: 2.0)"
+        ),
+    )
+    g_batch.add_argument(
+        "--batch-heartbeat-seconds",
+        type=float,
+        default=15.0,
+        help=(
+            "Progress heartbeat interval during parallel batch runs in seconds "
+            "(default: 15.0)"
+        ),
+    )
+    g_batch.add_argument(
+        "--batch-stall-warning-seconds",
+        type=int,
+        default=0,
+        help=(
+            "Emit warning when a running batch exceeds this elapsed time "
+            "(0 disables warnings; does not terminate the batch)"
+        ),
+    )
+    g_batch.add_argument(
+        "--batch-stall-kill-seconds",
+        type=int,
+        default=120,
+        help=(
+            "Terminate a batch when output state is unchanged and runner streams are idle "
+            "for this many seconds (default: 120; 0 disables kill recovery)"
+        ),
+    )
+    g_batch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Generate packet/prompts only (skip runner/import)",
+    )
+    g_batch.add_argument(
+        "--run-log-file",
+        type=str,
+        default=None,
+        help=(
+            "Optional explicit path for live run log output "
+            "(overrides default run artifacts path)"
+        ),
+    )
+    g_batch.add_argument(
+        "--packet",
+        type=str,
+        default=None,
+        help="Use an existing immutable packet JSON instead of preparing a new one",
+    )
+    g_batch.add_argument(
+        "--only-batches",
+        type=str,
+        default=None,
+        help="Comma-separated 1-based batch indexes to run (e.g. 1,3,5)",
+    )
+    g_batch.add_argument(
+        "--scan-after-import",
+        action="store_true",
+        help="Run `scan` after successful merged import",
+    )
+
+    # -- trust & attestation --
+    g_trust = p_review.add_argument_group("trust & attestation")
+    g_trust.add_argument(
         "--manual-override",
         action="store_true",
         help=(
@@ -129,7 +321,7 @@ def _add_review_parser(sub) -> None:
             "scores require trusted blind provenance unless this override is set."
         ),
     )
-    p_review.add_argument(
+    g_trust.add_argument(
         "--attested-external",
         action="store_true",
         help=(
@@ -138,7 +330,7 @@ def _add_review_parser(sub) -> None:
             "(intended for cloud Claude subagent workflows)."
         ),
     )
-    p_review.add_argument(
+    g_trust.add_argument(
         "--attest",
         type=str,
         default=None,
@@ -148,170 +340,48 @@ def _add_review_parser(sub) -> None:
             "'without awareness' and 'unbiased'."
         ),
     )
-    p_review.add_argument(
+
+    # -- post-processing --
+    g_post = p_review.add_argument_group("post-processing")
+    g_post.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge conceptually duplicate open review findings",
+    )
+    g_post.add_argument(
+        "--similarity",
+        type=float,
+        default=0.8,
+        help="Summary similarity threshold for merge (0-1, default: 0.8)",
+    )
+
+    # -- deprecated --
+    g_deprecated = p_review.add_argument_group("deprecated")
+    g_deprecated.add_argument(
         "--max-age",
         type=int,
         default=None,
         action=_DeprecatedAction,
         help="Deprecated in holistic-only mode (ignored)",
     )
-    p_review.add_argument(
+    g_deprecated.add_argument(
         "--max-files",
         type=int,
         default=None,
         action=_DeprecatedAction,
         help="Deprecated in holistic-only mode (ignored)",
     )
-    p_review.add_argument(
+    g_deprecated.add_argument(
         "--refresh",
         action=_DeprecatedBoolAction,
         help="Deprecated in holistic-only mode (ignored)",
     )
-    p_review.add_argument(
-        "--dimensions",
-        type=str,
-        default=None,
-        help="Comma-separated dimensions to evaluate",
-    )
-    p_review.add_argument(
-        "--retrospective",
-        action="store_true",
-        help=(
-            "Include historical review issue status/note context in the packet "
-            "to support root-cause vs symptom analysis during review"
-        ),
-    )
-    p_review.add_argument(
-        "--retrospective-max-issues",
-        type=int,
-        default=30,
-        help="Max recent historical issues to include in review context (default: 30)",
-    )
-    p_review.add_argument(
-        "--retrospective-max-batch-items",
-        type=int,
-        default=20,
-        help="Max history items included per batch focus slice (default: 20)",
-    )
-    p_review.add_argument(
+    g_deprecated.add_argument(
         "--holistic",
         action=_DeprecatedBoolAction,
         help="Deprecated: holistic is now the only review mode",
     )
-    p_review.add_argument(
-        "--run-batches",
-        action="store_true",
-        help="Run holistic investigation batches with subagents and merge/import output",
-    )
-    p_review.add_argument(
-        "--external-start",
-        action="store_true",
-        help=(
-            "Start a cloud external review session (generates blind packet, "
-            "session id/token, and reviewer template)"
-        ),
-    )
-    p_review.add_argument(
-        "--external-submit",
-        action="store_true",
-        help=(
-            "Submit external reviewer JSON via a started session; "
-            "CLI injects canonical provenance before import"
-        ),
-    )
-    p_review.add_argument(
-        "--session-id",
-        type=str,
-        default=None,
-        help="External review session id for --external-submit",
-    )
-    p_review.add_argument(
-        "--external-runner",
-        choices=["claude"],
-        default="claude",
-        help="External reviewer runner for --external-start (default: claude)",
-    )
-    p_review.add_argument(
-        "--session-ttl-hours",
-        type=int,
-        default=24,
-        help="External review session expiration in hours (default: 24)",
-    )
-    p_review.add_argument(
-        "--runner",
-        choices=["codex"],
-        default="codex",
-        help="Subagent runner backend (default: codex)",
-    )
-    p_review.add_argument(
-        "--parallel", action="store_true", help="Run selected batches in parallel"
-    )
-    p_review.add_argument(
-        "--max-parallel-batches",
-        type=int,
-        default=3,
-        help=(
-            "Max concurrent subagent batches when --parallel is enabled "
-            "(default: 3)"
-        ),
-    )
-    p_review.add_argument(
-        "--batch-timeout-seconds",
-        type=int,
-        default=20 * 60,
-        help="Per-batch runner timeout in seconds (default: 1200)",
-    )
-    p_review.add_argument(
-        "--batch-max-retries",
-        type=int,
-        default=1,
-        help=(
-            "Retries per failed batch for transient runner/network errors "
-            "(default: 1)"
-        ),
-    )
-    p_review.add_argument(
-        "--batch-retry-backoff-seconds",
-        type=float,
-        default=2.0,
-        help=(
-            "Base backoff delay for transient batch retries in seconds "
-            "(default: 2.0)"
-        ),
-    )
-    p_review.add_argument(
-        "--batch-heartbeat-seconds",
-        type=float,
-        default=15.0,
-        help=(
-            "Progress heartbeat interval during parallel batch runs in seconds "
-            "(default: 15.0)"
-        ),
-    )
-    p_review.add_argument(
-        "--batch-stall-warning-seconds",
-        type=int,
-        default=0,
-        help=(
-            "Emit warning when a running batch exceeds this elapsed time "
-            "(0 disables warnings; does not terminate the batch)"
-        ),
-    )
-    p_review.add_argument(
-        "--batch-stall-kill-seconds",
-        type=int,
-        default=120,
-        help=(
-            "Terminate a batch when output state is unchanged and runner streams are idle "
-            "for this many seconds (default: 120; 0 disables kill recovery)"
-        ),
-    )
-    p_review.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Generate packet/prompts only (skip runner/import)",
-    )
-    p_review.add_argument(
+    g_deprecated.add_argument(
         "--save-run-log",
         action="store_true",
         help=(
@@ -319,54 +389,12 @@ def _add_review_parser(sub) -> None:
             "(default location: run artifacts dir)"
         ),
     )
-    p_review.add_argument(
-        "--run-log-file",
-        type=str,
-        default=None,
-        help=(
-            "Optional explicit path for live run log output "
-            "(overrides default run artifacts path)"
-        ),
-    )
-    p_review.add_argument(
-        "--packet",
-        type=str,
-        default=None,
-        help="Use an existing immutable packet JSON instead of preparing a new one",
-    )
-    p_review.add_argument(
-        "--only-batches",
-        type=str,
-        default=None,
-        help="Comma-separated 1-based batch indexes to run (e.g. 1,3,5)",
-    )
-    p_review.add_argument(
-        "--scan-after-import",
-        action="store_true",
-        help="Run `scan` after successful merged import",
-    )
-    p_review.add_argument(
-        "--force-review-rerun",
-        action="store_true",
-        help="Bypass the objective-plan-drained gate for review reruns",
-    )
-    p_review.add_argument(
-        "--merge",
-        action="store_true",
-        help="Merge conceptually duplicate open review findings",
-    )
-    p_review.add_argument(
-        "--similarity",
-        type=float,
-        default=0.8,
-        help="Summary similarity threshold for merge (0-1, default: 0.8)",
-    )
 
 
 def _add_zone_parser(sub) -> None:
     p_zone = sub.add_parser("zone", help="Show/set/clear zone classifications")
-    p_zone.add_argument("--path", type=str, default=None)
-    p_zone.add_argument("--state", type=str, default=None)
+    p_zone.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    p_zone.add_argument("--state", type=str, default=None, help="Path to state file")
     zone_sub = p_zone.add_subparsers(dest="zone_action")
     zone_sub.add_parser("show", help="Show zone classifications for all files")
     z_set = zone_sub.add_parser("set", help="Override zone for a file")
@@ -411,8 +439,8 @@ def _add_fix_parser(sub, langs: list[str]) -> None:
         epilog="\n".join(_fixer_help_lines(langs)),
     )
     p_fix.add_argument("fixer", type=str, help="What to fix")
-    p_fix.add_argument("--path", type=str, default=None)
-    p_fix.add_argument("--state", type=str, default=None)
+    p_fix.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    p_fix.add_argument("--state", type=str, default=None, help="Path to state file")
     p_fix.add_argument(
         "--dry-run",
         action="store_true",
@@ -422,9 +450,38 @@ def _add_fix_parser(sub, langs: list[str]) -> None:
 
 def _add_plan_parser(sub) -> None:
     p_plan = sub.add_parser(
-        "plan", help="Living plan: generate, reorder, cluster, annotate, defer"
+        "plan",
+        help="Living plan: generate, reorder, cluster, skip, note",
+        description="""\
+Manage the living plan — a persistent layer on top of the work queue.
+Track custom ordering, clusters, skips, and per-finding annotations.
+Run with no subcommand to generate a full prioritized markdown plan.""",
+        epilog="""\
+typical workflow:
+  desloppify scan                       # detect findings
+  desloppify plan                       # full prioritized markdown
+  desloppify plan queue                 # compact table of all items
+  desloppify plan cluster create ...    # group related findings
+  desloppify plan focus <cluster>       # narrow scope
+  desloppify next                       # work on the next item
+  desloppify plan done <id> --attest .. # mark as fixed
+
+subcommands:
+  show       Show plan metadata summary
+  queue      Compact table of upcoming queue items
+  reset      Reset plan to empty
+  move       Move findings in the queue
+  done       Mark findings as fixed (score movement + next-step)
+  describe   Set augmented description
+  note       Set note on findings
+  skip       Skip findings (temporary/permanent/false_positive)
+  unskip     Bring skipped findings back to queue
+  reopen     Reopen resolved findings
+  focus      Set or clear active cluster focus
+  cluster    Manage finding clusters""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_plan.add_argument("--state", type=str, default=None)
+    p_plan.add_argument("--state", type=str, default=None, help="Path to state file")
     p_plan.add_argument(
         "--output", type=str, metavar="FILE", help="Write to file instead of stdout"
     )
@@ -434,11 +491,31 @@ def _add_plan_parser(sub) -> None:
     # plan show
     plan_sub.add_parser("show", help="Show plan metadata summary")
 
+    # plan queue
+    p_queue = plan_sub.add_parser("queue", help="Compact table of upcoming queue items")
+    p_queue.add_argument("--top", type=int, default=30, help="Max items (default: 30, 0=all)")
+    p_queue.add_argument("--tier", type=int, choices=[1, 2, 3, 4], default=None,
+                         help="Show only items in this tier (T1=critical .. T4=cosmetic)")
+    p_queue.add_argument("--cluster", type=str, default=None, metavar="NAME",
+                         help="Filter to a specific cluster")
+    p_queue.add_argument("--include-skipped", action="store_true",
+                         help="Include skipped items at end")
+
     # plan reset
     plan_sub.add_parser("reset", help="Reset plan to empty")
 
     # plan move <patterns> <position> [target|N]
-    p_move = plan_sub.add_parser("move", help="Move findings in the queue")
+    p_move = plan_sub.add_parser(
+        "move",
+        help="Move findings in the queue",
+        epilog="""\
+examples:
+  desloppify plan move security top                    # prioritize a detector
+  desloppify plan move "unused::src/foo.ts::*" top     # prioritize by pattern
+  desloppify plan move smells bottom                   # deprioritize smells
+  desloppify plan move unused before security          # move before another""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_move.add_argument(
         "patterns", nargs="+", metavar="PATTERN",
         help="Finding ID(s), prefix, detector name, file path, or glob",
@@ -460,13 +537,13 @@ def _add_plan_parser(sub) -> None:
     )
     p_describe.add_argument("text", type=str, help="Description text")
 
-    # plan annotate <patterns> --note "<text>"
-    p_annotate = plan_sub.add_parser("annotate", help="Set note on findings")
-    p_annotate.add_argument(
+    # plan note <patterns> "<text>"
+    p_note = plan_sub.add_parser("note", help="Set note on findings")
+    p_note.add_argument(
         "patterns", nargs="+", metavar="PATTERN",
         help="Finding ID(s), prefix, detector name, file path, or glob",
     )
-    p_annotate.add_argument("--note", type=str, required=True, help="Note text")
+    p_note.add_argument("text", type=str, help="Note text")
 
     # plan skip <patterns> [--reason] [--review-after N] [--permanent] [--false-positive] [--note] [--attest]
     p_skip = plan_sub.add_parser(
@@ -505,19 +582,6 @@ def _add_plan_parser(sub) -> None:
         help="Finding ID(s), prefix, detector name, file path, or glob",
     )
 
-    # plan done <patterns> --attest "..."
-    p_done = plan_sub.add_parser(
-        "done", help="Mark findings as fixed (requires attestation, purges from plan)"
-    )
-    p_done.add_argument(
-        "patterns", nargs="+", metavar="PATTERN",
-        help="Finding ID(s), prefix, detector name, file path, or glob",
-    )
-    p_done.add_argument(
-        "--attest", type=str, default=None,
-        help="Attestation that findings were actually fixed (required)",
-    )
-
     # plan reopen <patterns>
     p_reopen = plan_sub.add_parser(
         "reopen", help="Reopen resolved findings and move back to queue"
@@ -527,34 +591,33 @@ def _add_plan_parser(sub) -> None:
         help="Finding ID(s), prefix, detector name, file path, or glob",
     )
 
-    # plan defer <patterns> (deprecated)
-    p_defer = plan_sub.add_parser("defer", help="(Deprecated: use `plan skip`) Defer findings")
-    p_defer.add_argument(
+    # plan done <patterns> --attest [--note]
+    p_done = plan_sub.add_parser(
+        "done",
+        help="Mark findings as fixed (shows score movement + next step)",
+        epilog="""\
+examples:
+  desloppify plan done "unused::src/foo.tsx::React" \\
+    --attest "I have actually removed the import and I am not gaming the score."
+  desloppify plan done security --note "patched XSS" \\
+    --attest "I have actually ..."  """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_done.add_argument(
         "patterns", nargs="+", metavar="PATTERN",
         help="Finding ID(s), prefix, detector name, file path, or glob",
     )
-
-    # plan undefer <patterns> (deprecated)
-    p_undefer = plan_sub.add_parser("undefer", help="(Deprecated: use `plan unskip`) Bring deferred findings back")
-    p_undefer.add_argument(
-        "patterns", nargs="+", metavar="PATTERN",
-        help="Finding ID(s), prefix, detector name, file path, or glob",
+    p_done.add_argument(
+        "--note", type=str, default=None, help="Explanation of the fix"
     )
-
-    # plan wontfix <patterns> --note "..." --attest "..." (deprecated)
-    p_wontfix = plan_sub.add_parser(
-        "wontfix", help="(Deprecated: use `plan skip --permanent`) Mark as wontfix"
-    )
-    p_wontfix.add_argument(
-        "patterns", nargs="+", metavar="PATTERN",
-        help="Finding ID(s), prefix, detector name, file path, or glob",
-    )
-    p_wontfix.add_argument(
-        "--note", type=str, required=True, help="Explanation (required)",
-    )
-    p_wontfix.add_argument(
-        "--attest", type=str, required=True,
-        help="Attestation that findings were reviewed (must contain required phrases)",
+    p_done.add_argument(
+        "--attest",
+        type=str,
+        default=None,
+        help=(
+            "Required anti-gaming attestation. Must include BOTH keywords "
+            "'I have actually' and 'not gaming'."
+        ),
     )
 
     # plan focus <cluster> | --clear
@@ -563,13 +626,18 @@ def _add_plan_parser(sub) -> None:
     p_focus.add_argument("--clear", action="store_true", help="Clear focus")
 
     # plan cluster ...
-    p_cluster = plan_sub.add_parser("cluster", help="Manage finding clusters")
+    p_cluster = plan_sub.add_parser(
+        "cluster",
+        help="Manage finding clusters",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     cluster_sub = p_cluster.add_subparsers(dest="cluster_action")
 
-    # plan cluster create <name> [--description "..."]
+    # plan cluster create <name> [--description "..."] [--action "..."]
     p_cc = cluster_sub.add_parser("create", help="Create a cluster")
     p_cc.add_argument("cluster_name", type=str, help="Cluster name (slug)")
     p_cc.add_argument("--description", type=str, default=None, help="Cluster description")
+    p_cc.add_argument("--action", type=str, default=None, help="Primary action/command for this cluster")
 
     # plan cluster add <cluster> <patterns...>
     p_ca = cluster_sub.add_parser("add", help="Add findings to a cluster")
@@ -594,15 +662,19 @@ def _add_plan_parser(sub) -> None:
     )
     p_cm.add_argument("target", nargs="?", default=None, help="Target or offset")
 
+    # plan cluster show <name>
+    p_cs = cluster_sub.add_parser("show", help="Show cluster details and members")
+    p_cs.add_argument("cluster_name", type=str, help="Cluster name")
+
     # plan cluster list
     cluster_sub.add_parser("list", help="List all clusters")
 
 
 def _add_viz_parser(sub) -> None:
     p_viz = sub.add_parser("viz", help="Generate interactive HTML treemap")
-    p_viz.add_argument("--path", type=str, default=None)
-    p_viz.add_argument("--output", type=str, default=None)
-    p_viz.add_argument("--state", type=str, default=None)
+    p_viz.add_argument("--path", type=str, default=None, help="Project root directory (default: auto-detected)")
+    p_viz.add_argument("--output", type=str, default=None, help="Output file path")
+    p_viz.add_argument("--state", type=str, default=None, help="Path to state file")
 
 
 def _add_dev_parser(sub) -> None:

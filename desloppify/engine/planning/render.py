@@ -294,7 +294,7 @@ def _plan_user_ordered_section(
 ) -> list[str]:
     """Render the user-ordered queue section, grouped by cluster."""
     queue_order: list[str] = plan.get("queue_order", [])
-    skipped_ids: set[str] = set(plan.get("skipped", {}).keys()) | set(plan.get("deferred", []))
+    skipped_ids: set[str] = set(plan.get("skipped", {}).keys())
     overrides: dict = plan.get("overrides", {})
     clusters: dict = plan.get("clusters", {})
 
@@ -451,7 +451,7 @@ def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
     """Generate a prioritized markdown plan from state.
 
     When *plan* is provided (or auto-loaded from disk), user-ordered
-    items, clusters, deferred, and superseded sections are rendered.
+    items, clusters, skipped, and superseded sections are rendered.
     When no plan exists, output is identical to the previous behavior.
     """
     findings = state["findings"]
@@ -470,7 +470,6 @@ def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
         and (
             plan.get("queue_order")
             or plan.get("skipped")
-            or plan.get("deferred")
             or plan.get("clusters")
         )
     )
@@ -496,7 +495,7 @@ def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
 
         # Remaining: items NOT in queue_order or skipped
         ordered_ids = set(plan.get("queue_order", []))
-        skipped_ids = set(plan.get("skipped", {}).keys()) | set(plan.get("deferred", []))
+        skipped_ids = set(plan.get("skipped", {}).keys())
         plan_ids = ordered_ids | skipped_ids
         remaining = [item for item in all_items if item.get("id") not in plan_ids]
         if remaining:

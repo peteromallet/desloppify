@@ -541,7 +541,7 @@ class TestMechanicalStaleness:
     def test_unchanged_detector_doesnt_stale_unrelated_dimension(self):
         """Pre-populate structural finding, rescan with same structural + new unused
         → design_coherence must NOT be marked stale (structural didn't change)."""
-        from desloppify.engine._state.merge import MergeScanOptions, merge_scan
+        from desloppify.engine._state.merge import merge_scan
         from desloppify.engine._state.schema import empty_state
 
         state = empty_state()

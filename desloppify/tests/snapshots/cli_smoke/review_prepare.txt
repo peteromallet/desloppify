@@ -9,7 +9,7 @@
     4. IMPORTANT: findings must be defects only — never positive observations. High scores capture quality; findings capture problems.
     5. Write ALL findings to findings.json — do NOT fix code before importing. Import creates tracked state entries that let desloppify correlate fixes to findings.
     6. Import: desloppify review --import findings.json
-    7. AFTER importing: run `desloppify show review --status open` to see the work queue, then fix each finding in code and `desloppify resolve fixed <id>`
+    7. AFTER importing: run `desloppify show review --status open` to see the work queue, then fix each finding in code and `desloppify plan done <id>`
 
   AGENT PLAN:
   1. Run each investigation batch independently (parallel-friendly)

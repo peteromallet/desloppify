@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import warnings
-
 from desloppify.engine._plan.schema import (
     Cluster,
-    ItemOverride,
     PlanModel,
     SkipEntry,
     ensure_plan_defaults,
@@ -19,14 +16,11 @@ from desloppify.engine._state.schema import utc_now
 # ---------------------------------------------------------------------------
 
 def _remove_id_from_lists(plan: PlanModel, finding_id: str) -> None:
-    """Remove a finding ID from queue_order, deferred, and skipped."""
+    """Remove a finding ID from queue_order and skipped."""
     order: list[str] = plan["queue_order"]
-    deferred: list[str] = plan["deferred"]
     skipped: dict[str, SkipEntry] = plan.get("skipped", {})
     if finding_id in order:
         order.remove(finding_id)
-    if finding_id in deferred:
-        deferred.remove(finding_id)
     skipped.pop(finding_id, None)
 
 
@@ -109,16 +103,12 @@ def move_items(
     ensure_plan_defaults(plan)
     order: list[str] = plan["queue_order"]
 
-    # Remove from deferred/skipped if present
-    deferred: list[str] = plan["deferred"]
+    # Remove from skipped if present
     skipped: dict[str, SkipEntry] = plan.get("skipped", {})
     for fid in finding_ids:
-        if fid in deferred:
-            deferred.remove(fid)
         skipped.pop(fid, None)
 
     # Remove from current position in order
-    existing = [fid for fid in order if fid in set(finding_ids)]
     for fid in finding_ids:
         if fid in order:
             order.remove(fid)
@@ -220,37 +210,6 @@ def resurface_stale_skips(
 
 
 # ---------------------------------------------------------------------------
-# Defer / undefer (deprecated — delegates to skip/unskip)
-# ---------------------------------------------------------------------------
-
-def defer_items(plan: PlanModel, finding_ids: list[str]) -> int:
-    """Move finding IDs to the deferred list. Returns count deferred.
-
-    .. deprecated:: Use :func:`skip_items` instead.
-    """
-    warnings.warn(
-        "defer_items() is deprecated, use skip_items() instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return skip_items(plan, finding_ids, kind="temporary")
-
-
-def undefer_items(plan: PlanModel, finding_ids: list[str]) -> int:
-    """Bring finding IDs back from deferred to the end of queue_order.
-
-    .. deprecated:: Use :func:`unskip_items` instead.
-    """
-    warnings.warn(
-        "undefer_items() is deprecated, use unskip_items() instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    count, _ = unskip_items(plan, finding_ids)
-    return count
-
-
-# ---------------------------------------------------------------------------
 # Describe / annotate
 # ---------------------------------------------------------------------------
 
@@ -285,10 +244,17 @@ def annotate_finding(
 # ---------------------------------------------------------------------------
 
 def create_cluster(
-    plan: PlanModel, name: str, description: str | None = None
+    plan: PlanModel,
+    name: str,
+    description: str | None = None,
+    action: str | None = None,
 ) -> Cluster:
     """Create a named cluster. Raises ValueError if it already exists."""
     ensure_plan_defaults(plan)
+    if name.startswith("auto/"):
+        raise ValueError(
+            f"Cluster names starting with 'auto/' are reserved for auto-clusters: {name!r}"
+        )
     if name in plan["clusters"]:
         raise ValueError(f"Cluster {name!r} already exists")
     now = utc_now()
@@ -298,6 +264,10 @@ def create_cluster(
         "finding_ids": [],
         "created_at": now,
         "updated_at": now,
+        "auto": False,
+        "cluster_key": "",
+        "action": action,
+        "user_modified": False,
     }
     plan["clusters"][name] = cluster
     return cluster
@@ -351,6 +321,10 @@ def remove_from_cluster(
         if override and override.get("cluster") == cluster_name:
             override["cluster"] = None
             override["updated_at"] = now
+
+    # Mark auto-clusters as user_modified when items are manually removed
+    if count > 0 and cluster.get("auto"):
+        cluster["user_modified"] = True
 
     cluster["updated_at"] = now
     return count
@@ -432,7 +406,7 @@ def reset_plan(plan: PlanModel) -> None:
 def purge_ids(plan: PlanModel, finding_ids: list[str]) -> int:
     """Remove finding IDs from the plan entirely.
 
-    Cleans queue_order, deferred, skipped, and all cluster memberships.
+    Cleans queue_order, skipped, and all cluster memberships.
     Does NOT touch overrides (descriptions/notes are kept for history).
     Returns count of IDs that were actually present somewhere.
     """
@@ -440,15 +414,11 @@ def purge_ids(plan: PlanModel, finding_ids: list[str]) -> int:
     found = 0
 
     order: list[str] = plan["queue_order"]
-    deferred: list[str] = plan["deferred"]
     skipped: dict[str, SkipEntry] = plan["skipped"]
     for fid in finding_ids:
         was_present = False
         if fid in order:
             order.remove(fid)
-            was_present = True
-        if fid in deferred:
-            deferred.remove(fid)
             was_present = True
         if fid in skipped:
             skipped.pop(fid)
@@ -469,7 +439,6 @@ __all__ = [
     "annotate_finding",
     "clear_focus",
     "create_cluster",
-    "defer_items",
     "delete_cluster",
     "describe_finding",
     "move_cluster",
@@ -480,6 +449,5 @@ __all__ = [
     "resurface_stale_skips",
     "set_focus",
     "skip_items",
-    "undefer_items",
     "unskip_items",
 ]

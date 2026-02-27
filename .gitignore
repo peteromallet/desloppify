@@ -26,6 +26,9 @@ obj/
 TestResults/
 todos/
 
+dogfood-observations.md
+pytest-full.xml
+
 # Dev tool configs
 .importlinter
 

@@ -378,7 +378,6 @@ def prepare_holistic_review(
     _, per_file_prompts, _ = load_dimensions_for_lang(lang.name)
     dims = resolve_dimensions(
         cli_dimensions=resolved_options.dimensions,
-        lang_name=lang.name,
         default_dimensions=default_dims,
     )
     lang_guide = get_lang_guidance(lang.name)

@@ -294,6 +294,7 @@ class NarrativeContext:
     lang: str | None = None
     command: str | None = None
     config: dict | None = None
+    plan: dict | None = None
 
 def _history_for_lang(raw_history: list[dict], lang: str | None) -> list[dict]:
     if not lang:
@@ -322,6 +323,7 @@ def compute_narrative(
     lang = resolved_context.lang
     command = resolved_context.command
     config = resolved_context.config
+    plan = resolved_context.plan
 
     raw_history = state.get("scan_history", [])
     history = _history_for_lang(raw_history, lang)
@@ -337,12 +339,14 @@ def compute_narrative(
     dimensions = _analyze_dimensions(dim_scores, history, state)
     debt = _analyze_debt(dim_scores, findings, history)
     milestone = _detect_milestone(state, None, history)
+    clusters = plan.get("clusters") if isinstance(plan, dict) else None
     action_context = ActionContext(
         by_detector=by_detector,
         dimension_scores=dim_scores,
         state=state,
         debt=debt,
         lang=lang,
+        clusters=clusters,
     )
     actions = [dict(action) for action in compute_actions(action_context)]
     strategy = compute_strategy(findings, by_detector, actions, phase, lang)

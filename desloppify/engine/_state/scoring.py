@@ -41,6 +41,8 @@ def _count_findings(findings: dict) -> tuple[dict[str, int], dict[int, dict[str,
     tier_stats: dict[int, dict[str, int]] = {}
 
     for finding in findings.values():
+        if finding.get("suppressed"):
+            continue
         status = finding["status"]
         tier = finding.get("tier", 3)
         counters[status] = counters.get(status, 0) + 1
@@ -315,22 +317,21 @@ def _update_objective_health(
         state["verified_strict_score"] = 100.0
         return
 
-    # Derive language-scoped subjective dimensions so only dimensions with
-    # a review pathway get 0-score placeholders.  Explicit assessments
-    # outside this set still count (append_subjective_dimensions handles
-    # that).  Without this, all 20 global default dimensions would get
-    # placeholders — including ones the language's review never covers.
+    # Use the full scorecard dimensions for 0-score placeholders so every
+    # dimension the review workflow covers gets a placeholder when unreviewed.
+    # Explicit assessments outside this set still count
+    # (append_subjective_dimensions handles that).
     allowed_subjective: set[str] | None = None
     lang_name = _resolve_lang_from_state(state)
     if lang_name:
         try:
-            from desloppify.intelligence.review.dimensions.lang import (
-                HOLISTIC_DIMENSIONS_BY_LANG,
+            from desloppify.intelligence.review.dimensions.data import (
+                load_dimensions_for_lang,
             )
 
-            lang_dims = HOLISTIC_DIMENSIONS_BY_LANG.get(lang_name)
-            if lang_dims:
-                allowed_subjective = set(lang_dims)
+            dims, _, _ = load_dimensions_for_lang(lang_name)
+            if dims:
+                allowed_subjective = set(dims)
         except (ImportError, AttributeError):
             pass
 

@@ -29,9 +29,13 @@ def _cmd_plan_show(args: argparse.Namespace) -> None:
     active = plan.get("active_cluster")
     superseded = len(plan.get("superseded", {}))
 
+    # Count meaningful annotations (descriptions and notes)
+    described = sum(1 for o in overrides.values() if o.get("description"))
+    noted = sum(1 for o in overrides.values() if o.get("note"))
+
     print(colorize("  Living Plan Status", "bold"))
     print(colorize("  " + "─" * 40, "dim"))
-    print(f"  Ordered items:    {ordered}")
+    print(f"  Queue:            {ordered} items prioritized")
     if total_skipped:
         print(f"  Skipped:          {total_skipped} (temp: {temp_count}, wontfix: {perm_count}, fp: {fp_count})")
     else:
@@ -44,11 +48,12 @@ def _cmd_plan_show(args: argparse.Namespace) -> None:
             marker = " (focused)" if name == active else ""
             desc_str = f" — {desc}" if desc else ""
             print(f"    {name}: {member_count} items{desc_str}{marker}")
-    print(f"  Overrides:        {len(overrides)}")
+    if described or noted:
+        print(f"  Annotations:      {described} described, {noted} noted")
     if active:
         print(f"  Focus:            {active}")
     if superseded:
-        print(f"  Superseded:       {superseded}")
+        print(f"  Disappeared:      {superseded} (resolved or removed since last scan)")
 
 
 def _cmd_plan_reset(args: argparse.Namespace) -> None:
@@ -73,6 +78,12 @@ def cmd_plan(args: argparse.Namespace) -> None:
         _cmd_plan_show(args)
         return
 
+    if plan_action == "queue":
+        from desloppify.app.commands.plan.queue_render import cmd_plan_queue
+
+        cmd_plan_queue(args)
+        return
+
     if plan_action == "reset":
         _cmd_plan_reset(args)
         return
@@ -84,32 +95,26 @@ def cmd_plan(args: argparse.Namespace) -> None:
         return
 
     if plan_action in (
-        "describe", "annotate", "defer", "undefer", "wontfix", "focus",
-        "skip", "unskip", "done", "reopen",
+        "describe", "note", "focus",
+        "skip", "unskip", "reopen", "done",
     ):
         from desloppify.app.commands.plan.override_handlers import (
-            cmd_plan_annotate,
-            cmd_plan_defer,
             cmd_plan_describe,
             cmd_plan_done,
             cmd_plan_focus,
+            cmd_plan_note,
             cmd_plan_reopen,
             cmd_plan_skip,
-            cmd_plan_undefer,
             cmd_plan_unskip,
-            cmd_plan_wontfix,
         )
 
         dispatch = {
             "describe": cmd_plan_describe,
-            "annotate": cmd_plan_annotate,
-            "defer": cmd_plan_defer,
-            "undefer": cmd_plan_undefer,
-            "wontfix": cmd_plan_wontfix,
+            "done": cmd_plan_done,
+            "note": cmd_plan_note,
             "focus": cmd_plan_focus,
             "skip": cmd_plan_skip,
             "unskip": cmd_plan_unskip,
-            "done": cmd_plan_done,
             "reopen": cmd_plan_reopen,
         }
         dispatch[plan_action](args)

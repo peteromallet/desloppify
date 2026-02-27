@@ -7,6 +7,9 @@ from pathlib import Path
 
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.core.discovery_api import (
+    collect_exclude_dirs as _collect_exclude_dirs,
+)
+from desloppify.core.discovery_api import (
     find_py_files,
 )
 from desloppify.core.discovery_api import (
@@ -152,18 +155,23 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
     if not select:
         return []
 
+    exclude_dirs = _collect_exclude_dirs(path)
+    cmd = [
+        "ruff",
+        "check",
+        "--select",
+        ",".join(select),
+        "--output-format",
+        "json",
+        "--no-fix",
+    ]
+    if exclude_dirs:
+        cmd.extend(["--exclude", ",".join(exclude_dirs)])
+    cmd.append(str(path))
+
     try:
         result = subprocess.run(
-            [
-                "ruff",
-                "check",
-                "--select",
-                ",".join(select),
-                "--output-format",
-                "json",
-                "--no-fix",
-                str(path),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,

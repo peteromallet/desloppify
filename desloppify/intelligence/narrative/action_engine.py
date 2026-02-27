@@ -256,6 +256,53 @@ def _assign_priorities(actions: list[ActionItem]) -> list[ActionItem]:
     return actions
 
 
+def _cluster_detector(cluster: dict) -> str | None:
+    """Extract the primary detector from a cluster.
+
+    Uses the cluster_key prefix (e.g. "auto::unused" → "unused",
+    "typed::dict_keys::phantom_read" → "dict_keys") or falls back
+    to the first member's detector.
+    """
+    key = cluster.get("cluster_key", "")
+    if key:
+        parts = key.split("::")
+        if len(parts) >= 2:
+            return parts[1]
+    # Fallback: parse from cluster name (auto/detector-subtype)
+    name = cluster.get("name", "")
+    if name.startswith("auto/"):
+        rest = name[5:]
+        return rest.split("-", 1)[0] if "-" in rest else rest
+    return None
+
+
+def _annotate_with_clusters(
+    actions: list[ActionItem], clusters: dict | None
+) -> None:
+    """Annotate actions with matching cluster info when clusters exist."""
+    if not clusters:
+        return
+    for action in actions:
+        detector = action.get("detector")
+        if not detector:
+            continue
+        matching = [
+            name
+            for name, c in clusters.items()
+            if c.get("auto") and _cluster_detector(c) == detector
+        ]
+        if matching:
+            action["clusters"] = matching
+            action["cluster_count"] = len(matching)
+            action["command"] = "desloppify next"
+            count = action.get("count", 0)
+            display = action.get("detector", "unknown")
+            action["description"] = (
+                f"{count} {display} findings in {len(matching)} cluster(s) — "
+                f"run `desloppify next`"
+            )
+
+
 def compute_actions(ctx: ActionContext) -> list[ActionItem]:
     """Compute prioritized action list with tool mapping."""
     actions: list[ActionItem] = []
@@ -267,4 +314,6 @@ def compute_actions(ctx: ActionContext) -> list[ActionItem]:
     _append_refactor_actions(actions, ctx.by_detector, impact_for)
     _append_debt_action(actions, ctx.debt)
 
-    return _assign_priorities(actions)
+    prioritized = _assign_priorities(actions)
+    _annotate_with_clusters(prioritized, ctx.clusters)
+    return prioritized

@@ -9,7 +9,7 @@ from desloppify.core._internal.text_utils import get_project_root
 
 # Bump this integer whenever docs/SKILL.md changes in a way that agents
 # should pick up (new commands, changed workflows, removed sections).
-SKILL_VERSION = 1
+SKILL_VERSION = 2
 
 SKILL_VERSION_RE = re.compile(r"<!--\s*desloppify-skill-version:\s*(\d+)\s*-->")
 SKILL_OVERLAY_RE = re.compile(r"<!--\s*desloppify-overlay:\s*(\w+)\s*-->")

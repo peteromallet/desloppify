@@ -171,12 +171,6 @@ def upsert_findings(
             previous["suppressed"] = True
             previous["suppressed_at"] = now
             previous["suppression_pattern"] = matched_ignore
-            if previous["status"] in ("fixed", "auto_resolved", "false_positive"):
-                previous["status"] = "open"
-                previous["resolved_at"] = None
-                previous["note"] = (
-                    "Suppressed by ignore pattern — remains unresolved for score integrity"
-                )
             continue
 
         previous["suppressed"] = False

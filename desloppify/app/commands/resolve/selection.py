@@ -42,17 +42,14 @@ def _missing_attestation_keywords(attestation: str | None) -> list[str]:
     ]
 
 
-def _validate_attestation(attestation: str | None) -> bool:
+def validate_attestation(attestation: str | None) -> bool:
     return not _missing_attestation_keywords(attestation)
 
 
-def _show_attestation_requirement(
+def show_attestation_requirement(
     label: str,
     attestation: str | None,
     example: str,
-    *,
-    patterns: list[str] | None = None,
-    status: str | None = None,
 ) -> None:
     missing = _missing_attestation_keywords(attestation)
     if not attestation:
@@ -66,15 +63,6 @@ def _show_attestation_requirement(
         f"Required keywords: '{_ATTESTATION_KEYWORD_HINT[0]}' and '{_ATTESTATION_KEYWORD_HINT[1]}'."
     )
     print(colorize(f'Example: --attest "{example}"', "dim"), file=sys.stderr)
-    if patterns and status:
-        pattern_args = " ".join(f'"{p}"' for p in patterns)
-        print(
-            colorize(
-                f'\nCopy-paste:\n  desloppify resolve {status} {pattern_args} --attest "{example}"',
-                "dim",
-            ),
-            file=sys.stderr,
-        )
 
 
 def _validate_resolve_inputs(args: argparse.Namespace, attestation: str | None) -> None:
@@ -85,13 +73,11 @@ def _validate_resolve_inputs(args: argparse.Namespace, attestation: str | None) 
         sys.exit(1)
     if args.status == "open":
         return
-    if not _validate_attestation(attestation):
-        _show_attestation_requirement(
+    if not validate_attestation(attestation):
+        show_attestation_requirement(
             "Manual resolve",
             attestation,
             ATTEST_EXAMPLE,
-            patterns=getattr(args, "patterns", None),
-            status=args.status,
         )
         sys.exit(1)
 

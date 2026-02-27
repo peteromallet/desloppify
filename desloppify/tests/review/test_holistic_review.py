@@ -170,23 +170,24 @@ class TestHolisticDimensionsByLang:
 
         assert len(data["dimensions"]) == len(DIMENSIONS)
 
-    def test_python_gets_eleven_dims(self, tmp_path):
+    def test_python_gets_full_scorecard(self, tmp_path):
         f1 = _make_file(str(tmp_path), "module.py", lines=50)
         lang = _mock_lang([f1])
         state = empty_state()
 
         data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
 
-        assert len(data["dimensions"]) == 13
+        # Full scorecard: all 20 dimensions, not the curated subset
+        assert len(data["dimensions"]) == 20
         assert "package_organization" in data["dimensions"]
-        assert "api_surface_coherence" not in data["dimensions"]
+        assert "api_surface_coherence" in data["dimensions"]
         assert "high_level_elegance" in data["dimensions"]
         assert "mid_level_elegance" in data["dimensions"]
         assert "low_level_elegance" in data["dimensions"]
         assert "design_coherence" in data["dimensions"]
         assert "initialization_coupling" in data["dimensions"]
 
-    def test_typescript_gets_twelve_dims(self, tmp_path):
+    def test_typescript_gets_full_scorecard(self, tmp_path):
         f1 = _make_file(str(tmp_path), "module.ts", lines=50)
         lang = _mock_lang([f1])
         lang.name = "typescript"
@@ -194,7 +195,8 @@ class TestHolisticDimensionsByLang:
 
         data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
 
-        assert len(data["dimensions"]) == 14
+        # Full scorecard: all 20 dimensions, not the curated subset
+        assert len(data["dimensions"]) == 20
         assert "api_surface_coherence" in data["dimensions"]
         assert "package_organization" in data["dimensions"]
         assert "high_level_elegance" in data["dimensions"]
@@ -327,8 +329,8 @@ class TestPrepareHolisticReview:
 
         assert data["mode"] == "holistic"
         assert data["command"] == "review"
-        # Python lang gets curated 13-dim subset (including initialization_coupling)
-        assert len(data["dimensions"]) == 13
+        # Full scorecard: all 20 dimensions (no longer filtered to curated subset)
+        assert len(data["dimensions"]) == 20
         assert "holistic_context" in data
         assert "system_prompt" in data
 

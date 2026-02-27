@@ -69,4 +69,21 @@ def check_tool_staleness(state: dict, *, tool_dir: Path | None = None) -> str | 
     return None
 
 
-__all__ = ["TOOL_DIR", "check_tool_staleness", "compute_tool_hash"]
+_NEEDS_RESCAN_WARNING = (
+    "Config changed — scores may be stale. Run: desloppify scan"
+)
+
+
+def check_config_staleness(config: dict) -> str | None:
+    """Return warning if config changes have invalidated cached scores."""
+    if config.get("needs_rescan"):
+        return _NEEDS_RESCAN_WARNING
+    return None
+
+
+__all__ = [
+    "TOOL_DIR",
+    "check_config_staleness",
+    "check_tool_staleness",
+    "compute_tool_hash",
+]

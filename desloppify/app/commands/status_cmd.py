@@ -28,12 +28,13 @@ from desloppify.app.commands.status_parts.render import (
     show_tier_progress_table,
     write_status_query,
 )
+from desloppify.engine.plan import load_plan
 from desloppify.engine.planning.scorecard_projection import (
     scorecard_dimensions_payload,
 )
 from desloppify.core.output_api import colorize
 from desloppify.core.skill_docs import check_skill_version
-from desloppify.core.tooling import check_tool_staleness
+from desloppify.core.tooling import check_config_staleness, check_tool_staleness
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
 from desloppify.scoring import compute_health_breakdown
 
@@ -75,6 +76,9 @@ def cmd_status(args: argparse.Namespace) -> None:
     skill_warning = check_skill_version()
     if skill_warning:
         print(colorize(f"  {skill_warning}", "yellow"))
+    config_warning = check_config_staleness(config)
+    if config_warning:
+        print(colorize(f"  {config_warning}", "yellow"))
 
     scores = state_mod.score_snapshot(state)
     by_tier = stats.get("by_tier", {})
@@ -82,9 +86,16 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None
+
+    # Load living plan for plan-aware rendering and narrative
+    _plan = load_plan()
+    _plan_active = _plan if (
+        _plan.get("queue_order") or _plan.get("clusters")
+    ) else None
+
     narrative = compute_narrative(
         state,
-        context=NarrativeContext(lang=lang_name, command="status"),
+        context=NarrativeContext(lang=lang_name, command="status", plan=_plan_active),
     )
     ignores = config.get("ignore", [])
 
@@ -107,16 +118,6 @@ def cmd_status(args: argparse.Namespace) -> None:
         )
     else:
         show_tier_progress_table(by_tier)
-
-    # Load living plan for plan-aware rendering
-    try:
-        from desloppify.engine.plan import load_plan
-        _plan = load_plan()
-        _plan_active = _plan if (
-            _plan.get("queue_order") or _plan.get("clusters")
-        ) else None
-    except Exception:
-        _plan_active = None
 
     if dim_scores:
         show_focus_suggestion(dim_scores, state, plan=_plan_active)
