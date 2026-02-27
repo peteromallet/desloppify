@@ -48,7 +48,6 @@ def print_score_update(
 
     # Show strict target progress when config is available
     if config is not None:
-        from desloppify.app.commands.helpers.score import target_strict_score_from_config
         from desloppify.intelligence import narrative as narrative_mod
         from desloppify.intelligence.narrative.core import NarrativeContext
 
