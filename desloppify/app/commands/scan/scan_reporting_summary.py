@@ -64,6 +64,8 @@ def show_score_delta(
     prev_strict: float | None,
     prev_verified: float | None = None,
     non_comparable_reason: str | None = None,
+    *,
+    target_strict: float | None = None,
 ):
     """Print the canonical score quartet with deltas."""
     stats = state["stats"]
@@ -122,6 +124,12 @@ def show_score_delta(
         print(colorize("    objective = mechanical detectors only (no subjective review)", "dim"))
         print(colorize("    strict   = like overall, but wontfix counts against you  <-- your north star", "dim"))
         print(colorize("    verified = strict, but only credits scan-verified fixes", "dim"))
+
+    # Show strict target progress
+    if target_strict is not None and new.strict is not None:
+        from desloppify.app.commands.helpers.score_update import _print_strict_target_nudge
+
+        _print_strict_target_nudge(new.strict, target_strict, show_next=False)
 
     integrity = state.get("subjective_integrity", {})
     if isinstance(integrity, dict):

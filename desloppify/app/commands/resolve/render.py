@@ -64,6 +64,7 @@ def _print_score_movement(
     prev_verified: float | None,
     state: dict,
     has_review_findings: bool = False,
+    target_strict: float | None = None,
 ) -> None:
     new = state_mod.score_snapshot(state)
     if (
@@ -90,6 +91,10 @@ def _print_score_movement(
             f"  verified {new.verified:.1f}/100{_delta_suffix(verified_delta)}", "dim"
         )
     )
+    if target_strict is not None:
+        from desloppify.app.commands.helpers.score_update import _print_strict_target_nudge
+
+        _print_strict_target_nudge(new.strict, target_strict, show_next=False)
     if status == "wontfix":
         strict_gap = round(new.overall - new.strict, 1)
         if strict_gap > 0:

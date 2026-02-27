@@ -104,6 +104,7 @@ def cmd_status(args: argparse.Namespace) -> None:
         objective_score=scores.objective,
         strict_score=scores.strict,
         verified_strict_score=scores.verified,
+        target_strict=target_strict_score,
     ):
         print(colorize(line, style))
     print_scan_metrics(state)

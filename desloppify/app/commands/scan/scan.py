@@ -150,6 +150,8 @@ def cmd_scan(args: argparse.Namespace) -> None:
 
     noise = orchestrator.noise_snapshot()
 
+    target_value = target_strict_score_from_config(runtime.config, fallback=95.0)
+
     show_diff_summary(merge.diff)
     show_score_delta(
         runtime.state,
@@ -157,12 +159,11 @@ def cmd_scan(args: argparse.Namespace) -> None:
         merge.prev_objective,
         merge.prev_strict,
         merge.prev_verified,
+        target_strict=target_value,
     )
     _show_scan_visibility(noise, runtime.effective_include_slow)
     show_scorecard_subjective_measures(runtime.state)
     show_score_model_breakdown(runtime.state)
-
-    target_value = target_strict_score_from_config(runtime.config, fallback=95.0)
 
     new_dim_scores = runtime.state.get("dimension_scores", {})
     if new_dim_scores and merge.prev_dim_scores:

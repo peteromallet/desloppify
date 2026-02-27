@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from desloppify import state as state_mod
 from desloppify.app.commands.scan.scan_helpers import format_delta
-from desloppify.app.commands.status_parts.strict_target import format_strict_target_progress
 from desloppify.core.output_api import colorize
 
 
@@ -20,7 +19,7 @@ def print_score_update(
     Args:
         state: Current state dict (scores already recomputed by save_state).
         prev: ScoreSnapshot taken before the operation.
-        config: Project config dict (needed for target_strict_score).
+        config: Project config dict (loaded from disk if not provided).
         label: Prefix label (default "Scores").
     """
     new = state_mod.score_snapshot(state)
@@ -46,19 +45,27 @@ def print_score_update(
         + colorize(f"  verified {new.verified:.1f}/100{verified_s}", verified_c)
     )
 
-    # Show strict target progress when config is available
-    if config is not None:
-        from desloppify.intelligence import narrative as narrative_mod
-        from desloppify.intelligence.narrative.core import NarrativeContext
+    # Always show strict target + next-command nudge
+    if config is None:
+        from desloppify.core import config as config_mod
 
-        narrative = narrative_mod.compute_narrative(
-            state, context=NarrativeContext(command="score_update"),
-        )
-        strict_target = narrative.get("strict_target")
-        if strict_target:
-            lines, _target, _gap = format_strict_target_progress(strict_target)
-            for message, style in lines:
-                print(colorize(message, style))
+        config = config_mod.load_config()
+    from desloppify.app.commands.helpers.score import target_strict_score_from_config
+
+    target = target_strict_score_from_config(config, fallback=95.0)
+    _print_strict_target_nudge(new.strict, target)
 
 
-__all__ = ["print_score_update"]
+def _print_strict_target_nudge(
+    strict: float, target: float, *, show_next: bool = True,
+) -> None:
+    """Print a one-liner with strict→target and optional next-command nudge."""
+    gap = round(target - strict, 1)
+    if gap > 0:
+        suffix = " — run `desloppify next` to find the next improvement" if show_next else ""
+        print(colorize(f"  Strict {strict:.1f} (target: {target:.1f}){suffix}", "dim"))
+    else:
+        print(colorize(f"  Strict {strict:.1f} — target {target:.1f} reached!", "green"))
+
+
+__all__ = ["print_score_update", "_print_strict_target_nudge"]

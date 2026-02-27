@@ -12,6 +12,7 @@ def score_summary_lines(
     objective_score: float | None,
     strict_score: float | None,
     verified_strict_score: float | None,
+    target_strict: float | None = None,
 ) -> list[tuple[str, str]]:
     """Return formatted top-line score summary rows."""
     if (
@@ -20,7 +21,7 @@ def score_summary_lines(
         and strict_score is not None
         and verified_strict_score is not None
     ):
-        return [
+        lines: list[tuple[str, str]] = [
             (
                 f"\n  Scores: overall {overall_score:.1f}/100 · "
                 f"objective {objective_score:.1f}/100 · "
@@ -33,8 +34,23 @@ def score_summary_lines(
                 "strict (penalizes wontfix) · verified (scan-confirmed only)",
                 "dim",
             ),
-            ("  Focus on strict — it's your north star.", "dim"),
         ]
+        if target_strict is not None:
+            gap = round(target_strict - strict_score, 1)
+            if gap > 0:
+                lines.append((
+                    f"  Strict {strict_score:.1f} (target: {target_strict:.1f})"
+                    " — run `desloppify next` to find the next improvement",
+                    "dim",
+                ))
+            else:
+                lines.append((
+                    f"  Strict {strict_score:.1f} — target {target_strict:.1f} reached!",
+                    "green",
+                ))
+        else:
+            lines.append(("  Focus on strict — it's your north star.", "dim"))
+        return lines
     return [
         ("\n  Scores unavailable", "bold"),
         ("  Run a full scan to compute overall/objective/strict scores.", "yellow"),

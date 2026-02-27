@@ -111,6 +111,10 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         state["findings"].get(fid, {}).get("detector") == "review"
         for fid in all_resolved
     )
+    from desloppify.app.commands.helpers.score import target_strict_score_from_config
+
+    _resolve_config = config_mod.load_config()
+    _resolve_target = target_strict_score_from_config(_resolve_config, fallback=95.0)
     _print_score_movement(
         status=args.status,
         prev_overall=prev.overall,
@@ -119,6 +123,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         prev_verified=prev.verified,
         state=state,
         has_review_findings=has_review_findings,
+        target_strict=_resolve_target,
     )
     _print_subjective_reset_hint(
         args=args,
