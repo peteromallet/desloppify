@@ -70,6 +70,11 @@ def _build_holistic_context_inner(
 ) -> HolisticContext:
     """Inner holistic context builder (runs with file cache enabled)."""
     file_contents = _read_file_contents(files)
+    allowed_rel_files = {
+        rel(filepath)
+        for filepath in files
+        if isinstance(filepath, str) and filepath
+    }
 
     context = HolisticContext(
         architecture=_architecture_context(lang, file_contents),
@@ -82,8 +87,13 @@ def _build_holistic_context_inner(
             "strategy_by_directory": _error_strategy_context(file_contents),
         },
         abstractions=_abstractions_context(file_contents),
-        dependencies=_dependencies_context(state),
-        testing=_testing_context(lang, state, file_contents),
+        dependencies=_dependencies_context(state, allowed_files=allowed_rel_files),
+        testing=_testing_context(
+            lang,
+            state,
+            file_contents,
+            allowed_files=allowed_rel_files,
+        ),
         api_surface=_api_surface_context(lang, file_contents),
         structure=compute_structure_context(file_contents, lang),
     )
@@ -103,7 +113,7 @@ def _build_holistic_context_inner(
     context.codebase_stats = _codebase_stats(file_contents)
 
     # Enrich with aggregated mechanical detector evidence.
-    evidence = gather_mechanical_evidence(state)
+    evidence = gather_mechanical_evidence(state, allowed_files=allowed_rel_files)
     if evidence:
         context.scan_evidence = evidence
         _enrich_sections_from_evidence(context, evidence)

@@ -54,6 +54,32 @@ class TestGatherMechanicalEvidence:
         }
         assert gather_mechanical_evidence(state) == {}
 
+    def test_allowed_files_scope_filters_evidence(self):
+        state = {
+            "findings": {
+                "in_scope": _finding(
+                    id="in_scope",
+                    detector="structural",
+                    file="source/worker.py",
+                    detail={"signals": {"loc": 420, "complexity_score": 9}},
+                ),
+                "out_scope": _finding(
+                    id="out_scope",
+                    detector="structural",
+                    file="Wan2GP/wgp.py",
+                    detail={"signals": {"loc": 900, "complexity_score": 20}},
+                ),
+            }
+        }
+
+        evidence = gather_mechanical_evidence(
+            state,
+            allowed_files={"source/worker.py"},
+        )
+        hotspots = evidence.get("complexity_hotspots", [])
+        assert len(hotspots) == 1
+        assert hotspots[0]["file"] == "source/worker.py"
+
     def test_complexity_hotspots(self):
         state = {
             "findings": {

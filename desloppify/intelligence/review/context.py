@@ -174,14 +174,26 @@ def _build_review_context_inner(
     if lang.zone_map is not None:
         ctx.zone_distribution = lang.zone_map.counts()
 
-    # 6. Existing findings per file (summaries only)
+    # 6. Existing findings per file (summaries only), scoped to active review files.
+    allowed_review_files = {
+        rel(filepath)
+        for filepath in file_contents
+        if isinstance(filepath, str) and filepath
+    }
     findings = state.get("findings", {})
     by_file: dict[str, list[str]] = {}
     for finding in findings.values():
-        if finding["status"] == "open":
-            by_file.setdefault(finding["file"], []).append(
-                f"{finding['detector']}: {finding['summary'][:80]}"
-            )
+        if finding.get("status") != "open":
+            continue
+        finding_file_raw = finding.get("file", "")
+        if not isinstance(finding_file_raw, str) or not finding_file_raw:
+            continue
+        finding_file = rel(finding_file_raw)
+        if finding_file not in allowed_review_files:
+            continue
+        by_file.setdefault(finding_file, []).append(
+            f"{finding['detector']}: {finding['summary'][:80]}"
+        )
     ctx.existing_findings = by_file
 
     # 7. Codebase stats

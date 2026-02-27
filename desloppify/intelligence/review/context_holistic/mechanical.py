@@ -11,7 +11,27 @@ from collections import Counter, defaultdict
 from typing import Any
 
 
-def gather_mechanical_evidence(state: dict[str, Any]) -> dict[str, Any]:
+def _normalize_allowed_files(
+    allowed_files: set[str] | list[str] | tuple[str, ...] | None,
+) -> set[str] | None:
+    """Normalize optional allowed-file scope to slash-normalized relative paths."""
+    if allowed_files is None:
+        return None
+    out: set[str] = set()
+    for raw in allowed_files:
+        if not isinstance(raw, str):
+            continue
+        file_path = raw.strip().replace("\\", "/")
+        if file_path:
+            out.add(file_path)
+    return out
+
+
+def gather_mechanical_evidence(
+    state: dict[str, Any],
+    *,
+    allowed_files: set[str] | list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
     """Aggregate open findings into evidence clusters for holistic review.
 
     Returns a dict of named clusters.  Empty dict when no findings exist.
@@ -19,6 +39,7 @@ def gather_mechanical_evidence(state: dict[str, Any]) -> dict[str, Any]:
     findings = state.get("findings", {})
     if not findings:
         return {}
+    allowed_scope = _normalize_allowed_files(allowed_files)
 
     # ── Single-pass bucketing ────────────────────────────────────────
     by_detector: dict[str, list[dict]] = defaultdict(list)
@@ -31,19 +52,26 @@ def gather_mechanical_evidence(state: dict[str, Any]) -> dict[str, Any]:
             continue
         if finding.get("status") != "open":
             continue
-        det = finding.get("detector", "")
         filepath = finding.get("file", "")
+        normalized_file = (
+            filepath.strip().replace("\\", "/")
+            if isinstance(filepath, str)
+            else ""
+        )
+        if allowed_scope is not None and normalized_file not in allowed_scope:
+            continue
+        det = finding.get("detector", "")
         if det:
             by_detector[det].append(finding)
-        if filepath and filepath != ".":
-            by_file[filepath].append(finding)
+        if normalized_file and normalized_file != ".":
+            by_file[normalized_file].append(finding)
         # Track smell subtypes for systemic pattern detection
         if det == "smells":
             detail = finding.get("detail", {})
             smell_id = detail.get("smell_id", "") if isinstance(detail, dict) else ""
             if smell_id:
                 smell_counter[smell_id] += 1
-                smell_files[smell_id].append(filepath)
+                smell_files[smell_id].append(normalized_file)
 
     if not by_detector:
         return {}

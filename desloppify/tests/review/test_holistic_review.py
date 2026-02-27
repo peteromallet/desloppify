@@ -479,6 +479,84 @@ class TestPrepareHolisticReview:
         assert concern_batch["mapped_to_active_dimensions"] is True
         assert "mapped to active dimensions" in concern_batch["why"]
 
+    def test_prepare_holistic_review_filters_out_of_scope_batch_files(
+        self, tmp_path, monkeypatch
+    ):
+        in_scope_file = _make_file(str(tmp_path), "source/worker.py", lines=30)
+        _make_file(str(tmp_path), "Wan2GP/wgp.py", lines=30)
+        lang = _mock_lang([in_scope_file])
+        lang.name = "python"
+        state = empty_state()
+        state["findings"] = {
+            "in_scope_structural": {
+                "id": "in_scope_structural",
+                "detector": "structural",
+                "file": "source/worker.py",
+                "status": "open",
+                "summary": "structural in-scope",
+                "detail": {"signals": {"loc": 200, "complexity_score": 8}},
+            },
+            "out_scope_structural": {
+                "id": "out_scope_structural",
+                "detector": "structural",
+                "file": "Wan2GP/wgp.py",
+                "status": "open",
+                "summary": "structural out-of-scope",
+                "detail": {"signals": {"loc": 900, "complexity_score": 20}},
+            },
+        }
+
+        concerns = [
+            SimpleNamespace(
+                type="design_concern",
+                file="source/worker.py",
+                summary="in scope concern",
+                question="question",
+                evidence=("signal",),
+            ),
+            SimpleNamespace(
+                type="design_concern",
+                file="Wan2GP/wgp.py",
+                summary="out-of-scope concern",
+                question="question",
+                evidence=("signal",),
+            ),
+        ]
+        monkeypatch.setattr(
+            "desloppify.engine.concerns.generate_concerns",
+            lambda *_args, **_kwargs: concerns,
+        )
+
+        data = _prepare_holistic_review_impl(
+            tmp_path,
+            lang,
+            state,
+            options=HolisticReviewPrepareOptions(
+                dimensions=["design_coherence", "initialization_coupling"],
+                files=[in_scope_file],
+                include_full_sweep=False,
+                max_files_per_batch=20,
+            ),
+        )
+
+        batch_files = [
+            filepath
+            for batch in data["investigation_batches"]
+            for filepath in batch.get("files_to_read", [])
+        ]
+        assert batch_files
+        assert all(not file_path.startswith("Wan2GP/") for file_path in batch_files)
+
+        concern_signals = [
+            signal
+            for batch in data["investigation_batches"]
+            for signal in batch.get("concern_signals", [])
+        ]
+        assert all(
+            not str(signal.get("file", "")).startswith("Wan2GP/")
+            for signal in concern_signals
+        )
+
 
 # ===================================================================
 # import_holistic_findings

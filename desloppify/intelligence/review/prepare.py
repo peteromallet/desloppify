@@ -54,6 +54,8 @@ from desloppify.intelligence.review.selection import (
 
 logger = logging.getLogger(__name__)
 
+_NON_PRODUCTION_ZONES = frozenset({"test", "config", "generated", "vendor"})
+
 
 @dataclass
 class ReviewPrepareOptions:
@@ -92,6 +94,129 @@ def _normalize_max_files(value: Any) -> int | None:
         return None
     parsed = int(value)
     return parsed if parsed > 0 else None
+
+
+def _collect_allowed_review_files(
+    files: list[str],
+    lang: object,
+    *,
+    base_path: Path | None = None,
+) -> set[str]:
+    """Return relative production-file paths allowed for holistic review batches."""
+    allowed: set[str] = set()
+    zone_map = getattr(lang, "zone_map", None)
+    resolved_base = base_path.resolve() if isinstance(base_path, Path) else None
+    for filepath in files:
+        if not isinstance(filepath, str):
+            continue
+        normalized = filepath.strip().replace("\\", "/")
+        if not normalized:
+            continue
+        if zone_map is not None:
+            try:
+                zone = zone_map.get(filepath)
+                zone_value = getattr(zone, "value", str(zone))
+            except (AttributeError, KeyError, TypeError, ValueError):
+                zone_value = "production"
+            if zone_value in _NON_PRODUCTION_ZONES:
+                continue
+        allowed.add(normalized)
+        allowed.add(rel(filepath))
+        if resolved_base is not None:
+            try:
+                allowed.add(Path(filepath).resolve().relative_to(resolved_base).as_posix())
+            except ValueError:
+                pass
+    return allowed
+
+
+def _file_in_allowed_scope(filepath: object, allowed_files: set[str]) -> bool:
+    """True when *filepath* resolves to a currently in-scope review file."""
+    if not isinstance(filepath, str):
+        return False
+    normalized = filepath.strip().replace("\\", "/")
+    if not normalized:
+        return False
+    if normalized in allowed_files:
+        return True
+    return rel(filepath) in allowed_files
+
+
+def _filter_issue_focus_to_scope(
+    issue_focus: object,
+    allowed_files: set[str],
+) -> dict[str, object] | None:
+    """Drop out-of-scope related_files from historical issue focus payload."""
+    if not isinstance(issue_focus, dict):
+        return None
+    issues_raw = issue_focus.get("issues", [])
+    issues: list[dict[str, object]] = []
+    if isinstance(issues_raw, list):
+        for raw_issue in issues_raw:
+            if not isinstance(raw_issue, dict):
+                continue
+            issue = dict(raw_issue)
+            related_raw = issue.get("related_files", [])
+            if isinstance(related_raw, list):
+                issue["related_files"] = [
+                    path
+                    for path in related_raw
+                    if _file_in_allowed_scope(path, allowed_files)
+                ]
+            issues.append(issue)
+    scoped = dict(issue_focus)
+    scoped["issues"] = issues
+    scoped["selected_count"] = len(issues)
+    return scoped
+
+
+def _filter_batches_to_file_scope(
+    batches: list[dict[str, Any]],
+    *,
+    allowed_files: set[str],
+) -> list[dict[str, Any]]:
+    """Strip out-of-scope files/signals from review batches."""
+    if not allowed_files:
+        return []
+
+    scoped_batches: list[dict[str, Any]] = []
+    for raw_batch in batches:
+        if not isinstance(raw_batch, dict):
+            continue
+        batch = dict(raw_batch)
+        files_to_read = batch.get("files_to_read", [])
+        if isinstance(files_to_read, list):
+            batch["files_to_read"] = [
+                filepath
+                for filepath in files_to_read
+                if _file_in_allowed_scope(filepath, allowed_files)
+            ]
+        else:
+            batch["files_to_read"] = []
+
+        concern_signals = batch.get("concern_signals", [])
+        if isinstance(concern_signals, list):
+            batch["concern_signals"] = [
+                signal
+                for signal in concern_signals
+                if isinstance(signal, dict)
+                and _file_in_allowed_scope(signal.get("file", ""), allowed_files)
+            ]
+            if "concern_signal_count" in batch:
+                batch["concern_signal_count"] = len(batch["concern_signals"])
+
+        issue_focus = _filter_issue_focus_to_scope(
+            batch.get("historical_issue_focus"),
+            allowed_files,
+        )
+        if issue_focus is not None:
+            batch["historical_issue_focus"] = issue_focus
+
+        has_seed_files = bool(batch["files_to_read"])
+        has_signals = bool(batch.get("concern_signals"))
+        if has_seed_files or has_signals:
+            scoped_batches.append(batch)
+    return scoped_batches
 
 
 def prepare_review(
@@ -230,6 +355,11 @@ def prepare_holistic_review(
         if resolved_options.files is not None
         else (lang.file_finder(path) if lang.file_finder else [])
     )
+    allowed_review_files = _collect_allowed_review_files(
+        all_files,
+        lang,
+        base_path=path,
+    )
 
     already_cached = is_file_cache_enabled()
     if not already_cached:
@@ -269,6 +399,11 @@ def prepare_holistic_review(
         from desloppify.engine.concerns import generate_concerns
 
         concerns = generate_concerns(state, lang_name=lang.name)
+        concerns = [
+            concern
+            for concern in concerns
+            if _file_in_allowed_scope(getattr(concern, "file", ""), allowed_review_files)
+        ]
         concerns_batch = _batch_concerns(
             concerns,
             max_files=resolved_options.max_files_per_batch,
@@ -296,6 +431,10 @@ def prepare_holistic_review(
             lang=lang,
             max_files=resolved_options.max_files_per_batch,
         )
+    batches = _filter_batches_to_file_scope(
+        batches,
+        allowed_files=allowed_review_files,
+    )
 
     # Holistic mode can receive per-file-oriented dimensions via CLI suggestions.
     # Attach whichever prompt definition exists so reviewers always get guidance.
@@ -343,4 +482,9 @@ def prepare_holistic_review(
                 dimensions=batch_dims,
                 max_items=resolved_options.issue_history_max_batch_items,
             )
+        batches = _filter_batches_to_file_scope(
+            batches,
+            allowed_files=allowed_review_files,
+        )
+        payload["investigation_batches"] = batches
     return payload

@@ -55,8 +55,35 @@ class TestBuildReviewContext:
     ):
         (tmp_path / "foo.ts").write_text("x")
         mock_lang.file_finder = MagicMock(return_value=[str(tmp_path / "foo.ts")])
-        ctx = build_review_context(tmp_path, mock_lang, state_with_findings)
+        with patch("desloppify.intelligence.review.context.rel") as mock_rel:
+            def _fake_rel(value: str) -> str:
+                text = str(value).replace("\\", "/")
+                if text == str(tmp_path / "foo.ts").replace("\\", "/"):
+                    return "src/foo.ts"
+                return text
+
+            mock_rel.side_effect = _fake_rel
+            ctx = build_review_context(tmp_path, mock_lang, state_with_findings)
+
         assert "src/foo.ts" in ctx.existing_findings
+
+    def test_existing_findings_are_scoped_to_selected_files(
+        self, mock_lang, state_with_findings, tmp_path
+    ):
+        (tmp_path / "foo.ts").write_text("x")
+        mock_lang.file_finder = MagicMock(return_value=[str(tmp_path / "foo.ts")])
+        with patch("desloppify.intelligence.review.context.rel") as mock_rel:
+            def _fake_rel(value: str) -> str:
+                text = str(value).replace("\\", "/")
+                if text == str(tmp_path / "foo.ts").replace("\\", "/"):
+                    return "src/foo.ts"
+                return text
+
+            mock_rel.side_effect = _fake_rel
+            ctx = build_review_context(tmp_path, mock_lang, state_with_findings)
+
+        assert "src/foo.ts" in ctx.existing_findings
+        assert "src/utils.ts" not in ctx.existing_findings
 
     def test_codebase_stats(self, mock_lang, empty_state, tmp_path):
         (tmp_path / "foo.ts").write_text("line1\nline2\nline3")

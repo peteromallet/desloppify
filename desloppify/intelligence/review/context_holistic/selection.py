@@ -203,12 +203,29 @@ def _error_strategy_context(file_contents: dict[str, str]) -> dict:
     }
 
 
-def _dependencies_context(state: dict) -> dict:
-    cycle_findings = [
-        finding
-        for finding in state.get("findings", {}).values()
-        if finding.get("detector") == "cycles" and finding.get("status") == "open"
-    ]
+def _in_allowed_files(filepath: object, allowed_files: set[str] | None) -> bool:
+    if allowed_files is None:
+        return True
+    return isinstance(filepath, str) and filepath in allowed_files
+
+
+def _dependencies_context(
+    state: dict,
+    *,
+    allowed_files: set[str] | None = None,
+) -> dict:
+    cycle_findings = []
+    findings = state.get("findings", {})
+    if not isinstance(findings, dict):
+        findings = {}
+    for finding in findings.values():
+        if not isinstance(finding, dict):
+            continue
+        if finding.get("detector") != "cycles" or finding.get("status") != "open":
+            continue
+        if not _in_allowed_files(finding.get("file", ""), allowed_files):
+            continue
+        cycle_findings.append(finding)
     if not cycle_findings:
         return {}
     return {
@@ -217,7 +234,13 @@ def _dependencies_context(state: dict) -> dict:
     }
 
 
-def _testing_context(lang, state: dict, file_contents: dict[str, str]) -> dict:
+def _testing_context(
+    lang,
+    state: dict,
+    file_contents: dict[str, str],
+    *,
+    allowed_files: set[str] | None = None,
+) -> dict:
     testing: dict = {"total_files": len(file_contents)}
     if not lang.dep_graph:
         return testing
@@ -227,6 +250,7 @@ def _testing_context(lang, state: dict, file_contents: dict[str, str]) -> dict:
         for finding in state.get("findings", {}).values()
         if finding.get("detector") == "test_coverage"
         and finding.get("status") == "open"
+        and _in_allowed_files(finding.get("file", ""), allowed_files)
     }
     if not tc_findings:
         return testing
