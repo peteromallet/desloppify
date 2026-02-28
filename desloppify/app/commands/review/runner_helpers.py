@@ -60,6 +60,25 @@ _USAGE_LIMIT_PHRASES = (
 )
 
 
+def _normalize_runner_failure_text(log_text: str) -> str:
+    """Normalize runner logs for resilient failure phrase matching."""
+    return log_text.casefold().replace("’", "'").replace("`", "'")
+
+
+def _is_usage_limit_failure(log_text: str) -> bool:
+    """Return True when failure text indicates account quota/usage limit."""
+    text = _normalize_runner_failure_text(log_text)
+    if any(phrase in text for phrase in _USAGE_LIMIT_PHRASES):
+        return True
+    if "usage limit" not in text:
+        return False
+    return (
+        "try again at" in text
+        or "send a request to your admin" in text
+        or "more access now" in text
+    )
+
+
 @dataclass(frozen=True)
 class CodexBatchRunnerDeps:
     timeout_seconds: int
@@ -1195,10 +1214,10 @@ def collect_batch_results(
 
 def _classify_runner_failure(log_text: str) -> str:
     """Classify batch failure type from log contents."""
-    text = log_text.lower()
+    text = _normalize_runner_failure_text(log_text)
     if "timeout after" in text:
         return "timeout"
-    if any(phrase in text for phrase in _USAGE_LIMIT_PHRASES):
+    if _is_usage_limit_failure(text):
         return "usage_limit"
     if any(phrase in text for phrase in _TRANSIENT_RUNNER_PHRASES):
         return "stream_disconnect"
@@ -1228,7 +1247,7 @@ def _classify_runner_failure(log_text: str) -> str:
 
 def _has_codex_backend_connectivity_issue(log_text: str) -> bool:
     """Return True when logs indicate Codex backend URL is unreachable."""
-    text = log_text.lower()
+    text = _normalize_runner_failure_text(log_text)
     if "error sending request for url" not in text:
         return False
     return (
@@ -1242,7 +1261,7 @@ def _has_codex_backend_connectivity_issue(log_text: str) -> bool:
 
 def _looks_like_restricted_sandbox(log_text: str) -> bool:
     """Return True when logs resemble a constrained agent sandbox execution."""
-    text = log_text.lower()
+    text = _normalize_runner_failure_text(log_text)
     return any(phrase in text for phrase in _SANDBOX_PATH_WARNING_PHRASES)
 
 
@@ -1271,7 +1290,7 @@ def _runner_failure_hints(*, failures: list[int], logs_dir: Path) -> list[str]:
             raw = log_file.read_text()
         except OSError:
             continue
-        text = raw.lower()
+        text = _normalize_runner_failure_text(raw)
         if (
             "codex not found" in text
             or ("no such file or directory" in text and "$ codex " in text)
@@ -1297,7 +1316,7 @@ def _runner_failure_hints(*, failures: list[int], logs_dir: Path) -> list[str]:
             hint = "codex runner appears unauthenticated. Run `codex login` and retry."
             if hint not in hints:
                 hints.append(hint)
-        if any(phrase in text for phrase in _USAGE_LIMIT_PHRASES):
+        if _is_usage_limit_failure(text):
             hint = (
                 "Codex usage quota is exhausted for this account. "
                 "Wait for reset or add credits, then rerun failed batches."

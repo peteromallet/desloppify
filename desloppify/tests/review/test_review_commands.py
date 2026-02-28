@@ -2092,6 +2092,33 @@ class TestCmdReviewPrepare:
         assert "stream disconnect=1" in err
         assert "Connectivity tuning:" in err
 
+    def test_print_failures_reports_usage_limit_category_with_unicode_apostrophe(
+        self, tmp_path, capsys
+    ):
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            (
+                "$ codex ...\nSTDERR:\n"
+                "You\u2019ve hit your usage limit. To get more access now, "
+                "send a request to your admin or try again at 8:49 PM.\n"
+            )
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Failure categories:" in err
+        assert "usage limit=1" in err
+        assert "Environment hints:" in err
+        assert "usage quota is exhausted" in err
+
     def test_print_failures_reports_codex_backend_connectivity_hint(
         self, tmp_path, capsys
     ):
