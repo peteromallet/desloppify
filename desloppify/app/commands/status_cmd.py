@@ -13,6 +13,9 @@ from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
+from desloppify.app.commands.scan.scan_reporting_by_language import (
+    show_per_language_score_blocks,
+)
 from desloppify.app.commands.status_parts.render import (
     print_open_scope_breakdown,
     print_scan_completeness,
@@ -111,6 +114,21 @@ def cmd_status(args: argparse.Namespace) -> None:
     print_open_scope_breakdown(state)
     print_scan_completeness(state)
 
+    by_language = getattr(args, "by_language", False)
+    if by_language:
+        by_lang = state.get("dimension_scores_by_language") or {}
+        if by_lang:
+            show_per_language_score_blocks(state, show_aggregate=True)
+        else:
+            print(
+                colorize(
+                    "  --by-language: no per-language scores in state. "
+                    "Run `desloppify scan --by-language` first.",
+                    "yellow",
+                )
+            )
+            print()
+
     if dim_scores:
         show_dimension_table(state, dim_scores)
         reporting_dimensions_mod.show_score_model_breakdown(
@@ -178,7 +196,7 @@ def _status_json_payload(
         if isinstance(findings, dict)
         else None
     )
-    return {
+    payload: dict = {
         "overall_score": scores.overall,
         "objective_score": scores.objective,
         "strict_score": scores.strict,
@@ -195,6 +213,10 @@ def _status_json_payload(
         "scan_count": state.get("scan_count", 0),
         "last_scan": state.get("last_scan"),
     }
+    by_lang = state.get("dimension_scores_by_language")
+    if by_lang:
+        payload["dimension_scores_by_language"] = by_lang
+    return payload
 
 __all__ = [
     "cmd_status",

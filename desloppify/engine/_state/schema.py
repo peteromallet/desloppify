@@ -159,6 +159,8 @@ class StateModel(TypedDict, total=False):
     subjective_integrity: Required[SubjectiveIntegrity]
     subjective_assessments: Required[dict[str, SubjectiveAssessment]]
     concern_dismissals: dict[str, ConcernDismissal]
+    # Per-language dimension scores populated by --by-language scan (optional, backwards-compatible)
+    dimension_scores_by_language: dict[str, dict[str, DimensionScore]]
 
 
 class ScanDiff(TypedDict):
