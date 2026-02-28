@@ -99,3 +99,23 @@ def available_langs() -> list[str]:
     """Return list of registered language names."""
     load_all()
     return sorted(registry_state.all_keys())
+
+
+def discover_repo_languages(project_root: Path) -> dict[str, int]:
+    """Detect all languages present in the project root.
+
+    Returns a dict of ``{lang_name: file_count}`` for every registered
+    language that has at least one source file under *project_root*, sorted
+    by descending file count.
+    """
+    load_all()
+    counts: dict[str, int] = {}
+    for lang_name, obj in registry_state.all_items():
+        cfg = obj if isinstance(obj, LangConfig) else make_lang_config(lang_name, obj)
+        try:
+            n = len(cfg.file_finder(project_root))
+        except Exception:
+            n = 0
+        if n > 0:
+            counts[lang_name] = n
+    return dict(sorted(counts.items(), key=lambda kv: -kv[1]))

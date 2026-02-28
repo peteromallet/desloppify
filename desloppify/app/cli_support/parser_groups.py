@@ -92,12 +92,28 @@ examples:
         metavar="KEY=VALUE",
         help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
     )
+    p_scan.add_argument(
+        "--by-language",
+        action="store_true",
+        default=False,
+        help=(
+            "Generate per-language score sections and scorecard images "
+            "(e.g. scorecard-go.png, scorecard-python.png). "
+            "Requires >=2 detected languages."
+        ),
+    )
 
 
 def _add_status_parser(sub) -> None:
     p_status = sub.add_parser("status", help="Score dashboard with per-tier progress")
     p_status.add_argument("--state", type=str, default=None, help="Path to state file")
     p_status.add_argument("--json", action="store_true", help="Output as JSON")
+    p_status.add_argument(
+        "--by-language",
+        action="store_true",
+        default=False,
+        help="Show per-language score breakdown (requires a prior --by-language scan).",
+    )
 
 
 def _add_tree_parser(sub) -> None:
