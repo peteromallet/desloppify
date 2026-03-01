@@ -157,7 +157,7 @@ def primary_command_for_finding(
         available_fixers = [
             fixer
             for fixer in meta.fixers
-            if supported_fixers is None or fixer in supported_fixers
+            if supported_fixers is not None and fixer in supported_fixers
         ]
         if available_fixers:
             return f"desloppify fix {available_fixers[0]} --dry-run"
@@ -165,7 +165,7 @@ def primary_command_for_finding(
         if is_holistic_subjective_finding(item):
             return "desloppify review --prepare"
         return "desloppify show subjective"
-    return f'desloppify plan done "{item.get("id", "")}" --note "<what you did>" --attest "{ATTEST_EXAMPLE}"'
+    return f'desloppify plan done "{item.get("id", "")}" --note "<what you did>" --confirm'
 
 
 def subjective_strict_scores(state: dict) -> dict[str, float]:

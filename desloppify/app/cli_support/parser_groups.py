@@ -92,6 +92,18 @@ examples:
         metavar="KEY=VALUE",
         help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
     )
+    p_scan.add_argument(
+        "--force-rescan",
+        action="store_true",
+        help="Bypass queue completion check (requires --attest)",
+    )
+    p_scan.add_argument(
+        "--attest",
+        type=str,
+        default=None,
+        metavar="TEXT",
+        help="Attestation for --force-rescan",
+    )
 
 
 def _add_status_parser(sub) -> None:

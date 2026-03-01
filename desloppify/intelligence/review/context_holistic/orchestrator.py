@@ -10,6 +10,7 @@ from desloppify.core.discovery_api import (
     is_file_cache_enabled,
     rel,
 )
+from desloppify.intelligence.review._context.models import HolisticContext
 from desloppify.intelligence.review._context.structure import (
     compute_structure_context,
 )
@@ -33,9 +34,6 @@ from .selection import (
     _testing_context,
     select_holistic_files,
 )
-from .types import HolisticContext
-
-
 def build_holistic_context(
     path: Path,
     lang: object,

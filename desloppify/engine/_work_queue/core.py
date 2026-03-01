@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import deque
 from typing import TypedDict
 
 from desloppify.engine._work_queue.helpers import (
@@ -53,6 +54,46 @@ class WorkQueueResult(TypedDict):
     fallback_reason: str | None
     available_tiers: list[int]
     grouped: dict[str, list[dict]]
+
+
+def _is_subjective_queue_item(item: dict) -> bool:
+    """Return True for queue items that represent subjective work."""
+    return item.get("kind") == "subjective_dimension" or bool(item.get("is_subjective"))
+
+
+def _apply_subjective_interleave_guardrail(
+    items: list[dict],
+    *,
+    objective_burst: int = 3,
+    subjective_burst: int = 1,
+) -> list[dict]:
+    """Interleave subjective work with objective work to avoid starvation."""
+    if objective_burst < 1 or subjective_burst < 1:
+        return items
+
+    subjective_items = deque(
+        item for item in items if _is_subjective_queue_item(item)
+    )
+    objective_items = deque(
+        item for item in items if not _is_subjective_queue_item(item)
+    )
+    if not subjective_items or not objective_items:
+        return items
+
+    interleaved: list[dict] = []
+    while objective_items and subjective_items:
+        for _ in range(objective_burst):
+            if not objective_items:
+                break
+            interleaved.append(objective_items.popleft())
+        for _ in range(subjective_burst):
+            if not subjective_items:
+                break
+            interleaved.append(subjective_items.popleft())
+
+    interleaved.extend(objective_items)
+    interleaved.extend(subjective_items)
+    return interleaved
 
 
 def _apply_plan_order(
@@ -161,8 +202,8 @@ def _action_type_for_detector(detector: str) -> str:
         meta = DETECTORS.get(detector)
         if meta:
             return meta.action_type
-    except ImportError:
-        pass
+    except ImportError as exc:
+        _ = exc
     return "manual_fix"
 
 
@@ -311,6 +352,17 @@ def build_work_queue(
     )
     if should_collapse:
         all_items = _collapse_clusters(all_items, resolved_options.plan)
+
+    should_interleave = (
+        resolved_options.include_subjective
+        and status in {"open", "all"}
+        and not resolved_options.chronic
+        and resolved_options.tier is None
+        and not resolved_options.scope
+        and not resolved_options.cluster
+    )
+    if should_interleave:
+        all_items = _apply_subjective_interleave_guardrail(all_items)
 
     counts = tier_counts(all_items)
 

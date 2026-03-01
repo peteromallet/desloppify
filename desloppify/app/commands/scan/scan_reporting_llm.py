@@ -9,10 +9,16 @@ from pathlib import Path
 from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
 from desloppify.app.commands.scan.scan_reporting_text import build_workflow_guide
+from desloppify.app.commands.update_skill import (
+    resolve_interface,
+    update_installed_skill,
+)
 from desloppify.engine.planning import scorecard_projection as scorecard_projection_mod
 from desloppify.core import registry as registry_mod
 from desloppify.core._internal.text_utils import PROJECT_ROOT
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.core import skill_docs as skill_docs_mod
+from desloppify.engine.plan import load_plan
 from desloppify.engine.work_queue import ATTEST_EXAMPLE
 
 logger = logging.getLogger(__name__)
@@ -229,11 +235,6 @@ def _try_auto_update_skill() -> None:
         return  # Up to date.
 
     try:
-        from desloppify.app.commands.update_skill import (
-            resolve_interface,
-            update_installed_skill,
-        )
-
         if install:
             interface = resolve_interface(install=install)
         else:
@@ -291,13 +292,12 @@ def _print_llm_summary(
 
     # Check for living plan
     try:
-        from desloppify.engine.plan import load_plan
         _plan = load_plan()
         _has_plan = bool(
             _plan.get("queue_order") or _plan.get("clusters")
             or _plan.get("skipped")
         )
-    except Exception:
+    except PLAN_LOAD_EXCEPTIONS:
         _plan = {}
         _has_plan = False
 

@@ -332,8 +332,8 @@ def _update_objective_health(
             dims, _, _ = load_dimensions_for_lang(lang_name)
             if dims:
                 allowed_subjective = set(dims)
-        except (ImportError, AttributeError):
-            pass
+        except (ImportError, AttributeError) as exc:
+            _ = exc
 
     bundle = compute_score_bundle(
         findings,

@@ -9,10 +9,13 @@ from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
 from desloppify.app.commands.helpers.state import require_completed_scan
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
 from desloppify.core.output_api import colorize
 from desloppify.core.skill_docs import check_skill_version
 from desloppify.core.tooling import check_config_staleness, check_tool_staleness
+from desloppify.engine.concerns import generate_concerns
+from desloppify.engine.plan import load_plan
 
 from .payload import ShowPayloadMeta, build_show_payload
 from .render import (
@@ -33,8 +36,6 @@ from .scope import (
 
 def _show_concerns(state: dict, lang_name: str | None) -> None:
     """Render current design concerns from mechanical signals."""
-    from desloppify.engine.concerns import generate_concerns
-
     concerns = generate_concerns(state, lang_name=lang_name)
     if not concerns:
         print(colorize("  No design concerns detected.", "green"))
@@ -300,10 +301,9 @@ def cmd_show(args: argparse.Namespace) -> None:
         budget_warning=budget_warning,
     )
     try:
-        from desloppify.engine.plan import load_plan as _load_plan
-        _plan = _load_plan()
+        _plan = load_plan()
         _plan_active = _plan if (_plan.get("queue_order") or _plan.get("clusters")) else None
-    except Exception:
+    except PLAN_LOAD_EXCEPTIONS:
         _plan_active = None
     show_agent_plan(narrative, surfaced_matches, plan=_plan_active)
     show_subjective_followup(

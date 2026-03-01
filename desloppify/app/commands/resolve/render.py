@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from desloppify import state as state_mod
+from desloppify.app.commands.helpers.score_update import _print_strict_target_nudge
 from desloppify.core.output_api import colorize
 
 
@@ -55,6 +56,63 @@ def _delta_suffix(delta: float) -> str:
     return f" ({'+' if delta > 0 else ''}{delta:.1f})"
 
 
+def _score_snapshot_or_warn(state: dict):
+    snapshot = state_mod.score_snapshot(state)
+    if (
+        snapshot.overall is None
+        or snapshot.objective is None
+        or snapshot.strict is None
+        or snapshot.verified is None
+    ):
+        print(colorize("\n  Scores unavailable — run `desloppify scan`.", "yellow"))
+        return None
+    return snapshot
+
+
+def _print_strict_gap_note(status: str, *, overall: float, strict: float) -> None:
+    if status != "wontfix":
+        return
+    strict_gap = round(overall - strict, 1)
+    if strict_gap <= 0:
+        return
+    print(
+        colorize(
+            f"  Note: wontfix items still count against strict score. "
+            f"Current gap: overall {overall:.1f} vs strict {strict:.1f} ({strict_gap:.1f} pts of hidden debt).",
+            "yellow",
+        )
+    )
+
+
+def _print_post_resolve_guidance(
+    *,
+    status: str,
+    has_review_findings: bool,
+    overall_delta: float,
+) -> None:
+    if has_review_findings and abs(overall_delta) < 0.05:
+        print(
+            colorize(
+                "  Scores unchanged (review findings don't affect scores directly).",
+                "yellow",
+            )
+        )
+        print(
+            colorize(
+                "  Run `desloppify review --prepare` to get updated assessment scores.",
+                "dim",
+            )
+        )
+        return
+    if status == "fixed":
+        print(
+            colorize(
+                "  Verified score updates after a scan confirms the finding disappeared.",
+                "yellow",
+            )
+        )
+
+
 def _print_score_movement(
     *,
     status: str,
@@ -66,14 +124,8 @@ def _print_score_movement(
     has_review_findings: bool = False,
     target_strict: float | None = None,
 ) -> None:
-    new = state_mod.score_snapshot(state)
-    if (
-        new.overall is None
-        or new.objective is None
-        or new.strict is None
-        or new.verified is None
-    ):
-        print(colorize("\n  Scores unavailable — run `desloppify scan`.", "yellow"))
+    new = _score_snapshot_or_warn(state)
+    if new is None:
         return
 
     overall_delta = new.overall - (prev_overall or 0)
@@ -92,39 +144,13 @@ def _print_score_movement(
         )
     )
     if target_strict is not None:
-        from desloppify.app.commands.helpers.score_update import _print_strict_target_nudge
-
         _print_strict_target_nudge(new.strict, target_strict, show_next=False)
-    if status == "wontfix":
-        strict_gap = round(new.overall - new.strict, 1)
-        if strict_gap > 0:
-            print(
-                colorize(
-                    f"  Note: wontfix items still count against strict score. "
-                    f"Current gap: overall {new.overall:.1f} vs strict {new.strict:.1f} ({strict_gap:.1f} pts of hidden debt).",
-                    "yellow",
-                )
-            )
-    if has_review_findings and abs(overall_delta) < 0.05:
-        print(
-            colorize(
-                "  Scores unchanged (review findings don't affect scores directly).",
-                "yellow",
-            )
-        )
-        print(
-            colorize(
-                "  Run `desloppify review --prepare` to get updated assessment scores.",
-                "dim",
-            )
-        )
-    elif status == "fixed":
-        print(
-            colorize(
-                "  Verified score updates after a scan confirms the finding disappeared.",
-                "yellow",
-            )
-        )
+    _print_strict_gap_note(status, overall=new.overall, strict=new.strict)
+    _print_post_resolve_guidance(
+        status=status,
+        has_review_findings=has_review_findings,
+        overall_delta=overall_delta,
+    )
 
 
 def _print_subjective_reset_hint(

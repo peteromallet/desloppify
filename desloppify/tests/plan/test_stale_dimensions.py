@@ -388,7 +388,7 @@ def test_stale_cluster_deleted_when_fresh():
     # Now remove subjective IDs from queue (simulating refresh + prune)
     plan["queue_order"] = []
 
-    changes = auto_cluster_findings(plan, state)
+    auto_cluster_findings(plan, state)
     assert "auto/stale-review" not in plan["clusters"]
 
 
@@ -423,5 +423,5 @@ def test_single_stale_dim_no_cluster():
     plan = _plan_with_queue("subjective::design_coherence")
     state = _state_with_stale_dimensions("design_coherence")
 
-    changes = auto_cluster_findings(plan, state)
+    auto_cluster_findings(plan, state)
     assert "auto/stale-review" not in plan["clusters"]

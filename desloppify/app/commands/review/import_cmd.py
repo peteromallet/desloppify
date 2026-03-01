@@ -9,7 +9,7 @@ from pathlib import Path
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
-from desloppify.app.commands.helpers.score_update import print_score_update
+from desloppify.app.commands.helpers.queue_progress import print_execution_or_reveal
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
@@ -27,7 +27,9 @@ from desloppify.intelligence.review.importing.contracts import (
     AssessmentImportPolicyModel,
     ReviewImportPayload,
 )
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.core.output_api import colorize
+from desloppify.engine.plan import load_plan
 
 _SCORECARD_SUBJECTIVE_AT_TARGET = bind_scorecard_subjective_at_target(
     reporting_dimensions_mod=reporting_dimensions_mod,
@@ -297,7 +299,11 @@ def do_import(
     next_command = import_helpers_mod.print_open_review_summary(
         state, colorize_fn=colorize
     )
-    print_score_update(state, prev, config=config)
+    try:
+        _import_plan = load_plan()
+    except PLAN_LOAD_EXCEPTIONS:
+        _import_plan = None
+    print_execution_or_reveal(state, prev, _import_plan)
     at_target = import_helpers_mod.print_review_import_scores_and_integrity(
         state,
         config or {},

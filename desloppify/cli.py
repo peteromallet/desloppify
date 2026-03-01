@@ -7,9 +7,11 @@ import sys
 from pathlib import Path
 
 from desloppify.app.cli_support.parser import create_parser as _create_parser
+from desloppify.app.commands.registry import get_command_handlers
 from desloppify.app.commands.helpers.lang import LangResolutionError, resolve_lang
 from desloppify.app.commands.helpers.runtime import CommandRuntime
 from desloppify.app.commands.helpers.state import state_path
+from desloppify.core.registry import detector_names
 from desloppify.core._internal.text_utils import get_project_root
 from desloppify.core.config import load_config
 from desloppify.core.discovery_api import set_exclusions
@@ -30,8 +32,6 @@ def _get_detector_names() -> list[str]:
     """Return cached detector names, computing on first access."""
     global _DETECTOR_NAMES
     if _DETECTOR_NAMES is None:
-        from desloppify.core.registry import detector_names
-
         _DETECTOR_NAMES = detector_names()
     return _DETECTOR_NAMES
 
@@ -106,8 +106,6 @@ def _load_shared_runtime(args) -> None:
 
 
 def _resolve_handler(command: str):
-    from desloppify.app.commands.registry import get_command_handlers
-
     return get_command_handlers()[command]
 
 

@@ -53,8 +53,7 @@ desloppify plan                        # see the full ordered queue
 desloppify plan move <pat> top         # reorder — what unblocks the most?
 desloppify plan cluster create <name>  # group related issues to batch-fix
 desloppify plan focus <cluster>        # scope next to one cluster
-desloppify plan defer <pat>            # push low-value items aside
-desloppify plan skip <pat>             # hide from next
+desloppify plan skip <pat>             # skip / hide from next
 desloppify plan done <pat>             # mark complete
 desloppify plan reopen <pat>           # reopen
 ```

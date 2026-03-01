@@ -12,10 +12,12 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.helpers.score_update import print_score_update
+from desloppify.app.commands.helpers.queue_progress import print_execution_or_reveal
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core.discovery_api import rel
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.intelligence import narrative as narrative_mod
+from desloppify.engine.plan import load_plan
 from desloppify.languages._framework.base.types import FixResult
 from desloppify.core.output_api import colorize
 
@@ -83,7 +85,11 @@ def _apply_and_report(
 
     new = state_mod.score_snapshot(state)
     print(f"\n  Auto-resolved {len(resolved_ids)} findings in state")
-    print_score_update(state, prev)
+    try:
+        _fix_plan = load_plan()
+    except PLAN_LOAD_EXCEPTIONS:
+        _fix_plan = None
+    print_execution_or_reveal(state, prev, _fix_plan)
 
     if fixer.post_fix:
         fixer.post_fix(path, state, prev.overall or 0, False, lang=lang)
@@ -303,7 +309,7 @@ def _print_fix_retro(
             f"{skipped} items were skipped. Should the fixer handle more patterns?"
         )
     checklist += [
-        "Run `desloppify scan` to update state. Did score improve as expected?",
+        "Run `desloppify scan` to update state and refresh findings.",
         "Are there cascading effects? (e.g., removing vars may orphan imports)",
         "`git diff --stat` — review before committing. Anything surprising?",
     ]

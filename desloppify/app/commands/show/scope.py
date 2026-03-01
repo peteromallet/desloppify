@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
+from desloppify.core import registry as registry_mod
 from desloppify.engine.work_queue import (
     QueueBuildOptions,
     build_work_queue,
@@ -24,6 +25,62 @@ class ResolvedEntity:
     is_subjective: bool = False  # Whether this is a subjective dimension
 
 
+def _resolve_special_view(pattern: str, lowered: str) -> ResolvedEntity | None:
+    if lowered not in ("concerns", "subjective", "subjective_review"):
+        return None
+    return ResolvedEntity(
+        kind="special_view",
+        pattern=pattern,
+        display_name=pattern,
+    )
+
+
+def _resolve_mechanical_dimension(pattern: str, lowered: str) -> ResolvedEntity | None:
+    lookup = _build_dimension_lookup()
+    detectors = lookup.get(lowered) or lookup.get(pattern.lower())
+    if not detectors:
+        return None
+    dim_display = pattern
+    for dim in scoring_mod.DIMENSIONS:
+        dim_lowered = dim.name.lower().replace(" ", "_")
+        if dim.name.lower() == lowered or dim_lowered == lowered:
+            dim_display = dim.name
+            break
+    return ResolvedEntity(
+        kind="dimension",
+        pattern=pattern,
+        display_name=dim_display,
+        detectors=tuple(detectors),
+        is_subjective=False,
+    )
+
+
+def _resolve_subjective_dimension(
+    pattern: str,
+    lowered: str,
+    state: dict,
+) -> ResolvedEntity | None:
+    display_name = scoring_mod.DISPLAY_NAMES.get(lowered)
+    if not display_name:
+        for key in state.get("dimension_scores") or {}:
+            if key.lower().replace(" ", "_") == lowered:
+                display_name = key
+                break
+    if not display_name:
+        return None
+    dim_data, display_name = _lookup_dimension_score(state, display_name)
+    is_subj = "subjective_assessment" in (
+        dim_data.get("detectors", {}) if isinstance(dim_data, dict) else {}
+    )
+    return ResolvedEntity(
+        kind="dimension",
+        pattern=pattern,
+        display_name=display_name,
+        detectors=(),
+        is_subjective=is_subj,
+    )
+
+
 def resolve_entity(pattern: str, state: dict) -> ResolvedEntity:
     """Classify a user pattern as a dimension, special view, or passthrough.
 
@@ -36,51 +93,19 @@ def resolve_entity(pattern: str, state: dict) -> ResolvedEntity:
     lowered = pattern.strip().lower().replace(" ", "_")
 
     # 1. Special views
-    if lowered in ("concerns", "subjective", "subjective_review"):
-        return ResolvedEntity(
-            kind="special_view",
-            pattern=pattern,
-            display_name=pattern,
-        )
+    special_view = _resolve_special_view(pattern, lowered)
+    if special_view is not None:
+        return special_view
 
     # 2. Mechanical dimension (via DIMENSIONS list)
-    lookup = _build_dimension_lookup()
-    detectors = lookup.get(lowered)
-    if not detectors:
-        detectors = lookup.get(pattern.lower())
-    if detectors:
-        dim_display = pattern
-        for dim in scoring_mod.DIMENSIONS:
-            if dim.name.lower() == lowered or dim.name.lower().replace(" ", "_") == lowered:
-                dim_display = dim.name
-                break
-        return ResolvedEntity(
-            kind="dimension",
-            pattern=pattern,
-            display_name=dim_display,
-            detectors=tuple(detectors),
-            is_subjective=False,
-        )
+    mechanical = _resolve_mechanical_dimension(pattern, lowered)
+    if mechanical is not None:
+        return mechanical
 
     # 3. Subjective dimension (via DISPLAY_NAMES or dimension_scores)
-    display_name = scoring_mod.DISPLAY_NAMES.get(lowered)
-    if not display_name:
-        for key in state.get("dimension_scores") or {}:
-            if key.lower().replace(" ", "_") == lowered:
-                display_name = key
-                break
-    if display_name:
-        dim_data, display_name = _lookup_dimension_score(state, display_name)
-        is_subj = "subjective_assessment" in (
-            dim_data.get("detectors", {}) if isinstance(dim_data, dict) else {}
-        )
-        return ResolvedEntity(
-            kind="dimension",
-            pattern=pattern,
-            display_name=display_name,
-            detectors=(),
-            is_subjective=is_subj,
-        )
+    subjective = _resolve_subjective_dimension(pattern, lowered, state)
+    if subjective is not None:
+        return subjective
 
     # 4. Everything else
     return ResolvedEntity(
@@ -136,7 +161,6 @@ def _lookup_dimension_score(
 
 def _detector_names_hint() -> str:
     """Return a compact list of detector names for the help message."""
-    from desloppify.core import registry as registry_mod
     names = getattr(registry_mod, "DISPLAY_ORDER", [])
     if names:
         return ", ".join(names[:10]) + (", ..." if len(names) > 10 else "")

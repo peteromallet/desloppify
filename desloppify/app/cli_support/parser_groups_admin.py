@@ -619,6 +619,12 @@ examples:
             "'I have actually' and 'not gaming'."
         ),
     )
+    p_done.add_argument(
+        "--confirm",
+        action="store_true",
+        default=False,
+        help="Auto-generate attestation from --note (requires --note)",
+    )
 
     # plan focus <cluster> | --clear
     p_focus = plan_sub.add_parser("focus", help="Set or clear active cluster focus")

@@ -7,9 +7,15 @@ import json
 
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
+from desloppify.app.commands.helpers.queue_progress import (
+    get_plan_start_strict,
+    plan_aware_queue_count,
+    print_frozen_score_with_queue_context,
+)
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
 from desloppify.app.commands.helpers.state import require_completed_scan
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
@@ -99,14 +105,26 @@ def cmd_status(args: argparse.Namespace) -> None:
     )
     ignores = config.get("ignore", [])
 
-    for line, style in score_summary_lines(
-        overall_score=scores.overall,
-        objective_score=scores.objective,
-        strict_score=scores.strict,
-        verified_strict_score=scores.verified,
-        target_strict=target_strict_score,
-    ):
-        print(colorize(line, style))
+    # Show frozen plan-start score when in an active queue cycle
+    _plan_start_strict = get_plan_start_strict(_plan)
+    _status_queue_remaining = 0
+    if _plan_start_strict is not None:
+        try:
+            _status_queue_remaining = plan_aware_queue_count(state, _plan)
+        except PLAN_LOAD_EXCEPTIONS as exc:
+            _ = exc
+            _status_queue_remaining = 0
+    if _plan_start_strict is not None and _status_queue_remaining > 0:
+        print_frozen_score_with_queue_context(_plan, _status_queue_remaining)
+    else:
+        for line, style in score_summary_lines(
+            overall_score=scores.overall,
+            objective_score=scores.objective,
+            strict_score=scores.strict,
+            verified_strict_score=scores.verified,
+            target_strict=target_strict_score,
+        ):
+            print(colorize(line, style))
     print_scan_metrics(state)
     print_open_scope_breakdown(state)
     print_scan_completeness(state)

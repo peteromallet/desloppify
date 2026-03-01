@@ -41,6 +41,7 @@ from desloppify.app.commands.scan.scan_reporting_summary import (  # noqa: F401
     show_strict_target_progress,
 )
 from desloppify.app.commands.scan.scan_orchestrator import ScanOrchestrator
+from desloppify.app.commands.scan import scan_preflight as scan_preflight_mod
 from desloppify.app.commands.scan.scan_workflow import (
     ScanStateContractError,
     merge_scan_results,
@@ -105,8 +106,35 @@ def _show_coverage_preflight(runtime) -> None:
             print(colorize(f"    Fix: {remediation}", "dim"))
 
 
+def _print_plan_workflow_nudge(state: dict) -> None:
+    try:
+        from desloppify.engine.plan import load_plan as _load_plan_for_nudge
+        from desloppify.app.commands.helpers.queue_progress import plan_aware_queue_count
+    except (ImportError, AttributeError):
+        return
+
+    try:
+        plan = _load_plan_for_nudge()
+        if not plan.get("plan_start_scores"):
+            return
+        queue_total = plan_aware_queue_count(state, plan)
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+
+    if queue_total <= 0:
+        return
+    print(
+        colorize(
+            f"  Workflow: {queue_total} queue item{'s' if queue_total != 1 else ''}."
+            " Score is frozen until the queue is clear — use `desloppify next` to begin.",
+            "dim",
+        )
+    )
+
+
 def cmd_scan(args: argparse.Namespace) -> None:
     """Run all detectors, update persistent state, show diff."""
+    scan_preflight_mod.scan_queue_preflight(args)
     try:
         runtime = prepare_scan_runtime(args)
     except LangRuntimeOptionsError as exc:
@@ -161,6 +189,8 @@ def cmd_scan(args: argparse.Namespace) -> None:
         merge.prev_verified,
         target_strict=target_value,
     )
+    # Nudge: if plan_start_scores was just seeded, tell the agent about the lifecycle.
+    _print_plan_workflow_nudge(runtime.state)
     _show_scan_visibility(noise, runtime.effective_include_slow)
     show_scorecard_subjective_measures(runtime.state)
     show_score_model_breakdown(runtime.state)

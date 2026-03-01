@@ -31,9 +31,28 @@ DETAIL_DISPLAY = [
 ]
 
 
+def _append_fn_pair_detail(parts: list[str], detail: dict) -> None:
+    if not detail.get("fn_a"):
+        return
+    a, b = detail["fn_a"], detail["fn_b"]
+    parts.append(f"{a['name']}:{a.get('line', '')} ↔ {b['name']}:{b.get('line', '')}")
+
+
+def _append_pattern_evidence(parts: list[str], detail: dict) -> None:
+    pattern_evidence = detail.get("pattern_evidence")
+    if not isinstance(pattern_evidence, dict) or not pattern_evidence:
+        return
+    summary_parts = []
+    for pattern_name, hits in pattern_evidence.items():
+        if isinstance(hits, list):
+            summary_parts.append(f"{pattern_name}:{len(hits)} file(s)")
+    if summary_parts:
+        parts.append(f"evidence: {', '.join(summary_parts)}")
+
+
 def format_detail(detail: dict) -> list[str]:
     """Build display parts from a finding's detail dict."""
-    parts = []
+    parts: list[str] = []
     for key, label, formatter in DETAIL_DISPLAY:
         value = detail.get(key)
         if value is None or value == 0:
@@ -42,18 +61,8 @@ def format_detail(detail: dict) -> list[str]:
             continue
         parts.append(f"{label}: {formatter(value) if formatter else value}")
 
-    if detail.get("fn_a"):
-        a, b = detail["fn_a"], detail["fn_b"]
-        parts.append(f"{a['name']}:{a.get('line', '')} ↔ {b['name']}:{b.get('line', '')}")
-
-    pattern_evidence = detail.get("pattern_evidence")
-    if isinstance(pattern_evidence, dict) and pattern_evidence:
-        summary_parts = []
-        for pattern_name, hits in pattern_evidence.items():
-            if isinstance(hits, list):
-                summary_parts.append(f"{pattern_name}:{len(hits)} file(s)")
-        if summary_parts:
-            parts.append(f"evidence: {', '.join(summary_parts)}")
+    _append_fn_pair_detail(parts, detail)
+    _append_pattern_evidence(parts, detail)
 
     return parts
 

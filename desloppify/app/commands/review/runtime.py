@@ -6,8 +6,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from desloppify.core.discovery_api import rel
+from desloppify.core.output_api import log
+from desloppify.engine.policy.zones import FileZoneMap
+from desloppify.languages import runtime as lang_runtime_mod
+
 if TYPE_CHECKING:
-    from desloppify.engine.policy.zones import FileZoneMap
     from desloppify.languages._framework.base.types import LangConfig
     from desloppify.languages._framework.runtime import LangRun
 
@@ -50,11 +54,6 @@ def setup_lang(
 
 def setup_lang_concrete(lang: LangConfig, path: Path, config: dict) -> tuple[LangRun, list[str]]:
     """Build LangRun with zone map + dep graph using concrete dependencies."""
-    from desloppify.engine.policy.zones import FileZoneMap
-    from desloppify.core.discovery_api import rel
-    from desloppify.languages import runtime as lang_runtime_mod
-    from desloppify.core.output_api import log
-
     return setup_lang(
         lang,
         path,

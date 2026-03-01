@@ -4,14 +4,25 @@ from __future__ import annotations
 
 import argparse
 
+from desloppify.app.commands.plan.cluster_handlers import cmd_cluster_dispatch
+from desloppify.app.commands.plan.move_handlers import cmd_plan_move
+from desloppify.app.commands.plan.override_handlers import (
+    cmd_plan_describe,
+    cmd_plan_done,
+    cmd_plan_focus,
+    cmd_plan_note,
+    cmd_plan_reopen,
+    cmd_plan_skip,
+    cmd_plan_unskip,
+)
+from desloppify.app.commands.plan.queue_render import cmd_plan_queue
+from desloppify.app.commands.plan_cmd import cmd_plan_output
 from desloppify.core.output_api import colorize
-from desloppify.engine.plan import load_plan, save_plan
+from desloppify.engine.plan import load_plan, reset_plan, save_plan
 
 
 def _cmd_plan_generate(args: argparse.Namespace) -> None:
     """Generate the prioritized markdown plan (existing behavior)."""
-    from desloppify.app.commands.plan_cmd import cmd_plan_output
-
     cmd_plan_output(args)
 
 
@@ -58,8 +69,6 @@ def _cmd_plan_show(args: argparse.Namespace) -> None:
 
 def _cmd_plan_reset(args: argparse.Namespace) -> None:
     """Reset the plan to empty."""
-    from desloppify.engine.plan import reset_plan
-
     plan = load_plan()
     reset_plan(plan)
     save_plan(plan)
@@ -79,8 +88,6 @@ def cmd_plan(args: argparse.Namespace) -> None:
         return
 
     if plan_action == "queue":
-        from desloppify.app.commands.plan.queue_render import cmd_plan_queue
-
         cmd_plan_queue(args)
         return
 
@@ -89,8 +96,6 @@ def cmd_plan(args: argparse.Namespace) -> None:
         return
 
     if plan_action == "move":
-        from desloppify.app.commands.plan.move_handlers import cmd_plan_move
-
         cmd_plan_move(args)
         return
 
@@ -98,16 +103,6 @@ def cmd_plan(args: argparse.Namespace) -> None:
         "describe", "note", "focus",
         "skip", "unskip", "reopen", "done",
     ):
-        from desloppify.app.commands.plan.override_handlers import (
-            cmd_plan_describe,
-            cmd_plan_done,
-            cmd_plan_focus,
-            cmd_plan_note,
-            cmd_plan_reopen,
-            cmd_plan_skip,
-            cmd_plan_unskip,
-        )
-
         dispatch = {
             "describe": cmd_plan_describe,
             "done": cmd_plan_done,
@@ -121,8 +116,6 @@ def cmd_plan(args: argparse.Namespace) -> None:
         return
 
     if plan_action == "cluster":
-        from desloppify.app.commands.plan.cluster_handlers import cmd_cluster_dispatch
-
         cmd_cluster_dispatch(args)
         return
 

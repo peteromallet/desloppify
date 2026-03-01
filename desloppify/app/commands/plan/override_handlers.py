@@ -5,18 +5,27 @@ from __future__ import annotations
 import argparse
 import sys
 
+from desloppify import state as state_mod
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.helpers.state import require_completed_scan
+from desloppify.app.commands.helpers.state import require_completed_scan, state_path
 from desloppify.app.commands.plan._resolve import resolve_ids_from_patterns
+from desloppify.app.commands.resolve.cmd import cmd_resolve
+from desloppify.app.commands.resolve.selection import (
+    show_attestation_requirement,
+    validate_attestation,
+)
 from desloppify.core.output_api import colorize
 from desloppify.engine.plan import (
+    annotate_finding,
     clear_focus,
+    describe_finding,
     load_plan,
     save_plan,
     set_focus,
     skip_items,
     unskip_items,
 )
+from desloppify.engine.work_queue import ATTEST_EXAMPLE
 
 
 def cmd_plan_describe(args: argparse.Namespace) -> None:
@@ -27,8 +36,6 @@ def cmd_plan_describe(args: argparse.Namespace) -> None:
 
     patterns: list[str] = getattr(args, "patterns", [])
     text: str = getattr(args, "text", "")
-
-    from desloppify.engine.plan import describe_finding
 
     plan = load_plan()
     finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
@@ -51,8 +58,6 @@ def cmd_plan_note(args: argparse.Namespace) -> None:
     patterns: list[str] = getattr(args, "patterns", [])
     text: str | None = getattr(args, "text", None)
 
-    from desloppify.engine.plan import annotate_finding
-
     plan = load_plan()
     finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not finding_ids:
@@ -71,12 +76,6 @@ def cmd_plan_note(args: argparse.Namespace) -> None:
 
 def cmd_plan_skip(args: argparse.Namespace) -> None:
     """Skip findings — unified command for temporary/permanent/false-positive."""
-    from desloppify.app.commands.resolve.selection import (
-        show_attestation_requirement,
-        validate_attestation,
-    )
-    from desloppify.engine.work_queue import ATTEST_EXAMPLE
-
     state = command_runtime(args).state
     if not require_completed_scan(state):
         return
@@ -121,9 +120,6 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
 
     # For permanent/false_positive: delegate to state layer for score impact
     if kind in ("permanent", "false_positive"):
-        from desloppify import state as state_mod
-        from desloppify.app.commands.helpers.state import state_path
-
         state_file = state_path(args)
         state_data = state_mod.load_state(state_file)
         status = "wontfix" if kind == "permanent" else "false_positive"
@@ -176,9 +172,6 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
 
     # Reopen permanent/false_positive items in state
     if need_reopen:
-        from desloppify import state as state_mod
-        from desloppify.app.commands.helpers.state import state_path
-
         state_file = state_path(args)
         state_data = state_mod.load_state(state_file)
         reopened: list[str] = []
@@ -197,9 +190,6 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
 
 def cmd_plan_reopen(args: argparse.Namespace) -> None:
     """Reopen resolved findings from plan context."""
-    from desloppify import state as state_mod
-    from desloppify.app.commands.helpers.state import state_path
-
     patterns: list[str] = getattr(args, "patterns", [])
 
     state_file = state_path(args)
@@ -240,15 +230,17 @@ def cmd_plan_reopen(args: argparse.Namespace) -> None:
 
 def cmd_plan_done(args: argparse.Namespace) -> None:
     """Mark findings as fixed — delegates to cmd_resolve for rich UX."""
-    from desloppify.app.commands.resolve.selection import (
-        show_attestation_requirement,
-        validate_attestation,
-    )
-    from desloppify.engine.work_queue import ATTEST_EXAMPLE
-
     patterns: list[str] = getattr(args, "patterns", [])
     attestation: str | None = getattr(args, "attest", None)
     note: str | None = getattr(args, "note", None)
+
+    # --confirm: auto-generate attestation from --note
+    if getattr(args, "confirm", False):
+        if not note:
+            print(colorize("  --confirm requires --note to describe what you did.", "red"))
+            return
+        attestation = f"I have actually {note} and I am not gaming the score."
+        args.attest = attestation
 
     # Pre-validate attestation before delegating (avoids stale hint in resolve)
     if not validate_attestation(attestation):
@@ -267,8 +259,6 @@ def cmd_plan_done(args: argparse.Namespace) -> None:
         path=getattr(args, "path", None),
         exclude=getattr(args, "exclude", None),
     )
-
-    from desloppify.app.commands.resolve.cmd import cmd_resolve
 
     cmd_resolve(resolve_args)
 

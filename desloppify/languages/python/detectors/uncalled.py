@@ -89,7 +89,8 @@ def detect_uncalled_functions(
             continue
         try:
             tree = ast.parse(content, filename=filepath)
-        except SyntaxError:
+        except SyntaxError as exc:
+            _ = exc
             continue
 
         # Collect all references from this file

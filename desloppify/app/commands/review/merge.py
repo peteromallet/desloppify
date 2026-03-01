@@ -7,9 +7,11 @@ import argparse
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.helpers.score_update import print_score_update
+from desloppify.app.commands.helpers.queue_progress import print_execution_or_reveal
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.core.issues_render import finding_weight
 from desloppify.core.output_api import colorize
+from desloppify.engine.plan import load_plan
 from desloppify.engine.work_queue import list_open_review_findings
 from desloppify.intelligence.narrative import NarrativeContext, compute_narrative
 from desloppify.state import save_state, utc_now
@@ -218,7 +220,11 @@ def do_merge(args: argparse.Namespace) -> None:
 
     save_state(state, state_file)
     print(colorize("\n  State updated with merged issue groups.", "green"))
-    print_score_update(state, prev)
+    try:
+        _merge_plan = load_plan()
+    except PLAN_LOAD_EXCEPTIONS:
+        _merge_plan = None
+    print_execution_or_reveal(state, prev, _merge_plan)
     write_query(
         {
             "command": "review",

@@ -9,8 +9,10 @@ from desloppify.app.commands.scan.scan_helpers import format_delta
 from desloppify.app.commands.status_parts.strict_target import (
     format_strict_target_progress,
 )
+from desloppify.app.commands.helpers.score_update import _print_strict_target_nudge
 from desloppify.app.commands.scan.scan_reporting_llm import _is_agent_environment
 from desloppify.core.output_api import colorize
+from desloppify.engine.concerns import generate_concerns
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,44 @@ def _consecutive_subjective_integrity_status(state: dict, status: str) -> int:
             break
         streak += 1
     return streak
+
+
+def _show_score_reveal(
+    state: dict,
+    new: state_mod.ScoreSnapshot,
+    *,
+    target_strict: float | None = None,
+) -> None:
+    """Show before/after score comparison when a queue cycle just completed.
+
+    This fires when the plan had ``plan_start_scores`` and the queue was empty
+    at scan time (i.e. the reconcile block cleared plan_start_scores).  We detect
+    this by checking the plan *before* the clear happened — since merge_scan_results
+    clears it, we peek at the ``_last_score_reveal`` stash it leaves behind.
+    """
+    # scan_workflow stashes the old plan_start_scores on state as a transient
+    # key when it clears them (queue empty).  Pop it here for the reveal.
+    plan_start = state.pop("_plan_start_scores_for_reveal", None)
+    if not isinstance(plan_start, dict) or not plan_start.get("strict"):
+        return
+
+    old_strict = float(plan_start["strict"])
+    new_strict = float(new.strict or 0)
+    delta = round(new_strict - old_strict, 1)
+    delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if abs(delta) >= 0.05 else ""
+
+    bar = "=" * 50
+    print(colorize(f"  {bar}", "cyan"))
+    print(colorize("  SCORE UPDATE — Queue cycle complete!", "bold"))
+    print(colorize(f"  Plan-start: strict {old_strict:.1f}/100", "dim"))
+    print(colorize(f"  Updated:    strict {new_strict:.1f}/100{delta_str}", "cyan"))
+    if target_strict is not None:
+        target_gap = round(target_strict - new_strict, 1)
+        if target_gap > 0:
+            print(colorize(f"  Target:     {target_strict:.1f} (+{target_gap:.1f} to go)", "dim"))
+        else:
+            print(colorize(f"  Target:     {target_strict:.1f} — reached!", "green"))
+    print(colorize(f"  {bar}", "cyan"))
 
 
 def show_diff_summary(diff: dict):
@@ -85,6 +125,9 @@ def show_score_delta(
         )
         return
 
+    # Detect score-reveal scan: plan_start_scores existed and queue was clear
+    _show_score_reveal(state, new, target_strict=target_strict)
+
     overall_delta_str, overall_color = format_delta(new.overall, prev_overall)
     objective_delta_str, objective_color = format_delta(new.objective, prev_objective)
     strict_delta_str, strict_color = format_delta(new.strict, prev_strict)
@@ -127,8 +170,6 @@ def show_score_delta(
 
     # Show strict target progress
     if target_strict is not None and new.strict is not None:
-        from desloppify.app.commands.helpers.score_update import _print_strict_target_nudge
-
         _print_strict_target_nudge(new.strict, target_strict, show_next=False)
 
     integrity = state.get("subjective_integrity", {})
@@ -178,8 +219,6 @@ def show_score_delta(
 def show_concern_count(state: dict, lang_name: str | None = None) -> None:
     """Print concern count if any exist."""
     try:
-        from desloppify.engine.concerns import generate_concerns
-
         concerns = generate_concerns(state, lang_name=lang_name)
         if concerns:
             print(

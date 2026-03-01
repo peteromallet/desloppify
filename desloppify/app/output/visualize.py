@@ -18,9 +18,14 @@ from desloppify.core.fallbacks import (
     warn_best_effort,
 )
 from desloppify.core.output_contract import OutputResult
-from desloppify.core.discovery_api import rel, safe_write_text
+from desloppify.core.discovery_api import find_source_files, rel, safe_write_text
 from desloppify.state import get_objective_score, get_overall_score, get_strict_score
 from desloppify.core.output_api import colorize
+from desloppify.languages import (
+    auto_detect_lang,
+    available_langs,
+    get_lang,
+)
 
 D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
 logger = logging.getLogger(__name__)
@@ -41,7 +46,6 @@ def _resolve_visualization_lang(path: Path, lang):
     """Resolve language config for visualization if not already provided."""
     if lang:
         return lang
-    from desloppify.languages import auto_detect_lang, get_lang
 
     search_roots = [path if path.is_dir() else path.parent]
     search_roots.extend(search_roots[0].parents)
@@ -83,9 +87,6 @@ def _resolve_visualization_lang(path: Path, lang):
 
 def _fallback_source_files(path: Path) -> list[str]:
     """Collect source files using extensions from all registered language plugins."""
-    from desloppify.core.discovery_api import find_source_files
-    from desloppify.languages import available_langs, get_lang
-
     extensions: set[str] = set()
     warned = False
     for lang_name in available_langs():

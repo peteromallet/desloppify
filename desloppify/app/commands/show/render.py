@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
-from desloppify.app.commands.helpers.rendering import print_ranked_actions
+from desloppify.app.commands.helpers.rendering import (
+    print_agent_plan as render_plan_with_living_plan,
+    print_ranked_actions,
+)
 from desloppify.app.commands.helpers.subjective import print_subjective_followup
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
@@ -210,8 +213,7 @@ def show_agent_plan(
     When a living *plan* is active, renders plan focus/progress instead.
     """
     if plan and (plan.get("queue_order") or plan.get("clusters")):
-        from desloppify.app.commands.helpers.rendering import print_agent_plan as _pap
-        _pap(
+        render_plan_with_living_plan(
             [],
             plan=plan,
             header="  AGENT PLAN (use `desloppify next` to see your next task):",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 from desloppify.core._internal.text_utils import get_project_root
@@ -66,6 +67,20 @@ def disable_file_cache() -> None:
     runtime = current_runtime_context()
     runtime.file_text_cache.disable()
     runtime.cache_enabled = False
+
+
+@contextmanager
+def file_cache_scope():
+    """Temporarily enable file cache within a context, with nested safety."""
+    runtime = current_runtime_context()
+    was_enabled = runtime.cache_enabled
+    if not was_enabled:
+        enable_file_cache()
+    try:
+        yield
+    finally:
+        if not was_enabled:
+            disable_file_cache()
 
 
 def is_file_cache_enabled() -> bool:
@@ -187,6 +202,7 @@ __all__ = [
     "get_exclusions",
     "enable_file_cache",
     "disable_file_cache",
+    "file_cache_scope",
     "is_file_cache_enabled",
     "read_file_text",
     "clear_source_file_cache_for_tests",

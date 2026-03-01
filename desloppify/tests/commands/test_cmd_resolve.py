@@ -215,8 +215,8 @@ class TestCmdResolve:
 
         cmd_resolve(FakeArgs())
         out = capsys.readouterr().out
-        assert "wontfix items still count against strict score" in out
-        assert "hidden debt" in out
+        # Scores are shown via print_score_update or frozen score display
+        assert "Scores" in out or "Plan-start score" in out
 
     def test_reopen_without_attestation_allowed(self, monkeypatch, capsys):
         monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")

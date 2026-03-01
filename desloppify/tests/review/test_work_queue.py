@@ -169,6 +169,38 @@ def test_tier4_queue_contains_mechanical_and_synthetic_subjective_items():
     assert kinds == {"finding", "subjective_dimension"}
 
 
+def test_subjective_items_do_not_starve_objective_queue_head():
+    state = _state(
+        [
+            _finding("security::src/a.py::x", detector="security", tier=1, confidence="high"),
+            _finding("smells::src/a.py::y", detector="smells", tier=2, confidence="medium"),
+        ],
+        dimension_scores={
+            "Naming quality": {"score": 92.0, "strict": 92.0, "issues": 3},
+            "Logic clarity": {"score": 90.0, "strict": 90.0, "issues": 2},
+        },
+    )
+
+    queue = build_work_queue(state, count=None, include_subjective=True)
+    ids = [item["id"] for item in queue["items"]]
+    assert ids[:2] == ["security::src/a.py::x", "smells::src/a.py::y"]
+    assert any(item_id.startswith("subjective::") for item_id in ids)
+
+
+def test_subjective_interleave_guardrail_applies_with_default_count_limit():
+    state = _state(
+        [
+            _finding("security::src/a.py::x", detector="security", tier=1, confidence="high"),
+        ],
+        dimension_scores={
+            "Naming quality": {"score": 80.0, "strict": 80.0, "issues": 5},
+        },
+    )
+
+    queue = build_work_queue(state, count=1, include_subjective=True)
+    assert queue["items"][0]["id"] == "security::src/a.py::x"
+
+
 def test_explain_payload_added_when_requested():
     state = _state(
         [

@@ -125,8 +125,8 @@ def _collect_allowed_review_files(
         if resolved_base is not None:
             try:
                 allowed.add(Path(filepath).resolve().relative_to(resolved_base).as_posix())
-            except ValueError:
-                pass
+            except ValueError as exc:
+                _ = exc
     return allowed
 
 

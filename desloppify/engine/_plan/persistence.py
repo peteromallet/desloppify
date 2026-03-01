@@ -17,6 +17,7 @@ from desloppify.engine._plan.schema import (
     validate_plan,
 )
 from desloppify.engine._state.schema import STATE_DIR, json_default
+from desloppify.engine._state.schema import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,6 @@ def load_plan(path: Path | None = None) -> PlanModel:
 
 def save_plan(plan: PlanModel | dict, path: Path | None = None) -> None:
     """Validate and save plan to disk atomically."""
-    from desloppify.engine._state.schema import utc_now
-
     ensure_plan_defaults(plan)
     plan["updated"] = utc_now()
     validate_plan(plan)

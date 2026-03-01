@@ -66,6 +66,7 @@ class PlanModel(TypedDict, total=False):
     overrides: dict[str, ItemOverride]
     clusters: dict[str, Cluster]
     superseded: dict[str, SupersededEntry]
+    plan_start_scores: dict  # frozen score snapshot from plan creation cycle
 
 
 def empty_plan() -> PlanModel:
@@ -82,18 +83,11 @@ def empty_plan() -> PlanModel:
         "overrides": {},
         "clusters": {},
         "superseded": {},
+        "plan_start_scores": {},
     }
 
 
-def ensure_plan_defaults(plan: dict[str, Any]) -> None:
-    """Normalize a loaded plan to ensure all keys exist.
-
-    Handles migration from v1 (deferred list) to v2 (skipped dict).
-    """
-    defaults = empty_plan()
-    for key, value in defaults.items():
-        plan.setdefault(key, value)
-
+def _ensure_container_types(plan: dict[str, Any]) -> None:
     if not isinstance(plan.get("queue_order"), list):
         plan["queue_order"] = []
     if not isinstance(plan.get("deferred"), list):
@@ -106,35 +100,57 @@ def ensure_plan_defaults(plan: dict[str, Any]) -> None:
         plan["clusters"] = {}
     if not isinstance(plan.get("superseded"), dict):
         plan["superseded"] = {}
+    if not isinstance(plan.get("plan_start_scores"), dict):
+        plan["plan_start_scores"] = {}
 
-    # Migrate deferred → skipped (v1 → v2)
+
+def _migrate_deferred_to_skipped(plan: dict[str, Any]) -> None:
     deferred: list[str] = plan["deferred"]
     skipped: dict[str, SkipEntry] = plan["skipped"]
-    if deferred:
-        now = utc_now()
-        for fid in list(deferred):
-            if fid not in skipped:
-                skipped[fid] = {
-                    "finding_id": fid,
-                    "kind": "temporary",
-                    "reason": None,
-                    "note": None,
-                    "attestation": None,
-                    "created_at": now,
-                    "review_after": None,
-                    "skipped_at_scan": 0,
-                }
-        deferred.clear()
+    if not deferred:
+        return
 
-    # Normalize cluster fields
+    now = utc_now()
+    for fid in list(deferred):
+        if fid in skipped:
+            continue
+        skipped[fid] = {
+            "finding_id": fid,
+            "kind": "temporary",
+            "reason": None,
+            "note": None,
+            "attestation": None,
+            "created_at": now,
+            "review_after": None,
+            "skipped_at_scan": 0,
+        }
+    deferred.clear()
+
+
+def _normalize_cluster_defaults(plan: dict[str, Any]) -> None:
     for cluster in plan["clusters"].values():
-        if isinstance(cluster, dict):
-            if not isinstance(cluster.get("finding_ids"), list):
-                cluster["finding_ids"] = []
-            cluster.setdefault("auto", False)
-            cluster.setdefault("cluster_key", "")
-            cluster.setdefault("action", None)
-            cluster.setdefault("user_modified", False)
+        if not isinstance(cluster, dict):
+            continue
+        if not isinstance(cluster.get("finding_ids"), list):
+            cluster["finding_ids"] = []
+        cluster.setdefault("auto", False)
+        cluster.setdefault("cluster_key", "")
+        cluster.setdefault("action", None)
+        cluster.setdefault("user_modified", False)
+
+
+def ensure_plan_defaults(plan: dict[str, Any]) -> None:
+    """Normalize a loaded plan to ensure all keys exist.
+
+    Handles migration from v1 (deferred list) to v2 (skipped dict).
+    """
+    defaults = empty_plan()
+    for key, value in defaults.items():
+        plan.setdefault(key, value)
+
+    _ensure_container_types(plan)
+    _migrate_deferred_to_skipped(plan)
+    _normalize_cluster_defaults(plan)
 
 
 def validate_plan(plan: dict[str, Any]) -> None:

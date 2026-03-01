@@ -16,15 +16,15 @@ def _build_handlers() -> dict[str, CommandHandler]:
     from desloppify.app.commands.detect import cmd_detect
     from desloppify.app.commands.dev_cmd import cmd_dev
     from desloppify.app.commands.exclude_cmd import cmd_exclude
-    from desloppify.app.commands.fix import cmd_fix
+    from desloppify.app.commands.fix.cmd import cmd_fix
     from desloppify.app.commands.langs import cmd_langs
-    from desloppify.app.commands.move import cmd_move
+    from desloppify.app.commands.move.move import cmd_move
     from desloppify.app.commands.next import cmd_next
-    from desloppify.app.commands.plan import cmd_plan
-    from desloppify.app.commands.resolve import cmd_ignore_pattern
+    from desloppify.app.commands.plan.cmd import cmd_plan
+    from desloppify.app.commands.resolve.cmd import cmd_ignore_pattern
     from desloppify.app.commands.review import cmd_review
     from desloppify.app.commands.scan import cmd_scan
-    from desloppify.app.commands.show import cmd_show
+    from desloppify.app.commands.show.cmd import cmd_show
     from desloppify.app.commands.status_cmd import cmd_status
     from desloppify.app.commands.update_skill import cmd_update_skill
     from desloppify.app.commands.viz_cmd import cmd_tree, cmd_viz

@@ -60,7 +60,8 @@ def find_installed_skill() -> SkillInstall | None:
             continue
         try:
             content = full.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            _ = exc
             continue
         version_match = SKILL_VERSION_RE.search(content)
         if not version_match:

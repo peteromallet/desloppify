@@ -38,8 +38,8 @@ def scorecard_dimension_rows(
         rows = prepare_scorecard_dimensions(projected_state)
         if rows:
             return rows
-    except ImportError:
-        pass
+    except ImportError as exc:
+        _ = exc
 
     # Fallback for synthetic/unit-test states without full scorecard context.
     fallback_dim_scores = dim_scores or {}

@@ -41,33 +41,41 @@ def coerce_float(value: object, *, default: float) -> float:
     return default
 
 
-def normalize_coverage_warning(raw: object) -> DetectorCoverageRecord | None:
-    """Normalize runtime coverage payloads to a stable typed shape."""
+def _coerce_text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _coverage_payload_dict(raw: object) -> dict | None:
     if raw is None:
         return None
-
     if hasattr(raw, "__dataclass_fields__"):
-        payload = {
+        return {
             key: getattr(raw, key)
             for key in getattr(raw, "__dataclass_fields__", {})
             if hasattr(raw, key)
         }
-    elif isinstance(raw, dict):
-        payload = dict(raw)
-    else:
+    if isinstance(raw, dict):
+        return dict(raw)
+    return None
+
+
+def normalize_coverage_warning(raw: object) -> DetectorCoverageRecord | None:
+    """Normalize runtime coverage payloads to a stable typed shape."""
+    payload = _coverage_payload_dict(raw)
+    if payload is None:
         return None
 
-    detector = str(payload.get("detector", "") or "").strip()
+    detector = _coerce_text(payload.get("detector"))
     if not detector:
         return None
 
-    status = str(payload.get("status", "full") or "full").strip().lower()
+    status = _coerce_text(payload.get("status", "full")).lower() or "full"
     confidence = coerce_float(payload.get("confidence"), default=1.0)
-    summary = str(payload.get("summary", "") or "").strip()
-    impact = str(payload.get("impact", "") or "").strip()
-    remediation = str(payload.get("remediation", "") or "").strip()
-    tool = str(payload.get("tool", "") or "").strip()
-    reason = str(payload.get("reason", "") or "").strip()
+    summary = _coerce_text(payload.get("summary"))
+    impact = _coerce_text(payload.get("impact"))
+    remediation = _coerce_text(payload.get("remediation"))
+    tool = _coerce_text(payload.get("tool"))
+    reason = _coerce_text(payload.get("reason"))
 
     return {
         "detector": detector,

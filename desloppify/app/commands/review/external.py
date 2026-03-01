@@ -23,6 +23,7 @@ from desloppify.core.output_api import colorize
 
 from .helpers import parse_dimensions
 from .import_cmd import do_import, do_validate_import
+from .batch import FOLLOWUP_SCAN_TIMEOUT_SECONDS
 
 # Backward-compatible override hooks for tests.
 PROJECT_ROOT: Path | None = None
@@ -534,8 +535,6 @@ def do_external_submit(
     safe_write_text(session_path, json.dumps(session, indent=2) + "\n")
 
     if scan_after_import:
-        from .batch import FOLLOWUP_SCAN_TIMEOUT_SECONDS
-
         code = runner_helpers_mod.run_followup_scan(
             lang_name=lang.name,
             scan_path=scan_path,
