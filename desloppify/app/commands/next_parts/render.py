@@ -80,6 +80,12 @@ def is_auto_fix_command(command: str | None) -> bool:
     return cmd.startswith("desloppify fix ") and "--dry-run" in cmd
 
 
+def _item_detail(item: dict) -> dict:
+    """Return item['detail'] as a dict, normalising strings to an empty dict."""
+    d = item.get("detail")
+    return d if isinstance(d, dict) else {}
+
+
 def _effort_tag(item: dict) -> str:
     """Return a short effort/type tag for a queue item."""
     if item.get("detector") == "review":
@@ -173,7 +179,7 @@ def _render_item(
 
     kind = item.get("kind", "finding")
     if kind == "subjective_dimension":
-        detail = item.get("detail", {})
+        detail = _item_detail(item)
         subjective_score = float(
             detail.get("strict_score", item.get("subjective_score", 100.0))
         )
@@ -213,7 +219,7 @@ def _render_item(
     print(f"  File: {item.get('file', '')}")
     print(colorize(f"  ID:   {item.get('id', '')}", "dim"))
 
-    detail = item.get("detail", {})
+    detail = _item_detail(item)
     if detail.get("lines"):
         print(f"  Lines: {', '.join(str(line_no) for line_no in detail['lines'][:8])}")
     if detail.get("category"):
@@ -271,7 +277,7 @@ def _render_item(
         # Review findings: show dimension drag from breakdown
         try:
             from desloppify.scoring import compute_health_breakdown
-            dim_key = item.get("detail", {}).get("dimension", "")
+            dim_key = _item_detail(item).get("dimension", "")
             if dim_key:
                 breakdown = compute_health_breakdown(dim_scores)
                 for entry in breakdown.get("entries", []):
@@ -325,7 +331,7 @@ def _render_item(
 
         # For review findings, show subjective dimension context
         if item.get("detector") == "review" and dim_scores:
-            dim_key = item.get("detail", {}).get("dimension", "")
+            dim_key = _item_detail(item).get("dimension", "")
             if dim_key:
                 for ds_name, ds_data in dim_scores.items():
                     if ds_name.lower().replace(" ", "_") == dim_key.lower().replace(" ", "_"):

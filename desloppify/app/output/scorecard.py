@@ -40,16 +40,47 @@ from desloppify.state import get_overall_score, get_strict_score
 logger = logging.getLogger(__name__)
 
 
-def generate_scorecard(state: dict, output_path: str | Path) -> Path:
-    """Render a landscape scorecard PNG from scan state. Returns the output path."""
+def generate_scorecard(
+    state: dict,
+    output_path: str | Path,
+    *,
+    language: str | None = None,
+) -> Path:
+    """Render a landscape scorecard PNG from scan state. Returns the output path.
+
+    When *language* is provided, the scorecard is generated from the
+    per-language dimension scores stored in
+    ``state["dimension_scores_by_language"][language]`` rather than the
+    aggregate ``dimension_scores``.  The output path should reflect the
+    language (e.g. ``scorecard-go.png``).
+    """
     image_mod = importlib.import_module("PIL.Image")  # deferred: optional dependency
     image_draw_mod = importlib.import_module("PIL.ImageDraw")  # deferred: optional dependency
     scorecard_draw_mod = importlib.import_module("desloppify.app.output.scorecard_parts.draw")  # deferred: depends on PIL
 
     output_path = Path(output_path)
 
-    main_score = get_overall_score(state) or 0
-    strict_score = get_strict_score(state) or 0
+    if language is not None:
+        # Build a shallow state view scoped to the requested language.
+        by_lang = state.get("dimension_scores_by_language") or {}
+        lang_dim_scores = dict(by_lang.get(language, {}))
+        agg = lang_dim_scores.pop("_aggregate_scores", {})
+        render_state = dict(state)
+        render_state["dimension_scores"] = {
+            k: v for k, v in lang_dim_scores.items() if not k.startswith("_")
+        }
+        render_state["scan_history"] = [{"lang": language}]
+        render_state["overall_score"] = (
+            agg.get("overall_score") if agg else None
+        ) or get_overall_score(state) or 0
+        render_state["strict_score"] = (
+            agg.get("strict_score") if agg else None
+        ) or get_strict_score(state) or 0
+    else:
+        render_state = state
+
+    main_score = get_overall_score(render_state) or 0
+    strict_score = get_strict_score(render_state) or 0
 
     project_name = resolve_project_name(PROJECT_ROOT)
     package_version = resolve_package_version(
@@ -59,7 +90,7 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     )
 
     # Layout — landscape (wide), File health first
-    active_dims = prepare_scorecard_dimensions(state)
+    active_dims = prepare_scorecard_dimensions(render_state)
     row_count = len(active_dims)
     row_h = scale(20)
     width = scale(780)
