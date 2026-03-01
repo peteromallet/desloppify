@@ -47,7 +47,6 @@ def _report_load_errors_for_load_all() -> None:
 def load_all() -> None:
     """Import all language modules to trigger registration."""
     if registry_state.was_load_attempted():
-        _report_load_errors_for_load_all()
         return
 
     lang_dir = Path(__file__).resolve().parent
@@ -102,6 +101,22 @@ def load_all() -> None:
                         failures[f"user:{f.name}"] = ex
     except (OSError, ImportError) as exc:
         logger.debug("User plugin discovery skipped: %s", exc)
+
+    # Retry plugins that failed due to a circular import — after the first pass
+    # all framework modules (e.g. generic.py) are fully initialised, so a
+    # second attempt usually succeeds.
+    circular_names = [
+        name for name, ex in failures.items()
+        if isinstance(ex, ImportError) and (
+            "partially initialized" in str(ex) or "circular import" in str(ex)
+        )
+    ]
+    for module_name in circular_names:
+        try:
+            importlib.import_module(module_name, base_package)
+            del failures[module_name]
+        except _PLUGIN_IMPORT_ERRORS:
+            pass
 
     registry_state.set_load_attempted(True)
     registry_state.set_load_errors(failures)
