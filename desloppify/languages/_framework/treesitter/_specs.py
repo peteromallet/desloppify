@@ -253,6 +253,10 @@ PHP_SPEC = TreeSitterLangSpec(
             (namespace_use_group
                 (namespace_use_clause
                     (name) @path))) @import
+        (use_declaration
+            (qualified_name) @path) @import
+        (use_declaration
+            (name) @path) @import
     """,
     resolve_import=resolve_php_import,
     class_query="""

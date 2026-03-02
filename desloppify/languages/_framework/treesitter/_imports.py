@@ -300,6 +300,27 @@ def resolve_cxx_include(import_text: str, source_file: str, scan_path: str) -> s
     return None
 
 
+_PHP_FILE_CACHE: dict[tuple[str, str], str | None] = {}
+
+
+def _find_php_file(filename: str, scan_path: str) -> str | None:
+    """Search common PHP source roots for *filename*, cached."""
+    key = (filename, scan_path)
+    if key in _PHP_FILE_CACHE:
+        return _PHP_FILE_CACHE[key]
+    for root in ("app", "src", "lib"):
+        root_dir = os.path.join(scan_path, root)
+        if not os.path.isdir(root_dir):
+            continue
+        for dirpath, _dirs, files in os.walk(root_dir):
+            if filename in files:
+                result = os.path.join(dirpath, filename)
+                _PHP_FILE_CACHE[key] = result
+                return result
+    _PHP_FILE_CACHE[key] = None
+    return None
+
+
 _PHP_COMPOSER_CACHE: dict[str, dict[str, str]] = {}
 
 
@@ -337,12 +358,22 @@ def resolve_php_import(import_text: str, source_file: str, scan_path: str) -> st
 
     1. Reads composer.json autoload psr-4 mappings (cached).
     2. Falls back to common PSR-4 roots (src/, app/, lib/).
+    3. For bare trait names, searches common directories for ``Name.php``.
 
     Maps ``App\\Models\\User`` → ``app/Models/User.php``.
     """
+    # Strip leading backslash from FQNs (e.g. ``\App\Traits\HasRoles``).
+    import_text = import_text.lstrip("\\")
+
     parts = import_text.replace("\\", "/").split("/")
+
+    # Bare name (e.g. trait ``use HasUuid;``) — search common dirs.
     if len(parts) < 2:
-        return None
+        name = parts[0] if parts else ""
+        if not name or not name[0].isupper():
+            return None
+        return _find_php_file(name + ".php", scan_path)
+
 
     # Try composer.json PSR-4 mappings first.
     psr4 = _read_composer_psr4(scan_path)
