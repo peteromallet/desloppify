@@ -63,6 +63,17 @@ def ts_build_dep_graph(
             # Strip surrounding quotes if present.
             import_text = import_text.strip("\"'`")
 
+            # Prepend group-use prefix when present (PHP ``use A\B\{C, D}``).
+            prefix_node = _unwrap_node(captures.get("prefix"))
+            if prefix_node is not None:
+                prefix_raw = prefix_node.text
+                prefix_text = (
+                    prefix_raw.decode("utf-8", errors="replace")
+                    if isinstance(prefix_raw, bytes)
+                    else str(prefix_raw)
+                ).strip("\"'`")
+                import_text = f"{prefix_text}\\{import_text}"
+
             resolved = spec.resolve_import(import_text, filepath, scan_path)
             if resolved is None:
                 continue
@@ -289,17 +300,74 @@ def resolve_cxx_include(import_text: str, source_file: str, scan_path: str) -> s
     return None
 
 
-def resolve_php_import(import_text: str, source_file: str, scan_path: str) -> str | None:
-    """Resolve PHP use statements via PSR-4-like mapping.
+_PHP_COMPOSER_CACHE: dict[str, dict[str, str]] = {}
 
-    Maps `App\\Models\\User` → src/Models/User.php or app/Models/User.php.
+
+def _read_composer_psr4(scan_path: str) -> dict[str, str]:
+    """Read PSR-4 autoload mappings from composer.json, cached per scan_path.
+
+    Returns ``{namespace_prefix: directory}`` e.g. ``{"App\\\\": "app/"}``.
     """
-    # Parse composer.json for autoload mapping if available.
+    if scan_path in _PHP_COMPOSER_CACHE:
+        return _PHP_COMPOSER_CACHE[scan_path]
+
+    mappings: dict[str, str] = {}
+    composer_path = os.path.join(scan_path, "composer.json")
+    try:
+        import json
+
+        with open(composer_path) as f:
+            data = json.load(f)
+        for section in ("autoload", "autoload-dev"):
+            psr4 = data.get(section, {}).get("psr-4", {})
+            for prefix, dirs in psr4.items():
+                # dirs can be a string or list of strings
+                if isinstance(dirs, str):
+                    mappings[prefix] = dirs
+                elif isinstance(dirs, list) and dirs:
+                    mappings[prefix] = dirs[0]
+    except (OSError, ValueError, KeyError):
+        pass
+    _PHP_COMPOSER_CACHE[scan_path] = mappings
+    return mappings
+
+
+def resolve_php_import(import_text: str, source_file: str, scan_path: str) -> str | None:
+    """Resolve PHP use statements via PSR-4 mapping.
+
+    1. Reads composer.json autoload psr-4 mappings (cached).
+    2. Falls back to common PSR-4 roots (src/, app/, lib/).
+
+    Maps ``App\\Models\\User`` → ``app/Models/User.php``.
+    """
     parts = import_text.replace("\\", "/").split("/")
     if len(parts) < 2:
         return None
 
-    # Try common PSR-4 roots.
+    # Try composer.json PSR-4 mappings first.
+    psr4 = _read_composer_psr4(scan_path)
+    if psr4:
+        # Reconstruct backslash-separated namespace for prefix matching.
+        ns = import_text.replace("/", "\\")
+        if not ns.endswith("\\"):
+            ns_lookup = ns
+        else:
+            ns_lookup = ns
+
+        for prefix, directory in sorted(psr4.items(), key=lambda x: -len(x[0])):
+            # Normalize prefix: ensure trailing backslash
+            norm_prefix = prefix.rstrip("\\") + "\\"
+            if ns_lookup.startswith(norm_prefix) or ns_lookup + "\\" == norm_prefix:
+                remainder = ns_lookup[len(norm_prefix):]
+                if not remainder:
+                    continue
+                rel_path = remainder.replace("\\", os.sep) + ".php"
+                candidate = os.path.join(scan_path, directory, rel_path)
+                candidate = os.path.normpath(candidate)
+                if os.path.isfile(candidate):
+                    return candidate
+
+    # Fallback: try common PSR-4 roots by stripping namespace prefixes.
     for prefix_len in range(1, min(3, len(parts))):
         rel_path = os.path.join(*parts[prefix_len:]) + ".php"
         for src_root in ["src", "app", "lib", "."]:
