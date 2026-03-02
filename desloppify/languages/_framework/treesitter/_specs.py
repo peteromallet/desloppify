@@ -248,6 +248,15 @@ PHP_SPEC = TreeSitterLangSpec(
         (namespace_use_declaration
             (namespace_use_clause
                 (qualified_name) @path)) @import
+        (namespace_use_declaration
+            (namespace_name) @prefix
+            (namespace_use_group
+                (namespace_use_clause
+                    (name) @path))) @import
+        (use_declaration
+            (qualified_name) @path) @import
+        (use_declaration
+            (name) @path) @import
     """,
     resolve_import=resolve_php_import,
     class_query="""
@@ -260,6 +269,9 @@ PHP_SPEC = TreeSitterLangSpec(
         (trait_declaration
             name: (name) @name
             body: (declaration_list) @body) @class
+        (enum_declaration
+            name: (name) @name
+            body: (enum_declaration_list) @body) @class
     """,
     log_patterns=(
         r"^\s*(?:echo |print |var_dump|error_log|Log::)",

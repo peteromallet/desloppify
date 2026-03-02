@@ -133,6 +133,7 @@ def generic_lang(
     treesitter_spec=None,
     zone_rules: list[ZoneRule] | None = None,
     test_coverage_module: object | None = None,
+    entry_patterns: list[str] | None = None,
 ) -> LangConfig:
     """Build and register a generic language plugin from tool specs.
 
@@ -247,7 +248,7 @@ def generic_lang(
         exclusions=exclude or [],
         default_src=default_src,
         build_dep_graph=dep_graph_fn,
-        entry_patterns=[],
+        entry_patterns=entry_patterns or [],
         barrel_names=set(),
         phases=phases,
         fixers=fixers,
