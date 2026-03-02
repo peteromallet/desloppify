@@ -9,11 +9,12 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.helpers.score_update import print_score_update
+from desloppify.app.commands.helpers.queue_progress import show_score_with_plan_context
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core import config as config_mod
 from desloppify.core.fallbacks import print_error
 from desloppify.engine.work_queue import ATTEST_EXAMPLE
+from desloppify.engine.plan import has_living_plan, load_plan, purge_ids, save_plan
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.state import coerce_assessment_score
 from desloppify.core.output_api import colorize
@@ -23,7 +24,6 @@ from .apply import _resolve_all_patterns, _write_resolve_query_entry
 from .render import (
     _print_next_command,
     _print_resolve_summary,
-    _print_score_movement,
     _print_subjective_reset_hint,
     _print_wontfix_batch_warning,
 )
@@ -90,8 +90,6 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 
     # Remove resolved items from the living plan queue (best-effort)
     try:
-        from desloppify.engine.plan import has_living_plan, load_plan, purge_ids, save_plan
-
         if has_living_plan():
             plan = load_plan()
             purged = purge_ids(plan, all_resolved)
@@ -107,24 +105,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         status=args.status,
         resolved_count=len(all_resolved),
     )
-    has_review_findings = any(
-        state["findings"].get(fid, {}).get("detector") == "review"
-        for fid in all_resolved
-    )
-    from desloppify.app.commands.helpers.score import target_strict_score_from_config
-
-    _resolve_config = config_mod.load_config()
-    _resolve_target = target_strict_score_from_config(_resolve_config, fallback=95.0)
-    _print_score_movement(
-        status=args.status,
-        prev_overall=prev.overall,
-        prev_objective=prev.objective,
-        prev_strict=prev.strict,
-        prev_verified=prev.verified,
-        state=state,
-        has_review_findings=has_review_findings,
-        target_strict=_resolve_target,
-    )
+    show_score_with_plan_context(state, prev)
     _print_subjective_reset_hint(
         args=args,
         state=state,
@@ -194,7 +175,7 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
     config_warning = check_config_staleness(config)
     if config_warning:
         print(colorize(f"  {config_warning}", "yellow"))
-    print_score_update(state, prev)
+    show_score_with_plan_context(state, prev)
 
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None

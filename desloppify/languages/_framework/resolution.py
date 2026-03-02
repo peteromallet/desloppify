@@ -24,13 +24,15 @@ def make_lang_config(name: str, cfg_cls: type) -> LangConfig:
     return cfg
 
 
-def get_lang(name: str) -> LangConfig:
+def get_lang(name: str, *, refresh_registry: bool = False) -> LangConfig:
     """Get a language config by name.
 
     All plugins (full and generic) store LangConfig instances in the registry.
     Test doubles that store plain classes are instantiated on demand as a fallback.
     """
-    if not registry_state.is_registered(name):
+    if refresh_registry:
+        load_all(force_reload=True)
+    elif not registry_state.is_registered(name):
         load_all()
     if not registry_state.is_registered(name):
         available = ", ".join(sorted(registry_state.all_keys()))
@@ -41,14 +43,18 @@ def get_lang(name: str) -> LangConfig:
     return make_lang_config(name, obj)  # fallback for test doubles
 
 
-def auto_detect_lang(project_root: Path) -> str | None:
+def auto_detect_lang(
+    project_root: Path,
+    *,
+    refresh_registry: bool = False,
+) -> str | None:
     """Auto-detect language from project files.
 
     When multiple config files are present (e.g. package.json + pyproject.toml),
     counts actual source files to pick the dominant language instead of relying
     on first-match ordering.
     """
-    load_all()
+    load_all(force_reload=refresh_registry)
     candidates: list[str] = []
     configs: dict[str, LangConfig] = {}
 
@@ -95,7 +101,7 @@ def _detect_marker_exists(project_root: Path, marker: str) -> bool:
     return False
 
 
-def available_langs() -> list[str]:
+def available_langs(*, refresh_registry: bool = False) -> list[str]:
     """Return list of registered language names."""
-    load_all()
+    load_all(force_reload=refresh_registry)
     return sorted(registry_state.all_keys())

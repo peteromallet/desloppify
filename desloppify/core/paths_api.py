@@ -52,10 +52,16 @@ def read_code_snippet(filepath: str, line: int, context: int = 1) -> str | None:
     )
 
 
+def get_area(filepath: str, *, min_depth: int = 2) -> str:
+    """Public wrapper for area derivation from a relative file path."""
+    return _text_utils.get_area(filepath, min_depth=min_depth)
+
+
 __all__ = [
     "PROJECT_ROOT",
     "DEFAULT_PATH",
     "SRC_PATH",
+    "get_area",
     "get_project_root",
     "get_default_path",
     "get_src_path",

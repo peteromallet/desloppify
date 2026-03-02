@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from desloppify.app.commands.review.batch_scoring import DimensionMergeScorer
-from desloppify.app.commands.review.batch_prompt_template import render_batch_prompt
+from .batch_scoring import DimensionMergeScorer
+from .batch_prompt_template import render_batch_prompt
 from desloppify.intelligence.review.feedback_contract import (
     DIMENSION_NOTE_ISSUES_KEY,
     HIGH_SCORE_ISSUES_NOTE_THRESHOLD,
@@ -16,6 +16,12 @@ from desloppify.intelligence.review.feedback_contract import (
     LEGACY_REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY,
     LOW_SCORE_FINDING_THRESHOLD,
     REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY,
+)
+from desloppify.intelligence.review.finding_merge import (
+    merge_list_fields,
+    normalize_word_set,
+    pick_longer_text,
+    track_merged_from,
 )
 from desloppify.intelligence.review.importing.contracts import (
     ReviewFindingPayload,
@@ -503,12 +509,6 @@ def _accumulate_batch_scores(
                     )
 
 
-def _normalize_word_set(text: str) -> set[str]:
-    """Tokenize text into a normalized word set for light concept matching."""
-    words = "".join(ch.lower() if ch.isalnum() else " " for ch in text).split()
-    return {word for word in words if len(word) >= 3}
-
-
 def _finding_identity_key(finding: dict[str, Any]) -> str:
     """Build a stable concept key; prefer dimension+identifier when available."""
     dim = str(finding.get("dimension", "")).strip()
@@ -516,7 +516,7 @@ def _finding_identity_key(finding: dict[str, Any]) -> str:
     if ident:
         return f"{dim}::{ident}"
     summary = str(finding.get("summary", "")).strip()
-    summary_terms = sorted(_normalize_word_set(summary))
+    summary_terms = sorted(normalize_word_set(summary))
     if summary_terms:
         return f"{dim}::summary::{','.join(summary_terms[:8])}"
     return f"{dim}::{summary}"
@@ -524,40 +524,29 @@ def _finding_identity_key(finding: dict[str, Any]) -> str:
 
 def _merge_finding_payload(existing: dict[str, Any], incoming: dict[str, Any]) -> None:
     """Merge two concept-equivalent findings into the existing payload."""
-    for field in ("related_files", "evidence"):
-        merged_values: list[str] = []
-        seen: set[str] = set()
-        for source in (existing.get(field), incoming.get(field)):
-            if not isinstance(source, list):
-                continue
-            for item in source:
-                text = str(item).strip()
-                if not text or text in seen:
-                    continue
-                seen.add(text)
-                merged_values.append(text)
-        if merged_values:
-            existing[field] = merged_values
-
+    merge_list_fields(existing, incoming, ("related_files", "evidence"))
     # Prefer richer summary/suggestion text when they differ.
-    existing_summary = str(existing.get("summary", "")).strip()
-    incoming_summary = str(incoming.get("summary", "")).strip()
-    if len(incoming_summary) > len(existing_summary):
-        existing["summary"] = incoming_summary
+    pick_longer_text(existing, incoming, "summary")
+    pick_longer_text(existing, incoming, "suggestion")
+    track_merged_from(existing, str(incoming.get("identifier", "")).strip())
 
-    existing_suggestion = str(existing.get("suggestion", "")).strip()
-    incoming_suggestion = str(incoming.get("suggestion", "")).strip()
-    if len(incoming_suggestion) > len(existing_suggestion):
-        existing["suggestion"] = incoming_suggestion
 
-    merged_from = existing.get("merged_from")
-    if not isinstance(merged_from, list):
-        merged_from = []
-    incoming_identifier = str(incoming.get("identifier", "")).strip()
-    if incoming_identifier and incoming_identifier not in merged_from:
-        merged_from.append(incoming_identifier)
-    if merged_from:
-        existing["merged_from"] = merged_from
+def _should_merge_findings(existing: dict[str, Any], incoming: dict[str, Any]) -> bool:
+    """Check whether two key-matched findings are similar enough to merge."""
+    existing_summary = normalize_word_set(str(existing.get("summary", "")))
+    incoming_summary = normalize_word_set(str(incoming.get("summary", "")))
+    if existing_summary and incoming_summary:
+        overlap = len(existing_summary & incoming_summary)
+        union = len(existing_summary | incoming_summary)
+        if union and overlap / union >= 0.3:
+            return True
+    # Fall back to related-file overlap
+    existing_files = set(existing.get("related_files", []))
+    incoming_files = set(incoming.get("related_files", []))
+    if existing_files and incoming_files:
+        return bool(existing_files & incoming_files)
+    # When no corroborating signal is available, allow merge
+    return not existing_summary or not incoming_summary
 
 
 def _accumulate_batch_findings(
@@ -565,13 +554,20 @@ def _accumulate_batch_findings(
     finding_map: dict[str, dict[str, Any]],
 ) -> None:
     """Deduplicate and accumulate findings from one batch into finding_map."""
+    suffix_counter: dict[str, int] = {}
     for finding in result.get("findings", []):
         dedupe_key = _finding_identity_key(finding)
         existing = finding_map.get(dedupe_key)
         if existing is None:
             finding_map[dedupe_key] = finding
             continue
-        _merge_finding_payload(existing, finding)
+        if _should_merge_findings(existing, finding):
+            _merge_finding_payload(existing, finding)
+        else:
+            # Distinct finding with reused identifier — assign unique key
+            count = suffix_counter.get(dedupe_key, 0) + 1
+            suffix_counter[dedupe_key] = count
+            finding_map[f"{dedupe_key}##dup{count}"] = finding
 
 
 def _accumulate_batch_quality(

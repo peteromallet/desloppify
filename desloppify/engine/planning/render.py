@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date
 
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.core.registry import dimension_action_type
 from desloppify.engine.planning.common import TIER_LABELS
 from desloppify.engine.planning.types import PlanState
@@ -462,7 +463,7 @@ def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
         try:
             from desloppify.engine.plan import load_plan
             plan = load_plan()
-        except Exception:
+        except PLAN_LOAD_EXCEPTIONS:
             plan = {}
 
     has_plan = bool(

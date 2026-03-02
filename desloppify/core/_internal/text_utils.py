@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from desloppify.core.runtime_state import current_runtime_context
+
 _DEFAULT_PROJECT_ROOT = Path(os.environ.get("DESLOPPIFY_ROOT", Path.cwd())).resolve()
 
 # Legacy module-level constant — kept for backwards compat, but prefer
@@ -18,8 +20,6 @@ def get_project_root() -> Path:
     Tests set ``RuntimeContext.project_root`` to point at a tmp directory.
     Production code uses the process-level default from $DESLOPPIFY_ROOT / cwd.
     """
-    from desloppify.core.runtime_state import current_runtime_context
-
     override = current_runtime_context().project_root
     if override is not None:
         return override
@@ -38,7 +38,8 @@ def read_code_snippet(
         root = (
             Path(project_root).resolve()
             if project_root is not None
-            else PROJECT_ROOT
+            # Runtime-aware default; preserves RuntimeContext/project-root overrides.
+            else get_project_root()
         )
         full = Path(filepath)
         if not full.is_absolute():

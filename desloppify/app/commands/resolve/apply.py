@@ -7,6 +7,7 @@ import argparse
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query_best_effort as _write_query_best_effort
 from desloppify.core.output_contract import OutputResult
+from desloppify.engine.plan import has_living_plan, load_plan
 
 from .selection import ResolveQueryContext
 
@@ -14,16 +15,14 @@ from .selection import ResolveQueryContext
 def _try_expand_cluster(pattern: str) -> list[str] | None:
     """If pattern matches a cluster name, return its finding IDs."""
     try:
-        from desloppify.engine.plan import has_living_plan, load_plan
-
         if not has_living_plan():
             return None
         plan = load_plan()
         cluster = plan.get("clusters", {}).get(pattern)
         if cluster and cluster.get("finding_ids"):
             return list(cluster["finding_ids"])
-    except (OSError, ValueError, KeyError, TypeError):
-        pass
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        _ = exc
     return None
 
 

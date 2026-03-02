@@ -10,12 +10,14 @@ Two independent sync functions:
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
 from desloppify.engine._state.schema import StateModel
 
 SUBJECTIVE_PREFIX = "subjective::"
+SYNTHESIS_ID = "synthesis::pending"
 
 
 # ---------------------------------------------------------------------------
@@ -185,11 +187,74 @@ def sync_stale_dimensions(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Synthesis snapshot hash + sync
+# ---------------------------------------------------------------------------
+
+def review_finding_snapshot_hash(state: StateModel) -> str:
+    """Hash open review finding IDs to detect changes.
+
+    Returns empty string when there are no open review findings.
+    """
+    findings = state.get("findings", {})
+    review_ids = sorted(
+        fid for fid, f in findings.items()
+        if f.get("status") == "open"
+        and f.get("detector") in ("review", "concerns")
+    )
+    if not review_ids:
+        return ""
+    return hashlib.sha256("|".join(review_ids).encode()).hexdigest()[:16]
+
+
+@dataclass
+class SynthesisSyncResult:
+    """What changed during a synthesis sync."""
+
+    injected: bool = False
+    pruned: bool = False
+
+    @property
+    def changes(self) -> int:
+        return int(self.injected) + int(self.pruned)
+
+
+def sync_synthesis_needed(
+    plan: PlanModel,
+    state: StateModel,
+) -> SynthesisSyncResult:
+    """Inject ``synthesis::pending`` at front of queue when review findings change.
+
+    Never auto-prunes — only explicit completion (``_apply_completion``) removes it.
+    """
+    ensure_plan_defaults(plan)
+    result = SynthesisSyncResult()
+    order: list[str] = plan["queue_order"]
+    meta = plan.get("epic_synthesis_meta", {})
+    already_present = SYNTHESIS_ID in order
+
+    current_hash = review_finding_snapshot_hash(state)
+    last_hash = meta.get("finding_snapshot_hash", "")
+
+    # If hash changed and not already present, inject at front
+    if current_hash and current_hash != last_hash and not already_present:
+        order.insert(0, SYNTHESIS_ID)
+        result.injected = True
+
+    # Never auto-prune: synthesis::pending is only removed by explicit completion
+
+    return result
+
+
 __all__ = [
     "SUBJECTIVE_PREFIX",
+    "SYNTHESIS_ID",
     "StaleDimensionSyncResult",
+    "SynthesisSyncResult",
     "UnscoredDimensionSyncResult",
     "_current_unscored_ids",
+    "review_finding_snapshot_hash",
     "sync_stale_dimensions",
+    "sync_synthesis_needed",
     "sync_unscored_dimensions",
 ]

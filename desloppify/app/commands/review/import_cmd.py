@@ -9,15 +9,15 @@ from pathlib import Path
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
-from desloppify.app.commands.helpers.score_update import print_score_update
+from desloppify.app.commands.helpers.queue_progress import show_score_with_plan_context
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
-from desloppify.app.commands.review.assessment_integrity import (
+from .assessment_integrity import (
     bind_scorecard_subjective_at_target,
     subjective_at_target_dimensions,
 )
-from desloppify.app.commands.review import import_helpers as import_helpers_mod
+from . import import_helpers as import_helpers_mod
 from desloppify.intelligence import integrity as subjective_integrity_mod
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.intelligence import review as review_mod
@@ -297,7 +297,7 @@ def do_import(
     next_command = import_helpers_mod.print_open_review_summary(
         state, colorize_fn=colorize
     )
-    print_score_update(state, prev, config=config)
+    show_score_with_plan_context(state, prev)
     at_target = import_helpers_mod.print_review_import_scores_and_integrity(
         state,
         config or {},

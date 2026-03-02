@@ -6,6 +6,7 @@ from desloppify.engine._plan.schema import (
     Cluster,
     PlanModel,
     SkipEntry,
+    empty_plan,
     ensure_plan_defaults,
 )
 from desloppify.engine._state.schema import utc_now
@@ -43,49 +44,61 @@ def _resolve_position(
     if position == "bottom":
         return len(order)
 
-    if position == "before" and target:
-        for i, item_id in enumerate(order):
-            if item_id == target and item_id not in moving:
-                return i
-        return 0
+    if position in {"before", "after"} and target:
+        return _resolve_relative_position(order, moving, position=position, target=target)
 
-    if position == "after" and target:
-        for i, item_id in enumerate(order):
-            if item_id == target and item_id not in moving:
-                return i + 1
-        return len(order)
-
-    if position == "up" and offset is not None:
-        if not finding_ids:
-            return 0
-        # Find current position of first item
-        first_id = finding_ids[0]
-        current_idx = None
-        clean_order = [x for x in order if x not in moving]
-        for i, item_id in enumerate(clean_order):
-            if item_id == first_id:
-                current_idx = i
-                break
-        if current_idx is None:
-            # Item not yet in order; treat as "insert at position offset from top"
-            return max(0, len(clean_order) - offset)
-        return max(0, current_idx - offset)
-
-    if position == "down" and offset is not None:
-        if not finding_ids:
-            return len(order)
-        first_id = finding_ids[0]
-        clean_order = [x for x in order if x not in moving]
-        current_idx = None
-        for i, item_id in enumerate(clean_order):
-            if item_id == first_id:
-                current_idx = i
-                break
-        if current_idx is None:
-            return len(clean_order)
-        return min(len(clean_order), current_idx + offset)
+    if position in {"up", "down"} and offset is not None:
+        return _resolve_offset_position(
+            order,
+            moving,
+            position=position,
+            offset=offset,
+            finding_ids=finding_ids,
+        )
 
     return len(order)
+
+
+def _resolve_relative_position(
+    order: list[str],
+    moving: set[str],
+    *,
+    position: str,
+    target: str,
+) -> int:
+    for i, item_id in enumerate(order):
+        if item_id == target and item_id not in moving:
+            return i if position == "before" else i + 1
+    return 0 if position == "before" else len(order)
+
+
+def _find_index(items: list[str], target: str) -> int | None:
+    for i, item_id in enumerate(items):
+        if item_id == target:
+            return i
+    return None
+
+
+def _resolve_offset_position(
+    order: list[str],
+    moving: set[str],
+    *,
+    position: str,
+    offset: int,
+    finding_ids: list[str] | None,
+) -> int:
+    if not finding_ids:
+        return 0 if position == "up" else len(order)
+    first_id = finding_ids[0]
+    clean_order = [x for x in order if x not in moving]
+    current_idx = _find_index(clean_order, first_id)
+    if current_idx is None:
+        if position == "up":
+            return max(0, len(clean_order) - offset)
+        return len(clean_order)
+    if position == "up":
+        return max(0, current_idx - offset)
+    return min(len(clean_order), current_idx + offset)
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +268,10 @@ def create_cluster(
         raise ValueError(
             f"Cluster names starting with 'auto/' are reserved for auto-clusters: {name!r}"
         )
+    if name.startswith("epic/"):
+        raise ValueError(
+            f"Cluster names starting with 'epic/' are reserved for synthesis epics: {name!r}"
+        )
     if name in plan["clusters"]:
         raise ValueError(f"Cluster {name!r} already exists")
     now = utc_now()
@@ -397,8 +414,7 @@ def reset_plan(plan: PlanModel) -> None:
     """Reset plan to empty state, preserving version and created timestamp."""
     created = plan.get("created", utc_now())
     plan.clear()
-    from desloppify.engine._plan.schema import empty_plan as _empty
-    for k, v in _empty().items():
+    for k, v in empty_plan().items():
         plan[k] = v
     plan["created"] = created
 

@@ -873,7 +873,6 @@ class TestCollectExcludeDirs:
             "desloppify.core.source_discovery.get_exclusions", return_value=()
         ):
             result = collect_exclude_dirs(tmp_path)
-        basenames = {p.rsplit("/", 1)[-1] for p in result}
         # *.egg-info and .venv* are glob patterns and should be excluded
         assert not any("*" in p for p in result)
 

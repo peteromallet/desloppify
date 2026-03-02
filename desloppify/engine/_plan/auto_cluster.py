@@ -399,7 +399,11 @@ def auto_cluster_findings(plan: PlanModel, state: StateModel) -> int:
         active_auto_keys.add(_STALE_KEY)
         cli_keys = [fid.removeprefix(SUBJECTIVE_PREFIX) for fid in stale_queue_ids]
         description = f"Re-review {len(stale_queue_ids)} stale subjective dimensions"
-        action = f"desloppify review --prepare --dimensions {','.join(cli_keys)}"
+        action = (
+            "desloppify review --prepare --dimensions "
+            + ",".join(cli_keys)
+            + " --force-review-rerun"
+        )
 
         existing_name = existing_by_key.get(_STALE_KEY)
         if existing_name and existing_name in clusters:

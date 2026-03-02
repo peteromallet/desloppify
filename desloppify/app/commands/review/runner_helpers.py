@@ -59,6 +59,23 @@ _USAGE_LIMIT_PHRASES = (
     "codex/settings/usage",
 )
 
+_RUNNER_CALLBACK_EXCEPTIONS = (
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    AssertionError,
+    KeyError,
+)
+_RUNNER_TASK_EXCEPTIONS = (
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    AssertionError,
+    subprocess.SubprocessError,
+)
+
 
 @dataclass(frozen=True)
 class CodexBatchRunnerDeps:
@@ -229,8 +246,8 @@ def _terminate_process(process: subprocess.Popen[str]) -> None:
         process.terminate()
         process.wait(timeout=3)
         return
-    except (OSError, subprocess.SubprocessError):
-        pass
+    except (OSError, subprocess.SubprocessError) as exc:
+        _ = exc
     try:
         process.kill()
         process.wait(timeout=3)
@@ -255,8 +272,8 @@ def _drain_stream(stream, sink: list[str], state: _RunnerState) -> None:
     finally:
         try:
             stream.close()
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            _ = exc
 
 
 def _write_live_snapshot(state: _RunnerState, ctx: _AttemptContext) -> None:
@@ -841,11 +858,11 @@ def _emit_progress(
         try:
             progress_fn(batch_index, event, code, **payload)
             return None
-        except Exception as legacy_exc:
+        except _RUNNER_CALLBACK_EXCEPTIONS as legacy_exc:
             return RuntimeError(
                 f"progress callback failed for event={event} batch={batch_index}: {legacy_exc}"
             )
-    except Exception as exc:
+    except _RUNNER_CALLBACK_EXCEPTIONS as exc:
         return RuntimeError(
             f"progress callback failed for event={event} batch={batch_index}: {exc}"
         )
@@ -862,8 +879,8 @@ def _record_execution_error(
     if callable(error_log_fn):
         try:
             error_log_fn(idx, exc)
-        except (OSError, TypeError, ValueError):
-            pass  # error-logging callback failed; don't crash the batch
+        except (OSError, TypeError, ValueError) as exc:
+            _ = exc  # error-logging callback failed; don't crash the batch
     failures.add(idx)
 
 
@@ -919,7 +936,7 @@ def _execute_serial(*, tasks, indexes, progress_fn, error_log_fn, clock_fn) -> l
             )
         try:
             code = tasks[idx]()
-        except Exception as exc:
+        except _RUNNER_TASK_EXCEPTIONS as exc:
             _record_execution_error(
                 error_log_fn=error_log_fn,
                 failures=failures,
@@ -976,8 +993,8 @@ def _execute_parallel(
         if callable(error_log_fn):
             try:
                 error_log_fn(idx, err)
-            except (OSError, TypeError, ValueError):
-                pass  # error-logging callback failed; don't crash the batch
+            except (OSError, TypeError, ValueError) as exc:
+                _ = exc  # error-logging callback failed; don't crash the batch
 
     def _run_one(idx: int) -> int:
         with lock:
@@ -997,7 +1014,7 @@ def _execute_parallel(
         elapsed = int(max(0.0, clock_fn() - t0))
         try:
             code = future.result()
-        except Exception as exc:
+        except _RUNNER_TASK_EXCEPTIONS as exc:
             _record_execution_error(
                 error_log_fn=error_log_fn,
                 failures=failures,
@@ -1093,8 +1110,8 @@ def _heartbeat(
     if heartbeat_error is not None and callable(error_log_fn):
         try:
             error_log_fn(-1, heartbeat_error)
-        except Exception:
-            pass  # error-logging callback failed; don't crash the batch
+        except _RUNNER_CALLBACK_EXCEPTIONS as exc:
+            _ = exc  # error-logging callback failed; don't crash the batch
 
 
 def _extract_payload_from_log(
@@ -1169,8 +1186,8 @@ def collect_batch_results(
         if parsed_from_log:
             try:
                 raw_path.write_text(json.dumps(payload, indent=2) + "\n")
-            except OSError:
-                pass
+            except OSError as exc:
+                _ = exc
         try:
             assessments, findings, dimension_notes, quality = normalize_result_fn(
                 payload,
@@ -1267,9 +1284,12 @@ def _runner_failure_hints(*, failures: list[int], logs_dir: Path) -> list[str]:
     hints: list[str] = []
     for idx in sorted(set(failures)):
         log_file = logs_dir / f"batch-{idx + 1}.log"
+        raw = ""
         try:
             raw = log_file.read_text()
-        except OSError:
+        except OSError as exc:
+            _ = exc
+        if not raw:
             continue
         text = raw.lower()
         if (
@@ -1343,9 +1363,12 @@ def _any_restricted_sandbox_failures(*, failures: list[int], logs_dir: Path) -> 
     """Return True when any failed batch log shows restricted sandbox indicators."""
     for idx in sorted(set(failures)):
         log_file = logs_dir / f"batch-{idx + 1}.log"
+        text = ""
         try:
             text = log_file.read_text().lower()
-        except OSError:
+        except OSError as exc:
+            _ = exc
+        if not text:
             continue
         if _looks_like_restricted_sandbox(text):
             return True
@@ -1457,6 +1480,8 @@ def print_failures_and_exit(
     colorize_fn,
 ) -> None:
     """Render retry guidance for failed batches and exit non-zero."""
+    if not failures:
+        print(colorize_fn("  Failed batches: []", "yellow"), file=sys.stderr)
     _print_failures_report(
         failures=failures,
         packet_path=packet_path,

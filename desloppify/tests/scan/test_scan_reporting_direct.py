@@ -706,7 +706,7 @@ def test_subjective_rerun_command_builds_dimension_and_holistic_variants():
         max_items=5,
     )
     assert (
-        "review --run-batches --runner codex --parallel --scan-after-import --dimensions naming_quality,logic_clarity"
+        "review --run-batches --runner codex --parallel --scan-after-import --force-review-rerun --dimensions naming_quality,logic_clarity"
         in command_dims
     )
     assert command_dims.endswith("naming_quality,logic_clarity`")
@@ -717,8 +717,16 @@ def test_subjective_rerun_command_builds_dimension_and_holistic_variants():
     )
     assert (
         command_holistic
-        == "`desloppify review --run-batches --runner codex --parallel --scan-after-import`"
+        == "`desloppify review --run-batches --runner codex --parallel --scan-after-import --force-review-rerun`"
     )
+
+
+def test_subjective_rerun_command_prefers_open_review_queue_when_issues_exist():
+    command = scan_reporting_dimensions_mod.subjective_rerun_command(
+        [{"cli_keys": ["naming_quality"], "issues": 2}],
+        max_items=5,
+    )
+    assert command == "`desloppify show review --status open`"
 
 
 def test_subjective_integrity_followup_handles_none_threshold_and_target():
@@ -867,7 +875,7 @@ def test_show_subjective_paths_shows_target_match_reset_warning(monkeypatch, cap
     assert "were reset to 0.0 this scan" in out
     assert "Anti-gaming safeguard applied" in out
     assert (
-        "review --run-batches --runner codex --parallel --scan-after-import --dimensions naming_quality,logic_clarity"
+        "review --run-batches --runner codex --parallel --scan-after-import --force-review-rerun --dimensions naming_quality,logic_clarity"
         in out
     )
 

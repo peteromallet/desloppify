@@ -13,7 +13,16 @@ Planned removal: 2026-09-30 (or later major version).
 
 from __future__ import annotations
 
+import warnings as _warnings
 from pathlib import Path
+
+_warnings.warn(
+    "desloppify.utils is deprecated; use focused public APIs instead "
+    "(desloppify.core.paths_api, discovery_api, output_api, tooling). "
+    "Planned removal: 2026-09-30.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from desloppify.core.discovery_api import (
     DEFAULT_EXCLUSIONS,

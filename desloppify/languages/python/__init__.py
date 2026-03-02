@@ -157,10 +157,6 @@ class PythonConfig(LangConfig):
             coverage=coverage,
         )
 
-    def detect_lang_security(self, files, zone_map):
-        detailed = self.detect_lang_security_detailed(files, zone_map)
-        return detailed.entries, detailed.files_scanned
-
     def detect_private_imports(self, graph, zone_map):
         return detect_python_private_imports(graph, zone_map)
 

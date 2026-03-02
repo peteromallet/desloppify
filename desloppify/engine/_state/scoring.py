@@ -9,12 +9,13 @@ __all__ = [
 ]
 
 from desloppify.core._internal.coercions import coerce_confidence
+from desloppify.core.enums import finding_status_tokens
 from desloppify.engine._scoring.policy.core import matches_target_score
 from desloppify.engine._state.filtering import path_scoped_findings
 from desloppify.engine._state.schema import StateModel, ensure_state_defaults
 from desloppify.languages._framework.base.types import ScanCoverageRecord
 
-_EMPTY_COUNTERS = ("open", "fixed", "auto_resolved", "wontfix", "false_positive")
+_EMPTY_COUNTERS = tuple(sorted(finding_status_tokens()))
 _SUBJECTIVE_TARGET_RESET_THRESHOLD = 2
 
 
@@ -332,8 +333,8 @@ def _update_objective_health(
             dims, _, _ = load_dimensions_for_lang(lang_name)
             if dims:
                 allowed_subjective = set(dims)
-        except (ImportError, AttributeError):
-            pass
+        except (ImportError, AttributeError) as exc:
+            _ = exc
 
     bundle = compute_score_bundle(
         findings,

@@ -6,6 +6,7 @@ import pytest
 
 import desloppify.app.commands.scan.scan as scan_cmd_mod
 import desloppify.app.commands.scan.scan_artifacts as scan_artifacts_mod
+import desloppify.app.commands.scan.scan_preflight as scan_preflight_mod
 import desloppify.intelligence.narrative as narrative_mod
 import desloppify.languages as lang_mod
 from desloppify.app.commands.scan.scan import (
@@ -47,6 +48,7 @@ class TestCmdScanExecution:
     """cmd_scan should execute the scan workflow, not just helpers."""
 
     def test_cmd_scan_runs_pipeline_and_writes_query(self, monkeypatch):
+        monkeypatch.setattr(scan_preflight_mod, "scan_queue_preflight", lambda _: None)
         args = SimpleNamespace(path=".")
         runtime = SimpleNamespace(
             lang_label=" (python)",
@@ -135,6 +137,7 @@ class TestCmdScanExecution:
         assert captured["llm_summary_called"] is True
 
     def test_cmd_scan_prints_coverage_preflight_warning(self, monkeypatch, capsys):
+        monkeypatch.setattr(scan_preflight_mod, "scan_queue_preflight", lambda _: None)
         args = SimpleNamespace(path=".")
         runtime = SimpleNamespace(
             lang_label=" (python)",
@@ -212,6 +215,7 @@ class TestCmdScanExecution:
         assert "Install Bandit" in out
 
     def test_cmd_scan_exits_on_state_contract_error(self, monkeypatch, capsys):
+        monkeypatch.setattr(scan_preflight_mod, "scan_queue_preflight", lambda _: None)
         args = SimpleNamespace(path=".")
         monkeypatch.setattr(
             scan_cmd_mod,

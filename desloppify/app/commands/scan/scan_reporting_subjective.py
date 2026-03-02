@@ -83,6 +83,15 @@ def subjective_rerun_command(
     has_prior_review: bool | None = None,
 ) -> str:
     _ = refresh
+    # If dimensions already have open review issues, route to the review queue
+    # instead of prompting a blocked rerun.
+    if any(
+        int(entry.get("issues", 0) or 0) > 0
+        for entry in items[:max_items]
+        if isinstance(entry, dict)
+    ):
+        return "`desloppify show review --status open`"
+
     dim_keys = flatten_cli_keys(items, max_items=max_items)
 
     # If no evidence of prior runner usage, suggest --prepare first
@@ -101,6 +110,7 @@ def subjective_rerun_command(
         "codex",
         "--parallel",
         "--scan-after-import",
+        "--force-review-rerun",
     ]
     if dim_keys:
         command_parts.extend(["--dimensions", dim_keys])

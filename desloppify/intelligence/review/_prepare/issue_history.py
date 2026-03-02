@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-_RESOLVED_STATUSES = {"fixed", "auto_resolved", "wontfix", "false_positive"}
-_KNOWN_STATUSES = ("open", "fixed", "auto_resolved", "wontfix", "false_positive")
+from desloppify.core.enums import finding_status_tokens, resolved_statuses
+
+_RESOLVED_STATUSES = resolved_statuses()
+_KNOWN_STATUSES = tuple(sorted(finding_status_tokens()))
 _AUTO_RESOLVE_NOTE = "not reported in latest holistic re-import"
 
 

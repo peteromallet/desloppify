@@ -18,6 +18,7 @@ from desloppify.languages._framework.base.phase_builders import (
 from desloppify.languages._framework.base.types import (
     DetectorPhase,
     LangConfig,
+    LangSecurityResult,
     LangValueSpec,
 )
 from desloppify.languages._framework.treesitter.phases import all_treesitter_phases
@@ -98,8 +99,9 @@ register_lang_hooks("csharp", test_coverage=csharp_test_coverage_hooks)
 class CSharpConfig(LangConfig):
     """C# language configuration."""
 
-    def detect_lang_security(self, files, zone_map):
-        return detect_csharp_security(files, zone_map)
+    def detect_lang_security_detailed(self, files, zone_map):
+        entries, files_scanned = detect_csharp_security(files, zone_map)
+        return LangSecurityResult(entries=entries, files_scanned=files_scanned)
 
     def __init__(self):
         super().__init__(

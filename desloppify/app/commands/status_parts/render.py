@@ -21,7 +21,7 @@ from desloppify.app.commands.status_parts.summary import (
 from desloppify.engine.planning.scorecard_projection import (
     scorecard_subjective_entries,
 )
-from desloppify.core._internal.text_utils import get_area
+from desloppify.core.paths_api import get_area
 from desloppify.core.registry import dimension_action_type
 from desloppify.scoring import (
     DIMENSIONS,
@@ -316,7 +316,7 @@ def _render_dimension_legend(scorecard_subjective: list[dict], state: dict | Non
         print(
             colorize(
                 f"  {n} stale dimension{'s' if n != 1 else ''}"
-                f": `desloppify review --prepare --dimensions {dims_arg}`",
+                f": `desloppify review --prepare --dimensions {dims_arg} --force-review-rerun`",
                 "yellow",
             )
         )

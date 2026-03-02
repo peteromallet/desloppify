@@ -29,6 +29,7 @@ from desloppify.engine._scoring.policy.core import (
     ScoreMode,
     matches_target_score,
     register_scoring_policy,
+    reset_registered_scoring_policies,
 )
 from desloppify.engine._scoring.results.core import (
     ScoreBundle,
@@ -79,4 +80,5 @@ __all__ = [
     "matches_target_score",
     "merge_potentials",
     "register_scoring_policy",
+    "reset_registered_scoring_policies",
 ]

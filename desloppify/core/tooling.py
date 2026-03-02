@@ -59,7 +59,7 @@ def check_tool_staleness(state: dict, *, tool_dir: Path | None = None) -> str | 
         )
         return (
             f"Tool code changed since last scan (was {stored}, now {current}){suffix}. "
-            "Consider re-running: desloppify scan"
+            "Scores will refresh on next scan"
         )
     if unreadable_files > 0:
         return (

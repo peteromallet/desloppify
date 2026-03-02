@@ -62,7 +62,31 @@ def test_blocked_when_open_objective_items(capsys):
         assert exc.value.code == 1
 
     err = capsys.readouterr().err
-    assert "3 open objective finding(s)" in err
+    assert "Open objective finding(s): 3" in err
+    assert "--force-review-rerun" in err
+
+
+def test_blocked_when_open_subjective_queue_items(capsys):
+    """Preflight blocks when subjective queue work remains on rerun."""
+    state = _state_with_prior_review()
+    subjective_items = [
+        {
+            "id": "subjective::naming_quality",
+            "kind": "subjective_dimension",
+            "detail": {"dimension": "naming_quality"},
+        }
+    ]
+    with patch(
+        _BUILD_WQ,
+        side_effect=[_wq_result([]), _wq_result(subjective_items)],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            review_rerun_preflight(state, _make_args())
+        assert exc.value.code == 1
+
+    err = capsys.readouterr().err
+    assert "objective: 0, subjective: 1" in err
+    assert "Open subjective queue item(s): 1" in err
     assert "--force-review-rerun" in err
 
 
@@ -77,7 +101,7 @@ def test_blocked_message_is_concise(capsys):
             review_rerun_preflight(state, _make_args())
 
     err = capsys.readouterr().err
-    assert "8 open objective finding(s)" in err
+    assert "Open objective finding(s): 8" in err
     # Should NOT dump individual finding IDs
     assert "f0" not in err
     assert "f7" not in err
@@ -285,6 +309,29 @@ def test_targeting_mix_of_scored_and_unscored_blocks_and_suggests(capsys):
     assert "design_coherence" in err
     # Should suggest targeting only the unscored dimension
     assert "--dimensions logic_clarity" in err
+
+
+def test_targeted_rerun_ignores_non_targeted_subjective_queue_items():
+    """Subjective backlog for other dimensions does not block targeted reruns."""
+    state = {
+        "subjective_assessments": {
+            "naming_quality": {"score": 82.0},
+            "logic_clarity": {"score": 74.0},
+        }
+    }
+    args = _make_args(dimensions="logic_clarity")
+    non_targeted_subjective = [
+        {
+            "id": "subjective::naming_quality",
+            "kind": "subjective_dimension",
+            "detail": {"dimension": "naming_quality"},
+        }
+    ]
+    with patch(
+        _BUILD_WQ,
+        side_effect=[_wq_result([]), _wq_result(non_targeted_subjective)],
+    ):
+        review_rerun_preflight(state, args)
 
 
 def test_no_dimensions_flag_blocks_on_any_scored(capsys):
@@ -592,7 +639,7 @@ def test_external_start_calls_preflight():
 
 
 def test_import_skips_preflight():
-    """--import does not invoke preflight."""
+    """--import skips preflight (import is a resolution step that drains backlog)."""
     from desloppify.app.commands.review.entrypoint import cmd_review
 
     with (
@@ -620,7 +667,7 @@ def test_validate_import_skips_preflight():
 
 
 def test_external_submit_skips_preflight():
-    """--external-submit does not invoke preflight."""
+    """--external-submit skips preflight (submit is a resolution step that drains backlog)."""
     from desloppify.app.commands.review.entrypoint import cmd_review
 
     with (

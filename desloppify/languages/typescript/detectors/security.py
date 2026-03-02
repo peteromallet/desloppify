@@ -275,7 +275,7 @@ def _file_level_security_findings(
     file_findings: list[dict] = []
 
     if _looks_like_edge_handler(normalized_path, content):
-        if not _AUTH_CHECK_RE.search(content):
+        if not _handler_has_auth_check(content):
             file_findings.append(
                 _make_security_entry(
                     filepath,
@@ -300,6 +300,47 @@ def _looks_like_edge_handler(normalized_path: str, content: str) -> bool:
     in_edge_tree = "/functions/" in normalized_path.replace("\\", "/")
     has_edge_entrypoint = bool(_SERVE_ASYNC_RE.search(content) or _EDGE_ENTRYPOINT_RE.search(content))
     return in_edge_tree and has_edge_entrypoint
+
+
+def _extract_handler_body(content: str) -> str | None:
+    """Extract the body of the first serve() or exported handler function.
+
+    Uses brace-depth tracking to find the handler callback scope.
+    Returns the handler body text, or None if not found.
+    """
+    # Try serve(async (req) => { ... }) or serve(async function(req) { ... })
+    match = _SERVE_ASYNC_RE.search(content)
+    if not match:
+        match = _EDGE_ENTRYPOINT_RE.search(content)
+    if not match:
+        return None
+
+    # Find the first opening brace after the match
+    start = match.end()
+    brace_pos = content.find("{", start)
+    if brace_pos == -1:
+        return None
+
+    # Track brace depth to find the matching close brace
+    depth = 0
+    for i in range(brace_pos, len(content)):
+        ch = content[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return content[brace_pos : i + 1]
+    return None
+
+
+def _handler_has_auth_check(content: str) -> bool:
+    """Check if auth patterns exist inside the handler body, not just anywhere in the file."""
+    handler_body = _extract_handler_body(content)
+    if handler_body is None:
+        # Fallback to file-level check if we can't parse handler boundaries
+        return bool(_AUTH_CHECK_RE.search(content))
+    return bool(_AUTH_CHECK_RE.search(handler_body))
 
 
 def _is_in_try_scope(lines: list[str], target_line: int) -> bool:

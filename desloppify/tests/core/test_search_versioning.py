@@ -244,4 +244,4 @@ def test_check_tool_staleness_returns_warning_when_hash_differs():
     assert result is not None
     assert "Tool code changed" in result
     assert "000000000000" in result
-    assert "desloppify scan" in result
+    assert "next scan" in result

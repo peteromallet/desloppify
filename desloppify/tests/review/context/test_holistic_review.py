@@ -1186,11 +1186,11 @@ class TestSiblingBehavior:
                 content=f"from ..narrative import compute_narrative\ndef cmd_{i}(): pass\n",
             )
         _make_file(
-            str(tmp_path), "commands/review/cmd.py", content="def cmd_review(): pass\n"
-        )  # Missing compute_narrative
+            str(tmp_path), "commands/cmd_review.py", content="def cmd_review(): pass\n"
+        )  # Missing compute_narrative — same directory as siblings
         files = [
             os.path.join(str(tmp_path), f"commands/{n}")
-            for n in [f"cmd_{i}.py" for i in range(3)] + ["review/cmd.py"]
+            for n in [f"cmd_{i}.py" for i in range(3)] + ["cmd_review.py"]
         ]
         lang = _mock_lang(files)
         state = empty_state()
@@ -1201,7 +1201,7 @@ class TestSiblingBehavior:
         assert "commands/" in sibling
         outliers = sibling["commands/"]["outliers"]
         outlier_files = [o["file"] for o in outliers]
-        assert any("review/cmd" in f for f in outlier_files)
+        assert any("cmd_review" in f for f in outlier_files)
         # compute_narrative should be in shared_patterns
         shared = sibling["commands/"]["shared_patterns"]
         assert "compute_narrative" in shared

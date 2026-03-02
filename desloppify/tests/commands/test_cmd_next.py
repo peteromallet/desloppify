@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import desloppify.engine.plan as plan_mod
 import desloppify.intelligence.narrative as narrative_mod
 from desloppify.app.commands import next as next_mod
 from desloppify.app.commands.helpers.runtime import CommandRuntime
@@ -47,6 +48,8 @@ def _patch_common(monkeypatch, *, state, config=None):
     monkeypatch.setattr(next_mod, "check_tool_staleness", lambda _state: None)
     monkeypatch.setattr(narrative_mod, "compute_narrative", lambda *a, **k: {})
     monkeypatch.setattr(next_mod, "resolve_lang", lambda _args: None)
+    monkeypatch.setattr(plan_mod, "load_plan", lambda: {})
+    monkeypatch.setattr(next_mod, "load_plan", lambda: {})
 
 
 class TestNextModuleSanity:
@@ -560,7 +563,7 @@ class TestCmdNextOutput:
         assert "were reset to 0.0 this scan" in out
         assert "Anti-gaming safeguard applied" in out
         assert (
-            "review --run-batches --runner codex --parallel --scan-after-import --dimensions"
+            "review --run-batches --runner codex --parallel --scan-after-import --force-review-rerun --dimensions"
             in out
         )
         assert "naming_quality" in out

@@ -310,6 +310,17 @@ examples:
         action="store_true",
         help="Run `scan` after successful merged import",
     )
+    g_batch.add_argument(
+        "--import-run",
+        dest="import_run_dir",
+        type=str,
+        metavar="DIR",
+        default=None,
+        help=(
+            "Re-import results from a completed run directory "
+            "(replays merge+import when the original pipeline was interrupted)"
+        ),
+    )
 
     # -- trust & attestation --
     g_trust = p_review.add_argument_group("trust & attestation")
@@ -619,6 +630,12 @@ examples:
             "'I have actually' and 'not gaming'."
         ),
     )
+    p_done.add_argument(
+        "--confirm",
+        action="store_true",
+        default=False,
+        help="Auto-generate attestation from --note (requires --note)",
+    )
 
     # plan focus <cluster> | --clear
     p_focus = plan_sub.add_parser("focus", help="Set or clear active cluster focus")
@@ -668,6 +685,50 @@ examples:
 
     # plan cluster list
     cluster_sub.add_parser("list", help="List all clusters")
+
+    # plan cluster update <name> [--description "..."] [--steps "..." ...]
+    p_cu = cluster_sub.add_parser("update", help="Update cluster description and/or action steps")
+    p_cu.add_argument("cluster_name", type=str, help="Cluster name")
+    p_cu.add_argument("--description", type=str, default=None, help="Cluster description")
+    p_cu.add_argument("--steps", nargs="+", metavar="STEP", default=None, help="Action steps list")
+
+    # plan synthesize ...
+    p_synth = plan_sub.add_parser(
+        "synthesize",
+        help="Staged synthesis workflow for review findings",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_synth.add_argument(
+        "--stage",
+        type=str,
+        choices=["observe", "reflect", "organize"],
+        default=None,
+        help="Stage to record",
+    )
+    p_synth.add_argument(
+        "--report", type=str, default=None,
+        help="Stage report text",
+    )
+    p_synth.add_argument(
+        "--complete", action="store_true", default=False,
+        help="Mark synthesis complete",
+    )
+    p_synth.add_argument(
+        "--strategy", type=str, default=None,
+        help="Strategy summary (for --complete)",
+    )
+    p_synth.add_argument(
+        "--confirm-existing", action="store_true", default=False,
+        help="Fast-track confirmation of existing plan",
+    )
+    p_synth.add_argument(
+        "--note", type=str, default=None,
+        help="Note for --confirm-existing",
+    )
+    p_synth.add_argument(
+        "--dry-run", action="store_true", default=False,
+        help="Preview mode",
+    )
 
 
 def _add_viz_parser(sub) -> None:

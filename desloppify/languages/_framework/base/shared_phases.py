@@ -293,14 +293,9 @@ def phase_security(path: Path, lang: LangRuntimeContract) -> tuple[list[Finding]
 
     # Also call lang-specific security detectors.
     lang_result = lang.detect_lang_security_detailed(files, zone_map)
-    if isinstance(lang_result, LangSecurityResult):
-        lang_entries = lang_result.entries
-        lang_scanned = max(0, int(lang_result.files_scanned))
-        _record_detector_coverage(lang, lang_result.coverage)
-    else:
-        # Backwards compatibility for legacy plugins returning tuple[list[dict], int].
-        lang_entries, legacy_scanned = lang_result
-        lang_scanned = max(0, int(legacy_scanned or 0))
+    lang_entries = lang_result.entries
+    lang_scanned = max(0, int(lang_result.files_scanned))
+    _record_detector_coverage(lang, lang_result.coverage)
     entries.extend(lang_entries)
 
     entries = filter_entries(zone_map, entries, "security")

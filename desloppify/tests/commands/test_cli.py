@@ -513,6 +513,33 @@ class TestDetectorNames:
         for name in ["logs", "unused", "smells", "cycles", "dupes"]:
             assert name in names
 
+    def test_runtime_detector_registration_invalidates_cached_detector_names(self):
+        from desloppify.core.registry import (
+            DETECTORS,
+            _DISPLAY_ORDER,
+            DetectorMeta,
+            register_detector,
+        )
+
+        test_detector = "_test_cli_cache_refresh"
+        cli_mod._DETECTOR_NAMES = ["stale_only"]
+        register_detector(
+            DetectorMeta(
+                name=test_detector,
+                display="cache-refresh",
+                dimension="Code quality",
+                action_type="manual_fix",
+                guidance="cache refresh regression test",
+            )
+        )
+        assert cli_mod._DETECTOR_NAMES is None
+        assert test_detector in _get_detector_names()
+
+        # Cleanup dynamic detector mutation for test isolation.
+        DETECTORS.pop(test_detector, None)
+        if test_detector in _DISPLAY_ORDER:
+            _DISPLAY_ORDER.remove(test_detector)
+
 
 # ===========================================================================
 # state_path
@@ -524,12 +551,13 @@ class TestStatePath:
         """state_path auto-detects language and returns lang-specific path."""
         args = SimpleNamespace()
         # When auto_detect_lang finds a language, state_path returns lang-specific path
-        with patch("desloppify.languages.auto_detect_lang", return_value="python"):
+        with patch("desloppify.app.commands.helpers.state.auto_detect_lang_name", return_value="python"):
             result = state_path(args)
             assert result is not None
             assert "state-python.json" in str(result)
         # When auto_detect_lang finds nothing, state_path returns None
-        with patch("desloppify.languages.auto_detect_lang", return_value=None):
+        with patch("desloppify.app.commands.helpers.state.auto_detect_lang_name", return_value=None), \
+             patch("desloppify.app.commands.helpers.state._sole_existing_lang_state_file", return_value=None):
             result = state_path(args)
             assert result is None
 

@@ -127,43 +127,7 @@ def _collect_reviewed_files_from_batches(
     return reviewed
 
 
-def _coerce_positive_int(value: object, *, default: int, minimum: int = 1) -> int:
-    """Parse positive integer CLI/config inputs with a safe default."""
-    if value is None:
-        return default
-    if not isinstance(value, int | float | str):
-        return default
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed >= minimum else default
-
-
-def _coerce_positive_float(value: object, *, default: float, minimum: float = 0.1) -> float:
-    """Parse positive float CLI/config inputs with a safe default."""
-    if value is None:
-        return default
-    if not isinstance(value, int | float | str):
-        return default
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed >= minimum else default
-
-
-def _coerce_non_negative_float(value: object, *, default: float) -> float:
-    """Parse non-negative float CLI/config inputs with a safe default."""
-    if value is None:
-        return default
-    if not isinstance(value, int | float | str):
-        return default
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed >= 0.0 else default
+from .runtime.policy import resolve_batch_run_policy
 
 
 def _normalize_dimension_list(raw: object) -> list[str]:
@@ -326,47 +290,15 @@ def do_run_batches(
     runner = getattr(args, "runner", "codex")
     _validate_runner(runner, colorize_fn=colorize_fn)
     allow_partial = bool(getattr(args, "allow_partial", False))
-    run_parallel = bool(getattr(args, "parallel", False))
-    max_parallel_batches = _coerce_positive_int(
-        getattr(args, "max_parallel_batches", None),
-        default=3,
-        minimum=1,
-    )
-    heartbeat_seconds = _coerce_positive_float(
-        getattr(args, "batch_heartbeat_seconds", None),
-        default=15.0,
-        minimum=0.1,
-    )
-    batch_timeout_seconds = _coerce_positive_int(
-        getattr(args, "batch_timeout_seconds", None),
-        default=2 * 60 * 60,
-        minimum=1,
-    )
-    batch_max_retries = _coerce_positive_int(
-        getattr(args, "batch_max_retries", None),
-        default=1,
-        minimum=0,
-    )
-    batch_retry_backoff_seconds = _coerce_non_negative_float(
-        getattr(args, "batch_retry_backoff_seconds", None),
-        default=2.0,
-    )
-    raw_stall_warning = getattr(args, "batch_stall_warning_seconds", None)
-    stall_warning_seconds = 0
-    if isinstance(raw_stall_warning, int | float | str):
-        try:
-            parsed_stall_warning = int(raw_stall_warning)
-        except (TypeError, ValueError):
-            parsed_stall_warning = 0
-        stall_warning_seconds = parsed_stall_warning if parsed_stall_warning > 0 else 0
-    raw_stall_kill = getattr(args, "batch_stall_kill_seconds", None)
-    stall_kill_seconds = 0
-    if isinstance(raw_stall_kill, int | float | str):
-        try:
-            parsed_stall_kill = int(raw_stall_kill)
-        except (TypeError, ValueError):
-            parsed_stall_kill = 0
-        stall_kill_seconds = parsed_stall_kill if parsed_stall_kill > 0 else 0
+    policy = resolve_batch_run_policy(args)
+    run_parallel = policy.run_parallel
+    max_parallel_batches = policy.max_parallel_batches
+    heartbeat_seconds = policy.heartbeat_seconds
+    batch_timeout_seconds = policy.batch_timeout_seconds
+    batch_max_retries = policy.batch_max_retries
+    batch_retry_backoff_seconds = policy.batch_retry_backoff_seconds
+    stall_warning_seconds = policy.stall_warning_seconds
+    stall_kill_seconds = policy.stall_kill_seconds
 
     stamp = run_stamp_fn()
     packet, immutable_packet_path, prompt_packet_path = load_or_prepare_packet_fn(

@@ -6,32 +6,14 @@ import sys
 from pathlib import Path
 
 from desloppify.app.commands.helpers.query import write_query
-from desloppify.app.commands.review import runtime as review_runtime_mod
+from . import runtime as review_runtime_mod
 from desloppify.core._internal.coercions import coerce_positive_int
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.intelligence import review as review_mod
 from desloppify.core.output_api import colorize
 
 from .helpers import parse_dimensions
-
-DEFAULT_REVIEW_BATCH_MAX_FILES = 80
-
-
-def _redacted_review_config(config: dict | None) -> dict:
-    """Return review packet config with target score removed for blind assessment."""
-    if not isinstance(config, dict):
-        return {}
-    return {key: value for key, value in config.items() if key != "target_strict_score"}
-
-
-def _coerce_review_batch_file_limit(config: dict | None) -> int | None:
-    """Resolve per-batch review file cap from config (0/negative => unlimited)."""
-    raw = (config or {}).get("review_batch_max_files", DEFAULT_REVIEW_BATCH_MAX_FILES)
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return DEFAULT_REVIEW_BATCH_MAX_FILES
-    return value if value > 0 else None
+from .packet_policy import coerce_review_batch_file_limit, redacted_review_config
 
 
 def do_prepare(
@@ -70,7 +52,7 @@ def do_prepare(
         options=review_mod.HolisticReviewPrepareOptions(
             dimensions=dimensions,
             files=found_files or None,
-            max_files_per_batch=_coerce_review_batch_file_limit(config),
+            max_files_per_batch=coerce_review_batch_file_limit(config),
             include_issue_history=retrospective,
             issue_history_max_issues=retrospective_max_issues,
             issue_history_max_batch_items=retrospective_max_batch_items,
@@ -85,7 +67,7 @@ def do_prepare(
             f" --retrospective-max-issues {retrospective_max_issues}"
             f" --retrospective-max-batch-items {retrospective_max_batch_items}"
         )
-    data["config"] = _redacted_review_config(config)
+    data["config"] = redacted_review_config(config)
     data["narrative"] = narrative
     data["next_command"] = next_command
     total = data.get("total_files", 0)

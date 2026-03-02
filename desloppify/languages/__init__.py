@@ -54,11 +54,18 @@ def register_generic_lang(name: str, cfg: LangConfig) -> None:
     registry_state.register(name, cfg)
 
 
+def reload_lang_plugins() -> list[str]:
+    """Force plugin rediscovery and return refreshed language names."""
+    discovery.load_all(force_reload=True)
+    return sorted(registry_state.all_keys())
+
+
 __all__ = [
     "REQUIRED_FILES",
     "REQUIRED_DIRS",
     "register_lang",
     "register_generic_lang",
+    "reload_lang_plugins",
     "get_lang",
     "available_langs",
     "auto_detect_lang",

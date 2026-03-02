@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 from pathlib import Path
 
@@ -13,7 +14,9 @@ from desloppify.app.commands.scan.scan_workflow import (
 )
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.core.config import config_for_query
+from desloppify.core.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.core.output_contract import OutputResult
+from desloppify.engine.plan import load_plan
 from desloppify.scoring import compute_health_breakdown
 from desloppify.state import open_scope_breakdown, score_snapshot
 from desloppify.core.output_api import colorize
@@ -69,7 +72,6 @@ def build_scan_query_payload(
 
     # Add plan context if a living plan exists
     try:
-        from desloppify.engine.plan import load_plan
         plan = load_plan()
         if plan.get("queue_order") or plan.get("clusters") or plan.get("skipped"):
             payload["plan"] = {
@@ -79,8 +81,8 @@ def build_scan_query_payload(
                 "total_skipped": len(plan.get("skipped", {})),
                 "plan_overrides_narrative": True,
             }
-    except Exception:
-        pass
+    except PLAN_LOAD_EXCEPTIONS as exc:
+        logging.debug("Plan load for artifacts skipped: %s", exc)
 
     return payload
 

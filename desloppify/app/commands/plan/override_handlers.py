@@ -4,19 +4,83 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
+from desloppify import state as state_mod
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.helpers.state import require_completed_scan
+from desloppify.app.commands.helpers.state import require_completed_scan, state_path
 from desloppify.app.commands.plan._resolve import resolve_ids_from_patterns
+from desloppify.app.commands.resolve.selection import (
+    show_attestation_requirement,
+    validate_attestation,
+)
 from desloppify.core.output_api import colorize
 from desloppify.engine.plan import (
+    annotate_finding,
     clear_focus,
+    describe_finding,
+    PLAN_FILE,
     load_plan,
+    plan_path_for_state,
     save_plan,
     set_focus,
     skip_items,
     unskip_items,
 )
+from desloppify.engine.work_queue import ATTEST_EXAMPLE
+from desloppify.core.discovery_api import safe_write_text
+
+
+def _resolve_state_file(path: Path | None) -> Path:
+    return path if path is not None else state_mod.STATE_FILE
+
+
+def _resolve_plan_file(path: Path | None) -> Path:
+    return path if path is not None else PLAN_FILE
+
+
+def _plan_file_for_state(state_file: Path | None) -> Path | None:
+    if state_file is None:
+        return None
+    return plan_path_for_state(state_file)
+
+
+def _snapshot_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return path.read_text()
+
+
+def _restore_file_snapshot(path: Path, snapshot: str | None) -> None:
+    if snapshot is None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
+        return
+    safe_write_text(path, snapshot)
+
+
+def _save_plan_state_transactional(
+    *,
+    plan: dict,
+    plan_path: Path | None,
+    state_data: dict,
+    state_path_value: Path | None,
+) -> None:
+    """Persist plan+state together; rollback both files on partial write failure."""
+    effective_plan_path = _resolve_plan_file(plan_path)
+    effective_state_path = _resolve_state_file(state_path_value)
+    plan_snapshot = _snapshot_file(effective_plan_path)
+    state_snapshot = _snapshot_file(effective_state_path)
+
+    try:
+        state_mod.save_state(state_data, effective_state_path)
+        save_plan(plan, effective_plan_path)
+    except Exception:
+        _restore_file_snapshot(effective_state_path, state_snapshot)
+        _restore_file_snapshot(effective_plan_path, plan_snapshot)
+        raise
 
 
 def cmd_plan_describe(args: argparse.Namespace) -> None:
@@ -27,8 +91,6 @@ def cmd_plan_describe(args: argparse.Namespace) -> None:
 
     patterns: list[str] = getattr(args, "patterns", [])
     text: str = getattr(args, "text", "")
-
-    from desloppify.engine.plan import describe_finding
 
     plan = load_plan()
     finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
@@ -51,8 +113,6 @@ def cmd_plan_note(args: argparse.Namespace) -> None:
     patterns: list[str] = getattr(args, "patterns", [])
     text: str | None = getattr(args, "text", None)
 
-    from desloppify.engine.plan import annotate_finding
-
     plan = load_plan()
     finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not finding_ids:
@@ -71,13 +131,8 @@ def cmd_plan_note(args: argparse.Namespace) -> None:
 
 def cmd_plan_skip(args: argparse.Namespace) -> None:
     """Skip findings — unified command for temporary/permanent/false-positive."""
-    from desloppify.app.commands.resolve.selection import (
-        show_attestation_requirement,
-        validate_attestation,
-    )
-    from desloppify.engine.work_queue import ATTEST_EXAMPLE
-
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
@@ -113,29 +168,23 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
             )
             return
 
-    plan = load_plan()
+    state_file = runtime.state_path
+    plan_file = _plan_file_for_state(state_file)
+    plan = load_plan(plan_file)
     finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not finding_ids:
         print(colorize("  No matching findings found.", "yellow"))
         return
 
     # For permanent/false_positive: delegate to state layer for score impact
+    state_data: dict | None = None
     if kind in ("permanent", "false_positive"):
-        from desloppify import state as state_mod
-        from desloppify.app.commands.helpers.state import state_path
-
-        state_file = state_path(args)
         state_data = state_mod.load_state(state_file)
         status = "wontfix" if kind == "permanent" else "false_positive"
-        resolved: list[str] = []
         for fid in finding_ids:
-            resolved.extend(
-                state_mod.resolve_findings(
-                    state_data, fid, status, note or "", attestation=attestation
-                )
+            state_mod.resolve_findings(
+                state_data, fid, status, note or "", attestation=attestation
             )
-        if resolved:
-            state_mod.save_state(state_data, state_file)
 
     scan_count = state.get("scan_count", 0)
     count = skip_items(
@@ -148,7 +197,15 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
         review_after=review_after,
         scan_count=scan_count,
     )
-    save_plan(plan)
+    if state_data is not None:
+        _save_plan_state_transactional(
+            plan=plan,
+            plan_path=plan_file,
+            state_data=state_data,
+            state_path_value=state_file,
+        )
+    else:
+        save_plan(plan, plan_file)
 
     label = {"temporary": "Skipped", "permanent": "Wontfixed", "false_positive": "Marked false positive"}
     print(colorize(f"  {label[kind]} {count} item(s).", "green"))
@@ -158,13 +215,16 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
 
 def cmd_plan_unskip(args: argparse.Namespace) -> None:
     """Unskip findings — bring back to queue."""
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
     patterns: list[str] = getattr(args, "patterns", [])
 
-    plan = load_plan()
+    state_file = runtime.state_path
+    plan_file = _plan_file_for_state(state_file)
+    plan = load_plan(plan_file)
     # For unskip we need to match against all statuses (skipped items may be wontfix/fp)
     finding_ids = resolve_ids_from_patterns(state, patterns, plan=plan, status_filter="all")
     if not finding_ids:
@@ -172,21 +232,22 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
         return
 
     count, need_reopen = unskip_items(plan, finding_ids)
-    save_plan(plan)
 
     # Reopen permanent/false_positive items in state
+    reopened: list[str] = []
     if need_reopen:
-        from desloppify import state as state_mod
-        from desloppify.app.commands.helpers.state import state_path
-
-        state_file = state_path(args)
         state_data = state_mod.load_state(state_file)
-        reopened: list[str] = []
         for fid in need_reopen:
             reopened.extend(state_mod.resolve_findings(state_data, fid, "open"))
-        if reopened:
-            state_mod.save_state(state_data, state_file)
+        _save_plan_state_transactional(
+            plan=plan,
+            plan_path=plan_file,
+            state_data=state_data,
+            state_path_value=state_file,
+        )
         print(colorize(f"  Reopened {len(reopened)} finding(s) in state.", "dim"))
+    else:
+        save_plan(plan, plan_file)
 
     print(colorize(f"  Unskipped {count} item(s) — back in queue.", "green"))
 
@@ -197,13 +258,12 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
 
 def cmd_plan_reopen(args: argparse.Namespace) -> None:
     """Reopen resolved findings from plan context."""
-    from desloppify import state as state_mod
-    from desloppify.app.commands.helpers.state import state_path
-
     patterns: list[str] = getattr(args, "patterns", [])
 
-    state_file = state_path(args)
+    raw_state_path = state_path(args)
+    state_file = raw_state_path if isinstance(raw_state_path, Path) else Path(raw_state_path) if raw_state_path else None
     state_data = state_mod.load_state(state_file)
+    plan_file = _plan_file_for_state(state_file)
 
     reopened: list[str] = []
     for pattern in patterns:
@@ -215,10 +275,8 @@ def cmd_plan_reopen(args: argparse.Namespace) -> None:
         print(colorize("  No resolved findings matching: " + " ".join(patterns), "yellow"))
         return
 
-    state_mod.save_state(state_data, state_file)
-
     # Remove from skipped if present, and ensure all reopened IDs are in queue
-    plan = load_plan()
+    plan = load_plan(plan_file)
     skipped = plan.get("skipped", {})
     count = 0
     order = set(plan.get("queue_order", []))
@@ -230,8 +288,12 @@ def cmd_plan_reopen(args: argparse.Namespace) -> None:
             plan["queue_order"].append(fid)
             order.add(fid)
             count += 1
-    if count:
-        save_plan(plan)
+    _save_plan_state_transactional(
+        plan=plan,
+        plan_path=plan_file,
+        state_data=state_data,
+        state_path_value=state_file,
+    )
 
     print(colorize(f"  Reopened {len(reopened)} finding(s).", "green"))
     if count:
@@ -240,15 +302,19 @@ def cmd_plan_reopen(args: argparse.Namespace) -> None:
 
 def cmd_plan_done(args: argparse.Namespace) -> None:
     """Mark findings as fixed — delegates to cmd_resolve for rich UX."""
-    from desloppify.app.commands.resolve.selection import (
-        show_attestation_requirement,
-        validate_attestation,
-    )
-    from desloppify.engine.work_queue import ATTEST_EXAMPLE
+    from desloppify.app.commands.resolve.cmd import cmd_resolve
 
     patterns: list[str] = getattr(args, "patterns", [])
     attestation: str | None = getattr(args, "attest", None)
     note: str | None = getattr(args, "note", None)
+
+    # --confirm: auto-generate attestation from --note
+    if getattr(args, "confirm", False):
+        if not note:
+            print(colorize("  --confirm requires --note to describe what you did.", "red"))
+            return
+        attestation = f"I have actually {note} and I am not gaming the score."
+        args.attest = attestation
 
     # Pre-validate attestation before delegating (avoids stale hint in resolve)
     if not validate_attestation(attestation):
@@ -267,8 +333,6 @@ def cmd_plan_done(args: argparse.Namespace) -> None:
         path=getattr(args, "path", None),
         exclude=getattr(args, "exclude", None),
     )
-
-    from desloppify.app.commands.resolve.cmd import cmd_resolve
 
     cmd_resolve(resolve_args)
 

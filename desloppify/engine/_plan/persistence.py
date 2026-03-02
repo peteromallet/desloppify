@@ -17,6 +17,7 @@ from desloppify.engine._plan.schema import (
     validate_plan,
 )
 from desloppify.engine._state.schema import STATE_DIR, json_default
+from desloppify.engine._state.schema import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +33,31 @@ def load_plan(path: Path | None = None) -> PlanModel:
     try:
         data = json.loads(plan_path.read_text())
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as ex:
-        print(f"  Warning: Plan file corrupted ({ex}). Starting fresh.", file=sys.stderr)
-        return empty_plan()
+        # Try backup before giving up
+        backup = plan_path.with_suffix(".json.bak")
+        if backup.exists():
+            try:
+                data = json.loads(backup.read_text())
+                logger.warning("Plan file corrupted (%s), loaded from backup.", ex)
+                print(f"  Warning: Plan file corrupted ({ex}), loaded from backup.", file=sys.stderr)
+                # Fall through to validation below
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError) as backup_ex:
+                logger.warning("Plan file and backup both corrupted: %s / %s", ex, backup_ex)
+                print(f"  Warning: Plan file corrupted ({ex}). Starting fresh.", file=sys.stderr)
+                return empty_plan()
+        else:
+            logger.warning("Plan file corrupted (%s). Starting fresh.", ex)
+            print(f"  Warning: Plan file corrupted ({ex}). Starting fresh.", file=sys.stderr)
+            return empty_plan()
 
     if not isinstance(data, dict):
+        logger.warning("Plan file root is not a JSON object. Starting fresh.")
         print("  Warning: Plan file root must be a JSON object. Starting fresh.", file=sys.stderr)
         return empty_plan()
 
     version = data.get("version", 1)
     if version > PLAN_VERSION:
+        logger.warning("Plan file version %d > supported %d.", version, PLAN_VERSION)
         print(
             f"  Warning: Plan file version {version} is newer than supported "
             f"({PLAN_VERSION}). Some features may not work correctly.",
@@ -51,6 +68,7 @@ def load_plan(path: Path | None = None) -> PlanModel:
     try:
         validate_plan(data)
     except ValueError as ex:
+        logger.warning("Plan invariants invalid (%s). Starting fresh.", ex)
         print(f"  Warning: Plan invariants invalid ({ex}). Starting fresh.", file=sys.stderr)
         return empty_plan()
 
@@ -59,8 +77,6 @@ def load_plan(path: Path | None = None) -> PlanModel:
 
 def save_plan(plan: PlanModel | dict, path: Path | None = None) -> None:
     """Validate and save plan to disk atomically."""
-    from desloppify.engine._state.schema import utc_now
-
     ensure_plan_defaults(plan)
     plan["updated"] = utc_now()
     validate_plan(plan)

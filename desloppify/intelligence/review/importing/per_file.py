@@ -129,17 +129,12 @@ def import_review_findings(
         imported["lang"] = lang_name
         review_findings.append(imported)
 
-    valid_reviewed_files_rel = {
-        str(finding["file"])
-        for finding in findings_list
-        if all(key in finding for key in required_fields)
-    }
+    # Build accepted-file set from successfully imported findings only,
+    # not from all findings_list entries (which may include invalid dimensions).
     valid_reviewed_files_abs = {
-        _absolutize_review_path(str(finding["file"]), project_root=resolved_project_root)
-        for finding in findings_list
-        if all(key in finding for key in required_fields)
+        finding["file"] for finding in review_findings
     }
-    valid_reviewed_files = valid_reviewed_files_rel | valid_reviewed_files_abs
+    valid_reviewed_files = valid_reviewed_files_abs
     reviewed_files_rel = {
         str(file_path).strip()
         for file_path in reviewed_files

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import argparse
 
+from desloppify.core.enums import finding_status_tokens
+
+_STATUS_CHOICES = sorted(finding_status_tokens(include_all=True))
+
 from desloppify.app.cli_support.parser_groups_admin import (  # noqa: F401 (re-exports)
     _add_config_parser,
     _add_detect_parser,
@@ -92,6 +96,18 @@ examples:
         metavar="KEY=VALUE",
         help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
     )
+    p_scan.add_argument(
+        "--force-rescan",
+        action="store_true",
+        help="Bypass queue completion check (requires --attest)",
+    )
+    p_scan.add_argument(
+        "--attest",
+        type=str,
+        default=None,
+        metavar="TEXT",
+        help="Attestation for --force-rescan",
+    )
 
 
 def _add_status_parser(sub) -> None:
@@ -144,7 +160,7 @@ examples:
     p_show.add_argument("--state", type=str, default=None, help="Path to state file")
     p_show.add_argument(
         "--status",
-        choices=["open", "fixed", "wontfix", "false_positive", "auto_resolved", "all"],
+        choices=_STATUS_CHOICES,
         default="open",
         help="Filter by status (default: open)",
     )
@@ -206,7 +222,7 @@ examples:
     )
     p_next.add_argument(
         "--status",
-        choices=["open", "fixed", "wontfix", "false_positive", "auto_resolved", "all"],
+        choices=_STATUS_CHOICES,
         default="open",
         help="Status filter for queue items (default: open)",
     )

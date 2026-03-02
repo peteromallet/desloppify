@@ -56,7 +56,7 @@ def store_assessments(
 
     for dimension_name, value in assessments.items():
         value_obj = value if isinstance(value, dict) else {}
-        score = value if isinstance(value, int | float) else value_obj.get("score", 0)
+        score = value if is_numeric(value) else value_obj.get("score", 0)
         score = max(0, min(100, score))
         dimension_key = normalize_dimension_name(str(dimension_name))
         if not dimension_key:
@@ -124,7 +124,9 @@ def parse_review_import_payload(
     if not isinstance(data, dict):
         raise ValueError(f"{mode_name} review import payload must be a JSON object")
 
-    findings = data.get("findings", [])
+    if "findings" not in data:
+        raise ValueError(f"{mode_name} review import payload must contain 'findings'")
+    findings = data["findings"]
     if not isinstance(findings, list):
         raise ValueError(f"{mode_name} review import payload 'findings' must be a list")
     for idx, finding in enumerate(findings):

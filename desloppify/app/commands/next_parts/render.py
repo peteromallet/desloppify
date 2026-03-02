@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from desloppify import scoring as scoring_mod
 from desloppify.app.commands.scan.scan_reporting_subjective import (
     build_subjective_followup,
@@ -15,8 +17,9 @@ from desloppify.intelligence.integrity import (
     subjective_review_open_breakdown,
     unassessed_subjective_dimensions,
 )
-from desloppify.core.output_api import colorize
+from desloppify.core.output_api import colorize, log
 from desloppify.core.paths_api import read_code_snippet
+from desloppify.scoring import compute_health_breakdown, compute_score_impact
 
 
 def scorecard_subjective(
@@ -116,7 +119,6 @@ def _render_cluster_item(item: dict) -> None:
     members = item.get("members", [])
     if members:
         # File distribution
-        from collections import Counter
         file_counts = Counter(m.get("file", "?") for m in members)
         if len(file_counts) <= 5:
             print(colorize("\n  Files:", "dim"))
@@ -144,7 +146,7 @@ def _render_cluster_item(item: dict) -> None:
 
     # Resolution hints
     print(colorize(f'\n  Resolve all:   desloppify plan done "{cluster_name}" '
-                   f'--note "<what>" --attest "{ATTEST_EXAMPLE}"', "dim"))
+                   f'--note "<what>" --confirm', "dim"))
     print(colorize(f"  Drill in:      desloppify next --cluster {cluster_name} --count 10",
                    "dim"))
     print(colorize(f"  Skip cluster:  desloppify plan skip {cluster_name}", "dim"))
@@ -157,6 +159,25 @@ def _render_item(
     # Delegate to cluster renderer for cluster meta-items
     if item.get("kind") == "cluster":
         _render_cluster_item(item)
+        return
+
+    # Synthesis-needed item — dedicated compact renderer
+    if item.get("kind") == "synthesis_needed":
+        print(colorize("  (Tier 1, blocking)", "bold"))
+        print(colorize("  " + "─" * 60, "dim"))
+        print(f"  {colorize(item.get('summary', ''), 'yellow')}")
+        detail = item.get("detail", {})
+        new_since = detail.get("new_since_last", 0)
+        resolved_since = detail.get("resolved_since_last", 0)
+        if new_since or resolved_since:
+            parts = []
+            if new_since:
+                parts.append(f"{new_since} new")
+            if resolved_since:
+                parts.append(f"{resolved_since} resolved")
+            print(colorize(f"  Changes since last synthesis: {', '.join(parts)}", "dim"))
+        print(colorize(f"\n  Action: {item.get('primary_command', 'desloppify plan synthesize')}", "cyan"))
+        print(colorize("  Complete all 4 stages (observe → reflect → organize → commit) before fixing.", "dim"))
         return
 
     tier = int(item.get("effective_tier", item.get("tier", 3)))
@@ -249,7 +270,6 @@ def _render_item(
     detector = item.get("detector", "")
     if potentials and detector and dim_scores:
         try:
-            from desloppify.scoring import compute_score_impact
             impact = compute_score_impact(dim_scores, potentials, detector, issues_to_fix=1)
             if impact > 0:
                 print(colorize(f"  Impact: fixing this is worth ~+{impact:.1f} pts on overall score", "cyan"))
@@ -265,12 +285,11 @@ def _render_item(
                                 f"  Impact: fixing all {issues} {detector} issues → ~+{bulk:.1f} pts",
                                 "cyan",
                             ))
-        except (ImportError, TypeError, ValueError, KeyError):
-            pass
+        except (ImportError, TypeError, ValueError, KeyError) as exc:
+            log(f"  score impact estimate skipped: {exc}")
     elif detector == "review" and dim_scores:
         # Review findings: show dimension drag from breakdown
         try:
-            from desloppify.scoring import compute_health_breakdown
             dim_key = item.get("detail", {}).get("dimension", "")
             if dim_key:
                 breakdown = compute_health_breakdown(dim_scores)
@@ -286,8 +305,8 @@ def _render_item(
                                 "cyan",
                             ))
                         break
-        except (ImportError, TypeError, ValueError, KeyError):
-            pass
+        except (ImportError, TypeError, ValueError, KeyError) as exc:
+            log(f"  dimension drag estimate skipped: {exc}")
 
     detector_name = item.get("detector", "")
     auto_fix_command = item.get("primary_command")
@@ -353,11 +372,32 @@ def render_queue_header(queue: dict, explain: bool) -> None:
         print(colorize(f"  explain: available tiers are {tiers}", "dim"))
 
 
-def show_empty_queue(queue: dict, tier: int | None, strict: float | None) -> bool:
+def show_empty_queue(
+    queue: dict,
+    tier: int | None,
+    strict: float | None,
+    *,
+    plan_start_strict: float | None = None,
+    target_strict: float | None = None,
+) -> bool:
     if queue.get("items"):
         return False
-    suffix = f" Strict score: {strict:.1f}/100" if strict is not None else ""
-    print(colorize(f"\n  Nothing to do!{suffix}", "green"))
+    # Show before/after comparison when plan_start_strict is available
+    if plan_start_strict is not None and strict is not None:
+        delta = round(strict - plan_start_strict, 1)
+        delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if abs(delta) >= 0.05 else ""
+        print(colorize("\n  Queue cleared!", "green"))
+        print(colorize(
+            f"  Frozen plan-start: strict {plan_start_strict:.1f} → Live estimate: strict {strict:.1f}{delta_str}",
+            "cyan",
+        ))
+        print(colorize(
+            "  Run `desloppify scan` now to finalize and reveal your updated score.",
+            "dim",
+        ))
+    else:
+        suffix = f" Strict score: {strict:.1f}/100" if strict is not None else ""
+        print(colorize(f"\n  Nothing to do!{suffix}", "green"))
     if tier is not None:
         print(colorize(f"  Requested tier: T{tier}", "dim"))
         available = queue.get("available_tiers", [])
@@ -369,6 +409,17 @@ def show_empty_queue(queue: dict, tier: int | None, strict: float | None) -> boo
     return True
 
 
+def _render_compact_item(item: dict, idx: int, total: int) -> None:
+    """One-line summary for cluster drill-in items after the first."""
+    tier = int(item.get("effective_tier", item.get("tier", 3)))
+    tag = _effort_tag(item)
+    tag_str = f" {tag}" if tag else ""
+    fid = item.get("id", "")
+    short = fid.rsplit("::", 1)[-1][:8] if "::" in fid else fid
+    print(f"  [{idx + 1}/{total}] {_tier_label(tier)}{tag_str} {item.get('summary', '')}")
+    print(colorize(f"         {item.get('file', '')}  [{short}]", "dim"))
+
+
 def render_terminal_items(
     items: list[dict],
     dim_scores: dict,
@@ -378,6 +429,7 @@ def render_terminal_items(
     explain: bool,
     potentials: dict | None = None,
     plan: dict | None = None,
+    cluster_filter: str | None = None,
 ) -> None:
     # Show focus header if plan has active cluster
     if plan and plan.get("active_cluster"):
@@ -390,9 +442,19 @@ def render_terminal_items(
     if group != "item":
         _render_grouped(items, group)
         return
+
+    # Detect cluster drill-in: multiple items with cluster focus active
+    is_cluster_drill = len(items) > 1 and (
+        cluster_filter or (plan and plan.get("active_cluster"))
+    )
+
     for idx, item in enumerate(items):
         if idx > 0:
             print()
+        # Full card for first item, compact for rest in cluster drill-in
+        if is_cluster_drill and idx > 0:
+            _render_compact_item(item, idx, len(items))
+            continue
         queue_pos = item.get("queue_position")
         if queue_pos and len(items) > 1:
             label = f"  [#{queue_pos}]"
@@ -433,8 +495,7 @@ def render_single_item_resolution_hint(items: list[dict]) -> None:
         print(colorize("\n  Resolve with:", "dim"))
 
     print(
-        f'    desloppify plan done "{item["id"]}" --note "<what you did>" '
-        f'--attest "{ATTEST_EXAMPLE}"'
+        f'    desloppify plan done "{item["id"]}" --note "<what you did>" --confirm'
     )
     print(
         f'    desloppify plan skip --permanent "{item["id"]}" --note "<why>" '
@@ -449,6 +510,8 @@ def render_followup_nudges(
     *,
     strict_score: float | None,
     target_strict_score: float,
+    queue_total: int = 0,
+    plan_start_strict: float | None = None,
 ) -> None:
     subjective_threshold = target_strict_score
     subjective_entries = scorecard_subjective(state, dim_scores)
@@ -460,7 +523,22 @@ def render_followup_nudges(
         max_integrity_items=5,
     )
     unassessed_subjective = unassessed_subjective_dimensions(dim_scores)
-    if strict_score is not None:
+    # Show frozen plan-start score + queue remaining when in an active cycle
+    if queue_total > 0 and plan_start_strict is not None:
+        print(
+            colorize(
+                f"\n  Score (frozen at plan start): strict {plan_start_strict:.1f}/100",
+                "cyan",
+            )
+        )
+        print(
+            colorize(
+                f"  Queue: {queue_total} item{'s' if queue_total != 1 else ''}"
+                " remaining. Score will not update until the queue is clear and you run `desloppify scan`.",
+                "dim",
+            )
+        )
+    elif strict_score is not None:
         gap = round(float(target_strict_score) - float(strict_score), 1)
         if gap > 0:
             print(
@@ -476,9 +554,46 @@ def render_followup_nudges(
                     "green",
                 )
             )
+    # Subjective bottleneck banner
+    if strict_score is not None and dim_scores:
+        try:
+            breakdown = compute_health_breakdown(dim_scores)
+            subjective_drag = sum(
+                float(e.get("overall_drag", 0) or 0)
+                for e in breakdown.get("entries", [])
+                if isinstance(e, dict) and e.get("component") == "subjective"
+            )
+            mechanical_drag = sum(
+                float(e.get("overall_drag", 0) or 0)
+                for e in breakdown.get("entries", [])
+                if isinstance(e, dict) and e.get("component") != "subjective"
+            )
+            if subjective_drag > mechanical_drag and subjective_drag > 5.0:
+                print(colorize(
+                    f"\n  Subjective dimensions are the main bottleneck "
+                    f"(-{subjective_drag:.0f} pts vs -{mechanical_drag:.0f} pts mechanical).",
+                    "yellow",
+                ))
+                print(colorize(
+                    "  Code fixes alone won't close the gap — run "
+                    "`desloppify review --run-batches --runner codex --parallel --scan-after-import` "
+                    "to re-score.",
+                    "yellow",
+                ))
+        except (ImportError, TypeError, ValueError, KeyError) as exc:
+            log(f"  subjective bottleneck banner skipped: {exc}")
+
     # Integrity penalty/warn lines preserved (anti-gaming safeguard, must remain visible).
     for style, message in followup.integrity_lines:
         print(colorize(f"\n  {message}", style))
+
+    # Rescan nudge after structural work
+    if queue_total > 10:
+        print(colorize(
+            "\n  Tip: after structural fixes (splitting files, moving code), rescan to "
+            "let cascade effects settle: `desloppify scan --path .`",
+            "dim",
+        ))
 
     # Collapsed subjective summary.
     coverage_open, _coverage_reasons, _holistic_reasons = subjective_coverage_breakdown(

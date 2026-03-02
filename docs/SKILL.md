@@ -15,11 +15,9 @@ allowed-tools: Bash(desloppify *)
 
 ## 1. Your Job
 
-Improve code quality by maximising the **strict score** honestly.
+Maximise the **strict score** honestly. Your main loop: run `desloppify next`, fix what it says, resolve it, run `next` again. Over and over. Follow the scan output's **INSTRUCTIONS FOR AGENTS** — don't substitute your own analysis.
 
-**The main thing you do is run `desloppify next`** — it tells you exactly what to fix and how. Fix it, resolve it, run `next` again. Keep going.
-
-Follow the scan output's **INSTRUCTIONS FOR AGENTS** — don't substitute your own analysis.
+**Don't be lazy.** Do large refactors and small detailed fixes with equal energy. If it takes touching 20 files, touch 20 files. If it's a one-line change, make it. No task is too big or too small — fix things properly, not minimally.
 
 ## 2. The Workflow
 
@@ -53,8 +51,7 @@ desloppify plan                        # see the full ordered queue
 desloppify plan move <pat> top         # reorder — what unblocks the most?
 desloppify plan cluster create <name>  # group related issues to batch-fix
 desloppify plan focus <cluster>        # scope next to one cluster
-desloppify plan defer <pat>            # push low-value items aside
-desloppify plan skip <pat>             # hide from next
+desloppify plan skip <pat>             # skip / hide from next
 desloppify plan done <pat>             # mark complete
 desloppify plan reopen <pat>           # reopen
 ```
@@ -65,6 +62,18 @@ The scan will prompt you when a subjective review is needed — just follow its 
 If you need to trigger one manually:
 ```bash
 desloppify review --run-batches --runner codex --parallel --scan-after-import
+```
+
+### Synthesis (after review)
+
+After a subjective review, `synthesis::pending` appears at the top of the queue.
+Complete the 4-stage workflow before moving to fixes:
+```bash
+desloppify plan synthesize                          # dashboard — see stage progress
+desloppify plan synthesize --stage observe --report "themes and root causes..."
+desloppify plan synthesize --stage reflect --report "comparison against completed work..."
+desloppify plan synthesize --stage organize --report "summary of priorities..."
+desloppify plan synthesize --complete --strategy "execution plan..."
 ```
 
 ### Other useful commands

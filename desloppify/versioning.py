@@ -37,6 +37,6 @@ def check_tool_staleness(state: dict) -> str | None:
     if current != stored:
         return (
             f"Tool code changed since last scan (was {stored}, now {current}). "
-            f"Consider re-running: desloppify scan"
+            "Scores will refresh on next scan"
         )
     return None

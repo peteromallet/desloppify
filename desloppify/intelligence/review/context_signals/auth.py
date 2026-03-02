@@ -21,15 +21,30 @@ _AUTH_GUARD_RE = re.compile(
     r"|\bauth\.getUser\b|\bsupabase\.auth\.getUser\b",
 )
 _AUTH_USAGE_RE = re.compile(r"\buseAuth\b|\brequest\.user\b|\bsession\.user\b|\bgetUser\b")
+# Table name pattern: matches unquoted, "double-quoted", `backtick`, or [bracket] names,
+# optionally preceded by a schema qualifier (e.g. public.users, "auth"."profiles").
+_SQL_IDENT = r'(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|\w+)'
+_SCHEMA_QUALIFIED_IDENT = rf"(?:{_SQL_IDENT}\.)?({_SQL_IDENT})"
 _RLS_TABLE_RE = re.compile(
-    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", re.IGNORECASE
+    rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?{_SCHEMA_QUALIFIED_IDENT}",
+    re.IGNORECASE,
 )
 _RLS_ENABLE_RE = re.compile(
-    r"ALTER\s+TABLE\s+(\w+)\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY"
-    r"|CREATE\s+POLICY\s+\w+\s+ON\s+(\w+)",
+    rf"ALTER\s+TABLE\s+{_SCHEMA_QUALIFIED_IDENT}\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY"
+    rf"|CREATE\s+POLICY\s+{_SQL_IDENT}\s+ON\s+{_SCHEMA_QUALIFIED_IDENT}",
     re.IGNORECASE,
 )
 _SUPABASE_CLIENT_RE = re.compile(r"\bcreateClient\b")
+
+
+def _normalize_sql_ident(raw: str) -> str:
+    """Strip surrounding quotes/brackets from a SQL identifier for comparison."""
+    if len(raw) >= 2:
+        if (raw[0] == '"' and raw[-1] == '"') or (raw[0] == '`' and raw[-1] == '`'):
+            return raw[1:-1]
+        if raw[0] == '[' and raw[-1] == ']':
+            return raw[1:-1]
+    return raw
 
 
 @dataclass(frozen=True)
@@ -53,6 +68,7 @@ class AuthorizationSignals:
     route_auth_coverage: dict[str, RouteAuthCoverage] = field(default_factory=dict)
     rls_with: list[str] = field(default_factory=list)
     rls_without: list[str] = field(default_factory=list)
+    rls_files: dict[str, list[str]] = field(default_factory=dict)
     service_role_usage: list[str] = field(default_factory=list)
     auth_patterns: dict[str, int] = field(default_factory=dict)
     auth_guard_patterns: dict[str, int] = field(default_factory=dict)
@@ -66,10 +82,13 @@ class AuthorizationSignals:
                 for path, coverage in sorted(self.route_auth_coverage.items())
             }
         if self.rls_with or self.rls_without:
-            payload["rls_coverage"] = {
+            rls_payload: dict[str, object] = {
                 "with_rls": self.rls_with,
                 "without_rls": self.rls_without,
             }
+            if self.rls_files:
+                rls_payload["files"] = self.rls_files
+            payload["rls_coverage"] = rls_payload
         if self.service_role_usage:
             payload["service_role_usage"] = self.service_role_usage
         if self.auth_patterns:
@@ -93,6 +112,7 @@ def gather_auth_context(
     route_auth: dict[str, RouteAuthCoverage] = {}
     rls_tables: set[str] = set()
     rls_enabled: set[str] = set()
+    rls_table_files: dict[str, list[str]] = {}
     service_role_files: set[str] = set()
     auth_patterns: dict[str, int] = {}
     auth_guard_patterns: dict[str, int] = {}
@@ -114,11 +134,13 @@ def gather_auth_context(
 
         # RLS coverage (SQL/migration files)
         for match in _RLS_TABLE_RE.finditer(content):
-            rls_tables.add(match.group(1))
+            table = _normalize_sql_ident(match.group(1))
+            rls_tables.add(table)
+            rls_table_files.setdefault(table, []).append(rpath)
         for match in _RLS_ENABLE_RE.finditer(content):
             table = match.group(1) or match.group(2)
             if table:
-                rls_enabled.add(table)
+                rls_enabled.add(_normalize_sql_ident(table))
 
         # Service role usage
         if (
@@ -139,10 +161,17 @@ def gather_auth_context(
         if total_auth_signals > 0:
             auth_patterns[rpath] = total_auth_signals
 
+    tables_without_rls = rls_tables - rls_enabled
+    rls_files: dict[str, list[str]] = {
+        table: sorted(set(rls_table_files.get(table, [])))
+        for table in sorted(tables_without_rls)
+        if table in rls_table_files
+    }
     return AuthorizationSignals(
         route_auth_coverage=route_auth,
         rls_with=sorted(rls_tables & rls_enabled),
-        rls_without=sorted(rls_tables - rls_enabled),
+        rls_without=sorted(tables_without_rls),
+        rls_files=rls_files,
         service_role_usage=sorted(service_role_files),
         auth_patterns=auth_patterns,
         auth_guard_patterns=auth_guard_patterns,

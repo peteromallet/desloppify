@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
-from desloppify.core._internal.text_utils import is_numeric
 from desloppify.engine.detectors.base import FunctionInfo
 
 if TYPE_CHECKING:
@@ -21,6 +20,11 @@ if TYPE_CHECKING:
 DepGraphBuilder = Callable[[Path], dict[str, dict[str, Any]]]
 FunctionExtractor = Callable[[Path], list[FunctionInfo]]
 FileFinder = Callable[[Path], list[str]]
+
+
+def _is_numeric(value: object) -> bool:
+    """Return True for int/float values, excluding bool."""
+    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 @dataclass
@@ -229,14 +233,14 @@ class LangConfig:
                 if lowered in {"0", "false", "no", "off"}:
                     return False
                 return fallback
-            if is_numeric(raw):
+            if _is_numeric(raw):
                 return bool(raw)
             return fallback
 
         if expected is int:
             if isinstance(raw, bool):
                 return fallback
-            if is_numeric(raw):
+            if _is_numeric(raw):
                 return int(raw)
             try:
                 return int(raw)
@@ -246,7 +250,7 @@ class LangConfig:
         if expected is float:
             if isinstance(raw, bool):
                 return fallback
-            if is_numeric(raw):
+            if _is_numeric(raw):
                 return float(raw)
             try:
                 return float(raw)
@@ -322,20 +326,13 @@ class LangConfig:
             return copy.deepcopy(spec.default)
         return default
 
-    def detect_lang_security(
-        self, files: list[str], zone_map: FileZoneMap | None
-    ) -> tuple[list[dict], int]:
-        """Language-specific security checks. Override in subclasses."""
-        return [], 0
-
     def detect_lang_security_detailed(
         self,
         files: list[str],
         zone_map: FileZoneMap | None,
     ) -> LangSecurityResult:
         """Language-specific security checks with optional coverage metadata."""
-        entries, files_scanned = self.detect_lang_security(files, zone_map)
-        return LangSecurityResult(entries=entries, files_scanned=files_scanned)
+        return LangSecurityResult(entries=[], files_scanned=0)
 
     def detect_private_imports(
         self, graph: dict, zone_map: FileZoneMap | None

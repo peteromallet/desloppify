@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import fnmatch
 from pathlib import Path
 
 from desloppify.core._internal.text_utils import get_project_root
@@ -15,8 +16,6 @@ def matches_exclusion(rel_path: str, exclusion: str) -> bool:
     if exclusion in parts:
         return True
     if "*" in exclusion:
-        import fnmatch
-
         if any(fnmatch.fnmatch(part, exclusion) for part in parts):
             return True
         # Full-path glob match for patterns with directory separators

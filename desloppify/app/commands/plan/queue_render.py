@@ -29,48 +29,27 @@ def _cluster_tier_label(item: dict) -> str:
     return f"T{lo}-T{hi}"
 
 
-def cmd_plan_queue(args: argparse.Namespace) -> None:
-    """Render a compact table of all upcoming queue items."""
-    runtime = command_runtime(args)
-    state = runtime.state
-    if not require_completed_scan(state):
-        return
-
-    top = getattr(args, "top", 30)
-    tier_filter = getattr(args, "tier", None)
-    cluster_filter = getattr(args, "cluster", None)
-    include_skipped = bool(getattr(args, "include_skipped", False))
-
-    plan = load_plan()
+def _resolve_plan_context(plan: dict, cluster_filter: str | None) -> tuple[dict | None, str | None]:
     plan_data: dict | None = None
     if plan.get("queue_order") or plan.get("overrides") or plan.get("clusters"):
         plan_data = plan
 
-    # Auto-scope to focus cluster
     effective_cluster = cluster_filter
     if plan_data and not cluster_filter:
         active_cluster = plan_data.get("active_cluster")
         if active_cluster:
             effective_cluster = active_cluster
+    return plan_data, effective_cluster
 
-    queue = build_work_queue(
-        state,
-        options=QueueBuildOptions(
-            tier=tier_filter,
-            count=None,
-            scan_path=state.get("scan_path"),
-            status="open",
-            include_subjective=True,
-            plan=plan_data,
-            include_skipped=include_skipped,
-            cluster=effective_cluster,
-            collapse_clusters=True,
-        ),
-    )
-    items = queue.get("items", [])
-    tier_counts = queue.get("tier_counts", {})
 
-    # Header
+def _print_queue_header(
+    *,
+    items: list[dict],
+    tier_counts: dict,
+    include_skipped: bool,
+    plan: dict,
+    plan_data: dict | None,
+) -> None:
     total = len(items)
     skipped_count = sum(1 for it in items if it.get("plan_skipped"))
     non_skipped = total - skipped_count
@@ -85,27 +64,27 @@ def cmd_plan_queue(args: argparse.Namespace) -> None:
     if focus:
         print(colorize(f"  Focus: {focus}", "cyan"))
 
-    if not include_skipped and skipped_count == 0:
-        # Check plan for skipped items not in queue
-        plan_skipped_count = len(plan.get("skipped", {})) if plan_data else 0
-        if plan_skipped_count:
-            print(colorize(
-                f"  ({plan_skipped_count} skipped item{'s' if plan_skipped_count != 1 else ''}"
-                " hidden \u2014 use --include-skipped)",
-                "dim",
-            ))
-
-    if not items:
-        print(colorize("\n  Queue is empty.", "green"))
+    if include_skipped or skipped_count != 0:
         return
+    plan_skipped_count = len(plan.get("skipped", {})) if plan_data else 0
+    if not plan_skipped_count:
+        return
+    print(
+        colorize(
+            f"  ({plan_skipped_count} skipped item{'s' if plan_skipped_count != 1 else ''}"
+            " hidden — use --include-skipped)",
+            "dim",
+        )
+    )
 
-    # Determine which items to show
-    display_items = items
+
+def _queue_display_items(items: list[dict], *, top: int) -> list[dict]:
     if top > 0 and len(items) > top:
-        display_items = items[:top]
+        return items[:top]
+    return items
 
-    # Build rows
-    headers = ["#", "Tier", "Detector", "Summary", "Cluster"]
+
+def _build_rows(display_items: list[dict]) -> list[list[str]]:
     rows: list[list[str]] = []
     for idx, item in enumerate(display_items, 1):
         pos = str(idx)
@@ -125,12 +104,60 @@ def cmd_plan_queue(args: argparse.Namespace) -> None:
             plan_cluster = item.get("plan_cluster")
             cluster_name = plan_cluster.get("name", "") if isinstance(plan_cluster, dict) else ""
 
-        suffix = ""
-        if item.get("plan_skipped"):
-            suffix = " [skip]"
-
+        suffix = " [skip]" if item.get("plan_skipped") else ""
         summary_display = _truncate(summary, 48) + suffix
         rows.append([pos, tier_str, detector, summary_display, cluster_name])
+    return rows
+
+
+def cmd_plan_queue(args: argparse.Namespace) -> None:
+    """Render a compact table of all upcoming queue items."""
+    runtime = command_runtime(args)
+    state = runtime.state
+    if not require_completed_scan(state):
+        return
+
+    top = getattr(args, "top", 30)
+    tier_filter = getattr(args, "tier", None)
+    cluster_filter = getattr(args, "cluster", None)
+    include_skipped = bool(getattr(args, "include_skipped", False))
+
+    plan = load_plan()
+    plan_data, effective_cluster = _resolve_plan_context(plan, cluster_filter)
+
+    queue = build_work_queue(
+        state,
+        options=QueueBuildOptions(
+            tier=tier_filter,
+            count=None,
+            scan_path=state.get("scan_path"),
+            status="open",
+            include_subjective=True,
+            plan=plan_data,
+            include_skipped=include_skipped,
+            cluster=effective_cluster,
+            collapse_clusters=True,
+        ),
+    )
+    items = queue.get("items", [])
+    tier_counts = queue.get("tier_counts", {})
+
+    _print_queue_header(
+        items=items,
+        tier_counts=tier_counts,
+        include_skipped=include_skipped,
+        plan=plan,
+        plan_data=plan_data,
+    )
+
+    if not items:
+        print(colorize("\n  Queue is empty.", "green"))
+        return
+
+    # Determine which items to show
+    display_items = _queue_display_items(items, top=top)
+    headers = ["#", "Tier", "Detector", "Summary", "Cluster"]
+    rows = _build_rows(display_items)
 
     print()
     widths = [4, 4, 12, 50, 16]

@@ -169,6 +169,38 @@ def test_tier4_queue_contains_mechanical_and_synthetic_subjective_items():
     assert kinds == {"finding", "subjective_dimension"}
 
 
+def test_subjective_items_do_not_starve_objective_queue_head():
+    state = _state(
+        [
+            _finding("security::src/a.py::x", detector="security", tier=1, confidence="high"),
+            _finding("smells::src/a.py::y", detector="smells", tier=2, confidence="medium"),
+        ],
+        dimension_scores={
+            "Naming quality": {"score": 92.0, "strict": 92.0, "issues": 3},
+            "Logic clarity": {"score": 90.0, "strict": 90.0, "issues": 2},
+        },
+    )
+
+    queue = build_work_queue(state, count=None, include_subjective=True)
+    ids = [item["id"] for item in queue["items"]]
+    assert ids[:2] == ["security::src/a.py::x", "smells::src/a.py::y"]
+    assert any(item_id.startswith("subjective::") for item_id in ids)
+
+
+def test_subjective_interleave_guardrail_applies_with_default_count_limit():
+    state = _state(
+        [
+            _finding("security::src/a.py::x", detector="security", tier=1, confidence="high"),
+        ],
+        dimension_scores={
+            "Naming quality": {"score": 80.0, "strict": 80.0, "issues": 5},
+        },
+    )
+
+    queue = build_work_queue(state, count=1, include_subjective=True)
+    assert queue["items"][0]["id"] == "security::src/a.py::x"
+
+
 def test_explain_payload_added_when_requested():
     state = _state(
         [
@@ -231,6 +263,48 @@ def test_subjective_item_uses_show_review_when_matching_review_findings_exist():
     assert subj["detail"]["open_review_findings"] == 1
 
 
+def test_stale_subjective_item_uses_show_review_when_matching_review_findings_exist():
+    review = _finding(
+        "review::.::holistic::initialization_coupling::abc12345",
+        detector="review",
+        tier=3,
+        detail={"holistic": True, "dimension": "initialization_coupling"},
+    )
+    state = _state(
+        [review],
+        dimension_scores={
+            "Init coupling": {
+                "score": 42.2,
+                "strict": 42.2,
+                "issues": 1,
+                "checks": 1,
+                "detectors": {
+                    "subjective_assessment": {
+                        "dimension_key": "initialization_coupling",
+                    }
+                },
+            },
+        },
+    )
+    state["subjective_assessments"] = {
+        "initialization_coupling": {
+            "score": 42.2,
+            "needs_review_refresh": True,
+            "stale_since": "2026-01-01T00:00:00+00:00",
+        }
+    }
+
+    queue = build_work_queue(
+        state, tier=4, count=None, include_subjective=True, subjective_threshold=95
+    )
+    subj = next(
+        item for item in queue["items"] if item["kind"] == "subjective_dimension"
+    )
+    assert "[stale — re-review]" in subj["summary"]
+    assert subj["primary_command"] == "desloppify show review --status open"
+    assert subj["detail"]["open_review_findings"] == 1
+
+
 def test_unassessed_subjective_item_points_to_holistic_refresh():
     state = _state(
         [],
@@ -246,7 +320,7 @@ def test_unassessed_subjective_item_points_to_holistic_refresh():
         item for item in queue["items"] if item["kind"] == "subjective_dimension"
     )
     assert subj["id"] == "subjective::high_level_elegance"
-    assert subj["primary_command"] == "desloppify review --prepare"
+    assert subj["primary_command"] == "desloppify review --prepare --dimensions high_level_elegance"
 
 
 def test_subjective_review_finding_points_to_review_triage():

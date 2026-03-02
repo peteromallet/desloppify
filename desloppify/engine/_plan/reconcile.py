@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from desloppify.engine._plan.schema import PlanModel, SupersededEntry, ensure_plan_defaults
-from desloppify.engine._plan.stale_dimensions import SUBJECTIVE_PREFIX
+from desloppify.engine._plan.schema import EPIC_PREFIX, PlanModel, SupersededEntry, ensure_plan_defaults
+from desloppify.engine._plan.stale_dimensions import SUBJECTIVE_PREFIX, SYNTHESIS_ID
 from desloppify.engine._state.schema import StateModel, utc_now
 
 
@@ -150,6 +150,7 @@ def reconcile_plan_after_scan(
     referenced_ids = {
         fid for fid in referenced_ids
         if not fid.startswith(SUBJECTIVE_PREFIX)
+        and fid != SYNTHESIS_ID
     }
 
     # Check each referenced ID
@@ -158,6 +159,23 @@ def reconcile_plan_after_scan(
             if _supersede_id(plan, state, fid, now):
                 result.superseded.append(fid)
                 result.changes += 1
+
+    # Reconcile epic clusters: remove dead findings, delete empty epics
+    clusters = plan.get("clusters", {})
+    epic_names_to_delete: list[str] = []
+    for name, cluster in list(clusters.items()):
+        if not name.startswith(EPIC_PREFIX):
+            continue
+        finding_ids = cluster.get("finding_ids", [])
+        alive_ids = [fid for fid in finding_ids if _is_finding_alive(state, fid)]
+        if alive_ids != finding_ids:
+            cluster["finding_ids"] = alive_ids
+            result.changes += 1
+        if not alive_ids:
+            epic_names_to_delete.append(name)
+    for name in epic_names_to_delete:
+        clusters.pop(name, None)
+        result.changes += 1
 
     # Resurface stale temporary skips
     scan_count = state.get("scan_count", 0)

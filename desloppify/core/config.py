@@ -9,11 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.core.discovery_api import safe_write_text
+from desloppify.core.paths_api import get_project_root
 
-CONFIG_FILE = PROJECT_ROOT / ".desloppify" / "config.json"
+
+def _default_config_file() -> Path:
+    """Resolve config path from the active runtime project root."""
+    return get_project_root() / ".desloppify" / "config.json"
+
+
+# Legacy export for call sites/tests that introspect this module constant.
+CONFIG_FILE = _default_config_file()
 logger = logging.getLogger(__name__)
 MIN_TARGET_STRICT_SCORE = 0
 MAX_TARGET_STRICT_SCORE = 100
@@ -108,7 +115,7 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
     Fills missing keys with defaults. If no config.json exists, attempts
     migration from state-*.json files.
     """
-    p = path or CONFIG_FILE
+    p = path or _default_config_file()
     if p.exists():
         try:
             config = json.loads(p.read_text())
@@ -146,7 +153,7 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
 
 def save_config(config: dict, path: Path | None = None) -> None:
     """Save config to disk atomically."""
-    p = path or CONFIG_FILE
+    p = path or _default_config_file()
     safe_write_text(p, json.dumps(config, indent=2) + "\n")
 
 
@@ -189,6 +196,46 @@ def _validate_badge_path(raw: str) -> str:
     return value
 
 
+def _set_int_config_value(config: dict, key: str, raw: str) -> None:
+    if raw.lower() == "never":
+        config[key] = 0
+    else:
+        config[key] = int(raw)
+    if key != "target_strict_score":
+        return
+    target_strict_score, target_valid = _coerce_target_strict_score(config[key])
+    if not target_valid:
+        raise ValueError(
+            f"Expected integer {MIN_TARGET_STRICT_SCORE}-{MAX_TARGET_STRICT_SCORE} "
+            f"for {key}, got: {raw}"
+        )
+    config[key] = target_strict_score
+
+
+def _set_bool_config_value(config: dict, key: str, raw: str) -> None:
+    normalized = raw.lower()
+    if normalized in ("true", "1", "yes"):
+        config[key] = True
+        return
+    if normalized in ("false", "0", "no"):
+        config[key] = False
+        return
+    raise ValueError(f"Expected true/false for {key}, got: {raw}")
+
+
+def _set_str_config_value(config: dict, key: str, raw: str) -> None:
+    if key == "badge_path":
+        config[key] = _validate_badge_path(raw)
+        return
+    config[key] = raw
+
+
+def _set_list_config_value(config: dict, key: str, raw: str) -> None:
+    config.setdefault(key, [])
+    if raw not in config[key]:
+        config[key].append(raw)
+
+
 def set_config_value(config: dict, key: str, raw: str) -> None:
     """Parse and set a config value from a raw string.
 
@@ -202,39 +249,20 @@ def set_config_value(config: dict, key: str, raw: str) -> None:
     schema = CONFIG_SCHEMA[key]
 
     if schema.type is int:
-        if raw.lower() == "never":
-            config[key] = 0
-        else:
-            config[key] = int(raw)
-        if key == "target_strict_score":
-            target_strict_score, target_valid = _coerce_target_strict_score(config[key])
-            if not target_valid:
-                raise ValueError(
-                    f"Expected integer {MIN_TARGET_STRICT_SCORE}-{MAX_TARGET_STRICT_SCORE} "
-                    f"for {key}, got: {raw}"
-                )
-            config[key] = target_strict_score
-    elif schema.type is bool:
-        if raw.lower() in ("true", "1", "yes"):
-            config[key] = True
-        elif raw.lower() in ("false", "0", "no"):
-            config[key] = False
-        else:
-            raise ValueError(f"Expected true/false for {key}, got: {raw}")
-    elif schema.type is str:
-        if key == "badge_path":
-            config[key] = _validate_badge_path(raw)
-        else:
-            config[key] = raw
-    elif schema.type is list:
-        # For list keys, append the value
-        config.setdefault(key, [])
-        if raw not in config[key]:
-            config[key].append(raw)
-    elif schema.type is dict:
+        _set_int_config_value(config, key, raw)
+        return
+    if schema.type is bool:
+        _set_bool_config_value(config, key, raw)
+        return
+    if schema.type is str:
+        _set_str_config_value(config, key, raw)
+        return
+    if schema.type is list:
+        _set_list_config_value(config, key, raw)
+        return
+    if schema.type is dict:
         raise ValueError(f"Cannot set dict key '{key}' via CLI — use subcommands")
-    else:
-        config[key] = raw
+    config[key] = raw
 
 
 def unset_config_value(config: dict, key: str) -> None:
@@ -265,6 +293,52 @@ def _merge_config_value(config: dict, key: str, value: object) -> None:
                 config[key][dk] = copy.deepcopy(dv)
         return
 
+
+def _load_state_file_payload(path: Path) -> dict | None:
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        logger.debug("Skipping unreadable state file %s: %s", path, exc)
+        return None
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _merge_legacy_state_config(config: dict, old_config: dict) -> None:
+    for key, value in old_config.items():
+        if key not in CONFIG_SCHEMA:
+            continue
+        _merge_config_value(config, key, value)
+
+
+def _strip_config_from_state_file(path: Path, state_data: dict) -> None:
+    if "config" not in state_data:
+        return
+    del state_data["config"]
+    try:
+        safe_write_text(path, json.dumps(state_data, indent=2) + "\n")
+    except OSError as exc:
+        log_best_effort_failure(
+            logger,
+            f"rewrite state file {path} after config migration",
+            exc,
+        )
+
+
+def _migrate_single_state_file(config: dict, path: Path) -> bool:
+    state_data = _load_state_file_payload(path)
+    if state_data is None:
+        return False
+    old_config = state_data.get("config")
+    if not isinstance(old_config, dict) or not old_config:
+        return False
+
+    _merge_legacy_state_config(config, old_config)
+    _strip_config_from_state_file(path, state_data)
+    return True
+
+
 def _migrate_from_state_files(config_path: Path) -> dict:
     """Migrate config keys from state-*.json files into config.json.
 
@@ -282,35 +356,7 @@ def _migrate_from_state_files(config_path: Path) -> dict:
     )
     migrated_any = False
     for sf in state_files:
-        try:
-            state_data = json.loads(sf.read_text())
-        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
-            logger.debug("Skipping unreadable state file %s: %s", sf, exc)
-            continue
-
-        old_config = state_data.get("config")
-        if not old_config or not isinstance(old_config, dict):
-            continue
-
-        # Merge: union for lists, merge for dicts, first-wins for scalars
-        for k, v in old_config.items():
-            if k not in CONFIG_SCHEMA:
-                continue
-            _merge_config_value(config, k, v)
-
-        # Strip "config" from state file
-        if "config" in state_data:
-            del state_data["config"]
-            try:
-                safe_write_text(sf, json.dumps(state_data, indent=2) + "\n")
-            except OSError as exc:
-                log_best_effort_failure(
-                    logger,
-                    f"rewrite state file {sf} after config migration",
-                    exc,
-                )
-
-        migrated_any = True
+        migrated_any = _migrate_single_state_file(config, sf) or migrated_any
 
     if migrated_any and config:
         try:

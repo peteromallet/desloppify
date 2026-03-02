@@ -37,9 +37,18 @@ from desloppify.languages._framework.generic_parts.tool_runner import (
 
 @pytest.fixture
 def _cleanup_registry():
-    """Auto-cleanup generic plugins registered during a test."""
-    from desloppify.languages._framework import registry_state
+    """Auto-cleanup generic plugins registered during a test.
 
+    Ensures built-in discovery runs before snapshotting so we don't
+    accidentally remove built-in languages during cleanup (module-level
+    ``@register_lang`` decorators won't re-fire on re-import).
+    """
+    from desloppify.languages._framework import registry_state
+    from desloppify.languages._framework.discovery import load_all
+
+    # Ensure built-in plugins are loaded before snapshotting, so the
+    # snapshot includes them and cleanup only removes test-specific entries.
+    load_all()
     before = set(registry_state.all_keys())
     yield
     for name in set(registry_state.all_keys()) - before:

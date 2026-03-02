@@ -84,6 +84,10 @@ _CLUSTER_ACTION_PRIORITY = {"auto_fix": 0, "reorganize": 1, "refactor": 2, "manu
 
 
 def item_sort_key(item: dict) -> tuple:
+    if item.get("kind") == "synthesis_needed":
+        # Synthesis items always sort first — they block all other work.
+        return (-1, 0, 0, item.get("id", ""))
+
     if item.get("kind") == "cluster":
         # Clusters sort before individual findings, ordered by action type
         # (auto_fix first, then reorganize, refactor, manual_fix),

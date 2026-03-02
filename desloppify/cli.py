@@ -7,14 +7,15 @@ import sys
 from pathlib import Path
 
 from desloppify.app.cli_support.parser import create_parser as _create_parser
+from desloppify.app.commands.registry import get_command_handlers
 from desloppify.app.commands.helpers.lang import LangResolutionError, resolve_lang
 from desloppify.app.commands.helpers.runtime import CommandRuntime
 from desloppify.app.commands.helpers.state import state_path
-from desloppify.core._internal.text_utils import get_project_root
+from desloppify.core.registry import detector_names, on_detector_registered
 from desloppify.core.config import load_config
 from desloppify.core.discovery_api import set_exclusions
 from desloppify.core.output_api import colorize
-from desloppify.core.paths_api import get_default_path
+from desloppify.core.paths_api import get_default_path, get_project_root
 from desloppify.core.runtime_state import runtime_scope
 from desloppify.languages import available_langs
 from desloppify.state import load_state
@@ -30,10 +31,17 @@ def _get_detector_names() -> list[str]:
     """Return cached detector names, computing on first access."""
     global _DETECTOR_NAMES
     if _DETECTOR_NAMES is None:
-        from desloppify.core.registry import detector_names
-
         _DETECTOR_NAMES = detector_names()
     return _DETECTOR_NAMES
+
+
+def _invalidate_detector_names_cache() -> None:
+    """Invalidate detector-name cache when runtime registrations change."""
+    global _DETECTOR_NAMES
+    _DETECTOR_NAMES = None
+
+
+on_detector_registered(_invalidate_detector_names_cache)
 
 def create_parser():
     """Return the top-level argparse parser."""
@@ -106,8 +114,6 @@ def _load_shared_runtime(args) -> None:
 
 
 def _resolve_handler(command: str):
-    from desloppify.app.commands.registry import get_command_handlers
-
     return get_command_handlers()[command]
 
 

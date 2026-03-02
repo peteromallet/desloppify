@@ -1,7 +1,10 @@
 """Flat directory detection — directories with too many source files."""
 
+import logging
 from collections import Counter
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from desloppify.core.file_paths import resolve_scan_file
 
@@ -105,7 +108,8 @@ def detect_flat_dirs(
             resolved_file = resolve_scan_file(f, scan_root=path).resolve()
             parent_path = resolved_file.parent
             parent_rel = parent_path.relative_to(scan_root)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            logger.debug("Skipping unresolvable file %s: %s", f, exc)
             continue
 
         parent = str((scan_root / parent_rel).resolve())

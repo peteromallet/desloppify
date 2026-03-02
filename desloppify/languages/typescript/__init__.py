@@ -22,6 +22,7 @@ from desloppify.languages._framework.base.types import (
     FixerConfig,
     FixResult,
     LangConfig,
+    LangSecurityResult,
 )
 from desloppify.languages._framework.treesitter.phases import make_cohesion_phase
 from desloppify.languages.typescript import commands as ts_commands_mod
@@ -31,7 +32,7 @@ from desloppify.languages.typescript.detectors import deps as deps_detector_mod
 from desloppify.languages.typescript.detectors import logs as logs_detector_mod
 from desloppify.languages.typescript.detectors import smells as smells_detector_mod
 from desloppify.languages.typescript.detectors import unused as unused_detector_mod
-from desloppify.languages.typescript.detectors.security import detect_ts_security
+from desloppify.languages.typescript.detectors.security import detect_ts_security_result
 from desloppify.languages.typescript.extractors import extract_ts_functions
 from desloppify.languages.typescript.phases import (
     TS_COMPLEXITY_SIGNALS as TS_COMPLEXITY_SIGNALS,
@@ -229,8 +230,12 @@ def _ts_extract_functions(path: Path) -> list[FunctionInfo]:
 
 @register_lang("typescript")
 class TypeScriptConfig(LangConfig):
-    def detect_lang_security(self, files, zone_map):
-        return detect_ts_security(files, zone_map)
+    def detect_lang_security_detailed(self, files, zone_map):
+        result = detect_ts_security_result(files, zone_map)
+        return LangSecurityResult(
+            entries=result.entries,
+            files_scanned=result.population_size,
+        )
 
     def __init__(self):
         super().__init__(

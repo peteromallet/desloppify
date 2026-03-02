@@ -111,7 +111,6 @@ _FORWARDED_CONFIG_ATTRS = frozenset(
         "migration_mixed_extensions",
         "zone_rules",
         "integration_depth",
-        "detect_lang_security",
         "detect_lang_security_detailed",
         "detect_private_imports",
         "normalize_settings",

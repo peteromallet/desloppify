@@ -7,6 +7,8 @@ import importlib.util
 import logging
 from pathlib import Path
 
+from desloppify.core.paths_api import get_project_root
+
 from . import registry_state
 
 logger = logging.getLogger(__name__)
@@ -44,9 +46,21 @@ def _report_load_errors_for_load_all() -> None:
         return
 
 
-def load_all() -> None:
+def _reset_dynamic_registries() -> None:
+    """Reset runtime-registered detectors/scoring before a forced reload."""
+    from desloppify.core.registry import reset_registered_detectors
+    from desloppify.scoring import reset_registered_scoring_policies
+
+    reset_registered_detectors()
+    reset_registered_scoring_policies()
+
+
+def load_all(*, force_reload: bool = False) -> None:
     """Import all language modules to trigger registration."""
-    if registry_state.was_load_attempted():
+    if force_reload:
+        registry_state.clear()
+        _reset_dynamic_registries()
+    elif registry_state.was_load_attempted():
         _report_load_errors_for_load_all()
         return
 
@@ -83,8 +97,6 @@ def load_all() -> None:
 
     # Discover user plugins from <active-project-root>/.desloppify/plugins/*.py
     try:
-        from desloppify.core._internal.text_utils import get_project_root
-
         user_plugin_dir = get_project_root() / ".desloppify" / "plugins"
         if user_plugin_dir.is_dir():
             for f in sorted(user_plugin_dir.glob("*.py")):
@@ -106,3 +118,8 @@ def load_all() -> None:
     registry_state.set_load_attempted(True)
     registry_state.set_load_errors(failures)
     _report_load_errors_for_load_all()
+
+
+def reload_all() -> None:
+    """Force a full in-process language plugin reload."""
+    load_all(force_reload=True)

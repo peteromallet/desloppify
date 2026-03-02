@@ -62,8 +62,11 @@ def remove(name: str) -> None:
 
 
 def clear() -> None:
-    """Clear all registrations (for testing)."""
+    """Full reset: registrations, load-attempted flag, and load errors."""
+    global _load_attempted
     _registry.clear()
+    _load_attempted = False
+    _load_errors.clear()
 
 
 def set_load_attempted(value: bool) -> None:
@@ -85,9 +88,9 @@ def record_load_error(name: str, error: BaseException) -> None:
 def set_load_errors(errors: dict[str, BaseException]) -> None:
     """Replace the full load-errors dict (used by discovery)."""
     global _load_errors
-    _load_errors = errors
+    _load_errors = dict(errors)
 
 
 def get_load_errors() -> dict[str, BaseException]:
-    """Return the dict of load errors."""
-    return _load_errors
+    """Return a copy of the load-errors dict."""
+    return dict(_load_errors)

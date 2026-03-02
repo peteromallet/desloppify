@@ -6,7 +6,7 @@ import argparse
 import urllib.error
 import urllib.request
 
-from desloppify.core._internal.text_utils import get_project_root
+from desloppify.core.paths_api import get_project_root
 from desloppify.core.skill_docs import (
     SKILL_BEGIN,
     SKILL_END,

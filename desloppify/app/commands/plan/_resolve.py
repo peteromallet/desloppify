@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from desloppify.engine._plan.schema import PlanModel
-from desloppify.engine._state.resolution import match_findings
-from desloppify.engine._state.schema import StateModel
+from desloppify.state import StateModel, match_findings
 
 
 def resolve_ids_from_patterns(

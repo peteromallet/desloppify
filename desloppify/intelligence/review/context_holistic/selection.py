@@ -118,13 +118,19 @@ def _sibling_behavior_context(
 ) -> dict:
     root = Path(base_path).resolve() if base_path is not None else None
 
+    _BOILERPLATE_NAMES = frozenset({
+        "__init__.py", "conftest.py", "setup.py", "__main__.py",
+    })
+
     def _bucket_for(filepath: str) -> str | None:
+        if Path(filepath).name in _BOILERPLATE_NAMES:
+            return None
         target = Path(filepath).resolve()
         if root is not None:
             try:
                 parts = target.relative_to(root).parts
                 if len(parts) >= 2:
-                    return f"{parts[0]}/"
+                    return "/".join(parts[:-1]) + "/"
                 return None
             except ValueError:
                 logger.debug("Path %s not relative to root %s, using fallback bucket", filepath, root)

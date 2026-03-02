@@ -13,36 +13,54 @@ from desloppify.app.output.scorecard_parts.dimension_policy import (
 )
 
 
+def _lang_from_scan_history(state: dict) -> str | None:
+    history = state.get("scan_history")
+    if not isinstance(history, list):
+        return None
+    for entry in reversed(history):
+        if not isinstance(entry, dict):
+            continue
+        lang = entry.get("lang")
+        if isinstance(lang, str) and lang.strip():
+            return lang.strip().lower()
+    return None
+
+
+def _lang_from_capabilities(state: dict) -> str | None:
+    capabilities = state.get("lang_capabilities")
+    if not isinstance(capabilities, dict) or len(capabilities) != 1:
+        return None
+    only_lang = next(iter(capabilities.keys()))
+    if isinstance(only_lang, str) and only_lang.strip():
+        return only_lang.strip().lower()
+    return None
+
+
+def _lang_from_findings(state: dict) -> str | None:
+    findings = state.get("findings")
+    if not isinstance(findings, dict):
+        return None
+    counts: dict[str, int] = {}
+    for finding in findings.values():
+        if not isinstance(finding, dict):
+            continue
+        lang = finding.get("lang")
+        if not isinstance(lang, str) or not lang.strip():
+            continue
+        key = lang.strip().lower()
+        counts[key] = counts.get(key, 0) + 1
+    if counts:
+        return max(counts, key=counts.get)
+    return None
+
+
 def resolve_scorecard_lang(state: dict) -> str | None:
     """Best-effort current scan language key for scorecard display policy."""
-    history = state.get("scan_history")
-    if isinstance(history, list):
-        for entry in reversed(history):
-            if not isinstance(entry, dict):
-                continue
-            lang = entry.get("lang")
-            if isinstance(lang, str) and lang.strip():
-                return lang.strip().lower()
-
-    capabilities = state.get("lang_capabilities")
-    if isinstance(capabilities, dict) and len(capabilities) == 1:
-        only_lang = next(iter(capabilities.keys()))
-        if isinstance(only_lang, str) and only_lang.strip():
-            return only_lang.strip().lower()
-
-    findings = state.get("findings")
-    if isinstance(findings, dict):
-        counts: dict[str, int] = {}
-        for finding in findings.values():
-            if not isinstance(finding, dict):
-                continue
-            lang = finding.get("lang")
-            if isinstance(lang, str) and lang.strip():
-                key = lang.strip().lower()
-                counts[key] = counts.get(key, 0) + 1
-        if counts:
-            return max(counts, key=counts.get)
-    return None
+    return (
+        _lang_from_scan_history(state)
+        or _lang_from_capabilities(state)
+        or _lang_from_findings(state)
+    )
 
 
 def is_unassessed_subjective_placeholder(data: dict) -> bool:

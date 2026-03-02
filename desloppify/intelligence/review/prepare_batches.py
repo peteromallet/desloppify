@@ -295,7 +295,7 @@ def _batch_testing_api(ctx: HolisticContext, *, max_files: int | None = None) ->
 
 
 def _batch_authorization(ctx: HolisticContext, *, max_files: int | None = None) -> dict:
-    """Batch 5: Authorization - auth gaps, service role usage."""
+    """Batch 5: Authorization - auth gaps, service role usage, RLS coverage."""
     auth_ctx = ctx.authorization
     auth_files: list[dict] = []
     for rpath, info in auth_ctx.get("route_auth_coverage", {}).items():
@@ -303,6 +303,14 @@ def _batch_authorization(ctx: HolisticContext, *, max_files: int | None = None) 
             auth_files.append({"file": rpath})
     for rpath in auth_ctx.get("service_role_usage", []):
         auth_files.append({"file": rpath})
+    # Include SQL/migration files that define tables without RLS
+    rls_coverage = auth_ctx.get("rls_coverage", {})
+    rls_files = rls_coverage.get("files", {})
+    if isinstance(rls_files, dict):
+        for _table, file_paths in rls_files.items():
+            if isinstance(file_paths, list):
+                for fpath in file_paths:
+                    auth_files.append({"file": fpath})
     files = _collect_unique_files([auth_files], max_files=max_files)
     return {
         "name": "Authorization",

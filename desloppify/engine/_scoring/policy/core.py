@@ -88,6 +88,9 @@ DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = {
     # Review findings are scored via subjective dimensions, not mechanical dimensions.
     "review": DetectorScoringPolicy("review", None, None, file_based=True),
 }
+_BASE_DETECTOR_SCORING_POLICIES: dict[str, DetectorScoringPolicy] = dict(
+    DETECTOR_SCORING_POLICIES
+)
 
 # Detectors where potential = file count but findings are per-(file, sub-type).
 # Per-file weighted failures are capped at 1.0 to match the file-based denominator.
@@ -213,6 +216,13 @@ def register_scoring_policy(policy: DetectorScoringPolicy) -> None:
     _rebuild_derived()
 
 
+def reset_registered_scoring_policies() -> None:
+    """Reset runtime-added scoring policies to built-in defaults."""
+    DETECTOR_SCORING_POLICIES.clear()
+    DETECTOR_SCORING_POLICIES.update(_BASE_DETECTOR_SCORING_POLICIES)
+    _rebuild_derived()
+
+
 def _rebuild_derived() -> None:
     """Rebuild DIMENSIONS, DIMENSIONS_BY_NAME, FILE_BASED_DETECTORS from current state.
 
@@ -263,4 +273,5 @@ __all__ = [
     "detector_policy",
     "matches_target_score",
     "register_scoring_policy",
+    "reset_registered_scoring_policies",
 ]

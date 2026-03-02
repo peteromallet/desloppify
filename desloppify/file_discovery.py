@@ -7,6 +7,15 @@ Planned removal: 2026-09-30 (or later major version).
 
 from __future__ import annotations
 
+import warnings as _warnings
+
+_warnings.warn(
+    "desloppify.file_discovery is deprecated; use desloppify.core.discovery_api instead. "
+    "Planned removal: 2026-09-30.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from desloppify.core.discovery_api import (
     clear_source_file_cache_for_tests,
     DEFAULT_EXCLUSIONS,

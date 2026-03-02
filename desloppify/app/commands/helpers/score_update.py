@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from desloppify import state as state_mod
 from desloppify.app.commands.scan.scan_helpers import format_delta
+from desloppify.app.commands.helpers.score import target_strict_score_from_config
+from desloppify.core import config as config_mod
 from desloppify.core.output_api import colorize
 
 
@@ -45,12 +47,17 @@ def print_score_update(
         + colorize(f"  verified {new.verified:.1f}/100{verified_s}", verified_c)
     )
 
+    # Score-drop reassurance after structural fixes
+    if new.strict is not None and prev.strict is not None and new.strict < prev.strict:
+        print(colorize(
+            "  Score dropped — this is normal after structural fixes. "
+            "New findings may surface; keep working the queue.",
+            "yellow",
+        ))
+
     # Always show strict target + next-command nudge
     if config is None:
-        from desloppify.core import config as config_mod
-
         config = config_mod.load_config()
-    from desloppify.app.commands.helpers.score import target_strict_score_from_config
 
     target = target_strict_score_from_config(config, fallback=95.0)
     _print_strict_target_nudge(new.strict, target)

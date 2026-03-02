@@ -325,6 +325,9 @@ _DISPLAY_ORDER = list(DISPLAY_ORDER)
 JUDGMENT_DETECTORS: frozenset[str] = frozenset(
     name for name, meta in DETECTORS.items() if meta.needs_judgment
 )
+_BASE_DETECTORS: dict[str, DetectorMeta] = dict(DETECTORS)
+_BASE_DISPLAY_ORDER: list[str] = list(_DISPLAY_ORDER)
+_BASE_JUDGMENT_DETECTORS: frozenset[str] = frozenset(JUDGMENT_DETECTORS)
 
 _on_register_callbacks: list[Callable[[], None]] = []
 
@@ -343,6 +346,18 @@ def register_detector(meta: DetectorMeta) -> None:
     JUDGMENT_DETECTORS = frozenset(
         name for name, m in DETECTORS.items() if m.needs_judgment
     )
+    for cb in _on_register_callbacks:
+        cb()
+
+
+def reset_registered_detectors() -> None:
+    """Reset runtime-added detector registrations to built-in defaults."""
+    global JUDGMENT_DETECTORS
+    DETECTORS.clear()
+    DETECTORS.update(_BASE_DETECTORS)
+    _DISPLAY_ORDER.clear()
+    _DISPLAY_ORDER.extend(_BASE_DISPLAY_ORDER)
+    JUDGMENT_DETECTORS = _BASE_JUDGMENT_DETECTORS
     for cb in _on_register_callbacks:
         cb()
 

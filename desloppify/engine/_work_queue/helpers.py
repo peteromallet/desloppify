@@ -157,7 +157,7 @@ def primary_command_for_finding(
         available_fixers = [
             fixer
             for fixer in meta.fixers
-            if supported_fixers is None or fixer in supported_fixers
+            if supported_fixers is not None and fixer in supported_fixers
         ]
         if available_fixers:
             return f"desloppify fix {available_fixers[0]} --dry-run"
@@ -165,7 +165,48 @@ def primary_command_for_finding(
         if is_holistic_subjective_finding(item):
             return "desloppify review --prepare"
         return "desloppify show subjective"
-    return f'desloppify plan done "{item.get("id", "")}" --note "<what you did>" --attest "{ATTEST_EXAMPLE}"'
+    return f'desloppify plan done "{item.get("id", "")}" --note "<what you did>" --confirm'
+
+
+def build_synthesis_item(plan: dict, state: dict) -> dict | None:
+    """Build a synthetic T1 work item for ``synthesis::pending`` if it's in the queue.
+
+    Returns ``None`` when synthesis is not pending.
+    """
+    from desloppify.engine._plan.stale_dimensions import SYNTHESIS_ID
+
+    if SYNTHESIS_ID not in plan.get("queue_order", []):
+        return None
+
+    findings = state.get("findings", {})
+    meta = plan.get("epic_synthesis_meta", {})
+
+    open_review_ids = {
+        fid for fid, f in findings.items()
+        if f.get("status") == "open"
+        and f.get("detector") in ("review", "concerns")
+    }
+    synthesized_ids = set(meta.get("synthesized_ids", []))
+    new_since = len(open_review_ids - synthesized_ids)
+    resolved_since = len(synthesized_ids - open_review_ids)
+
+    return {
+        "id": SYNTHESIS_ID,
+        "tier": 1,
+        "confidence": "high",
+        "detector": "synthesis",
+        "file": ".",
+        "kind": "synthesis_needed",
+        "primary_command": "desloppify plan synthesize",
+        "summary": (
+            f"Synthesize {len(open_review_ids)} review findings into a coherent plan"
+        ),
+        "detail": {
+            "total_review_findings": len(open_review_ids),
+            "new_since_last": new_since,
+            "resolved_since_last": resolved_since,
+        },
+    }
 
 
 def subjective_strict_scores(state: dict) -> dict[str, float]:
@@ -225,6 +266,18 @@ def build_subjective_items(
         review_open_by_dim[dim_key] = review_open_by_dim.get(dim_key, 0) + 1
 
     items: list[dict] = []
+    def _prepare_command(
+        cli_keys: list[str],
+        *,
+        force_review_rerun: bool = False,
+    ) -> str:
+        command = "desloppify review --prepare"
+        if cli_keys:
+            command += " --dimensions " + ",".join(cli_keys)
+        if force_review_rerun:
+            command += " --force-review-rerun"
+        return command
+
     for entry in subjective_entries:
         name = str(entry.get("name", "")).strip()
         if not name:
@@ -248,24 +301,27 @@ def build_subjective_items(
             or (strict_val <= 0.0 and int(entry.get("issues", 0)) == 0)
         )
         is_stale = bool(entry.get("stale"))
-        if is_unassessed:
-            primary_command = "desloppify review --prepare"
+        # If review findings already exist for this dimension, triage/fix them
+        # before suggesting another review refresh pass.
+        if open_review > 0:
+            primary_command = "desloppify show review --status open"
+        elif is_unassessed:
+            primary_command = _prepare_command(cli_keys)
         elif is_stale:
-            if cli_keys:
-                primary_command = (
-                    "desloppify review --prepare --dimensions " + ",".join(cli_keys)
-                )
-            else:
-                primary_command = "desloppify review --prepare"
+            primary_command = _prepare_command(
+                cli_keys,
+                force_review_rerun=True,
+            )
+        elif cli_keys:
+            primary_command = _prepare_command(
+                cli_keys,
+                force_review_rerun=True,
+            )
         else:
-            if open_review > 0:
-                primary_command = "desloppify show review --status open"
-            elif cli_keys:
-                primary_command = (
-                    "desloppify review --prepare --dimensions " + ",".join(cli_keys)
-                )
-            else:
-                primary_command = "desloppify review --prepare"
+            primary_command = _prepare_command(
+                cli_keys,
+                force_review_rerun=True,
+            )
         stale_tag = " [stale — re-review]" if is_stale else ""
         summary = f"Subjective dimension below target: {name} ({strict_val:.1f}%){stale_tag}"
         items.append(
@@ -297,6 +353,7 @@ __all__ = [
     "ALL_STATUSES",
     "ATTEST_EXAMPLE",
     "build_subjective_items",
+    "build_synthesis_item",
     "detail_dict",
     "is_review_finding",
     "is_subjective_finding",

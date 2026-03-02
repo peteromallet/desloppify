@@ -6,9 +6,15 @@ from typing import Any, Required, TypedDict
 
 from desloppify.engine._state.schema import utc_now
 
-PLAN_VERSION = 2
+PLAN_VERSION = 4
 
-VALID_SKIP_KINDS = {"temporary", "permanent", "false_positive"}
+VALID_SKIP_KINDS = {"temporary", "permanent", "false_positive", "synthesized_out"}
+
+EPIC_PREFIX = "epic/"
+VALID_EPIC_DIRECTIONS = {
+    "delete", "merge", "flatten", "enforce",
+    "simplify", "decompose", "extract", "inline",
+}
 
 
 class SkipEntry(TypedDict, total=False):
@@ -66,6 +72,8 @@ class PlanModel(TypedDict, total=False):
     overrides: dict[str, ItemOverride]
     clusters: dict[str, Cluster]
     superseded: dict[str, SupersededEntry]
+    plan_start_scores: dict  # frozen score snapshot from plan creation cycle
+    epic_synthesis_meta: dict  # synthesis engine metadata
 
 
 def empty_plan() -> PlanModel:
@@ -82,18 +90,12 @@ def empty_plan() -> PlanModel:
         "overrides": {},
         "clusters": {},
         "superseded": {},
+        "plan_start_scores": {},
+        "epic_synthesis_meta": {},
     }
 
 
-def ensure_plan_defaults(plan: dict[str, Any]) -> None:
-    """Normalize a loaded plan to ensure all keys exist.
-
-    Handles migration from v1 (deferred list) to v2 (skipped dict).
-    """
-    defaults = empty_plan()
-    for key, value in defaults.items():
-        plan.setdefault(key, value)
-
+def _ensure_container_types(plan: dict[str, Any]) -> None:
     if not isinstance(plan.get("queue_order"), list):
         plan["queue_order"] = []
     if not isinstance(plan.get("deferred"), list):
@@ -106,35 +108,107 @@ def ensure_plan_defaults(plan: dict[str, Any]) -> None:
         plan["clusters"] = {}
     if not isinstance(plan.get("superseded"), dict):
         plan["superseded"] = {}
+    if not isinstance(plan.get("plan_start_scores"), dict):
+        plan["plan_start_scores"] = {}
+    if not isinstance(plan.get("epic_synthesis_meta"), dict):
+        plan["epic_synthesis_meta"] = {}
 
-    # Migrate deferred → skipped (v1 → v2)
+
+def _migrate_deferred_to_skipped(plan: dict[str, Any]) -> None:
     deferred: list[str] = plan["deferred"]
     skipped: dict[str, SkipEntry] = plan["skipped"]
-    if deferred:
-        now = utc_now()
-        for fid in list(deferred):
-            if fid not in skipped:
-                skipped[fid] = {
-                    "finding_id": fid,
-                    "kind": "temporary",
-                    "reason": None,
-                    "note": None,
-                    "attestation": None,
-                    "created_at": now,
-                    "review_after": None,
-                    "skipped_at_scan": 0,
-                }
-        deferred.clear()
+    if not deferred:
+        return
 
-    # Normalize cluster fields
+    now = utc_now()
+    for fid in list(deferred):
+        if fid in skipped:
+            continue
+        skipped[fid] = {
+            "finding_id": fid,
+            "kind": "temporary",
+            "reason": None,
+            "note": None,
+            "attestation": None,
+            "created_at": now,
+            "review_after": None,
+            "skipped_at_scan": 0,
+        }
+    deferred.clear()
+
+
+def _normalize_cluster_defaults(plan: dict[str, Any]) -> None:
     for cluster in plan["clusters"].values():
-        if isinstance(cluster, dict):
-            if not isinstance(cluster.get("finding_ids"), list):
-                cluster["finding_ids"] = []
-            cluster.setdefault("auto", False)
-            cluster.setdefault("cluster_key", "")
-            cluster.setdefault("action", None)
-            cluster.setdefault("user_modified", False)
+        if not isinstance(cluster, dict):
+            continue
+        if not isinstance(cluster.get("finding_ids"), list):
+            cluster["finding_ids"] = []
+        cluster.setdefault("auto", False)
+        cluster.setdefault("cluster_key", "")
+        cluster.setdefault("action", None)
+        cluster.setdefault("user_modified", False)
+
+
+def _migrate_epics_to_clusters(plan: dict[str, Any]) -> None:
+    """Migrate v3 top-level ``epics`` dict into ``clusters`` (v4 unification)."""
+    epics = plan.pop("epics", None)
+    if not isinstance(epics, dict) or not epics:
+        return
+    clusters = plan["clusters"]
+    now = utc_now()
+    for name, epic in epics.items():
+        if not isinstance(epic, dict):
+            continue
+        if name in clusters:
+            continue  # don't overwrite existing cluster
+        clusters[name] = {
+            "name": name,
+            "description": epic.get("thesis", ""),
+            "finding_ids": epic.get("finding_ids", []),
+            "auto": True,
+            "cluster_key": f"epic::{name}",
+            "action": f"desloppify plan focus {name}",
+            "user_modified": False,
+            "created_at": epic.get("created_at", now),
+            "updated_at": epic.get("updated_at", now),
+            # Epic-specific fields
+            "thesis": epic.get("thesis", ""),
+            "direction": epic.get("direction", "simplify"),
+            "root_cause": epic.get("root_cause", ""),
+            "supersedes": epic.get("supersedes", []),
+            "dismissed": epic.get("dismissed", []),
+            "agent_safe": epic.get("agent_safe", False),
+            "dependency_order": epic.get("dependency_order", 999),
+            "action_steps": epic.get("action_steps", []),
+            "source_clusters": epic.get("source_clusters", []),
+            "status": epic.get("status", "pending"),
+            "synthesis_version": epic.get("synthesis_version", 0),
+        }
+
+
+def ensure_plan_defaults(plan: dict[str, Any]) -> None:
+    """Normalize a loaded plan to ensure all keys exist.
+
+    Handles migration from v1 (deferred list) to v2 (skipped dict),
+    and v3 (top-level epics) to v4 (epics unified into clusters).
+    """
+    defaults = empty_plan()
+    for key, value in defaults.items():
+        plan.setdefault(key, value)
+
+    _ensure_container_types(plan)
+    _migrate_deferred_to_skipped(plan)
+    _migrate_epics_to_clusters(plan)
+    _normalize_cluster_defaults(plan)
+
+
+def synthesis_clusters(plan: dict[str, Any]) -> dict[str, Cluster]:
+    """Return clusters whose name starts with ``EPIC_PREFIX``."""
+    return {
+        name: cluster
+        for name, cluster in plan.get("clusters", {}).items()
+        if name.startswith(EPIC_PREFIX)
+    }
 
 
 def validate_plan(plan: dict[str, Any]) -> None:
@@ -162,14 +236,17 @@ def validate_plan(plan: dict[str, Any]) -> None:
 
 
 __all__ = [
+    "EPIC_PREFIX",
     "PLAN_VERSION",
     "Cluster",
     "ItemOverride",
     "PlanModel",
     "SkipEntry",
     "SupersededEntry",
+    "VALID_EPIC_DIRECTIONS",
     "VALID_SKIP_KINDS",
     "empty_plan",
     "ensure_plan_defaults",
+    "synthesis_clusters",
     "validate_plan",
 ]

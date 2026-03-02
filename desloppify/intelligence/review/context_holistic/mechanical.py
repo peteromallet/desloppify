@@ -156,11 +156,19 @@ def _get_detail(finding: dict, key: str, default: Any = None) -> Any:
 
 
 def _get_signals(finding: dict) -> dict:
+    """Return the metrics dict for a finding.
+
+    Structural findings store metrics directly in ``detail`` (e.g. ``loc``,
+    ``complexity_score``).  Fall back to ``detail`` itself when the nested
+    ``signals`` key is absent so hotspot aggregation sees real values.
+    """
     detail = finding.get("detail", {})
     if not isinstance(detail, dict):
         return {}
-    signals = detail.get("signals", {})
-    return signals if isinstance(signals, dict) else {}
+    signals = detail.get("signals")
+    if isinstance(signals, dict):
+        return signals
+    return detail
 
 
 def _safe_num(value: Any, default: float = 0.0) -> float:
@@ -374,8 +382,9 @@ def _build_duplicate_clusters(by_detector: dict[str, list[dict]]) -> list[dict]:
             kind = detail.get("kind", det_name)
             name = detail.get("name", detail.get("function", finding.get("summary", "")[:60]))
             files = detail.get("files", [])
-            if not isinstance(files, list):
-                files = [finding.get("file", "")]
+            if not isinstance(files, list) or not files:
+                fallback = finding.get("file", "")
+                files = [fallback] if fallback else []
             results.append({
                 "kind": kind,
                 "cluster_size": len(files) if files else 1,

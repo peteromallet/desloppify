@@ -191,6 +191,35 @@ def _cmd_cluster_list(args: argparse.Namespace) -> None:
         print(f"    {name}: {member_count} items{auto_tag}{desc_str}{marker}")
 
 
+def _cmd_cluster_update(args: argparse.Namespace) -> None:
+    """Update cluster description and/or action_steps."""
+    cluster_name: str = getattr(args, "cluster_name", "")
+    description: str | None = getattr(args, "description", None)
+    steps: list[str] | None = getattr(args, "steps", None)
+
+    if description is None and steps is None:
+        print(colorize("  Nothing to update. Use --description and/or --steps.", "yellow"))
+        return
+
+    plan = load_plan()
+    cluster = plan.get("clusters", {}).get(cluster_name)
+    if cluster is None:
+        print(colorize(f"  Cluster {cluster_name!r} does not exist.", "red"))
+        return
+
+    if description is not None:
+        cluster["description"] = description
+    if steps is not None:
+        cluster["action_steps"] = list(steps)
+    cluster["user_modified"] = True
+
+    from desloppify.engine._state.schema import utc_now
+
+    cluster["updated_at"] = utc_now()
+    save_plan(plan)
+    print(colorize(f"  Updated cluster: {cluster_name}", "green"))
+
+
 def cmd_cluster_dispatch(args: argparse.Namespace) -> None:
     """Route cluster subcommands."""
     cluster_action = getattr(args, "cluster_action", None)
@@ -202,6 +231,7 @@ def cmd_cluster_dispatch(args: argparse.Namespace) -> None:
         "move": _cmd_cluster_move,
         "show": _cmd_cluster_show,
         "list": _cmd_cluster_list,
+        "update": _cmd_cluster_update,
     }
     handler = dispatch.get(cluster_action)
     if handler is None:

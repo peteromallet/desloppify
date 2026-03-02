@@ -33,6 +33,14 @@ _CANONICAL_FINDING_STATUSES = frozenset(
         Status.AUTO_RESOLVED.value,
     }
 )
+_RESOLVED_STATUSES = frozenset(
+    {
+        Status.FIXED.value,
+        Status.WONTFIX.value,
+        Status.FALSE_POSITIVE.value,
+        Status.AUTO_RESOLVED.value,
+    }
+)
 _LEGACY_STATUS_ALIASES = {
     Status.RESOLVED.value: Status.FIXED.value,
 }
@@ -59,10 +67,16 @@ def finding_status_tokens(*, include_all: bool = False) -> frozenset[str]:
     return _CANONICAL_FINDING_STATUSES
 
 
+def resolved_statuses() -> frozenset[str]:
+    """Return the set of statuses that mean a finding is no longer open."""
+    return _RESOLVED_STATUSES
+
+
 __all__ = [
     "Confidence",
     "Status",
     "Tier",
     "canonical_finding_status",
     "finding_status_tokens",
+    "resolved_statuses",
 ]
