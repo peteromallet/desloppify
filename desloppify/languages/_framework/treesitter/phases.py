@@ -80,7 +80,11 @@ def make_cohesion_phase(spec) -> DetectorPhase:
                     f"{e['component_count']} disconnected function clusters "
                     f"({e['function_count']} functions) — likely mixed responsibilities"
                 ),
-                detail=f"Clusters: {families}",
+                detail={
+                    "cluster_count": e["component_count"],
+                    "family": families,
+                    "families": e["families"],
+                },
             ))
         if entries:
             potentials["responsibility_cohesion"] = len(entries)
