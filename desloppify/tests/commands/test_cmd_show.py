@@ -118,6 +118,13 @@ class TestFormatDetail:
         out_part = [p for p in parts if p.startswith("outliers:")][0]
         assert "f" not in out_part  # Only first 5
 
+    def test_string_detail_is_rendered(self):
+        parts = format_detail("Clusters: alpha, beta")
+        assert parts == ["detail: Clusters: alpha, beta"]
+
+    def test_non_dict_non_string_detail_is_ignored(self):
+        assert format_detail(123) == []
+
 
 # ---------------------------------------------------------------------------
 # build_show_payload
