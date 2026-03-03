@@ -59,6 +59,28 @@ def test_global_var(tmp_path):
     assert "global_var" in ids
 
 
+def test_global_var_cobra_command_not_flagged(tmp_path):
+    _write(tmp_path, "lib.go", 'package lib\n\nvar Cmd = &cobra.Command{}\n')
+    entries, _ = _detect(tmp_path)
+    global_entries = [e for e in entries if e["id"] == "global_var"]
+    assert not global_entries
+
+
+def test_global_var_regexp_not_flagged(tmp_path):
+    _write(tmp_path, "lib.go", 'package lib\n\nvar re = regexp.MustCompile(`\\d+`)\n')
+    entries, _ = _detect(tmp_path)
+    global_entries = [e for e in entries if e["id"] == "global_var"]
+    assert not global_entries
+
+
+def test_global_var_block_not_flagged(tmp_path):
+    """var ( ... ) blocks (enum patterns) should be skipped."""
+    _write(tmp_path, "lib.go", "package lib\n\nvar (\n    x = 1\n    y = 2\n)\n")
+    entries, _ = _detect(tmp_path)
+    global_entries = [e for e in entries if e["id"] == "global_var"]
+    assert not global_entries
+
+
 def test_hardcoded_url(tmp_path):
     _write(
         tmp_path,
@@ -240,6 +262,23 @@ def test_unreachable_code_closing_brace_not_flagged(tmp_path):
         tmp_path,
         "lib.go",
         "package lib\n\nfunc f() int {\n    return 1\n}\n",
+    )
+    entries, _ = _detect(tmp_path)
+    unreachable = [e for e in entries if e["id"] == "unreachable_code"]
+    assert not unreachable
+
+
+def test_unreachable_code_closure_brace_not_flagged(tmp_path):
+    """Closing }) or }), after return inside closure should not flag."""
+    _write(
+        tmp_path,
+        "lib.go",
+        "package lib\n\n"
+        "func f() {\n"
+        "    doSomething(func() error {\n"
+        "        return nil\n"
+        "    })\n"
+        "}\n",
     )
     entries, _ = _detect(tmp_path)
     unreachable = [e for e in entries if e["id"] == "unreachable_code"]

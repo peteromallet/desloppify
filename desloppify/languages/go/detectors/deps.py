@@ -70,17 +70,26 @@ def build_dep_graph(
 
     scan_path = str(path.resolve())
     files = find_go_files(path)
-    file_set = set(files)
+
+    # Normalize all file paths to absolute for consistent matching.
+    # find_go_files may return relative paths while resolve_go_import
+    # returns absolute paths — both must use the same form.
+    abs_files = [
+        os.path.normpath(os.path.join(scan_path, f))
+        if not os.path.isabs(f) else os.path.normpath(f)
+        for f in files
+    ]
+    file_set = set(abs_files)
 
     # Initialize graph with all files
     graph: dict[str, dict[str, Any]] = {}
-    for f in files:
+    for f in abs_files:
         graph[f] = {"imports": set(), "importers": set()}
 
     # Track package declarations per file for same-package edge linking
     dir_pkg: dict[tuple[str, str], list[str]] = defaultdict(list)
 
-    for filepath in files:
+    for filepath in abs_files:
         try:
             content = Path(filepath).read_text(errors="replace")
         except OSError:
@@ -98,9 +107,7 @@ def build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
+            resolved = os.path.normpath(resolved)
 
             # Only track edges within the scanned file set
             if resolved not in file_set:

@@ -57,8 +57,8 @@ GO_SMELL_CHECKS: list[dict[str, Any]] = [
     },
     {
         "id": "global_var",
-        "label": "Package-level var declaration",
-        "pattern": r"^var\s+\w+",
+        "label": "Package-level mutable var declaration",
+        "pattern": None,
         "severity": "low",
     },
     {
@@ -83,12 +83,6 @@ GO_SMELL_CHECKS: list[dict[str, Any]] = [
         "id": "json_unmarshal_interface",
         "label": "json.Unmarshal into interface{}/any without struct",
         "pattern": None,
-        "severity": "medium",
-    },
-    {
-        "id": "string_int_conv",
-        "label": "string(int) conversion (may be []byte/rune)",
-        "pattern": r"string\(\s*[a-zA-Z_]\w*\s*\)",
         "severity": "medium",
     },
     {
@@ -271,6 +265,56 @@ def _detect_goroutine_closure(
                     break
 
 
+# Idiomatic Go patterns that use package-level var — not smells.
+_GLOBAL_VAR_SKIP_RE = re.compile(
+    r"^var\s+\w+\s*=?\s*(?:"
+    r"&?cobra\.Command\b"       # CLI commands
+    r"|regexp\.MustCompile\b"   # compiled regexes
+    r"|sync\.\w+"               # sync primitives
+    r"|errors\.New\b"           # sentinel errors
+    r"|fmt\.Errorf\b"           # sentinel errors
+    r"|template\.Must\b"        # parsed templates
+    r")"
+)
+# Also skip: var ( ... ) blocks that define types/consts (common Go enum pattern),
+# and var declarations with explicit struct/func/interface types.
+_GLOBAL_VAR_RE = re.compile(r"^var\s+\w+")
+
+
+def _detect_global_var(
+    filepath: str, lines: list[str], smell_counts: dict[str, list[dict]]
+) -> None:
+    """Flag mutable package-level var declarations, excluding idiomatic patterns.
+
+    Only flags top-level var (no indentation) — function-local var is fine.
+    Skips var (...) blocks (common Go enum/const patterns) and idiomatic
+    patterns like cobra commands, compiled regexes, sync primitives, etc.
+    """
+    in_var_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("//"):
+            continue
+        # Only consider lines with no leading whitespace (top-level declarations)
+        if line != line.lstrip():
+            continue
+        # Track var ( ... ) blocks
+        if re.match(r"^var\s*\(", stripped):
+            in_var_block = True
+            continue
+        if in_var_block:
+            if stripped == ")":
+                in_var_block = False
+            continue
+        if not _GLOBAL_VAR_RE.match(stripped):
+            continue
+        if _GLOBAL_VAR_SKIP_RE.match(stripped):
+            continue
+        smell_counts["global_var"].append(
+            {"file": filepath, "line": i + 1, "content": stripped[:100]}
+        )
+
+
 def _detect_monster_functions(
     filepath: str, content: str, smell_counts: dict[str, list[dict]]
 ) -> None:
@@ -327,6 +371,12 @@ def _detect_unreachable_code(
         if stripped.startswith("//"):
             continue
         if re.match(r"(?:return\b|panic\(|os\.Exit\()", stripped):
+            # If the return/panic line has unbalanced braces (e.g. return &Foo{),
+            # the statement spans multiple lines — skip until braces balance.
+            depth = stripped.count("{") - stripped.count("}")
+            depth += stripped.count("(") - stripped.count(")")
+            if depth > 0:
+                continue
             # Look at the next non-blank line
             for j in range(i + 1, min(i + 5, len(lines))):
                 next_stripped = lines[j].strip()
@@ -334,7 +384,7 @@ def _detect_unreachable_code(
                     continue
                 if next_stripped.startswith("//"):
                     continue
-                if next_stripped == "}":
+                if re.match(r"^[}\)]+[,;\s]*$", next_stripped):
                     break
                 if next_stripped.startswith("case ") or next_stripped.startswith("default:"):
                     break
@@ -432,6 +482,7 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
         _detect_init_side_effects(filepath, content, lines, smell_counts)
         _detect_defer_in_loop(filepath, lines, smell_counts)
         _detect_goroutine_closure(filepath, lines, smell_counts)
+        _detect_global_var(filepath, lines, smell_counts)
         _detect_monster_functions(filepath, content, smell_counts)
         _detect_dead_functions(filepath, content, smell_counts)
         _detect_unreachable_code(filepath, lines, smell_counts)
