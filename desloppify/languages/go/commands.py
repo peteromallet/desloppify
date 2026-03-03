@@ -21,7 +21,7 @@ from desloppify.languages._framework.commands_base import (
     make_cmd_smells,
 )
 from desloppify.core.discovery_api import rel
-from desloppify.core.output_api import colorize, display_entries, print_table
+from desloppify.core.output_api import display_entries
 from desloppify.languages.go.detectors.deps import build_dep_graph
 from desloppify.languages.go.detectors.gods import GO_GOD_RULES, extract_go_structs
 from desloppify.languages.go.detectors.smells import detect_smells

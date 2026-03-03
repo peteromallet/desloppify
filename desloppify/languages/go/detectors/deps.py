@@ -77,11 +77,20 @@ def build_dep_graph(
     for f in files:
         graph[f] = {"imports": set(), "importers": set()}
 
+    # Track package declarations per file for same-package edge linking
+    dir_pkg: dict[tuple[str, str], list[str]] = defaultdict(list)
+
     for filepath in files:
         try:
             content = Path(filepath).read_text(errors="replace")
         except OSError:
             continue
+
+        # Collect package name for same-package linking (single read)
+        pkg_match = _PACKAGE_RE.search(content)
+        if pkg_match:
+            key = (str(Path(filepath).parent), pkg_match.group(1))
+            dir_pkg[key].append(filepath)
 
         import_paths = _extract_imports(content)
         for import_path in import_paths:
@@ -105,33 +114,15 @@ def build_dep_graph(
     # sharing the same `package` declaration are implicitly linked.
     # Without these edges, every file that isn't cross-package imported
     # would appear "orphaned."
-    _add_same_package_edges(graph)
+    for pkg_files in dir_pkg.values():
+        if len(pkg_files) < 2:
+            continue
+        rep = pkg_files[0]
+        for other in pkg_files[1:]:
+            graph[rep]["importers"].add(other)
+            graph[other]["importers"].add(rep)
 
     return finalize_graph(graph)
 
 
 _PACKAGE_RE = re.compile(r"^\s*package\s+(\w+)", re.MULTILINE)
-
-
-def _add_same_package_edges(graph: dict[str, dict[str, Any]]) -> None:
-    """Add bidirectional edges between files in the same Go package."""
-    # Group files by (directory, package name)
-    dir_pkg: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for filepath in graph:
-        try:
-            content = Path(filepath).read_text(errors="replace", encoding="utf-8")
-        except OSError:
-            continue
-        m = _PACKAGE_RE.search(content)
-        if m:
-            dir_pkg[(str(Path(filepath).parent), m.group(1))].append(filepath)
-
-    # For each package group with 2+ files, connect them
-    for files in dir_pkg.values():
-        if len(files) < 2:
-            continue
-        # Pick the first file as representative; all others import/are imported by it
-        rep = files[0]
-        for other in files[1:]:
-            graph[rep]["importers"].add(other)
-            graph[other]["importers"].add(rep)
