@@ -165,8 +165,40 @@ def test_build_graph_counts_correct(tmp_path):
     ):
         graph = build_dep_graph(tmp_path)
 
-    # pkg_file should have 2 importers
+    # pkg_file should have 2 importers (cross-package)
     assert graph[pkg_file]["importer_count"] == 2
     # Each main file should have 1 import
     assert graph[a_file]["import_count"] == 1
     assert graph[b_file]["import_count"] == 1
+
+
+def test_same_package_files_not_orphaned(tmp_path):
+    """Files in the same package get implicit edges so they aren't orphaned."""
+    lib_file = _write(tmp_path, "lib.go", "package mylib\n\nfunc Helper() {}\n")
+    util_file = _write(tmp_path, "util.go", "package mylib\n\nfunc Util() {}\n")
+
+    with patch(
+        "desloppify.languages.go.detectors.deps.find_go_files",
+        return_value=[lib_file, util_file],
+    ):
+        graph = build_dep_graph(tmp_path)
+
+    # Both files should have at least one importer (each other)
+    assert graph[lib_file]["importer_count"] >= 1
+    assert graph[util_file]["importer_count"] >= 1
+
+
+def test_different_packages_same_dir_no_edges(tmp_path):
+    """Files with different package names in the same dir don't get linked."""
+    main_file = _write(tmp_path, "main.go", "package main\n\nfunc main() {}\n")
+    lib_file = _write(tmp_path, "lib.go", "package lib\n\nfunc F() {}\n")
+
+    with patch(
+        "desloppify.languages.go.detectors.deps.find_go_files",
+        return_value=[main_file, lib_file],
+    ):
+        graph = build_dep_graph(tmp_path)
+
+    # Different packages — no implicit edges
+    assert graph[main_file]["importer_count"] == 0
+    assert graph[lib_file]["importer_count"] == 0

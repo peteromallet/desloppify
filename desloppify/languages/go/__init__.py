@@ -81,7 +81,11 @@ class GoConfig(LangConfig):
                 make_tool_phase(
                     "go vet", "go vet ./...", "gnu", "vet_error", tier=3
                 ),
-                *all_treesitter_phases("go"),
+                # Exclude tree-sitter unused imports: Go compiler already
+                # enforces unused imports (compile error), and the generic
+                # name extractor mishandles Go versioned paths (e.g. v2).
+                *[p for p in all_treesitter_phases("go")
+                  if p.label != "Unused imports"],
                 detector_phase_signature(),
                 detector_phase_test_coverage(),
                 detector_phase_security(),
