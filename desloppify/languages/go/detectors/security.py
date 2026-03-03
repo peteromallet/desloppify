@@ -48,6 +48,9 @@ _HARDCODED_CRED_RE = re.compile(
     re.IGNORECASE,
 )
 
+# InsecureSkipVerify disables TLS certificate verification
+_INSECURE_SKIP_VERIFY_RE = re.compile(r"InsecureSkipVerify\s*:\s*true")
+
 
 def _make_entry(filepath, line_num, line, *, check_id, summary, severity, confidence, remediation):
     return security_detector_mod.make_security_entry(
@@ -148,6 +151,16 @@ def detect_go_security(
                     summary="Hardcoded credential detected",
                     severity="high", confidence="medium",
                     remediation="Use environment variables or a secrets manager",
+                ))
+
+            # InsecureSkipVerify disables TLS cert verification
+            if _INSECURE_SKIP_VERIFY_RE.search(line):
+                entries.append(_make_entry(
+                    filepath, line_num, line,
+                    check_id="insecure_tls",
+                    summary="InsecureSkipVerify disables TLS certificate verification",
+                    severity="high", confidence="high",
+                    remediation="Remove InsecureSkipVerify or use a proper CA certificate",
                 ))
 
         # File-level: check for math/rand in security context

@@ -74,6 +74,18 @@ GO_SMELL_CHECKS: list[dict[str, Any]] = [
         "severity": "high",
     },
     {
+        "id": "error_wrap_verb",
+        "label": "fmt.Errorf wraps error with %v instead of %w",
+        "pattern": r"""fmt\.Errorf\s*\([^)]*%v[^)]*\berr\b""",
+        "severity": "medium",
+    },
+    {
+        "id": "json_unmarshal_interface",
+        "label": "json.Unmarshal into interface{}/any without struct",
+        "pattern": None,
+        "severity": "medium",
+    },
+    {
         "id": "string_int_conv",
         "label": "string(int) conversion (may be []byte/rune)",
         "pattern": r"string\(\s*[a-zA-Z_]\w*\s*\)",
@@ -99,7 +111,7 @@ GO_SMELL_CHECKS: list[dict[str, Any]] = [
     },
     {
         "id": "monster_function",
-        "label": "Monster function (>100 LOC)",
+        "label": "Monster function (>150 LOC)",
         "pattern": None,
         "severity": "high",
     },
@@ -272,7 +284,7 @@ def _detect_monster_functions(
         start_line = content.count("\n", 0, match.start()) + 1
         end_line = content.count("\n", 0, end) + 1
         loc = end_line - start_line + 1
-        if loc > 100:
+        if loc > 150:
             smell_counts["monster_function"].append(
                 {
                     "file": filepath,
@@ -332,6 +344,44 @@ def _detect_unreachable_code(
                 break
 
 
+_JSON_UNMARSHAL_RE = re.compile(r"json\.(?:Unmarshal|NewDecoder)")
+_INTERFACE_EMPTY_RE = re.compile(r"\binterface\s*\{\}|\bany\b")
+
+
+def _detect_json_unmarshal_interface(
+    filepath: str, lines: list[str], smell_counts: dict[str, list[dict]]
+) -> None:
+    """Flag json.Unmarshal/NewDecoder targeting interface{}/any variables."""
+    # Track lines that declare interface{}/any variables
+    iface_vars: set[str] = set()
+    for line in lines:
+        stripped = line.strip()
+        # var v interface{} / var v any
+        m = re.match(r"var\s+(\w+)\s+(?:interface\s*\{\}\s*|any\b)", stripped)
+        if m:
+            iface_vars.add(m.group(1))
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("//"):
+            continue
+        if not _JSON_UNMARSHAL_RE.search(stripped):
+            continue
+        # Direct: json.Unmarshal(data, &v) where v is interface{}/any
+        for var in iface_vars:
+            if re.search(rf"&{re.escape(var)}\b", stripped):
+                smell_counts["json_unmarshal_interface"].append(
+                    {"file": filepath, "line": i + 1, "content": stripped[:100]}
+                )
+                break
+        else:
+            # Inline: json.Unmarshal(data, &x) where x is declared as interface{} nearby
+            if _INTERFACE_EMPTY_RE.search(stripped) and _JSON_UNMARSHAL_RE.search(stripped):
+                smell_counts["json_unmarshal_interface"].append(
+                    {"file": filepath, "line": i + 1, "content": stripped[:100]}
+                )
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -385,6 +435,7 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
         _detect_monster_functions(filepath, content, smell_counts)
         _detect_dead_functions(filepath, content, smell_counts)
         _detect_unreachable_code(filepath, lines, smell_counts)
+        _detect_json_unmarshal_interface(filepath, lines, smell_counts)
 
     # Build summary entries sorted by severity then count
     severity_order = {"high": 0, "medium": 1, "low": 2}

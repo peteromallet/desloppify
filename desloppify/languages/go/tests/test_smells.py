@@ -99,6 +99,39 @@ def test_magic_number(tmp_path):
     assert "magic_number" in ids
 
 
+def test_error_wrap_verb(tmp_path):
+    _write(
+        tmp_path,
+        "lib.go",
+        'package lib\n\nimport "fmt"\n\nfunc f(err error) error {\n    return fmt.Errorf("failed: %v", err)\n}\n',
+    )
+    entries, _ = _detect(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "error_wrap_verb" in ids
+
+
+def test_error_wrap_w_not_flagged(tmp_path):
+    _write(
+        tmp_path,
+        "lib.go",
+        'package lib\n\nimport "fmt"\n\nfunc f(err error) error {\n    return fmt.Errorf("failed: %w", err)\n}\n',
+    )
+    entries, _ = _detect(tmp_path)
+    wrap_entries = [e for e in entries if e["id"] == "error_wrap_verb"]
+    assert not wrap_entries
+
+
+def test_json_unmarshal_interface(tmp_path):
+    _write(
+        tmp_path,
+        "lib.go",
+        'package lib\n\nimport "encoding/json"\n\nfunc f(data []byte) {\n    var v interface{}\n    json.Unmarshal(data, &v)\n}\n',
+    )
+    entries, _ = _detect(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "json_unmarshal_interface" in ids
+
+
 # ── Multi-line smells ───────────────────────────────────────
 
 
@@ -147,7 +180,7 @@ def test_defer_in_loop(tmp_path):
 
 
 def test_monster_function(tmp_path):
-    body_lines = "\n".join(f"    x{i} := {i}" for i in range(105))
+    body_lines = "\n".join(f"    x{i} := {i}" for i in range(155))
     _write(
         tmp_path,
         "lib.go",

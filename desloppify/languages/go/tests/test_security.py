@@ -174,6 +174,16 @@ def test_clean_code_no_findings(tmp_path):
     assert not entries
 
 
+def test_insecure_skip_verify(tmp_path):
+    entries = _detect(
+        tmp_path,
+        "lib.go",
+        'package lib\n\nimport "crypto/tls"\n\nfunc f() *tls.Config {\n    return &tls.Config{InsecureSkipVerify: true}\n}\n',
+    )
+    ids = {e["detail"]["kind"] for e in entries}
+    assert "insecure_tls" in ids
+
+
 def test_comment_lines_skipped(tmp_path):
     entries = _detect(
         tmp_path,
