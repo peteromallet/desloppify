@@ -161,18 +161,23 @@ def has_testable_logic(filepath: str, content: str) -> bool:
 _ENTRYPOINT_PATH_PATTERNS = [
     "routes/",
     "app/http/controllers/",
-    "app/console/commands/",
     "app/http/middleware/",
+    "app/http/requests/",
+    "app/console/commands/",
     "app/providers/",
     "app/jobs/",
     "app/listeners/",
     "app/mail/",
     "app/notifications/",
     "app/policies/",
+    "app/events/",
+    "app/observers/",
+    "app/filament/",
+    "app/livewire/",
 ]
 
 _ENTRYPOINT_CONTENT_PATTERNS = [
-    re.compile(r"class\s+\w+\s+extends\s+(?:Controller|Command|Job|Mailable|Notification)\b"),
+    re.compile(r"class\s+\w+\s+extends\s+(?:Controller|Command|Job|Mailable|Notification|FormRequest|Resource)\b"),
     re.compile(r"class\s+\w+\s+implements\s+ShouldQueue\b"),
     re.compile(r"Route::\w+\("),
     re.compile(r"Artisan::command\("),

@@ -26,30 +26,42 @@ PHP_ZONE_RULES = [
 # ── Entry patterns (files legitimately having zero importers) ─
 
 PHP_ENTRY_PATTERNS = [
-    # Laravel runtime entrypoints
-    "/routes/",
-    "/app/Http/Controllers/",
-    "/app/Console/Commands/",
-    "/app/Http/Middleware/",
-    "/app/Providers/",
-    "/app/Jobs/",
-    "/app/Listeners/",
-    "/app/Mail/",
-    "/app/Notifications/",
-    "/app/Policies/",
-    "/app/Events/",
-    "/app/Observers/",
-    "/app/Rules/",
-    "/app/Casts/",
+    # Laravel runtime entrypoints (no leading / — rel() returns relative paths)
+    "routes/",
+    "app/Http/Controllers/",
+    "app/Http/Middleware/",
+    "app/Http/Requests/",
+    "app/Console/Commands/",
+    "app/Providers/",
+    "app/Jobs/",
+    "app/Listeners/",
+    "app/Mail/",
+    "app/Notifications/",
+    "app/Policies/",
+    "app/Events/",
+    "app/Observers/",
+    "app/Rules/",
+    "app/Casts/",
+    "app/Exceptions/",
+    # Convention-loaded by Laravel / packages (zero explicit importers)
+    "app/Models/",
+    "app/Enums/",
+    "app/Actions/",
+    "app/Filament/",
+    "app/Livewire/",
+    "app/View/Components/",
     # Test files
-    "/tests/",
+    "tests/",
     "Test.php",
-    # Config / bootstrap
-    "/config/",
-    "/database/migrations/",
-    "/database/seeders/",
-    "/database/factories/",
-    "/resources/views/",
+    # Config / bootstrap / public
+    "config/",
+    "database/migrations/",
+    "database/seeders/",
+    "database/factories/",
+    "resources/views/",
+    "bootstrap/",
+    "public/",
+    "lang/",
 ]
 
 # ── Plugin registration ──────────────────────────────────────
