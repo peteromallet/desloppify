@@ -106,4 +106,12 @@ files = [
   "desloppify/engine/concerns.py",
   "desloppify/languages/_framework/treesitter/phases.py",
   "desloppify/languages/_framework/generic.py",
+  "desloppify/languages/go/__init__.py",
+  "desloppify/languages/go/phases.py",
+  "desloppify/languages/go/commands.py",
+  "desloppify/languages/go/detectors/deps.py",
+  "desloppify/languages/go/detectors/smells.py",
+  "desloppify/languages/go/detectors/unused.py",
+  "desloppify/languages/go/detectors/security.py",
+  "desloppify/languages/go/detectors/gods.py",
 ]

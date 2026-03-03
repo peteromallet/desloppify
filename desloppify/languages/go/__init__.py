@@ -7,7 +7,7 @@ Upgraded from generic_lang to full class-based plugin.
 from __future__ import annotations
 
 from desloppify.core._internal.text_utils import get_area
-from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
+from desloppify.engine.policy.zones import COMMON_ZONE_RULES, FileZoneMap, Zone, ZoneRule
 from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
 from desloppify.languages._framework.base.phase_builders import (
@@ -22,12 +22,18 @@ from desloppify.languages._framework.treesitter.phases import all_treesitter_pha
 from desloppify.languages.go import test_coverage as go_test_coverage_hooks
 from desloppify.languages.go.commands import get_detect_commands
 from desloppify.languages.go.detectors.deps import build_dep_graph as build_go_dep_graph
+from desloppify.languages.go.detectors.security import detect_go_security
 from desloppify.languages.go.extractors import (
     GO_FILE_EXCLUSIONS,
     extract_functions,
     find_go_files,
 )
-from desloppify.languages.go.phases import _phase_structural
+from desloppify.languages.go.phases import (
+    _phase_coupling,
+    _phase_smells,
+    _phase_structural,
+    _phase_unused,
+)
 from desloppify.languages.go.review import (
     HOLISTIC_REVIEW_DIMENSIONS,
     LOW_VALUE_PATTERN,
@@ -62,6 +68,9 @@ class GoConfig(LangConfig):
             barrel_names=set(),
             phases=[
                 DetectorPhase("Structural analysis", _phase_structural),
+                DetectorPhase("Unused symbols", _phase_unused),
+                DetectorPhase("Code smells", _phase_smells),
+                DetectorPhase("Coupling + cycles + orphaned", _phase_coupling),
                 make_tool_phase(
                     "golangci-lint",
                     "golangci-lint run --out-format=json",
@@ -100,3 +109,9 @@ class GoConfig(LangConfig):
             extract_functions=extract_functions,
             zone_rules=GO_ZONE_RULES,
         )
+
+    def detect_lang_security(
+        self, files: list[str], zone_map: FileZoneMap | None
+    ) -> tuple[list[dict], int]:
+        """Go-specific security checks."""
+        return detect_go_security(files, zone_map)
