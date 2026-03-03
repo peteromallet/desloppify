@@ -244,6 +244,8 @@ def test_make_cohesion_phase_run_with_entries():
     assert potentials["responsibility_cohesion"] == 1
     assert findings[0]["detector"] == "responsibility_cohesion"
     assert "disconnected function clusters" in findings[0]["summary"]
+    assert findings[0]["detail"]["cluster_count"] == 4
+    assert findings[0]["detail"]["family"] == "network, database, ui, auth"
 
 
 def test_make_unused_imports_phase_run_with_entries():

@@ -60,8 +60,6 @@ def format_detail(detail: dict) -> list[str]:
 
 def suppressed_match_estimate(pattern: str, hidden_by_detector: dict[str, int]) -> int:
     """Estimate hidden-match count for a show pattern using detector-level noise totals."""
-    if not isinstance(pattern, str) or not isinstance(hidden_by_detector, dict):
-        return 0
     detector = pattern.split("::", 1)[0]
     return int(hidden_by_detector.get(detector, 0))
 
