@@ -106,9 +106,9 @@ def detect_go_security(
                 entries.append(_make_entry(
                     filepath, line_num, line,
                     check_id="sql_injection",
-                    summary="SQL query built with string concatenation — use parameterized queries",
-                    severity="critical", confidence="high",
-                    remediation="Use db.Query(\"SELECT ... WHERE id = $1\", id) with placeholders",
+                    summary="SQL query built with string concatenation — verify values are parameterized",
+                    severity="critical", confidence="medium",
+                    remediation="Use db.Query(\"SELECT ... WHERE id = $1\", id) with placeholders; if only table/column names are interpolated, add a // SECURITY: comment explaining why",
                 ))
 
             # Weak hash usage
