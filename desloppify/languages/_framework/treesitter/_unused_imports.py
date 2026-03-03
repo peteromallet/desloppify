@@ -61,8 +61,12 @@ def detect_unused_imports(
             if not raw_path:
                 continue
 
+            # Check for alias (e.g. PHP ``use Foo as Bar``, Python ``import X as Y``).
+            # When an alias is present, search for the alias name instead.
+            alias_name = _extract_alias(import_node)
+
             # Extract the imported name from the path.
-            name = _extract_import_name(raw_path)
+            name = alias_name or _extract_import_name(raw_path)
             if not name:
                 continue
 
@@ -83,6 +87,42 @@ def detect_unused_imports(
                 })
 
     return entries
+
+
+def _extract_alias(import_node) -> str | None:
+    """Extract alias name from ``use Foo as Bar`` or ``import X as Y``.
+
+    Walks children of the import node looking for an alias/name node
+    after an ``as`` keyword. Returns the alias text or None.
+    """
+    found_as = False
+    for child in _iter_children(import_node):
+        text = _node_text(child)
+        if text == "as":
+            found_as = True
+            continue
+        # The node immediately after "as" is the alias name.
+        if found_as and child.type in ("name", "identifier", "namespace_name"):
+            return _node_text(child)
+    return None
+
+
+def _iter_children(node):
+    """Recursively yield terminal-ish children relevant to alias extraction.
+
+    Only descends into namespace_use_clause / import_clause nodes (the
+    immediate import container) — avoids descending into unrelated subtrees.
+    """
+    for i in range(node.child_count):
+        child = node.children[i]
+        # Yield leaf-like nodes (keywords, identifiers).
+        if child.child_count == 0:
+            yield child
+        elif child.type in (
+            "namespace_use_clause", "import_clause",
+            "namespace_alias", "as_pattern",
+        ):
+            yield from _iter_children(child)
 
 
 def _extract_import_name(import_path: str) -> str:

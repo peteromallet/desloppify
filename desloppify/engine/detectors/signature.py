@@ -44,6 +44,25 @@ _ALLOWLIST = {
     "put",
     "delete",
     "patch",  # HTTP methods
+    # PHP magic + framework-polymorphic methods
+    "__construct",
+    "__destruct",
+    "__get",
+    "__set",
+    "__isset",
+    "__unset",
+    "__toString",
+    "__invoke",
+    "__clone",
+    "__debugInfo",
+    "__serialize",
+    "__unserialize",
+    "boot",
+    "register",
+    "render",
+    "toArray",
+    "rules",
+    "authorize",
 }
 
 

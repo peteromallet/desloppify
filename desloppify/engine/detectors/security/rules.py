@@ -146,7 +146,7 @@ def _insecure_random_entries(
                 summary="Insecure random used in security context",
                 severity="medium",
                 confidence="medium",
-                remediation="Use secrets.token_hex() (Python) or crypto.randomUUID() (JS)",
+                remediation="Use secrets.token_hex() (Python), crypto.randomUUID() (JS), or random_bytes() (PHP)",
             ),
         )
     ]

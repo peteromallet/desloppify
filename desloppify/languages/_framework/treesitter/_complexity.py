@@ -171,7 +171,7 @@ _BRANCHING_NODE_TYPES = frozenset({
     "for_statement", "for_expression", "for_in_statement",
     "while_statement", "while_expression", "do_statement",
     "loop_expression",
-    "case_clause", "match_arm",
+    "case_clause", "match_arm", "match_conditional_expression",
     "catch_clause", "rescue", "except_clause",
     "ternary_expression", "conditional_expression",
     # Logical operators (short-circuit evaluation).
@@ -306,6 +306,8 @@ _CLOSURE_NODE_TYPES = frozenset({
     "anonymous_function", "block_argument",
     # Go anonymous functions
     "func_literal",
+    # PHP anonymous functions (``function() { ... }``)
+    "anonymous_function_creation_expression",
 })
 
 

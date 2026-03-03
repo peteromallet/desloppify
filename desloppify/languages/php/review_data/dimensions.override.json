@@ -1,0 +1,21 @@
+{
+  "dimension_prompts": {
+    "abstraction_fitness": {
+      "description": "PHP abstraction fitness: favor explicit service classes, single-responsibility controllers, and direct model operations over deep inheritance, trait soup, and facade indirection.",
+      "look_for": [
+        "Controllers with business logic that should live in service/action classes",
+        "Trait-heavy designs where traits share mutable state or override each other",
+        "God models with dozens of relationships, scopes, and accessors",
+        "Facade calls scattered through domain logic instead of injected dependencies",
+        "Repository wrappers that add no query logic beyond forwarding to Eloquent"
+      ],
+      "skip": [
+        "Laravel framework conventions (service providers, middleware, form requests)",
+        "Eloquent accessors/mutators/casts on the model they belong to",
+        "Facade usage in config, routes, and service provider boot methods",
+        "Trait usage for standard Laravel concerns (HasFactory, SoftDeletes, Notifiable)"
+      ]
+    }
+  },
+  "system_prompt_append": "PHP/Laravel anchor checks: fat controllers mixing HTTP and domain logic, god models with 10+ relationships, trait-heavy designs with overlapping state, repository wrappers that only forward to Eloquent, and scattered Facade calls in domain services."
+}

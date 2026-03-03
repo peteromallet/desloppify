@@ -55,6 +55,7 @@ SECRET_NAME_RE = re.compile(
     r"""(?:^|[\s,;(])          # start of line or delimiter
     (?:const|let|var|export)?  # optional JS/TS keyword
     \s*
+    \$?                        # optional PHP $ sigil
     ([A-Za-z_]\w*)             # variable name (captured)
     \s*[:=]\s*                 # assignment
     (['"`])                    # opening quote
@@ -96,10 +97,19 @@ ENV_LOOKUPS = (
     "import.meta.env",
     "os.environ.get(",
     "os.environ[",
+    # PHP
+    "env(",
+    "getenv(",
+    "$_ENV[",
+    "$_SERVER[",
+    "config(",
 )
 
 # Insecure random usage near security-sensitive contexts.
-RANDOM_CALLS = re.compile(r"(?:Math\.random|random\.random|random\.randint)\s*\(")
+RANDOM_CALLS = re.compile(
+    r"(?:Math\.random|random\.random|random\.randint"
+    r"|(?<!\w)rand|(?<!\w)mt_rand|(?<!\w)array_rand)\s*\("
+)
 SECURITY_CONTEXT_WORDS = re.compile(
     r"(?i)(?:token|key|nonce|session|salt|secret|password|otp|csrf|auth)",
 )
@@ -137,6 +147,8 @@ LOG_CALLS = re.compile(
     r"(?:console\.(?:log|warn|error|info|debug)|"
     r"log(?:ger)?\.(?:info|debug|warning|error|critical)|"
     r"logging\.(?:info|debug|warning|error|critical)|"
+    r"Log::(?:info|debug|warning|error|critical|notice|alert|emergency)|"
+    r"\berror_log|"
     r"\bprint)\s*\(",
 )
 
