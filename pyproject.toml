@@ -80,6 +80,7 @@ python_version = "3.11"
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unreachable = true
+check_untyped_defs = true
 show_error_codes = true
 strict_optional = true
 ignore_missing_imports = true
@@ -97,8 +98,20 @@ files = [
   "desloppify/app/commands/scan/scan_reporting_presentation.py",
   "desloppify/app/commands/scan/scan_reporting_subjective.py",
   "desloppify/app/commands/scan/scan_workflow.py",
+  "desloppify/app/commands/show/formatting.py",
+  "desloppify/app/commands/show/render.py",
   "desloppify/app/cli_support/parser.py",
   "desloppify/app/cli_support/parser_groups.py",
+  "desloppify/engine/_state/filtering.py",
   "desloppify/engine/concerns.py",
+  "desloppify/languages/_framework/treesitter/phases.py",
   "desloppify/languages/_framework/generic.py",
+  "desloppify/languages/go/__init__.py",
+  "desloppify/languages/go/phases.py",
+  "desloppify/languages/go/commands.py",
+  "desloppify/languages/go/detectors/deps.py",
+  "desloppify/languages/go/detectors/smells.py",
+  "desloppify/languages/go/detectors/unused.py",
+  "desloppify/languages/go/detectors/security.py",
+  "desloppify/languages/go/detectors/gods.py",
 ]
