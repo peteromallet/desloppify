@@ -1,0 +1,33 @@
+{
+  "command": "review",
+  "config": {
+    "noise_budget": 10,
+    "review_batch_max_files": 17
+  },
+  "dimensions": [
+    "naming_quality",
+    "logic_clarity"
+  ],
+  "investigation_batches": [
+    {
+      "dimensions": [
+        "naming_quality"
+      ],
+      "files_to_read": [
+        "src/app.py"
+      ],
+      "name": "naming batch",
+      "why": "test"
+    }
+  ],
+  "language": "python",
+  "mode": "holistic",
+  "narrative": {
+    "headline": "stable narrative"
+  },
+  "system_prompt": "mock prompt",
+  "total_files": 2,
+  "workflow": [
+    "inspect files"
+  ]
+}
