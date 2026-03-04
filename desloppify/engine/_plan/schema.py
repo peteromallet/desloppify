@@ -196,6 +196,43 @@ def ensure_plan_defaults(plan: dict[str, Any]) -> None:
     for key, value in defaults.items():
         plan.setdefault(key, value)
     _upgrade_plan_to_v7(plan)
+    _normalize_skipped_entries(plan)
+
+
+def _normalize_skipped_entries(plan: dict[str, Any]) -> None:
+    """Normalize malformed skipped entries without dropping original payloads."""
+    skipped = plan.get("skipped")
+    if not isinstance(skipped, dict):
+        return
+
+    quarantine = plan.setdefault("_load_quarantine", {})
+    if not isinstance(quarantine, dict):
+        quarantine = {}
+        plan["_load_quarantine"] = quarantine
+
+    quarantined_entries = quarantine.setdefault("invalid_skipped_entries", {})
+    if not isinstance(quarantined_entries, dict):
+        quarantined_entries = {}
+        quarantine["invalid_skipped_entries"] = quarantined_entries
+
+    for issue_id, entry in list(skipped.items()):
+        if not isinstance(entry, dict):
+            quarantined_entries[issue_id] = entry
+            skipped[issue_id] = {
+                "issue_id": issue_id,
+                "kind": "temporary",
+                "reason": "Recovered malformed skipped entry",
+            }
+            continue
+
+        kind = entry.get("kind")
+        if kind in VALID_SKIP_KINDS:
+            continue
+
+        quarantined_entries[issue_id] = dict(entry)
+        entry["kind"] = "temporary"
+        entry.setdefault("issue_id", issue_id)
+        entry.setdefault("reason", "Recovered invalid skip kind")
 
 
 def triage_clusters(plan: dict[str, Any]) -> dict[str, Cluster]:

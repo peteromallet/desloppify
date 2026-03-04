@@ -15,6 +15,8 @@ __all__ = [
 ]
 
 from desloppify.base.discovery.file_paths import safe_write_text
+from desloppify.base.exception_sets import PersistenceSafetyError
+from desloppify.base.runtime_state import current_runtime_context
 from desloppify.base.text_utils import is_numeric
 from desloppify.engine._state.schema import (
     CURRENT_VERSION,
@@ -23,6 +25,7 @@ from desloppify.engine._state.schema import (
     empty_state,
     ensure_state_defaults,
     json_default,
+    utc_now,
     validate_state_invariants,
 )
 
@@ -30,6 +33,48 @@ logger = logging.getLogger(__name__)
 
 
 from desloppify.engine._state import _recompute_stats
+
+_UNSAFE_MARKER_KEY = "_unsafe_load_reasons"
+_QUARANTINE_KEY = "_load_quarantine"
+_SAFE_ERROR_PREFIX = "DLP_PERSISTENCE_STATE"
+
+
+def _allow_unsafe_coerce(allow_unsafe_coerce: bool | None) -> bool:
+    if allow_unsafe_coerce is not None:
+        return bool(allow_unsafe_coerce)
+    return bool(current_runtime_context().allow_unsafe_coerce)
+
+
+def _quarantine_path(state_path: Path) -> Path:
+    ts = utc_now().replace(":", "-")
+    return state_path.with_name(f"{state_path.stem}.quarantine.{ts}{state_path.suffix}")
+
+
+def _write_quarantine_snapshot(
+    state_path: Path,
+    *,
+    raw_text: str,
+    reason: str,
+) -> Path | None:
+    quarantine_path = _quarantine_path(state_path)
+    payload = {
+        "source_path": str(state_path),
+        "reason": reason,
+        "raw_text": raw_text,
+    }
+    try:
+        safe_write_text(quarantine_path, json.dumps(payload, indent=2, default=json_default) + "\n")
+    except OSError as exc:
+        logger.debug("Failed writing state quarantine snapshot for %s: %s", state_path, exc)
+        return None
+    return quarantine_path
+
+
+def _raise_state_safety_error(*, code: str, detail: str, quarantine_path: Path | None = None) -> None:
+    message = f"[{_SAFE_ERROR_PREFIX}_{code}] {detail}"
+    if quarantine_path is not None:
+        message += f" Recovery snapshot: {quarantine_path}"
+    raise PersistenceSafetyError(message, exit_code=2)
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -48,14 +93,23 @@ def _normalize_loaded_state(data: object) -> dict[str, object]:
     return normalized
 
 
-def load_state(path: Path | None = None) -> StateModel:
-    """Load state from disk, or return empty state on missing/corruption."""
+def load_state(
+    path: Path | None = None,
+    *,
+    allow_unsafe_coerce: bool | None = None,
+) -> StateModel:
+    """Load state from disk with explicit safety checks."""
     state_path = path or STATE_FILE
+    unsafe_allowed = _allow_unsafe_coerce(allow_unsafe_coerce)
     if not state_path.exists():
         return empty_state()
 
+    raw_primary = ""
     try:
-        data = _load_json(state_path)
+        raw_primary = state_path.read_text()
+        data = json.loads(raw_primary)
+        if not isinstance(data, dict):
+            raise ValueError("state file root must be a JSON object")
     except (json.JSONDecodeError, UnicodeDecodeError, OSError, ValueError) as ex:
         backup = state_path.with_suffix(".json.bak")
         if backup.exists():
@@ -76,7 +130,10 @@ def load_state(path: Path | None = None) -> StateModel:
                     f"  ⚠ State file corrupted ({ex}), loaded from backup.",
                     file=sys.stderr,
                 )
-                return _normalize_loaded_state(backup_data)
+                normalized_backup = _normalize_loaded_state(backup_data)
+                if isinstance(normalized_backup.get(_QUARANTINE_KEY), dict) and normalized_backup.get(_QUARANTINE_KEY):
+                    normalized_backup[_UNSAFE_MARKER_KEY] = ["normalized_malformed_sections"]
+                return normalized_backup
             except (
                 json.JSONDecodeError,
                 UnicodeDecodeError,
@@ -93,49 +150,55 @@ def load_state(path: Path | None = None) -> StateModel:
                 )
                 logger.debug("Backup state load failed from %s: %s", backup, backup_ex)
 
-        logger.warning(
-            "State file load failed for %s and backup recovery was unavailable. "
-            "Falling back to empty state: %s",
+        quarantine_path = _write_quarantine_snapshot(
             state_path,
-            ex,
+            raw_text=raw_primary,
+            reason=f"primary parse error: {ex}",
         )
-        print(f"  ⚠ State file corrupted ({ex}). Starting fresh.", file=sys.stderr)
-        rename_failed = False
-        try:
-            state_path.rename(state_path.with_suffix(".json.corrupted"))
-        except OSError as rename_ex:
-            rename_failed = True
-            logger.debug(
-                "Failed to rename corrupted state file %s: %s", state_path, rename_ex
-            )
-        if rename_failed:
-            logger.debug(
-                "Corrupted state file retained at original path: %s", state_path
-            )
-        return empty_state()
+        _raise_state_safety_error(
+            code="PARSE_FAILED",
+            detail="State file is unreadable and backup recovery failed.",
+            quarantine_path=quarantine_path,
+        )
 
     version = data.get("version", 1)
     if version > CURRENT_VERSION:
-        print(
-            "  ⚠ State file version "
-            f"{version} is newer than supported ({CURRENT_VERSION}). "
-            "Some features may not work correctly.",
-            file=sys.stderr,
+        if not unsafe_allowed:
+            _raise_state_safety_error(
+                code="FUTURE_VERSION",
+                detail=(
+                    f"State schema version {version} is newer than supported ({CURRENT_VERSION}). "
+                    "Re-run with --allow-unsafe-coerce only for manual recovery."
+                ),
+            )
+        logger.warning(
+            "Unsafe state coercion enabled for future schema version %s (supported=%s).",
+            version,
+            CURRENT_VERSION,
         )
 
     try:
-        return _normalize_loaded_state(data)
+        normalized = _normalize_loaded_state(data)
     except (ValueError, TypeError, AttributeError) as normalize_ex:
-        logger.warning(
-            "State invariants invalid for %s; falling back to empty state: %s",
+        quarantine_path = _write_quarantine_snapshot(
             state_path,
-            normalize_ex,
+            raw_text=raw_primary,
+            reason=f"state invariants invalid: {normalize_ex}",
         )
-        print(
-            f"  ⚠ State invariants invalid ({normalize_ex}). Starting fresh.",
-            file=sys.stderr,
+        _raise_state_safety_error(
+            code="INVALID_INVARIANTS",
+            detail=f"State invariants invalid: {normalize_ex}",
+            quarantine_path=quarantine_path,
         )
-        return empty_state()
+
+    reasons: list[str] = []
+    if version > CURRENT_VERSION:
+        reasons.append("future_schema_version")
+    if isinstance(normalized.get(_QUARANTINE_KEY), dict) and normalized.get(_QUARANTINE_KEY):
+        reasons.append("normalized_malformed_sections")
+    if reasons:
+        normalized[_UNSAFE_MARKER_KEY] = reasons
+    return normalized
 
 
 def _coerce_integrity_target(value: object) -> float | None:
@@ -163,8 +226,21 @@ def save_state(
     path: Path | None = None,
     *,
     subjective_integrity_target: float | None = None,
+    allow_unsafe_coerce: bool | None = None,
 ) -> None:
     """Recompute stats/score and save to disk atomically."""
+    unsafe_allowed = _allow_unsafe_coerce(allow_unsafe_coerce)
+    unsafe_reasons = state.get(_UNSAFE_MARKER_KEY)
+    if not unsafe_allowed and isinstance(unsafe_reasons, list) and unsafe_reasons:
+        _raise_state_safety_error(
+            code="UNSAFE_SAVE_BLOCKED",
+            detail=(
+                "State payload contains unsafe normalization markers "
+                f"({', '.join(str(item) for item in unsafe_reasons)}). "
+                "Use --allow-unsafe-coerce only after manual verification."
+            ),
+        )
+
     ensure_state_defaults(state)
     _recompute_stats(
         state,
@@ -179,7 +255,9 @@ def save_state(
     state_path = path or STATE_FILE
     state_path.parent.mkdir(parents=True, exist_ok=True)
 
-    content = json.dumps(state, indent=2, default=json_default) + "\n"
+    serializable_state = dict(state)
+    serializable_state.pop(_UNSAFE_MARKER_KEY, None)
+    content = json.dumps(serializable_state, indent=2, default=json_default) + "\n"
 
     if state_path.exists():
         backup = state_path.with_suffix(".json.bak")

@@ -290,6 +290,8 @@ class StateModel(TypedDict, total=False):
     attestation_log: list[AttestationLogEntry]
     concern_dismissals: dict[str, ConcernDismissal]
     _plan_start_scores_for_reveal: dict[str, Any]
+    _load_quarantine: dict[str, Any]
+    _unsafe_load_reasons: list[str]
 
 
 class ScanDiff(TypedDict):
@@ -384,23 +386,47 @@ def ensure_state_defaults(state: StateModel | dict) -> None:
     for key, value in empty_state().items():
         mutable_state.setdefault(key, value)
 
+    if not isinstance(state.get("_load_quarantine"), dict):
+        state["_load_quarantine"] = {}
+
+    quarantine = state["_load_quarantine"]
+    if not isinstance(quarantine, dict):
+        quarantine = {}
+        state["_load_quarantine"] = quarantine
+
+    container_mismatches = quarantine.setdefault("container_type_mismatches", {})
+    if not isinstance(container_mismatches, dict):
+        container_mismatches = {}
+        quarantine["container_type_mismatches"] = container_mismatches
+
     if not isinstance(state.get("issues"), dict):
+        container_mismatches["issues"] = state.get("issues")
         state["issues"] = {}
     if not isinstance(state.get("stats"), dict):
+        container_mismatches["stats"] = state.get("stats")
         state["stats"] = {}
     if not isinstance(state.get("scan_history"), list):
+        container_mismatches["scan_history"] = state.get("scan_history")
         state["scan_history"] = []
     if not isinstance(state.get("scan_coverage"), dict):
+        container_mismatches["scan_coverage"] = state.get("scan_coverage")
         state["scan_coverage"] = {}
     if not isinstance(state.get("score_confidence"), dict):
+        container_mismatches["score_confidence"] = state.get("score_confidence")
         state["score_confidence"] = {}
     if not isinstance(state.get("subjective_integrity"), dict):
+        container_mismatches["subjective_integrity"] = state.get("subjective_integrity")
         state["subjective_integrity"] = {}
 
     all_issues = state["issues"]
+    invalid_issues = quarantine.setdefault("invalid_issues", {})
+    if not isinstance(invalid_issues, dict):
+        invalid_issues = {}
+        quarantine["invalid_issues"] = invalid_issues
     to_remove: list[str] = []
     for issue_id, issue in all_issues.items():
         if not isinstance(issue, dict):
+            invalid_issues[issue_id] = issue
             to_remove.append(issue_id)
             continue
 
