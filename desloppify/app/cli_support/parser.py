@@ -112,6 +112,15 @@ def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.Ar
         action="version",
         version=_cli_version_string(),
     )
+    parser.add_argument(
+        "--allow-unsafe-coerce",
+        action="store_true",
+        default=False,
+        help=(
+            "Allow unsafe persistence coercion/re-save for recovery workflows. "
+            "Use only when explicitly repairing corrupted state/plan payloads."
+        ),
+    )
     sub = parser.add_subparsers(
         dest="command",
         parser_class=_NoAbbrevArgumentParser,
