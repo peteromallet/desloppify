@@ -222,6 +222,7 @@ def _natural_sort_key(item: WorkQueueItem) -> tuple:
         return (
             _RANK_ISSUE,
             -impact,
+            0,  # type-discriminator: subjective lane (0) before mechanical (1)
             subjective_score_value(item),
             0.0,
             0,
@@ -233,6 +234,7 @@ def _natural_sort_key(item: WorkQueueItem) -> tuple:
     return (
         _RANK_ISSUE,
         -impact,
+        1,  # type-discriminator: mechanical lane (1) after subjective (0)
         CONFIDENCE_ORDER.get(item.get("confidence", "low"), 9),
         -review_weight,
         -int(detail.get("count", 0) or 0),
