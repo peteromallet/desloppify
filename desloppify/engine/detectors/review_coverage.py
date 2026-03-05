@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import UTC, datetime
+from desloppify.base.compatibility import UTC
+from datetime import datetime
 from pathlib import Path
 
 from desloppify.base.discovery.file_paths import (

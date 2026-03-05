@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, NotRequired, Required, TypedDict
+from desloppify.base.compatibility import NotRequired, Required
+from typing import Any, TypedDict
 
 from desloppify.engine._plan.schema_migrations import (
     upgrade_plan_to_v7 as _upgrade_plan_to_v7,

@@ -6,16 +6,16 @@ so existing code using raw strings continues to work during gradual migration.
 
 from __future__ import annotations
 
-import enum
+from desloppify.base.compatibility import StrEnum
 
 
-class Confidence(enum.StrEnum):
+class Confidence(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
 
-class Status(enum.StrEnum):
+class Status(StrEnum):
     OPEN = "open"
     FIXED = "fixed"
     WONTFIX = "wontfix"

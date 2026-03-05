@@ -9,7 +9,8 @@ Review issues live in state["issues"]. This module provides:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from desloppify.base.compatibility import UTC
+from datetime import datetime
 
 from desloppify.base.output.issues import issue_weight
 from desloppify.engine._work_queue.helpers import detail_dict
