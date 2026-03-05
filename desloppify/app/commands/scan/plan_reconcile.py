@@ -121,6 +121,8 @@ def _seed_plan_start_scores(plan: dict[str, object], state: state_mod.StateModel
         "objective": scores.objective,
         "verified": scores.verified,
     }
+    # Record scan count at cycle start so gates can detect whether a new scan ran
+    plan["scan_count_at_plan_start"] = int(state.get("scan_count", 0) or 0)
     return True
 
 

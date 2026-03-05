@@ -319,6 +319,26 @@ examples:
     commit_log_sub.add_parser("pr", help="Print PR body markdown (dry run)")
 
 
+def _add_scan_gate_subparser(plan_sub) -> None:
+    p_sg = plan_sub.add_parser(
+        "scan-gate",
+        help="Check or skip the scan requirement for workflow items",
+        epilog="""\
+examples:
+  desloppify plan scan-gate                        # check scan gate status
+  desloppify plan scan-gate --skip --note "..."    # mark scan requirement as satisfied""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_sg.add_argument(
+        "--skip", action="store_true", default=False,
+        help="Mark the scan requirement as satisfied without running a scan",
+    )
+    p_sg.add_argument(
+        "--note", type=str, default=None,
+        help="Explanation for skipping (required with --skip, min 50 chars)",
+    )
+
+
 def add_plan_parser(sub) -> None:
     p_plan = sub.add_parser(
         "plan",
@@ -355,12 +375,14 @@ subcommands:
   reopen     Reopen resolved issues
   focus      Set or clear active cluster focus
   cluster    Manage issue clusters
-  triage     Staged triage workflow (after review)""",
+  triage     Staged triage workflow (after review)
+  scan-gate  Check or skip scan requirement for workflow items""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_plan.add_argument("--state", type=str, default=None, help="Path to state file")
     p_plan.add_argument(
-        "--output", type=str, metavar="FILE", help="Write to file instead of stdout"
+        "--output", type=str, metavar="FILE",
+        help="Write to file instead of stdout (refuses to overwrite existing files)",
     )
 
     plan_sub = p_plan.add_subparsers(dest="plan_action")
@@ -379,6 +401,7 @@ subcommands:
     _add_resolve_subparser(plan_sub)
     _add_cluster_subparser(plan_sub)
     _add_triage_subparser(plan_sub)
+    _add_scan_gate_subparser(plan_sub)
     _add_commit_log_subparser(plan_sub)
 
 

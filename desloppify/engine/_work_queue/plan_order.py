@@ -186,6 +186,7 @@ def _build_cluster_meta(
         "detector": detector,
         "file": "",
         "estimated_impact": estimated_impact,
+        "action_steps": cluster_data.get("action_steps") or [],
     }
 
 

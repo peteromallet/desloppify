@@ -15,6 +15,7 @@ from desloppify.app.commands.plan.override_handlers import (
     cmd_plan_note,
     cmd_plan_reopen,
     cmd_plan_resolve,
+    cmd_plan_scan_gate,
     cmd_plan_skip,
     cmd_plan_unskip,
 )
@@ -61,6 +62,19 @@ def cmd_plan_output(args: argparse.Namespace) -> None:
     output = getattr(args, "output", None)
     if output:
         try:
+            from pathlib import Path
+            output_path = Path(output)
+            if output_path.exists():
+                print(colorize(
+                    f"  {output} already exists — refusing to overwrite.",
+                    "red",
+                ))
+                print(colorize(
+                    f"  Delete it first (`desloppify plan reset` or `rm {output}`), "
+                    f"or choose a different filename.",
+                    "dim",
+                ))
+                return
             safe_write_text(output, plan_md)
             print(colorize(f"Plan written to {output}", "green"))
             print_agent_plan(
@@ -175,6 +189,7 @@ _PLAN_ACTION_HANDLERS = {
     "reopen": cmd_plan_reopen,
     "cluster": cmd_cluster_dispatch,
     "triage": cmd_plan_triage,
+    "scan-gate": cmd_plan_scan_gate,
     "commit-log": cmd_commit_log_dispatch,
 }
 

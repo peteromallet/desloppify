@@ -50,6 +50,9 @@ def serialize_item(item: Mapping[str, Any]) -> dict[str, Any]:
             serialized_cluster["members_truncated"] = True
             serialized_cluster["members_sample_limit"] = _CLUSTER_MEMBER_SAMPLE_LIMIT
         serialized_cluster["primary_command"] = item.get("primary_command")
+        action_steps = item.get("action_steps") or []
+        if action_steps:
+            serialized_cluster["action_steps"] = action_steps
         return serialized_cluster
 
     serialized: dict[str, Any] = {

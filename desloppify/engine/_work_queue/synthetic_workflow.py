@@ -33,7 +33,10 @@ def build_score_checkpoint_item(plan: dict, state: dict) -> WorkQueueItem | None
             "plan_start_strict": plan_start,
             "delta": delta,
         },
-        "primary_command": f'desloppify plan resolve "{WORKFLOW_SCORE_CHECKPOINT_ID}" --note "Reviewed score checkpoint" --confirm',
+        "primary_command": (
+            'desloppify plan triage --stage observe --report '
+            '"Analysis of score and dimensions..."'
+        ),
         "blocked_by": [],
         "is_blocked": False,
     }
@@ -55,7 +58,10 @@ def build_create_plan_item(plan: dict) -> WorkQueueItem | None:
         "kind": "workflow_action",
         "summary": "Create prioritized plan from review results",
         "detail": {},
-        "primary_command": 'desloppify plan resolve "workflow::create-plan" --note "Plan reviewed and queue organized" --confirm',
+        "primary_command": (
+            'desloppify plan triage --stage observe --report '
+            '"Analysis of findings for plan creation..."'
+        ),
         "blocked_by": [],
         "is_blocked": False,
     }

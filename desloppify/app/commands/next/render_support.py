@@ -135,6 +135,13 @@ def render_cluster_item(item: dict) -> None:
     print(colorize("  " + "─" * 60, "dim"))
     print(f"  {colorize(item.get('summary', ''), 'yellow')}")
 
+    action_steps = item.get("action_steps") or []
+    if action_steps:
+        print(colorize(
+            f"  [plan: {len(action_steps)} steps] drill in to view",
+            "dim",
+        ))
+
     members = item.get("members", [])
     if members:
         _render_cluster_files(members)
@@ -201,6 +208,9 @@ def render_compact_item(item: dict, idx: int, total: int) -> None:
     confidence = item.get("confidence", "medium")
     tag = effort_tag(item)
     tag_str = f" {tag}" if tag else ""
+    plan_cluster = item.get("plan_cluster")
+    if isinstance(plan_cluster, dict) and (plan_cluster.get("action_steps") or []):
+        tag_str += " [plan]"
     fid = item.get("id", "")
     short = fid.rsplit("::", 1)[-1][:8] if "::" in fid else fid
     print(f"  [{idx + 1}/{total}] [{confidence}]{tag_str} {item.get('summary', '')}")

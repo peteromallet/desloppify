@@ -94,7 +94,9 @@ def _render_subjective_dimension(item: dict, *, explain: bool) -> None:
         print(colorize(f"  explain: {reason}", "dim"))
 
 
-def _render_issue_detail(item: dict, *, single_item: bool = False) -> dict:
+def _render_issue_detail(
+    item: dict, *, single_item: bool = False, header_showed_plan: bool = False,
+) -> dict:
     """Render plan overrides, file info, and detail fields. Returns parsed detail dict."""
     if item.get("plan_description"):
         print(colorize(f"  → {item['plan_description']}", "cyan"))
@@ -105,12 +107,11 @@ def _render_issue_detail(item: dict, *, single_item: bool = False) -> dict:
         total = plan_cluster.get("total_items", 0)
         desc_str = f' — "{cluster_desc}"' if cluster_desc else ""
         print(colorize(f"  Cluster: {cluster_name}{desc_str} ({total} items)", "dim"))
-        if single_item:
-            steps = plan_cluster.get("action_steps") or []
-            if steps:
-                print(colorize("\n  Steps:", "dim"))
-                for i, step in enumerate(steps, 1):
-                    print(colorize(f"    {i}. {step}", "dim"))
+        steps = plan_cluster.get("action_steps") or []
+        if steps and single_item and not header_showed_plan:
+            print(colorize("\n  Steps:", "dim"))
+            for i, step in enumerate(steps, 1):
+                print(colorize(f"    {i}. {step}", "dim"))
     if item.get("plan_note"):
         print(colorize(f"  Note: {item['plan_note']}", "dim"))
 
@@ -302,6 +303,7 @@ def _render_item(
     item: dict, dim_scores: dict, issues_scoped: dict, explain: bool,
     potentials: dict | None = None,
     single_item: bool = False,
+    header_showed_plan: bool = False,
 ) -> None:
     kind = item.get("kind")
     kind_renderer = _KIND_RENDERERS.get(kind)
@@ -319,7 +321,9 @@ def _render_item(
         _render_subjective_dimension(item, explain=explain)
         return
 
-    detail = _render_issue_detail(item, single_item=single_item)
+    detail = _render_issue_detail(
+        item, single_item=single_item, header_showed_plan=header_showed_plan,
+    )
     _render_score_impact(item, dim_scores, potentials)
     _render_auto_fix_batch_hint(item, issues_scoped)
     if explain:
@@ -347,13 +351,21 @@ def render_terminal_items(
     plan: dict | None = None,
     cluster_filter: str | None = None,
 ) -> None:
-    # Show focus header if plan has active cluster
-    if plan and plan.get("active_cluster"):
-        cluster_name = plan["active_cluster"]
+    # Show focus header if plan has active cluster or cluster filter
+    effective_cluster = cluster_filter or (plan and plan.get("active_cluster"))
+    header_showed_plan = False
+    if effective_cluster and plan:
+        cluster_name = effective_cluster
         clusters = plan.get("clusters", {})
         cluster_data = clusters.get(cluster_name, {})
         total = len(cluster_data.get("issue_ids", []))
         print(colorize(f"\n  Focused on: {cluster_name} ({len(items)} of {total} remaining)", "cyan"))
+        steps = cluster_data.get("action_steps") or []
+        if steps:
+            print(colorize("\n  Cluster plan:", "dim"))
+            for i, step in enumerate(steps, 1):
+                print(colorize(f"    {i}. {step}", "dim"))
+            header_showed_plan = True
 
     if group != "item":
         _render_grouped(items, group)
@@ -376,6 +388,7 @@ def render_terminal_items(
         _render_item(
             item, dim_scores, issues_scoped, explain=explain, potentials=potentials,
             single_item=len(items) == 1,
+            header_showed_plan=header_showed_plan,
         )
 
 
