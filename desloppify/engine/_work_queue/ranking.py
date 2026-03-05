@@ -223,6 +223,8 @@ def _natural_sort_key(item: WorkQueueItem) -> tuple:
             _RANK_ISSUE,
             -impact,
             subjective_score_value(item),
+            0.0,
+            0,
             item.get("id", ""),
         )
 
