@@ -12,19 +12,18 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.app.commands.helpers.query import write_query
-from desloppify.base.coercions import coerce_positive_int
 from desloppify.base.discovery.file_paths import safe_write_text
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
-import desloppify.intelligence.narrative.core as narrative_mod
 from desloppify.intelligence import review as review_mod
 
 from .batch.orchestrator import FOLLOWUP_SCAN_TIMEOUT_SECONDS
-from .helpers import parse_dimensions
+from .coordinator import build_review_packet_payload, write_review_packet_snapshot
 from .importing.cmd import do_import, do_validate_import
-from .runner_packets import run_stamp, sha256_file, write_packet_snapshot
-from .runner_process import FollowupScanDeps, run_followup_scan
-from .runtime.setup import setup_lang_concrete
+from .packet.build import (
+    build_external_submit_next_command,
+    resolve_review_packet_context,
+)
 from .prompt_sections import (
     build_batch_context,
     explode_to_single_dimension,
@@ -38,14 +37,14 @@ from .prompt_sections import (
     render_seed_files_block,
     render_task_requirements,
 )
+from .runner_packets import run_stamp, sha256_file
+from .runner_process import FollowupScanDeps, run_followup_scan
+from .runtime.setup import setup_lang_concrete
 from .runtime_paths import (
     blind_packet_path as _blind_packet_path,
 )
 from .runtime_paths import (
     external_session_root as _external_session_root,
-)
-from .runtime_paths import (
-    review_packet_dir as _review_packet_dir,
 )
 from .runtime_paths import (
     runtime_project_root as _runtime_project_root,
@@ -130,53 +129,27 @@ def _prepare_packet_snapshot(
     config: dict[str, Any],
 ) -> tuple[dict[str, Any], Path, Path]:
     """Prepare holistic review packet and persist immutable+blind snapshots."""
-    path = Path(getattr(args, "path", ".") or ".")
-    dims = parse_dimensions(args)
-    dimensions = list(dims) if dims else None
-    retrospective = bool(getattr(args, "retrospective", False))
-    retrospective_max_issues = coerce_positive_int(
-        getattr(args, "retrospective_max_issues", None),
-        default=30,
-    )
-    retrospective_max_batch_items = coerce_positive_int(
-        getattr(args, "retrospective_max_batch_items", None),
-        default=20,
-    )
-    lang_run, found_files = setup_lang_concrete(lang, path, config)
-    narrative = narrative_mod.compute_narrative(
-        state,
-        context=narrative_mod.NarrativeContext(lang=lang_run.name, command="review"),
-    )
-    packet = review_mod.prepare_holistic_review(
-        path,
-        lang_run,
-        state,
-        options=review_mod.HolisticReviewPrepareOptions(
-            dimensions=dimensions,
-            files=found_files or None,
-            include_issue_history=retrospective,
-            issue_history_max_issues=retrospective_max_issues,
-            issue_history_max_batch_items=retrospective_max_batch_items,
-        ),
-    )
-    packet["narrative"] = narrative
-    next_command = "desloppify review --external-submit --session-id <id> --import <file>"
-    if retrospective:
-        next_command += (
-            " --retrospective"
-            f" --retrospective-max-issues {retrospective_max_issues}"
-            f" --retrospective-max-batch-items {retrospective_max_batch_items}"
+    context = resolve_review_packet_context(args)
+    next_command = build_external_submit_next_command(context)
+    try:
+        packet = build_review_packet_payload(
+            state=state,
+            lang=lang,
+            config=config,
+            context=context,
+            next_command=next_command,
+            setup_lang_fn=setup_lang_concrete,
+            prepare_holistic_review_fn=review_mod.prepare_holistic_review,
         )
-    packet["next_command"] = next_command
+    except ValueError as exc:
+        raise CommandError(str(exc), exit_code=1) from exc
     write_query(packet)
 
     stamp = run_stamp()
-    blind_packet_path = _blind_packet_path()
-    packet_path, blind_path = write_packet_snapshot(
+    packet_path, blind_path = write_review_packet_snapshot(
         packet,
         stamp=stamp,
-        review_packet_dir=_review_packet_dir(),
-        blind_path=blind_packet_path,
+        blind_path_override=_blind_packet_path(),
         safe_write_text_fn=safe_write_text,
     )
     return packet, packet_path, blind_path

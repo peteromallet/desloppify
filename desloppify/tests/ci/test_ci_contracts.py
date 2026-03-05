@@ -17,6 +17,8 @@ CI_PLAN = REPO_ROOT / "docs" / "ci_plan.md"
 MAKEFILE = REPO_ROOT / "Makefile"
 README = REPO_ROOT / "README.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
+IMPORTLINTER_CONFIG = REPO_ROOT / ".github" / "importlinter.ini"
+ARCH_GUARDRAILS_DOC = REPO_ROOT / "docs" / "architecture_guardrails.md"
 
 
 def _load_yaml(path: Path) -> dict:
@@ -123,6 +125,35 @@ def test_makefile_contains_ci_gate_targets() -> None:
         "ci",
     }
     assert expected.issubset(targets)
+
+
+def test_importlinter_has_base_boundary_contract() -> None:
+    text = IMPORTLINTER_CONFIG.read_text()
+    assert "[importlinter:contract:base_no_upward_imports]" in text
+    assert "desloppify.base" in text
+    assert "desloppify.app" in text
+    assert "desloppify.engine" in text
+    assert "desloppify.intelligence" in text
+    assert "desloppify.languages" in text
+
+
+def test_makefile_arch_gate_runs_cycle_checker() -> None:
+    text = MAKEFILE.read_text()
+    assert ".github/scripts/check_import_cycles.py" in text
+    for prefix in (
+        "desloppify.app.commands.review",
+        "desloppify.engine._plan",
+        "desloppify.engine._state",
+        "desloppify.engine._scoring",
+    ):
+        assert prefix in text
+
+
+def test_architecture_guardrails_doc_tracks_live_paths() -> None:
+    text = ARCH_GUARDRAILS_DOC.read_text()
+    assert ".github/importlinter.ini" in text
+    assert ".github/scripts/check_import_cycles.py" in text
+    assert ".github/architecture/cycle_allowlist.txt" in text
 
 
 def test_readme_optional_extras_exist_in_pyproject() -> None:

@@ -1,0 +1,7 @@
+# Scoped import-cycle allowlist for CI gate.
+# Format: comma-separated, lexicographically sorted module names per SCC.
+
+desloppify.app.commands.review.batch.core,desloppify.app.commands.review.batch.merge
+desloppify.engine._plan.schema,desloppify.engine._plan.schema_migrations,desloppify.engine._plan.stale_dimensions
+desloppify.engine._scoring.state_integration,desloppify.engine._state.filtering
+desloppify.engine._scoring.subjective.core,desloppify.intelligence.review.dimensions.metadata,desloppify.intelligence.review.dimensions.metadata_legacy

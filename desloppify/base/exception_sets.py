@@ -30,6 +30,10 @@ class TriageValidationError(CommandError):
     """Raised for invalid triage-stage attestation or workflow inputs."""
 
 
+class PersistenceSafetyError(CommandError):
+    """Raised when plan/state persistence safety checks fail."""
+
+
 PLAN_LOAD_EXCEPTIONS = (
     ImportError,
     AttributeError,
@@ -42,6 +46,7 @@ PLAN_LOAD_EXCEPTIONS = (
 __all__ = [
     "CommandError",
     "PLAN_LOAD_EXCEPTIONS",
+    "PersistenceSafetyError",
     "PacketValidationError",
     "RunnerTimeoutError",
     "TriageValidationError",

@@ -15,6 +15,7 @@
 PIP := python -m pip
 LINT_IMPORTS := $(shell python -c "import pathlib,sys; print(pathlib.Path(sys.executable).with_name('lint-imports'))")
 IMPORTLINTER_CONFIG ?= .github/importlinter.ini
+ARCH_CYCLE_ALLOWLIST ?= .github/architecture/cycle_allowlist.txt
 PYTEST_XML ?=
 PYTEST_XML_FLAG := $(if $(PYTEST_XML),--junitxml=$(PYTEST_XML),)
 
@@ -38,6 +39,11 @@ arch: install-ci-tools
 		exit 1; \
 	fi
 	$(LINT_IMPORTS) --config $(IMPORTLINTER_CONFIG)
+	python .github/scripts/check_import_cycles.py --repo-root . --allowlist $(ARCH_CYCLE_ALLOWLIST) \
+		--scope-prefix desloppify.app.commands.review \
+		--scope-prefix desloppify.engine._plan \
+		--scope-prefix desloppify.engine._state \
+		--scope-prefix desloppify.engine._scoring
 
 ci-contracts: install-ci-tools
 	pytest -q desloppify/tests/ci/test_ci_contracts.py

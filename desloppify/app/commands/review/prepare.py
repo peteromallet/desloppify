@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
+import desloppify.intelligence.narrative.core as narrative_mod
 from desloppify.app.commands.helpers.query import write_query
-from desloppify.base.coercions import coerce_positive_int
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
-import desloppify.intelligence.narrative.core as narrative_mod
 from desloppify.intelligence import review as review_mod
 
-from .helpers import parse_dimensions
-from .packet.policy import coerce_review_batch_file_limit, redacted_review_config
+from .coordinator import build_review_packet_payload
+from .packet.build import (
+    build_prepare_next_command,
+    resolve_review_packet_context,
+)
 from .runtime.setup import setup_lang_concrete
+
+# Backward-compatible patch target used by direct tests.
+_ = narrative_mod
 
 
 def do_prepare(
@@ -25,65 +28,36 @@ def do_prepare(
     config: dict,
 ) -> None:
     """Prepare mode: holistic-only review packet in query.json."""
-    path = Path(args.path)
-    dims = parse_dimensions(args)
-    dimensions = list(dims) if dims else None
-    retrospective = bool(getattr(args, "retrospective", False))
-    retrospective_max_issues = coerce_positive_int(
-        getattr(args, "retrospective_max_issues", None),
-        default=30,
-    )
-    retrospective_max_batch_items = coerce_positive_int(
-        getattr(args, "retrospective_max_batch_items", None),
-        default=20,
-    )
-
-    lang_run, found_files = setup_lang_concrete(lang, path, config)
-
-    lang_name = lang_run.name
-    narrative = narrative_mod.compute_narrative(
-        state,
-        context=narrative_mod.NarrativeContext(lang=lang_name, command="review"),
-    )
-    data = review_mod.prepare_holistic_review(
-        path,
-        lang_run,
-        state,
-        options=review_mod.HolisticReviewPrepareOptions(
-            dimensions=dimensions,
-            files=found_files or None,
-            max_files_per_batch=coerce_review_batch_file_limit(config),
-            include_issue_history=retrospective,
-            issue_history_max_issues=retrospective_max_issues,
-            issue_history_max_batch_items=retrospective_max_batch_items,
-        ),
-    )
-    next_command = (
-        "desloppify review --prepare"
-    )
-    if retrospective:
-        next_command += (
-            " --retrospective"
-            f" --retrospective-max-issues {retrospective_max_issues}"
-            f" --retrospective-max-batch-items {retrospective_max_batch_items}"
+    context = resolve_review_packet_context(args)
+    next_command = build_prepare_next_command(context)
+    try:
+        data = build_review_packet_payload(
+            state=state,
+            lang=lang,
+            config=config,
+            context=context,
+            next_command=next_command,
+            setup_lang_fn=setup_lang_concrete,
+            prepare_holistic_review_fn=review_mod.prepare_holistic_review,
         )
-    data["config"] = redacted_review_config(config)
-    data["narrative"] = narrative
-    data["next_command"] = next_command
-    total = data.get("total_files", 0)
-    if total == 0:
-        msg = f"no files found at path '{path}'. Nothing to review."
-        scan_path = state.get("scan_path") if isinstance(state, dict) else None
-        if scan_path:
-            msg += (
-                f"\nHint: your last scan used --path {scan_path}. "
-                f"Try: desloppify review --prepare --path {scan_path}"
-            )
-        else:
-            msg += "\nHint: pass --path <dir> matching the path used during scan."
-        raise CommandError(msg, exit_code=1)
+    except ValueError as exc:
+        msg = str(exc)
+        if "no files found at path" in msg:
+            scan_path = state.get("scan_path") if isinstance(state, dict) else None
+            if scan_path:
+                msg += (
+                    f"\nHint: your last scan used --path {scan_path}. "
+                    f"Try: desloppify review --prepare --path {scan_path}"
+                )
+            else:
+                msg += "\nHint: pass --path <dir> matching the path used during scan."
+        raise CommandError(msg, exit_code=1) from exc
     write_query(data)
-    _print_prepare_summary(data, next_command=next_command, retrospective=retrospective)
+    _print_prepare_summary(
+        data,
+        next_command=next_command,
+        retrospective=context.retrospective,
+    )
 
 
 def _print_prepare_summary(

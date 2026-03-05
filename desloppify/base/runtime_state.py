@@ -67,6 +67,7 @@ class RuntimeContext:
     source_file_cache: SourceFileCache = field(
         default_factory=lambda: SourceFileCache(max_entries=16)
     )
+    allow_unsafe_coerce: bool = False
 
 
 _PROCESS_RUNTIME_CONTEXT = RuntimeContext()
