@@ -19,6 +19,7 @@ from desloppify.base.output.terminal import colorize
 from desloppify.base.discovery.paths import get_default_path, get_project_root
 from desloppify.base.registry import detector_names, on_detector_registered
 from desloppify.base.runtime_state import runtime_scope
+from desloppify.base.runtime_state import current_runtime_context
 from desloppify.languages import available_langs
 from desloppify.state import load_state
 
@@ -169,6 +170,9 @@ def main() -> None:
 
     try:
         with runtime_scope():
+            current_runtime_context().allow_unsafe_coerce = bool(
+                getattr(args, "allow_unsafe_coerce", False)
+            )
             _resolve_default_path(args)
             _load_shared_runtime(args)
 

@@ -21,12 +21,22 @@ def _ensure_container(
     key: str,
     expected_type: type[list] | type[dict],
     default_factory,
+    *,
+    quarantine: dict[str, Any] | None = None,
 ) -> None:
-    if not isinstance(plan.get(key), expected_type):
-        plan[key] = default_factory()
+    current = plan.get(key)
+    if isinstance(current, expected_type):
+        return
+    if quarantine is not None and key in plan:
+        quarantine.setdefault("container_type_mismatches", {})[key] = current
+    plan[key] = default_factory()
 
 
 def ensure_container_types(plan: dict[str, Any]) -> None:
+    quarantine = plan.setdefault("_load_quarantine", {})
+    if not isinstance(quarantine, dict):
+        quarantine = {}
+        plan["_load_quarantine"] = quarantine
     for key, expected_type, default_factory in (
         ("queue_order", list, list),
         ("deferred", list, list),
@@ -39,11 +49,17 @@ def ensure_container_types(plan: dict[str, Any]) -> None:
         ("execution_log", list, list),
         ("epic_triage_meta", dict, dict),
     ):
-        _ensure_container(plan, key, expected_type, default_factory)
+        _ensure_container(
+            plan,
+            key,
+            expected_type,
+            default_factory,
+            quarantine=quarantine,
+        )
     _rename_key(plan["epic_triage_meta"], "finding_snapshot_hash", "issue_snapshot_hash")
-    _ensure_container(plan, "commit_log", list, list)
+    _ensure_container(plan, "commit_log", list, list, quarantine=quarantine)
     _rename_key(plan, "uncommitted_findings", "uncommitted_issues")
-    _ensure_container(plan, "uncommitted_issues", list, list)
+    _ensure_container(plan, "uncommitted_issues", list, list, quarantine=quarantine)
     if "commit_tracking_branch" not in plan:
         plan["commit_tracking_branch"] = None
 

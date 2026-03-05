@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from desloppify.base.exception_sets import PersistenceSafetyError
 from desloppify.engine._state import filtering as state_query_mod
 from desloppify.state import (
     MergeScanOptions,
@@ -307,15 +308,18 @@ class TestLoadState:
     def test_corrupt_json_no_backup_returns_empty(self, tmp_path):
         p = tmp_path / "state.json"
         p.write_text("{bad json!!")
-        s = load_state(p)
-        assert s["version"] == 1
-        assert s["issues"] == {}
+        with pytest.raises(PersistenceSafetyError) as exc_info:
+            load_state(p)
+        assert "DLP_PERSISTENCE_STATE_PARSE_FAILED" in str(exc_info.value)
+        quarantine_files = list(tmp_path.glob("state.quarantine.*.json"))
+        assert quarantine_files
 
-    def test_corrupt_json_renames_file(self, tmp_path):
+    def test_corrupt_json_writes_quarantine_snapshot(self, tmp_path):
         p = tmp_path / "state.json"
         p.write_text("{bad json!!")
-        load_state(p)
-        assert (tmp_path / "state.json.corrupted").exists()
+        with pytest.raises(PersistenceSafetyError):
+            load_state(p)
+        assert list(tmp_path.glob("state.quarantine.*.json"))
 
     def test_corrupt_json_and_corrupt_backup_returns_empty(self, tmp_path):
         p = tmp_path / "state.json"
@@ -323,9 +327,20 @@ class TestLoadState:
         backup = tmp_path / "state.json.bak"
         backup.write_text("{also bad")
 
-        s = load_state(p)
-        assert s["version"] == 1
-        assert s["issues"] == {}
+        with pytest.raises(PersistenceSafetyError) as exc_info:
+            load_state(p)
+        assert "DLP_PERSISTENCE_STATE_PARSE_FAILED" in str(exc_info.value)
+
+    def test_future_version_requires_explicit_unsafe_override(self, tmp_path):
+        p = tmp_path / "state.json"
+        p.write_text(json.dumps({"version": 999, "issues": {}}))
+        with pytest.raises(PersistenceSafetyError) as exc_info:
+            load_state(p)
+        assert "DLP_PERSISTENCE_STATE_FUTURE_VERSION" in str(exc_info.value)
+
+        loaded = load_state(p, allow_unsafe_coerce=True)
+        assert loaded["version"] == 999
+        assert "future_schema_version" in loaded.get("_unsafe_load_reasons", [])
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +396,22 @@ class TestSaveState:
         save_state(st, p)
         loaded = json.loads(p.read_text())
         assert loaded["issues"]["x"]["status"] == "open"
+
+    def test_save_state_blocks_unsafe_payload_without_override(self, tmp_path):
+        p = tmp_path / "state.json"
+        st = empty_state()
+        st["_unsafe_load_reasons"] = ["future_schema_version"]
+        with pytest.raises(PersistenceSafetyError) as exc_info:
+            save_state(st, p)
+        assert "DLP_PERSISTENCE_STATE_UNSAFE_SAVE_BLOCKED" in str(exc_info.value)
+
+    def test_save_state_allows_unsafe_payload_with_override(self, tmp_path):
+        p = tmp_path / "state.json"
+        st = empty_state()
+        st["_unsafe_load_reasons"] = ["future_schema_version"]
+        save_state(st, p, allow_unsafe_coerce=True)
+        loaded = json.loads(p.read_text())
+        assert "_unsafe_load_reasons" not in loaded
 
 
 # ---------------------------------------------------------------------------
