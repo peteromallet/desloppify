@@ -301,7 +301,7 @@ def upgrade_plan_to_v7(plan: dict[str, Any]) -> bool:
     if _cleanup_synthesis_meta(meta):
         changed = True
 
-    if plan.get("version") != V7_SCHEMA_VERSION:
+    if original_version < V7_SCHEMA_VERSION:
         plan["version"] = V7_SCHEMA_VERSION
         changed = True
     return changed
