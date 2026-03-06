@@ -9,7 +9,7 @@ from desloppify.base.discovery.paths import get_project_root
 
 # Bump this integer whenever docs/SKILL.md changes in a way that agents
 # should pick up (new commands, changed workflows, removed sections).
-SKILL_VERSION = 3
+SKILL_VERSION = 4
 
 SKILL_VERSION_RE = re.compile(r"<!--\s*desloppify-skill-version:\s*(\d+)\s*-->")
 SKILL_OVERLAY_RE = re.compile(r"<!--\s*desloppify-overlay:\s*(\w+)\s*-->")
@@ -19,6 +19,7 @@ SKILL_END = "<!-- desloppify-end -->"
 
 # Locations where the skill doc might be installed, relative to project root.
 SKILL_SEARCH_PATHS = (
+    ".agents/skills/desloppify/SKILL.md",
     ".claude/skills/desloppify/SKILL.md",
     ".opencode/skills/desloppify/SKILL.md",
     "AGENTS.md",
@@ -30,6 +31,7 @@ SKILL_SEARCH_PATHS = (
 # Interface name → (target file, overlay filename, dedicated).
 # Dedicated files are overwritten entirely; shared files get section replacement.
 SKILL_TARGETS: dict[str, tuple[str, str, bool]] = {
+    "amp": (".agents/skills/desloppify/SKILL.md", "AMP", True),
     "claude": (".claude/skills/desloppify/SKILL.md", "CLAUDE", True),
     # OpenCode support added with thanks to @H3xKatana.
     "opencode": (".opencode/skills/desloppify/SKILL.md", "OPENCODE", True),

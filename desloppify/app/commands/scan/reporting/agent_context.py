@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 def is_agent_environment() -> bool:
     return bool(
-        os.environ.get("CLAUDE_CODE")
+        os.environ.get("AGENT")
+        or os.environ.get("CLAUDECODE")
         or os.environ.get("DESLOPPIFY_AGENT")
         or os.environ.get("GEMINI_CLI")
         or os.environ.get("CODEX_SANDBOX_NETWORK_DISABLED")
@@ -222,7 +223,12 @@ def _print_narrative_status(narrative: dict[str, Any] | None) -> None:
 
 def _detect_agent_interface() -> str | None:
     """Detect the current agent interface from environment variables."""
-    if os.environ.get("CLAUDE_CODE"):
+    # Check AGENT first — AMP sets both AGENT=amp and CLAUDECODE=1,
+    # so we must identify it before falling through to the CLAUDECODE check.
+    agent_var = os.environ.get("AGENT", "").lower()
+    if agent_var == "amp":
+        return "amp"
+    if os.environ.get("CLAUDECODE"):
         return "claude"
     if os.environ.get("GEMINI_CLI"):
         return "gemini"

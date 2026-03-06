@@ -39,6 +39,51 @@ def _build_section(skill_content: str, overlay_content: str | None) -> str:
     return "\n\n".join(parts) + "\n"
 
 
+# Interfaces whose skill systems parse YAML frontmatter and require ``---``
+# to appear on the very first line of the file.
+_FRONTMATTER_FIRST_INTERFACES = frozenset({"amp"})
+
+
+def _ensure_frontmatter_first(content: str) -> str:
+    """Move YAML frontmatter to the top if HTML comments precede it.
+
+    Some skill systems (e.g. AMP) require ``---`` on line 1 for frontmatter
+    parsing.  SKILL.md ships with ``<!-- desloppify-begin -->`` and a version
+    comment before the ``---`` block.  This function relocates those HTML
+    comment lines to just after the closing ``---``.
+    """
+    lines = content.split("\n")
+
+    # Find the opening ``---``.
+    fm_start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "---":
+            fm_start = i
+            break
+    if fm_start is None or fm_start == 0:
+        return content  # already fine or no frontmatter
+
+    # Collect the HTML-comment lines that precede the frontmatter.
+    prefix_lines = lines[:fm_start]
+
+    # Find the closing ``---``.
+    fm_end = None
+    for i, line in enumerate(lines[fm_start + 1 :], fm_start + 1):
+        if line.strip() == "---":
+            fm_end = i
+            break
+    if fm_end is None:
+        return content  # malformed frontmatter, leave untouched
+
+    # Reassemble: frontmatter first, then the prefix lines, then the rest.
+    reordered = (
+        lines[fm_start : fm_end + 1]
+        + prefix_lines
+        + lines[fm_end + 1 :]
+    )
+    return "\n".join(reordered)
+
+
 def _replace_section(file_content: str, new_section: str) -> str:
     """Replace the desloppify section in a shared file, preserving surrounding content.
 
@@ -105,6 +150,8 @@ def update_installed_skill(interface: str) -> bool:
         return False
 
     new_section = _build_section(skill_content, overlay_content)
+    if interface in _FRONTMATTER_FIRST_INTERFACES:
+        new_section = _ensure_frontmatter_first(new_section)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if dedicated:
