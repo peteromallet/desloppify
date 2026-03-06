@@ -1,0 +1,40 @@
+{
+  "submitter": "shanpenghui",
+  "comment_id": 4003909095,
+  "verdict": "YES",
+  "verdict_date": "2026-03-06",
+  "scores": {
+    "signal": 4,
+    "originality": 4,
+    "core_impact": 1,
+    "overall": 3
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "helpers.py ACTION_TYPE_PRIORITY ranks refactor(1) higher than reorganize(3)",
+      "status": "CONFIRMED",
+      "detail": "helpers.py:15 defines ACTION_TYPE_PRIORITY = {\"auto_fix\": 0, \"refactor\": 1, \"manual_fix\": 2, \"reorganize\": 3}. This dict is the sole sort key for clusters in ranking.py:209-216 (_natural_sort_key). With lower = higher priority, this means refactor clusters sort before reorganize clusters in the work queue."
+    },
+    {
+      "id": "claim-2",
+      "title": "base/registry.py _ACTION_PRIORITY ranks reorganize(1) higher than refactor(2)",
+      "status": "CONFIRMED",
+      "detail": "base/registry.py:455 defines _ACTION_PRIORITY = {\"auto_fix\": 0, \"reorganize\": 1, \"refactor\": 2, \"manual_fix\": 3}. This is a private dict used exclusively by dimension_action_type() to determine the label shown for a dimension's action type in UI display. It contradicts helpers.py on both refactor vs reorganize priority and manual_fix position (2 vs 3)."
+    },
+    {
+      "id": "claim-3",
+      "title": "core/registry.py also has a conflicting _ACTION_PRIORITY (submission missed this third table)",
+      "status": "CONFIRMED_NOT_IN_SUBMISSION",
+      "detail": "core/registry.py:360 defines _ACTION_PRIORITY = {\"auto_fix\": 0, \"reorganize\": 1, \"refactor\": 2, \"manual_fix\": 3}, identical to base/registry.py. The submission only mentioned two tables; a third exists. core/registry.py also diverges from base/registry.py on _ACTION_LABELS (core uses 'fix' for auto_fix, base uses 'autofix'). No single source of truth for action-type priority anywhere in the codebase."
+    }
+  ],
+  "fix_implemented": true,
+  "fix_description": "Expose ACTION_TYPE_PRIORITY from base/registry.py as a public name (using the two-registry canonical ordering: reorganize=1, refactor=2, manual_fix=3). Have helpers.py import it from base.registry instead of defining its own copy. Have core/registry.py import the same canonical dict instead of redeclaring it.",
+  "fix_files": [
+    "desloppify/base/registry.py",
+    "desloppify/core/registry.py",
+    "desloppify/engine/_work_queue/helpers.py"
+  ],
+  "notes": "The claim is factually accurate and precisely located. Two contradictory orderings exist: helpers.py puts refactor before reorganize; both registry files put reorganize before refactor. Additionally manual_fix priority differs (2 vs 3). The submission missed the third table in core/registry.py. Real-world impact is limited to work queue cluster sort order vs dimension action label — both are UI-only concerns with no effect on scoring. Nevertheless, the no-single-source-of-truth pattern is poor engineering and any future priority change risks being applied to only one or two of the three tables."
+}

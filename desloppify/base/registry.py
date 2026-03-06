@@ -452,7 +452,7 @@ def display_order() -> list[str]:
     return list(_RUNTIME.display_order)
 
 
-_ACTION_PRIORITY = {"auto_fix": 0, "reorganize": 1, "refactor": 2, "manual_fix": 3}
+ACTION_TYPE_PRIORITY = {"auto_fix": 0, "reorganize": 1, "refactor": 2, "manual_fix": 3}
 _ACTION_LABELS = {
     "auto_fix": "autofix",
     "reorganize": "move",
@@ -467,7 +467,7 @@ def dimension_action_type(dim_name: str) -> str:
     best_pri = 99
     for d in _RUNTIME.detectors.values():
         if d.dimension == dim_name:
-            pri = _ACTION_PRIORITY.get(d.action_type, 99)
+            pri = ACTION_TYPE_PRIORITY.get(d.action_type, 99)
             if pri < best_pri:
                 best_pri = pri
                 best = d.action_type
