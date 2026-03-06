@@ -115,14 +115,16 @@ def _save_plan_state_transactional(
 
 def cmd_plan_describe(args: argparse.Namespace) -> None:
     """Set augmented description on issues."""
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
     patterns: list[str] = getattr(args, "patterns", [])
     text: str = getattr(args, "text", "")
 
-    plan = load_plan()
+    plan_file = _plan_file_for_state(runtime.state_path)
+    plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not issue_ids:
         print(colorize("  No matching issues found.", "yellow"))
@@ -134,20 +136,22 @@ def cmd_plan_describe(args: argparse.Namespace) -> None:
         plan, "describe", issue_ids=issue_ids, actor="user",
         detail={"text": text or None},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Set description on {len(issue_ids)} issue(s).", "green"))
 
 
 def cmd_plan_note(args: argparse.Namespace) -> None:
     """Set note on issues."""
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
     patterns: list[str] = getattr(args, "patterns", [])
     text: str | None = getattr(args, "text", None)
 
-    plan = load_plan()
+    plan_file = _plan_file_for_state(runtime.state_path)
+    plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not issue_ids:
         print(colorize("  No matching issues found.", "yellow"))
@@ -159,7 +163,7 @@ def cmd_plan_note(args: argparse.Namespace) -> None:
         plan, "note", issue_ids=issue_ids, actor="user",
         note=text,
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Set note on {len(issue_ids)} issue(s).", "green"))
 
 

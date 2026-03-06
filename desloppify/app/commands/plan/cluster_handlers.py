@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import re
+from pathlib import Path
 
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.helpers.state import require_completed_scan
+from desloppify.app.commands.helpers.state import require_completed_scan, state_path as _state_path
 from desloppify.app.commands.plan._resolve import resolve_ids_from_patterns
 from desloppify.app.commands.plan.reorder_handlers import resolve_target
 from desloppify.base.output.terminal import colorize
@@ -18,6 +19,7 @@ from desloppify.engine.plan import (
     load_plan,
     merge_clusters,
     move_items,
+    plan_path_for_state,
     remove_from_cluster,
     save_plan,
 )
@@ -25,6 +27,13 @@ from desloppify.state import utc_now
 
 _LEADING_NUM_RE = re.compile(r'^\d+\.\s*')
 _HEX8_RE = re.compile(r'^[0-9a-f]{8}$')
+
+
+def _plan_file_from_args(args: argparse.Namespace) -> Path | None:
+    sp = _state_path(args)
+    if sp is None:
+        return None
+    return plan_path_for_state(sp)
 
 
 def _suggest_close_matches(state: dict, plan: dict | None, patterns: list[str]) -> None:
@@ -91,7 +100,8 @@ def _cmd_cluster_create(args: argparse.Namespace) -> None:
     name: str = getattr(args, "cluster_name", "")
     description: str | None = getattr(args, "description", None)
     action: str | None = getattr(args, "action", None)
-    plan = load_plan()
+    plan_file = _plan_file_from_args(args)
+    plan = load_plan(plan_file)
     try:
         create_cluster(plan, name, description, action=action)
     except ValueError as ex:
@@ -101,12 +111,13 @@ def _cmd_cluster_create(args: argparse.Namespace) -> None:
         plan, "cluster_create", cluster_name=name, actor="user",
         detail={"description": description, "action": action},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Created cluster: {name}", "green"))
 
 
 def _cmd_cluster_add(args: argparse.Namespace) -> None:
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
@@ -114,7 +125,8 @@ def _cmd_cluster_add(args: argparse.Namespace) -> None:
     patterns: list[str] = getattr(args, "patterns", [])
     dry_run: bool = getattr(args, "dry_run", False)
 
-    plan = load_plan()
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not issue_ids:
         print(colorize("  No matching issues found.", "yellow"))
@@ -153,12 +165,13 @@ def _cmd_cluster_add(args: argparse.Namespace) -> None:
     append_log_entry(
         plan, "cluster_add", issue_ids=issue_ids, cluster_name=cluster_name, actor="user",
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Added {count} item(s) to cluster {cluster_name}.", "green"))
 
 
 def _cmd_cluster_remove(args: argparse.Namespace) -> None:
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
@@ -166,7 +179,8 @@ def _cmd_cluster_remove(args: argparse.Namespace) -> None:
     patterns: list[str] = getattr(args, "patterns", [])
     dry_run: bool = getattr(args, "dry_run", False)
 
-    plan = load_plan()
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not issue_ids:
         print(colorize("  No matching issues found.", "yellow"))
@@ -188,13 +202,14 @@ def _cmd_cluster_remove(args: argparse.Namespace) -> None:
     append_log_entry(
         plan, "cluster_remove", issue_ids=issue_ids, cluster_name=cluster_name, actor="user",
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Removed {count} item(s) from cluster {cluster_name}.", "green"))
 
 
 def _cmd_cluster_delete(args: argparse.Namespace) -> None:
     cluster_name: str = getattr(args, "cluster_name", "")
-    plan = load_plan()
+    plan_file = _plan_file_from_args(args)
+    plan = load_plan(plan_file)
     try:
         orphaned = delete_cluster(plan, cluster_name)
     except ValueError as ex:
@@ -203,7 +218,7 @@ def _cmd_cluster_delete(args: argparse.Namespace) -> None:
     append_log_entry(
         plan, "cluster_delete", issue_ids=orphaned, cluster_name=cluster_name, actor="user",
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Deleted cluster {cluster_name} ({len(orphaned)} items orphaned).", "green"))
 
 
@@ -274,6 +289,7 @@ def _reorder_within_cluster(
     position: str,
     target: str | None,
     item_pattern: str,
+    plan_file: Path | None = None,
 ) -> None:
     """Reorder items within a single cluster."""
     if len(cluster_names) != 1:
@@ -308,7 +324,7 @@ def _reorder_within_cluster(
         plan, "cluster_reorder", cluster_name=cluster_name, actor="user",
         detail={"position": resolved_position, "count": count, "item": item_pattern},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Moved {count} item(s) to {resolved_position} within cluster {cluster_name}.", "green"))
 
 
@@ -318,6 +334,7 @@ def _reorder_whole_clusters(
     cluster_names: list[str],
     position: str,
     target: str | None,
+    plan_file: Path | None = None,
 ) -> None:
     """Reorder entire clusters as blocks relative to each other."""
     target = resolve_target(plan, target, position)
@@ -348,7 +365,7 @@ def _reorder_whole_clusters(
         plan, "cluster_reorder", cluster_name=",".join(cluster_names), actor="user",
         detail={"position": position, "count": count},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     label = ", ".join(cluster_names)
     print(colorize(f"  Moved cluster(s) {label} ({count} items) to {position}.", "green"))
 
@@ -360,7 +377,8 @@ def _cmd_cluster_reorder(args: argparse.Namespace) -> None:
     target: str | None = getattr(args, "target", None)
     item_pattern: str | None = getattr(args, "item_pattern", None)
 
-    plan = load_plan()
+    plan_file = _plan_file_from_args(args)
+    plan = load_plan(plan_file)
     clusters = plan.get("clusters", {})
 
     # Validate all names exist
@@ -370,9 +388,9 @@ def _cmd_cluster_reorder(args: argparse.Namespace) -> None:
             return
 
     if item_pattern is not None:
-        _reorder_within_cluster(args, plan, clusters, cluster_names, position, target, item_pattern)
+        _reorder_within_cluster(args, plan, clusters, cluster_names, position, target, item_pattern, plan_file)
     else:
-        _reorder_whole_clusters(plan, clusters, cluster_names, position, target)
+        _reorder_whole_clusters(plan, clusters, cluster_names, position, target, plan_file)
 
 
 def _print_cluster_member(idx: int, fid: str, issue: dict | None) -> None:
@@ -398,7 +416,7 @@ def _load_issues_best_effort(args: argparse.Namespace) -> dict:
 
 def _cmd_cluster_show(args: argparse.Namespace) -> None:
     cluster_name: str = getattr(args, "cluster_name", "")
-    plan = load_plan()
+    plan = load_plan(_plan_file_from_args(args))
     cluster = plan.get("clusters", {}).get(cluster_name)
     if cluster is None:
         print(colorize(f"  Cluster {cluster_name!r} does not exist.", "red"))
@@ -491,7 +509,7 @@ def _print_cluster_list_verbose(
 
 
 def _cmd_cluster_list(args: argparse.Namespace) -> None:
-    plan = load_plan()
+    plan = load_plan(_plan_file_from_args(args))
     clusters = plan.get("clusters", {})
     active = plan.get("active_cluster")
     verbose: bool = getattr(args, "verbose", False)
@@ -529,7 +547,8 @@ def _cmd_cluster_update(args: argparse.Namespace) -> None:
         print(colorize("  Nothing to update. Use --description and/or --steps.", "yellow"))
         return
 
-    plan = load_plan()
+    plan_file = _plan_file_from_args(args)
+    plan = load_plan(plan_file)
     cluster = plan.get("clusters", {}).get(cluster_name)
     if cluster is None:
         print(colorize(f"  Cluster {cluster_name!r} does not exist.", "red"))
@@ -553,7 +572,7 @@ def _cmd_cluster_update(args: argparse.Namespace) -> None:
         plan, "cluster_update", cluster_name=cluster_name, actor="user",
         detail={"description": description, "steps": steps},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Updated cluster: {cluster_name}", "green"))
 
 
@@ -562,7 +581,8 @@ def _cmd_cluster_merge(args: argparse.Namespace) -> None:
     source: str = getattr(args, "source", "")
     target: str = getattr(args, "target", "")
 
-    plan = load_plan()
+    plan_file = _plan_file_from_args(args)
+    plan = load_plan(plan_file)
     try:
         added, source_ids = merge_clusters(plan, source, target)
     except ValueError as ex:
@@ -574,7 +594,7 @@ def _cmd_cluster_merge(args: argparse.Namespace) -> None:
         cluster_name=target, actor="user",
         detail={"source": source, "added": added},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(
         f"  Merged cluster {source!r} into {target!r}: "
         f"{added} issue(s) added, {len(source_ids)} total moved. Source deleted.",

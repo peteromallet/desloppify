@@ -8,7 +8,7 @@ from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.app.commands.plan._resolve import resolve_ids_from_patterns
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan import append_log_entry, load_plan, move_items, save_plan
+from desloppify.engine.plan import append_log_entry, load_plan, move_items, plan_path_for_state, save_plan
 
 
 def resolve_target(plan: dict, target: str | None, position: str) -> str | None:
@@ -31,7 +31,8 @@ def resolve_target(plan: dict, target: str | None, position: str) -> str | None:
 
 def cmd_plan_reorder(args: argparse.Namespace) -> None:
     """Reorder issues in the queue."""
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    state = runtime.state
     if not require_completed_scan(state):
         return
 
@@ -46,7 +47,8 @@ def cmd_plan_reorder(args: argparse.Namespace) -> None:
         print(colorize(f"  '{position}' requires --target (-t) with an integer offset. Example: plan reorder <pat> {position} -t 3", "red"))
         return
 
-    plan = load_plan()
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
 
     target = resolve_target(plan, target, position)
 
@@ -69,7 +71,7 @@ def cmd_plan_reorder(args: argparse.Namespace) -> None:
         plan, "reorder", issue_ids=issue_ids, actor="user",
         detail={"position": position, "target": target, "offset": offset},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Moved {count} item(s) to {position}.", "green"))
 
 
