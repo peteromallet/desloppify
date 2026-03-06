@@ -501,6 +501,9 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
     attestation: str | None = getattr(args, "attest", None)
     note: str | None = getattr(args, "note", None)
 
+    _sp = state_path(args)
+    plan_file = _plan_file_for_state(_sp)
+
     # --confirm: auto-generate attestation from --note
     if getattr(args, "confirm", False):
         if not note:
@@ -512,7 +515,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
     # Handle synthetic IDs (triage::*, workflow::*, subjective::*) directly
     synthetic_ids, real_patterns = _resolve_synthetic_ids(patterns)
     if synthetic_ids:
-        plan = load_plan()
+        plan = load_plan(plan_file)
         # Validate triage dependency chain
         blocked_map = _blocked_triage_stages(plan)
         for sid in synthetic_ids:
@@ -545,7 +548,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
                     inject_triage_stages(plan)
                     meta.setdefault("triage_stages", {})
                     plan["epic_triage_meta"] = meta
-                    save_plan(plan)
+                    save_plan(plan, plan_file)
 
                 # Print targeted error based on which stage is next
                 stage_order = ["observe", "reflect", "organize", "commit"]
@@ -592,7 +595,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
                     note=note,
                     detail={"missing_stages": sorted(missing), "next_stage": next_stage},
                 )
-                save_plan(plan)
+                save_plan(plan, plan_file)
                 return
 
             if missing and force:
@@ -614,7 +617,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
                     note=note,
                     detail={"forced": True, "missing_stages": sorted(missing)},
                 )
-                save_plan(plan)
+                save_plan(plan, plan_file)
                 # Fall through to scan gate / purge_ids below
 
         # Gate workflow items behind scan completion
@@ -664,14 +667,14 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
                             "current_scan_count": current_scan_count,
                         },
                     )
-                    save_plan(plan)
+                    save_plan(plan, plan_file)
                     return
 
         purge_ids(plan, synthetic_ids)
         append_log_entry(
             plan, "done", issue_ids=synthetic_ids, actor="user", note=note,
         )
-        save_plan(plan)
+        save_plan(plan, plan_file)
         for sid in synthetic_ids:
             print(colorize(f"  Resolved: {sid}", "green"))
         if not real_patterns:
@@ -694,7 +697,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
     try:
         runtime = command_runtime(args)
         state = runtime.state
-        plan = load_plan()
+        plan = load_plan(plan_file)
         if _check_cluster_guard(patterns, plan, state):
             return
     except PLAN_LOAD_EXCEPTIONS:
@@ -703,7 +706,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
     # Log the done action (best-effort)
     try:
         if plan is None:
-            plan = load_plan()
+            plan = load_plan(plan_file)
         clusters = plan.get("clusters", {})
         cluster_name = None
         for p in patterns:
@@ -718,7 +721,7 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
             actor="user",
             note=note,
         )
-        save_plan(plan)
+        save_plan(plan, plan_file)
     except PLAN_LOAD_EXCEPTIONS as exc:
         log_best_effort_failure(logger, "append plan resolve log entry", exc)
         print(colorize(f"  Note: unable to append plan resolve log entry ({exc}).", "dim"))
@@ -745,7 +748,8 @@ def cmd_plan_focus(args: argparse.Namespace) -> None:
     clear_flag = getattr(args, "clear", False)
     cluster_name: str | None = getattr(args, "cluster_name", None)
 
-    plan = load_plan()
+    plan_file = _plan_file_for_state(state_path(args))
+    plan = load_plan(plan_file)
     if clear_flag:
         prev = plan.get("active_cluster")
         clear_focus(plan)
@@ -753,7 +757,7 @@ def cmd_plan_focus(args: argparse.Namespace) -> None:
             plan, "focus", actor="user",
             detail={"action": "clear", "previous": prev},
         )
-        save_plan(plan)
+        save_plan(plan, plan_file)
         print(colorize("  Focus cleared.", "green"))
         return
 
@@ -774,7 +778,7 @@ def cmd_plan_focus(args: argparse.Namespace) -> None:
         plan, "focus", cluster_name=cluster_name, actor="user",
         detail={"action": "set"},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize(f"  Focused on: {cluster_name}", "green"))
 
 
@@ -783,7 +787,8 @@ def cmd_plan_scan_gate(args: argparse.Namespace) -> None:
     skip = getattr(args, "skip", False)
     note: str | None = getattr(args, "note", None)
 
-    plan = load_plan()
+    plan_file = _plan_file_for_state(state_path(args))
+    plan = load_plan(plan_file)
     scan_count_at_start = plan.get("scan_count_at_plan_start")
 
     if scan_count_at_start is None:
@@ -844,7 +849,7 @@ def cmd_plan_scan_gate(args: argparse.Namespace) -> None:
             "current_scan_count": current_scan_count,
         },
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize("  Scan requirement marked as satisfied (logged).", "yellow"))
 
 

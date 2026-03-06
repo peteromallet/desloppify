@@ -30,14 +30,18 @@
     }
   ],
   "fix_implemented": true,
-  "fix_description": "Thread plan_file (derived from runtime.state_path via plan_path_for_state) into all handlers that previously used bare load_plan(). Affected: override_handlers.py describe and note; reorder_handlers.py reorder; commit_log_handlers.py dispatch and record; queue_render.py queue; cmd.py show and reset; cluster_handlers.py all 9 handlers. No behaviour change for default --state path usage.",
+  "fix_description": "Thread plan_file (derived from runtime.state_path via plan_path_for_state) into all handlers that previously used bare load_plan(). Fix implemented in two PRs: PR #406 fixed override_handlers.py describe/note, reorder_handlers.py, commit_log_handlers.py, queue_render.py, cmd.py show/reset, cluster_handlers.py all 9 handlers. PR #407 fixed the remaining handlers: move_handlers.py cmd_plan_move, override_handlers.py cmd_plan_resolve (synthetic-IDs path, cluster-guard path, cmd_plan_focus, cmd_plan_scan_gate), triage/reflect.py cmd_stage_reflect, triage/organize.py cmd_stage_organize, and stage_persistence.py record_triage_stage (save path). No behaviour change for default --state path usage.",
   "fix_files": [
     "desloppify/app/commands/plan/override_handlers.py",
     "desloppify/app/commands/plan/reorder_handlers.py",
     "desloppify/app/commands/plan/commit_log_handlers.py",
     "desloppify/app/commands/plan/queue_render.py",
     "desloppify/app/commands/plan/cmd.py",
-    "desloppify/app/commands/plan/cluster_handlers.py"
+    "desloppify/app/commands/plan/cluster_handlers.py",
+    "desloppify/app/commands/plan/move_handlers.py",
+    "desloppify/app/commands/plan/triage/reflect.py",
+    "desloppify/app/commands/plan/triage/organize.py",
+    "desloppify/app/commands/plan/triage/stage_persistence.py"
   ],
-  "notes": "The inconsistency is real and systematic. While the practical blast radius is limited to non-default --state configurations, the pattern is wrong and creates a subtle footgun: users with custom state paths (e.g. per-language state files) will see skip/unskip correctly targeting the language-specific plan while all other commands target the default plan. Significance ~5/10: real bug, modest real-world impact."
+  "notes": "The inconsistency is real and systematic. While the practical blast radius is limited to non-default --state configurations, the pattern is wrong and creates a subtle footgun: users with custom state paths (e.g. per-language state files) will see skip/unskip correctly targeting the language-specific plan while all other commands target the default plan. Significance ~5/10: real bug, modest real-world impact. Fix is now complete across all plan subcommand handlers."
 }

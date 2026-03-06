@@ -6,7 +6,7 @@ import argparse
 
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan import load_plan
+from desloppify.engine.plan import load_plan, plan_path_for_state
 
 from .stage_helpers import (
     _manual_clusters_with_issues,
@@ -19,8 +19,10 @@ from .stage_persistence import record_triage_stage
 
 def cmd_stage_organize(args: argparse.Namespace) -> None:
     """Record the ORGANIZE stage: validates cluster enrichment."""
-    plan = load_plan()
-    state = command_runtime(args).state
+    runtime = command_runtime(args)
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
+    state = runtime.state
 
     if not _require_triage_pending(plan, action="organize"):
         return
@@ -92,6 +94,7 @@ def cmd_stage_organize(args: argparse.Namespace) -> None:
         report=validated_report,
         cited_ids=[],
         issue_count=len(manual_clusters),
+        plan_path=plan_file,
     )
 
     print(

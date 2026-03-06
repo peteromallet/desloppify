@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from desloppify.engine._plan.stale_dimensions import review_issue_snapshot_hash
 from desloppify.engine.plan import save_plan
 from desloppify.state import utc_now
@@ -23,6 +25,7 @@ def record_triage_stage(
     cited_ids: list[str],
     issue_count: int,
     extra: dict[str, object] | None = None,
+    plan_path: Path | None = None,
 ) -> dict[str, object]:
     """Persist one stage payload, refresh snapshot metadata, and save the plan."""
     meta = plan.setdefault("epic_triage_meta", {})
@@ -38,5 +41,5 @@ def record_triage_stage(
         payload.update(extra)
     stages[stage] = payload
     refresh_stage_snapshot(plan, state)
-    save_plan(plan)
+    save_plan(plan, plan_path)
     return payload

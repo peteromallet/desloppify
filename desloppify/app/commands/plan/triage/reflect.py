@@ -12,7 +12,7 @@ from desloppify.engine._plan.epic_triage import (
     collect_triage_input,
     detect_recurring_patterns,
 )
-from desloppify.engine.plan import load_plan
+from desloppify.engine.plan import load_plan, plan_path_for_state
 
 from .stage_helpers import _require_triage_pending, _validate_stage_report
 from .stage_persistence import record_triage_stage
@@ -53,7 +53,8 @@ def cmd_stage_reflect(args: argparse.Namespace) -> None:
 
     runtime = command_runtime(args)
     state = runtime.state
-    plan = load_plan()
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
 
     if not _require_triage_pending(plan, action="reflect"):
         return
@@ -124,6 +125,7 @@ def cmd_stage_reflect(args: argparse.Namespace) -> None:
         cited_ids=[],
         issue_count=issue_count,
         extra={"recurring_dims": recurring_dims},
+        plan_path=plan_file,
     )
 
     print(

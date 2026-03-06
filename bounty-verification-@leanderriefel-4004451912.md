@@ -120,7 +120,9 @@ plan = load_plan(plan_file)
 save_plan(plan, plan_file)
 ```
 
-**Files modified:** `override_handlers.py`, `reorder_handlers.py`, `commit_log_handlers.py`, `queue_render.py`, `cmd.py`, `cluster_handlers.py`
+**Files modified (PR #406):** `override_handlers.py` (describe, note), `reorder_handlers.py`, `commit_log_handlers.py`, `queue_render.py`, `cmd.py` (show, reset), `cluster_handlers.py` (9 handlers)
+
+**Files modified (PR #407 — remaining handlers):** `move_handlers.py` (cmd_plan_move), `override_handlers.py` (cmd_plan_resolve synthetic-IDs path + cluster-guard path, cmd_plan_focus, cmd_plan_scan_gate), `triage/reflect.py` (cmd_stage_reflect), `triage/organize.py` (cmd_stage_organize), `triage/stage_persistence.py` (record_triage_stage save path)
 
 ---
 
