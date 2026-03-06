@@ -1,0 +1,39 @@
+{
+  "submitter": "agustif",
+  "comment_id": 4000584288,
+  "verdict": "YES_WITH_CAVEATS",
+  "verdict_date": "2026-03-06",
+  "scoreboard_id": "S04",
+  "scores": {
+    "signal": 5,
+    "originality": 4,
+    "core_impact": 2,
+    "overall": 3
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "load_plan() silently erases user intent for version > PLAN_VERSION via destructive migration",
+      "status": "CONFIRMED_WITH_CAVEAT",
+      "detail": "The core pattern is real. In persistence.py:67, load_plan() calls ensure_plan_defaults() for all plans including those with version > PLAN_VERSION. ensure_plan_defaults() (schema.py:198) always calls upgrade_plan_to_v7(), which at schema_migrations.py:304-305 unconditionally forces plan['version'] = V7_SCHEMA_VERSION regardless of whether the original version was higher. For a v8+ plan: (1) the in-memory dict gets version forced to 7, (2) any subsequent save_plan() call (which also calls ensure_plan_defaults() at persistence.py:80) permanently writes v7 to disk, downgrading the on-disk plan. Caveat: 'silently' is an overstatement — persistence.py:60-65 does print a stderr warning when version > PLAN_VERSION, though the warning says 'Some features may not work correctly' without mentioning the impending version downgrade on save."
+    },
+    {
+      "id": "claim-2",
+      "title": "User intent data (queue_order, skipped, clusters, overrides) is preserved",
+      "status": "INCORRECT",
+      "detail": "The submission implies user-authored plan data gets erased. In practice, ensure_plan_defaults() (schema.py:195-197) uses setdefault() for all user-data fields, so queue_order, skipped, clusters, and overrides are NOT overwritten. The only forced mutation is plan['version'] = V7_SCHEMA_VERSION (schema_migrations.py:305) and removal of a small set of hardcoded legacy keys via _drop_legacy_plan_keys() (epics, epic_synthesis_meta, pending_plan_gate, uncommitted_findings). User-authored content in those specific legacy key names would be lost, but these keys are not part of the current v7 schema."
+    },
+    {
+      "id": "claim-3",
+      "title": "The mutation is destructive across the read-then-save cycle",
+      "status": "CONFIRMED",
+      "detail": "load_plan() does not auto-save, so the file is not immediately overwritten. However, the in-memory plan dict returned by load_plan() already has version=7. Every subsequent save_plan() call on that dict (save_plan() calls ensure_plan_defaults() at line 80, which calls upgrade_plan_to_v7() again) will write version=7 to disk. The downgrade is permanent as soon as any command that saves the plan is run after loading a v8+ plan."
+    }
+  ],
+  "fix_implemented": true,
+  "fix_description": "In upgrade_plan_to_v7() (schema_migrations.py), the unconditional plan['version'] = V7_SCHEMA_VERSION at the end of the function is changed to only apply when original_version < V7_SCHEMA_VERSION. Plans with version > V7_SCHEMA_VERSION now retain their version number instead of being silently downgraded. The warn-on-load behavior in load_plan() is preserved.",
+  "fix_files": [
+    "desloppify/engine/_plan/schema_migrations.py"
+  ],
+  "notes": "The core claim is valid: upgrade_plan_to_v7() runs unconditionally on all plans (including v8+), and its final version-reset at schema_migrations.py:304-305 permanently downgrades the version on the next save. However, 'silently' is an overstatement (a warning is printed), 'erase user intent' is overstated (only the version field and specific legacy keys are affected, not queue_order/skipped/clusters/overrides). The scoreboard entry notes '2/5 files fabricated, version v7 is v2, all line numbers wrong' — only the core mechanism survives independent verification."
+}
