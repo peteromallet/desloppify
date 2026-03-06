@@ -22,6 +22,7 @@ from desloppify.engine.plan import (
     load_plan,
     purge_ids,
     purge_uncommitted_ids,
+    reconcile_plan_after_scan,
     save_plan,
 )
 import desloppify.intelligence.narrative.core as narrative_mod
@@ -99,6 +100,7 @@ def _update_living_plan_after_resolve(
     args: argparse.Namespace,
     all_resolved: list[str],
     attestation: str | None,
+    state: dict,
 ) -> tuple[dict | None, ClusterContext]:
     plan = None
     ctx = ClusterContext(cluster_name=None, cluster_completed=False, cluster_remaining=0)
@@ -129,7 +131,19 @@ def _update_living_plan_after_resolve(
             add_uncommitted_issues(plan, all_resolved)
         elif args.status == "open":
             purge_uncommitted_ids(plan, all_resolved)
-        save_plan(plan)
+        try:
+            save_plan(plan)
+        except PLAN_LOAD_EXCEPTIONS:
+            _logger.debug("plan save failed after resolve; attempting emergency reconciliation", exc_info=True)
+            try:
+                fresh_plan = load_plan()
+                reconcile_plan_after_scan(fresh_plan, state)
+                save_plan(fresh_plan)
+                plan = fresh_plan
+            except PLAN_LOAD_EXCEPTIONS:
+                _logger.debug("emergency plan reconciliation also failed", exc_info=True)
+                print(colorize("  Warning: could not update living plan.", "yellow"), file=sys.stderr)
+                return plan, ctx
         if purged:
             print(colorize(f"  Plan updated: {purged} item(s) removed from queue.", "dim"))
     except PLAN_LOAD_EXCEPTIONS:
@@ -183,6 +197,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         args=args,
         all_resolved=all_resolved,
         attestation=attestation,
+        state=state,
     )
     mid_cluster = (
         cluster_ctx.cluster_name is not None and not cluster_ctx.cluster_completed

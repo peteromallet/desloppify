@@ -1,0 +1,39 @@
+{
+  "submitter": "DavidBuchanan314",
+  "comment_id": 4002034163,
+  "verdict": "YES_WITH_CAVEATS",
+  "verdict_date": "2026-03-06",
+  "scoreboard_id": "S315",
+  "scores": {
+    "signal": 4,
+    "originality": 4,
+    "core_impact": 2,
+    "overall": 3
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "State-then-plan sequential (non-atomic) writes",
+      "status": "CONFIRMED",
+      "detail": "cmd.py:180 saves state via save_state_or_exit before _update_living_plan_after_resolve (line 182) updates the plan. The two writes are sequential and non-transactional. A crash between them leaves state updated (issues resolved) while plan still references the old IDs. Each individual write IS atomic (safe_write_text uses temp+rename), so no partial-write corruption can occur; the risk is purely a state/plan desync window."
+    },
+    {
+      "id": "claim-2",
+      "title": "Plan save failure is swallowed with only a warning",
+      "status": "CONFIRMED_WITH_CAVEAT",
+      "detail": "save_plan raises OSError on failure. PLAN_LOAD_EXCEPTIONS includes OSError, so the failure IS caught (not truly swallowed) — but prior to this fix only a user-facing warning was printed with no recovery attempt. After this fix, the except block now reloads the plan from disk, runs reconcile_plan_after_scan to supersede newly-resolved IDs, and tries a second save, before falling back to the warning."
+    },
+    {
+      "id": "claim-3",
+      "title": "Reconciliation direction makes desync worse / goes wrong direction",
+      "status": "INCORRECT",
+      "detail": "reconcile_plan_after_scan (engine/_plan/reconcile.py:143) uses state as authoritative: it iterates IDs referenced in the plan and for each one calls _is_issue_alive(state, fid). Issues that are no longer open in state are moved to plan.superseded. So reconciliation goes state→plan (state wins), and on the next scan after a failed plan save, the desync IS self-healed. The system does not re-open issues or corrupt state from a stale plan."
+    }
+  ],
+  "fix_implemented": true,
+  "fix_description": "In _update_living_plan_after_resolve (cmd.py), wrapped save_plan in an inner try/except. On save failure, reloads plan from disk, applies reconcile_plan_after_scan(fresh_plan, state) to supersede the now-resolved IDs, then retries save_plan. Falls back to user warning only if the recovery also fails. Adds 'state' parameter to the function; call site in cmd_resolve updated accordingly.",
+  "fix_files": [
+    "desloppify/app/commands/resolve/cmd.py"
+  ],
+  "notes": "Real gap confirmed: the state+plan write pair is non-transactional and a plan-save failure left no recovery path. Submission overstates severity ('corruption') since each individual write is atomic via temp+rename and the system self-heals on the next scan. The reconciliation-direction claim is factually wrong — reconcile is state-authoritative and would have healed the desync on the next scan regardless."
+}
