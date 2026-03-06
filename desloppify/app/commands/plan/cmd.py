@@ -39,6 +39,7 @@ from desloppify.engine.plan import (
     append_log_entry,
     commit_tracking_summary,
     load_plan,
+    plan_path_for_state,
     reset_plan,
     save_plan,
 )
@@ -99,8 +100,9 @@ def _cmd_plan_generate(args: argparse.Namespace) -> None:
 
 def _cmd_plan_show(args: argparse.Namespace) -> None:
     """Show plan metadata summary."""
-    plan = load_plan()
     runtime = command_runtime(args)
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
 
     # Dynamic queue count — matches what `next` and `plan queue` show.
     try:
@@ -163,7 +165,9 @@ def _cmd_plan_show(args: argparse.Namespace) -> None:
 
 def _cmd_plan_reset(args: argparse.Namespace) -> None:
     """Reset the plan to empty."""
-    plan = load_plan()
+    runtime = command_runtime(args)
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
     queue_len = len(plan.get("queue_order", []))
     cluster_count = len(plan.get("clusters", {}))
     reset_plan(plan)
@@ -171,7 +175,7 @@ def _cmd_plan_reset(args: argparse.Namespace) -> None:
         plan, "reset", actor="user",
         detail={"previous_queue_size": queue_len, "previous_cluster_count": cluster_count},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
     print(colorize("  Plan reset to empty.", "green"))
 
 

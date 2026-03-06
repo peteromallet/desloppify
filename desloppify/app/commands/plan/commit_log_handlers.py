@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from desloppify import state as state_mod
+from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.base.config import load_config
 from desloppify.base.git_context import detect_git_context, update_pr_body
 from desloppify.base.output.terminal import colorize
@@ -16,6 +18,7 @@ from desloppify.engine.plan import (
     generate_pr_body,
     get_uncommitted_issues,
     load_plan,
+    plan_path_for_state,
     record_commit,
     save_plan,
 )
@@ -58,7 +61,7 @@ def _cmd_commit_log_status(plan: dict) -> None:
         print(colorize("  Resolve issues with `desloppify resolve` or `desloppify plan resolve` to start.", "dim"))
 
 
-def _cmd_commit_log_record(args: argparse.Namespace, plan: dict) -> None:
+def _cmd_commit_log_record(args: argparse.Namespace, plan: dict, plan_file: Path | None = None) -> None:
     """Record a commit: capture HEAD, move uncommitted → committed, update PR."""
     sha = getattr(args, "sha", None)
     branch = getattr(args, "branch", None)
@@ -104,7 +107,7 @@ def _cmd_commit_log_record(args: argparse.Namespace, plan: dict) -> None:
         note=note,
         detail={"sha": sha, "branch": branch},
     )
-    save_plan(plan)
+    save_plan(plan, plan_file)
 
     recorded = len(record["issue_ids"])
     print(colorize(f"  Recorded commit {sha} with {recorded} issue(s).", "green"))
@@ -190,8 +193,13 @@ def cmd_commit_log_dispatch(args: argparse.Namespace) -> None:
         print(colorize("  Commit tracking is disabled. Enable with: desloppify config set commit_tracking_enabled true", "yellow"))
         return
 
-    plan = load_plan()
+    runtime = command_runtime(args)
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
     action = getattr(args, "commit_log_action", None)
+    if action == "record":
+        _cmd_commit_log_record(args, plan, plan_file)
+        return
     handler = _COMMIT_LOG_HANDLERS.get(action)
     if handler is None:
         _cmd_commit_log_status(plan)

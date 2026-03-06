@@ -28,7 +28,7 @@ def _state_with_issues(*ids: str) -> dict:
 
 
 def _fake_runtime(state: dict):
-    return type("Ctx", (), {"state": state, "config": {}})()
+    return type("Ctx", (), {"state": state, "config": {}, "state_path": None})()
 
 
 def _fake_args(**overrides) -> argparse.Namespace:

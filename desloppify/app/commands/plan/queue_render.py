@@ -17,7 +17,7 @@ from desloppify.engine._work_queue.core import (
     build_work_queue,
 )
 from desloppify.engine._work_queue.plan_order import collapse_clusters
-from desloppify.engine.plan import compute_new_issue_ids, load_plan
+from desloppify.engine.plan import compute_new_issue_ids, load_plan, plan_path_for_state
 
 
 def _truncate(text: str, width: int) -> str:
@@ -176,7 +176,8 @@ def cmd_plan_queue(args: argparse.Namespace) -> None:
     cluster_filter = getattr(args, "cluster", None)
     include_skipped = bool(getattr(args, "include_skipped", False))
 
-    plan = load_plan()
+    plan_file = plan_path_for_state(runtime.state_path) if runtime.state_path else None
+    plan = load_plan(plan_file)
     print_triage_guardrail_info(plan=plan, state=state)
 
     effective_cluster = cluster_filter

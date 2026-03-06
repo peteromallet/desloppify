@@ -70,7 +70,8 @@ def test_dispatch_warns_when_disabled(monkeypatch, capsys) -> None:
 def test_dispatch_no_action_shows_status(monkeypatch, capsys) -> None:
     plan = _base_plan(uncommitted=["smells::a.py::fn"])
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {})
-    monkeypatch.setattr(commit_log_mod, "load_plan", lambda: plan)
+    monkeypatch.setattr(commit_log_mod, "load_plan", lambda *a, **kw: plan)
+    monkeypatch.setattr(commit_log_mod, "command_runtime", lambda args: SimpleNamespace(state={}, config={}, state_path=None))
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context())
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
@@ -88,9 +89,10 @@ def test_dispatch_routes_record_action(monkeypatch, capsys) -> None:
     saved: list[dict] = []
 
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {})
-    monkeypatch.setattr(commit_log_mod, "load_plan", lambda: plan)
+    monkeypatch.setattr(commit_log_mod, "load_plan", lambda *a, **kw: plan)
+    monkeypatch.setattr(commit_log_mod, "command_runtime", lambda args: SimpleNamespace(state={}, config={}, state_path=None))
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context())
-    monkeypatch.setattr(commit_log_mod, "save_plan", lambda p: saved.append(p))
+    monkeypatch.setattr(commit_log_mod, "save_plan", lambda *a, **kw: saved.append(a[0]))
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
     args = argparse.Namespace(
@@ -179,7 +181,7 @@ def test_record_all_uncommitted(monkeypatch, capsys) -> None:
     saved: list[dict] = []
 
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context())
-    monkeypatch.setattr(commit_log_mod, "save_plan", lambda p: saved.append(p))
+    monkeypatch.setattr(commit_log_mod, "save_plan", lambda *a, **kw: saved.append(a[0]))
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {"commit_pr": 0})
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
@@ -201,7 +203,7 @@ def test_record_with_only_filter(monkeypatch, capsys) -> None:
     saved: list[dict] = []
 
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context())
-    monkeypatch.setattr(commit_log_mod, "save_plan", lambda p: saved.append(p))
+    monkeypatch.setattr(commit_log_mod, "save_plan", lambda *a, **kw: saved.append(a[0]))
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {"commit_pr": 0})
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
@@ -254,7 +256,7 @@ def test_record_explicit_sha_and_branch(monkeypatch, capsys) -> None:
     saved: list[dict] = []
 
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context(available=False))
-    monkeypatch.setattr(commit_log_mod, "save_plan", lambda p: saved.append(p))
+    monkeypatch.setattr(commit_log_mod, "save_plan", lambda *a, **kw: saved.append(a[0]))
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {"commit_pr": 0})
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
@@ -271,7 +273,7 @@ def test_record_appends_execution_log(monkeypatch, capsys) -> None:
     plan = _base_plan(uncommitted=["a::1"])
 
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context())
-    monkeypatch.setattr(commit_log_mod, "save_plan", lambda p: None)
+    monkeypatch.setattr(commit_log_mod, "save_plan", lambda *a, **kw: None)
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {"commit_pr": 0})
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
@@ -288,7 +290,7 @@ def test_record_with_note_shows_note(monkeypatch, capsys) -> None:
     plan = _base_plan(uncommitted=["a::1"])
 
     monkeypatch.setattr(commit_log_mod, "detect_git_context", lambda: _git_context())
-    monkeypatch.setattr(commit_log_mod, "save_plan", lambda p: None)
+    monkeypatch.setattr(commit_log_mod, "save_plan", lambda *a, **kw: None)
     monkeypatch.setattr(commit_log_mod, "load_config", lambda: {"commit_pr": 0})
     monkeypatch.setattr(commit_log_mod, "colorize", lambda t, _s: t)
 
