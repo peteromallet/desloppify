@@ -1,35 +1,26 @@
 {
   "submitter": "leanderriefel",
   "comment_id": 4004451912,
-  "verdict": "YES",
-  "verdict_date": "2026-03-06",
   "scoreboard_id": "S329",
-  "scores": {
-    "signal": 5,
-    "originality": 5,
-    "core_impact": 5,
-    "overall": 5
-  },
-  "claims": [
-    {
-      "id": "claim-1",
-      "title": "Many plan subcommand handlers call bare load_plan() ignoring the state-derived plan path",
-      "status": "CONFIRMED",
-      "detail": "Confirmed across all inspected files. reorder_handlers.py:49, queue_render.py:179, commit_log_handlers.py:193, cmd.py:102 and :165, cluster_handlers.py (9 call sites: _cmd_cluster_create:94, _cmd_cluster_add:117, _cmd_cluster_remove:169, _cmd_cluster_delete:197, _cmd_cluster_reorder:363, _cmd_cluster_show:401, _cmd_cluster_list:494, _cmd_cluster_update:532, _cmd_cluster_merge:565), and override_handlers.py:125 (describe) and :150 (note) all call bare load_plan() without passing the state-derived path."
-    },
-    {
-      "id": "claim-2",
-      "title": "Only skip, unskip, reopen in override_handlers.py correctly use _plan_file_for_state()",
-      "status": "CONFIRMED",
-      "detail": "cmd_plan_skip (lines 241-243), cmd_plan_unskip (lines 310-312), and cmd_plan_reopen (lines 354-355) all correctly derive plan_file from runtime.state_path via _plan_file_for_state(). No other handlers do this consistently."
-    },
-    {
-      "id": "claim-3",
-      "title": "Divergence is only observable with non-default --state paths",
-      "status": "CONFIRMED",
-      "detail": "When --state is the default (.desloppify/state.json), plan_path_for_state() resolves to .desloppify/plan.json which equals PLAN_FILE. Divergence only occurs when a user passes a --state flag pointing to a different directory (e.g. --state /some/other/dir/state.json). In that case, skip/unskip/reopen read the co-located plan.json while all other handlers silently read/write the default plan.json, creating an inconsistency in plan state across a single command invocation."
+  "verdict_date": "2026-03-07",
+  "claim_raw": "Many plan subcommand handlers call bare load_plan() ignoring the --state-derived plan path, while only skip, unskip, and reopen correctly call _plan_file_for_state(). This creates split-brain plan persistence: with a non-default --state path, skip/unskip/reopen correctly modify the co-located plan.json while all other handlers silently read/write the default global plan.json.",
+  "claim_distilled": "Plan handlers have split-brain plan persistence: skip/unskip/reopen scope to --state path but all other handlers always use the global default plan.json.",
+  "claim_restated": "19 plan subcommand call sites use bare load_plan() (resolving to PLAN_FILE, the global default) while cmd_plan_skip, cmd_plan_unskip, and cmd_plan_reopen correctly derive the plan path via plan_path_for_state(runtime.state_path). When a user passes --state pointing to a non-default directory, the three correct handlers load/save to the co-located plan.json while the remaining handlers silently operate on the default .desloppify/plan.json — producing inconsistent plan state across a single command session.",
+  "claude": {
+    "verdict": "YES",
+    "confirmed": true,
+    "was_real_at_submission": true,
+    "already_fixed": true,
+    "fixed_in": ["PR #406", "PR #407"],
+    "reasoning": "Independently verified against code. At time of submission: reorder_handlers.py, queue_render.py, commit_log_handlers.py, cmd.py (_cmd_plan_show, _cmd_plan_reset), cluster_handlers.py (9 handlers), and override_handlers.py (describe, note) all called bare load_plan() with no path argument, defaulting to PLAN_FILE. Meanwhile cmd_plan_skip (override_handlers.py), cmd_plan_unskip, and cmd_plan_reopen used _plan_file_for_state(runtime.state_path) — the correct pattern. The split is confirmed. Divergence only occurs with non-default --state paths; default usage is unaffected. Fix: all handlers now pass plan_path_for_state(runtime.state_path) to load_plan() — confirmed in current code.",
+    "scores": {
+      "signal": 5,
+      "originality": 5,
+      "core_impact": 5,
+      "overall": 5
     }
-  ],
-  "fix_implemented": true,
-  "notes": "The inconsistency is real and systematic. While the practical blast radius is limited to non-default --state configurations, the pattern is wrong and creates a subtle footgun: users with custom state paths (e.g. per-language state files) will see skip/unskip correctly targeting the language-specific plan while all other commands target the default plan. Significance ~5/10: real bug, modest real-world impact. Fix complete across all plan subcommand handlers in PR #406 (describe/note/reorder/queue/commit-log/show/reset/9 cluster handlers) and PR #407 (move, resolve, focus, scan_gate, reflect, organize, record_triage_stage)."
+  },
+  "gpt": null,
+  "confirmed": true,
+  "notes": "Issue was real and systematic at time of submission. Practical blast radius limited to users with non-default --state configurations, but the pattern was a genuine footgun. Fix complete across all plan subcommand handlers in PR #406 (describe/note/reorder/queue/commit-log/show/reset/9 cluster handlers) and PR #407 (move, resolve, focus, scan_gate, reflect, organize, record_triage_stage). No code changes needed in this PR — fix already landed in main."
 }
