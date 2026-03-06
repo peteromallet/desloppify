@@ -1,0 +1,35 @@
+{
+  "submitter": "ShawTim",
+  "comment_id": 4006887620,
+  "verdict": "NO",
+  "verdict_date": "2026-03-06",
+  "scoreboard_id": "S338",
+  "scores": {
+    "signal": 3,
+    "originality": 3,
+    "core_impact": 1,
+    "overall": 2
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "floor = min(score_raw_by_dim) can be gamed by merging low-quality file into high-quality file",
+      "status": "PARTIALLY_REAL_WRONG_PROOF",
+      "detail": "The underlying batch-granularity concern is real in principle: scoring.py:163 sets floor = min(score_raw_by_dim.get(key, [weighted_mean])), which is the minimum raw score across all review batches for a dimension. If two files are reviewed in separate batches with scores [100, 0], floor=0. If physically merged into one file, the LLM reviews both together and may score ~90, raising floor=90. The gaming vector exists as a design consideration. However, the submission's specific mathematical proof is invalid because it uses LOC-based weighting (1000 LOC / 100 LOC = 10x leverage) to calculate the 27.3-point floor gain, but the actual assessment_weight() function (core.py:481-499) is evidence+issue-count-based: weight = 1 + len(note.evidence) + issue_count. LOC count is not a factor anywhere in the weighting logic."
+    },
+    {
+      "id": "claim-2",
+      "title": "27.3-point floor gain from merging files",
+      "status": "UNVERIFIABLE",
+      "detail": "The specific 27.3-point calculation relies entirely on the (incorrect) LOC-based weighting assumption. Since assessment_weight() uses evidence+issue counts, not file size, the arithmetic proof cannot be verified against actual code. The real floor change from merging would depend on how the LLM scores the combined content and how many issues/evidence items it produces — not on relative file sizes."
+    },
+    {
+      "id": "claim-3",
+      "title": "File merging has no countermeasures",
+      "status": "INCORRECT",
+      "detail": "File merging triggers at least two detectors: gods.py (large monolithic files) and large.py (files exceeding size thresholds). These would generate issues against the merged file, which increases issue_count in assessment_weight(), which actually reduces the relative weight of the merged batch's score rather than boosting it. The submission does not account for this detector interaction."
+    }
+  ],
+  "fix_implemented": false,
+  "notes": "The batch-granularity floor mechanism is a real design tradeoff: reviews happen per-batch and the floor is the worst-batch minimum, so file organization affects scoring. However, this is architectural by design, not poor engineering — the README anti-gaming guidance targets suppression/status laundering/trivial fixes, not file restructuring. The specific mathematical proof in the submission uses LOC-weighted averaging that does not match the actual evidence+issue-count weighting in assessment_weight() (core.py:481-499). The 27.3-point claim is unverifiable against real code. Verdict: NO — flawed proof, real-but-intentional design tradeoff."
+}
