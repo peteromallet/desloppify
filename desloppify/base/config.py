@@ -377,8 +377,14 @@ def _migrate_single_state_file(config: dict, path: Path) -> bool:
         return False
 
     _merge_legacy_state_config(config, old_config)
-    _strip_config_from_state_file(path, state_data)
     return True
+
+
+def _state_files_for_migration(state_dir: Path) -> list[Path]:
+    """Return state files in deterministic migration order."""
+    scoped = sorted(state_dir.glob("state-*.json"), key=lambda p: p.name)
+    root = sorted(state_dir.glob("state.json"), key=lambda p: p.name)
+    return [*scoped, *root]
 
 
 def _migrate_from_state_files(config_path: Path) -> dict:
@@ -393,12 +399,13 @@ def _migrate_from_state_files(config_path: Path) -> dict:
     if not state_dir.exists():
         return config
 
-    state_files = list(state_dir.glob("state-*.json")) + list(
-        state_dir.glob("state.json")
-    )
+    state_files = _state_files_for_migration(state_dir)
     migrated_any = False
+    migrated_files: list[Path] = []
     for sf in state_files:
-        migrated_any = _migrate_single_state_file(config, sf) or migrated_any
+        if _migrate_single_state_file(config, sf):
+            migrated_any = True
+            migrated_files.append(sf)
 
     if migrated_any and config:
         try:
@@ -407,6 +414,12 @@ def _migrate_from_state_files(config_path: Path) -> dict:
             log_best_effort_failure(
                 logger, f"save migrated config to {config_path}", exc
             )
+        else:
+            for sf in migrated_files:
+                state_data = _load_state_file_payload(sf)
+                if state_data is None:
+                    continue
+                _strip_config_from_state_file(sf, state_data)
 
     return config
 

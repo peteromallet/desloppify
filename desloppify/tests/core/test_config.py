@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import desloppify.base.config as config_mod
 from desloppify.base.config import (
     CONFIG_SCHEMA,
     _migrate_from_state_files,
@@ -321,6 +322,27 @@ class TestMigrateFromStateFiles:
         assert "ex1" in result.get("exclude", [])
         assert "ex2" in result.get("exclude", [])
 
+    def test_scalar_merge_order_is_deterministic(self, tmp_path):
+        state_dir = tmp_path
+        state_dir.mkdir(exist_ok=True)
+
+        state_a = {
+            "version": 1,
+            "config": {"target_strict_score": 90},
+            "issues": {},
+        }
+        state_z = {
+            "version": 1,
+            "config": {"target_strict_score": 10},
+            "issues": {},
+        }
+        (state_dir / "state-z.json").write_text(json.dumps(state_z))
+        (state_dir / "state-a.json").write_text(json.dumps(state_a))
+        config_path = state_dir / "config.json"
+
+        result = _migrate_from_state_files(config_path)
+        assert result.get("target_strict_score") == 90
+
     def test_no_state_files_returns_empty(self, tmp_path):
         config_path = tmp_path / "config.json"
         result = _migrate_from_state_files(config_path)
@@ -378,3 +400,27 @@ class TestMigrateFromStateFiles:
         result = _migrate_from_state_files(config_path)
         assert "csharp_corroboration_min_signals" not in result
         assert "csharp_high_fanout_threshold" not in result
+
+    def test_save_failure_does_not_strip_source_state_config(
+        self, tmp_path, monkeypatch
+    ):
+        state_dir = tmp_path
+        state_dir.mkdir(exist_ok=True)
+        state_data = {
+            "version": 1,
+            "config": {"ignore": ["smells::*::debug"]},
+            "issues": {},
+        }
+        state_file = state_dir / "state-python.json"
+        state_file.write_text(json.dumps(state_data))
+        config_path = state_dir / "config.json"
+
+        def _raise_save(*_args, **_kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(config_mod, "save_config", _raise_save)
+
+        result = _migrate_from_state_files(config_path)
+        assert "smells::*::debug" in result.get("ignore", [])
+        updated_state = json.loads(state_file.read_text())
+        assert "config" in updated_state
