@@ -2,35 +2,16 @@
 
 from __future__ import annotations
 
+from desloppify.base.subjective_dimension_catalog import DISPLAY_NAMES
 from desloppify.base.text_utils import is_numeric
 from desloppify.engine._scoring.policy.core import SUBJECTIVE_CHECKS
+from desloppify.intelligence.review.dimensions.metadata import (
+    dimension_display_name as metadata_dimension_display_name,
+)
+from desloppify.intelligence.review.dimensions.metadata import (
+    dimension_weight as metadata_dimension_weight,
+)
 from desloppify.intelligence.review.dimensions.holistic import DIMENSIONS
-
-DISPLAY_NAMES: dict[str, str] = {
-    # Holistic dimensions
-    "cross_module_architecture": "Cross-module arch",
-    "initialization_coupling": "Init coupling",
-    "convention_outlier": "Convention drift",
-    "error_consistency": "Error consistency",
-    "abstraction_fitness": "Abstraction fit",
-    "dependency_health": "Dep health",
-    "test_strategy": "Test strategy",
-    "api_surface_coherence": "API coherence",
-    "authorization_consistency": "Auth consistency",
-    "ai_generated_debt": "AI generated debt",
-    "incomplete_migration": "Stale migration",
-    "package_organization": "Structure nav",
-    "high_level_elegance": "High elegance",
-    "mid_level_elegance": "Mid elegance",
-    "low_level_elegance": "Low elegance",
-    # Design coherence (concerns bridge)
-    "design_coherence": "Design coherence",
-    # Per-file review dimensions
-    "naming_quality": "Naming quality",
-    "logic_clarity": "Logic clarity",
-    "type_safety": "Type safety",
-    "contract_coherence": "Contracts",
-}
 
 def _display_fallback(dim_name: str) -> str:
     words = dim_name.replace("_", " ")
@@ -59,25 +40,11 @@ def _primary_lang_from_issues(issues: dict) -> str | None:
 
 
 def _dimension_display_name(dim_name: str, *, lang_name: str | None) -> str:
-    try:
-        from desloppify.intelligence.review.dimensions.metadata import (
-            dimension_display_name,  # cycle-break: subjective/core.py ↔ metadata.py
-        )
-
-        return str(dimension_display_name(dim_name, lang_name=lang_name))
-    except (AttributeError, RuntimeError, ValueError, TypeError):
-        return DISPLAY_NAMES.get(dim_name, _display_fallback(dim_name))
+    return str(metadata_dimension_display_name(dim_name, lang_name=lang_name))
 
 
 def _dimension_weight(dim_name: str, *, lang_name: str | None) -> float:
-    try:
-        from desloppify.intelligence.review.dimensions.metadata import (
-            dimension_weight,  # cycle-break: subjective/core.py ↔ metadata.py
-        )
-
-        return float(dimension_weight(dim_name, lang_name=lang_name))
-    except (AttributeError, RuntimeError, ValueError, TypeError):
-        return 1.0
+    return float(metadata_dimension_weight(dim_name, lang_name=lang_name))
 
 
 def _compute_dimension_score(
