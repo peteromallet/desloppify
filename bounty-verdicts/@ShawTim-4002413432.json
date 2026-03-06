@@ -1,0 +1,29 @@
+{
+  "submitter": "ShawTim",
+  "comment_id": 4002413432,
+  "verdict": "NO",
+  "verdict_date": "2026-03-06",
+  "scoreboard_id": "S322",
+  "scores": {
+    "signal": 2,
+    "originality": 2,
+    "core_impact": 1,
+    "overall": 2
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "_FLOOR_BLEND_WEIGHT = 0.3 enables gaming via historical data",
+      "status": "FACTUALLY_WRONG_PREMISE",
+      "detail": "The submission claims the 30% floor blend incorporates historical data that can be manipulated to inflate scores. This is factually incorrect. At scoring.py:163, floor = min(score_raw_by_dim.get(key, [weighted_mean])) — score_raw_by_dim is the dict of raw scores from the current batch only, passed in as a parameter to merge_scores(). No historical state is read. The floor is the minimum raw score across the current batch's dimensions, not from any prior run."
+    },
+    {
+      "id": "claim-2",
+      "title": "Floor blend allows score inflation",
+      "status": "INCORRECT",
+      "detail": "The floor blend at score_dimension() (scoring.py:115-118) computes floor_aware = 0.7 * weighted_mean + 0.3 * floor, where floor is the minimum score in the current batch. This is anti-gaming: it ensures the final score is pulled down toward the worst individual score rather than being allowed to float up to the weighted mean alone. An actor cannot inflate the floor — they can only lower it by introducing low-scoring material into the batch."
+    }
+  ],
+  "fix_implemented": false,
+  "notes": "The submission's central premise — that _FLOOR_BLEND_WEIGHT enables gaming via historical data — is factually wrong. The floor is computed from the minimum of current-batch scores (scoring.py:163), not from any historical state. The 30% blend is an anti-gaming mechanism that anchors the merged score toward the worst-performing batch, making score inflation harder. Verdict: NO."
+}
