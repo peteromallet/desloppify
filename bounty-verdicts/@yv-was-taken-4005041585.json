@@ -1,38 +1,26 @@
 {
   "submitter": "yv-was-taken",
   "comment_id": 4005041585,
-  "verdict": "YES_WITH_CAVEATS",
+  "scoreboard_id": "S337",
   "verdict_date": "2026-03-06",
-  "scores": {
-    "signal": 5,
-    "originality": 5,
-    "core_impact": 1,
-    "overall": 3
-  },
-  "claims": [
-    {
-      "id": "claim-1",
-      "title": "_mark_auto_resolved() clears suppression fields unconditionally for all issues including suppressed ones",
-      "status": "CONFIRMED",
-      "detail": "merge_issues.py:51-55 unconditionally sets issue['suppressed']=False, issue['suppressed_at']=None, issue['suppression_pattern']=None. auto_resolve_disappeared() has no guard to skip suppressed issues before calling _mark_auto_resolved(). A suppressed issue (suppressed=True, status='open') that falls outside the current scan_path will have _mark_auto_resolved() called at line 111-113, clearing all three suppression fields. The same applies to suppressed issues that genuinely disappear from scan at lines 122-131. The missing guard: there is no `if previous.get('suppressed'): continue` anywhere in auto_resolve_disappeared()."
-    },
-    {
-      "id": "claim-2",
-      "title": "Suppression loss is permanent",
-      "status": "OVERSTATED",
-      "detail": "The suppression is not permanently lost. On the next scan where the issue reappears within scope, upsert_issues() at lines 160-162 re-evaluates matched_ignore_pattern(). If the ignore pattern still exists in .sloppyignore, suppression is re-applied (lines 191-195). However, the re-suppression path hits `continue` before the reopening check at line 201, leaving the issue in an inconsistent state: {status: 'auto_resolved', suppressed: True}. If the pattern no longer matches, the issue is correctly reopened. 'Permanent' is inaccurate — loss is temporary between the narrow-scope scan and the next broad scan."
-    },
-    {
-      "id": "claim-3",
-      "title": "Inconsistent state after suppression recovery",
-      "status": "CONFIRMED_NOT_IN_SUBMISSION",
-      "detail": "When a previously-suppressed+auto-resolved issue reappears and the ignore pattern still matches, upsert_issues() sets suppressed=True but continues before reaching the status reopen check. The issue ends up with {status: 'auto_resolved', suppressed: True} — a mixed state not anticipated by the schema. match_issues() filters by `not issue.get('suppressed')` so the issue is hidden, but its status is semantically wrong. This is a consequence of the original flaw not raised by the submission."
+  "claim_raw": "_mark_auto_resolved() unconditionally clears suppressed/suppressed_at/suppression_pattern (merge_issues.py:51-55) for every issue it touches, including issues that were explicitly suppressed via .sloppyignore. auto_resolve_disappeared() has no guard to skip suppressed issues before calling _mark_auto_resolved(), so a suppressed open issue that falls outside the current scan_path (or genuinely disappears) loses all suppression metadata. The loss is permanent.",
+  "claim_distilled": "_mark_auto_resolved() clears suppression metadata unconditionally; auto_resolve_disappeared() has no guard to skip suppressed issues before calling it.",
+  "claim_restated": "auto_resolve_disappeared() iterates all open/wontfix/fixed/false_positive issues absent from the current scan. For each such issue it calls _mark_auto_resolved(), which sets suppressed=False, suppressed_at=None, suppression_pattern=None unconditionally (merge_issues.py:51-55). There is no `if previous.get('suppressed'): continue` guard anywhere in auto_resolve_disappeared(). A suppressed issue (suppressed=True, status='open') that is either out of the narrow scan_path or has genuinely disappeared will have all three suppression fields cleared. The 'permanent' characterization is inaccurate: on the next in-scope scan upsert_issues() re-evaluates matched_ignore_pattern() and can re-apply suppression if the pattern still matches — but until that broader scan runs, suppression is lost.",
+  "claude": {
+    "verdict": "YES_WITH_CAVEATS",
+    "confirmed": true,
+    "was_real_at_submission": true,
+    "already_fixed": true,
+    "fixed_in": ["PR #241"],
+    "reasoning": "Core claim independently confirmed. merge_issues.py:51-55 (pre-fix) unconditionally wrote suppressed=False, suppressed_at=None, suppression_pattern=None inside _mark_auto_resolved(). auto_resolve_disappeared() had no suppression guard — verified by absence of any `if previous.get('suppressed'): continue` before either the out-of-scope path (old lines 111-113) or the normal disappear path (old lines 122-131). Caveat: 'permanent' is overstated. On the next broad scan, upsert_issues() calls matched_ignore_pattern() and re-suppresses if the pattern still exists in .sloppyignore — so loss is temporary between the narrow-scope scan and the next full scan. Additional secondary consequence not raised in submission: when a previously-suppressed+auto-resolved issue reappears and the pattern still matches, upsert_issues() sets suppressed=True but hits `continue` before the status reopen check, leaving {status: 'auto_resolved', suppressed: True} — a mixed state hidden by match_issues() but semantically wrong. Fix: add `if previous.get('suppressed'): continue` after the suspect-detector guard, before the scope filter. This is present in current code at merge_issues.py:104-105.",
+    "scores": {
+      "signal": 5,
+      "originality": 5,
+      "core_impact": 1,
+      "overall": 3
     }
-  ],
-  "fix_implemented": true,
-  "fix_description": "Add `if previous.get('suppressed'): continue` in auto_resolve_disappeared() immediately after the suspect-detector guard (after line 102). Suppressed issues should not be auto-resolved by a scan — they were explicitly suppressed by the user via ignore patterns. This prevents _mark_auto_resolved() from being called on suppressed issues in both the out-of-scope path and the normal disappear path.",
-  "fix_files": [
-    "desloppify/engine/_state/merge_issues.py"
-  ],
-  "notes": "The core claim is valid: _mark_auto_resolved() has no suppression guard and clears suppression metadata on all issues it touches, including explicitly suppressed ones. The missing guard is a one-line fix. The 'permanent' characterization is inaccurate (suppression is recovered on the next in-scope scan), and the submission did not identify the secondary inconsistent-state consequence. No scoring engine impact — suppression state is orthogonal to score computation."
+  },
+  "gpt": null,
+  "confirmed": true,
+  "notes": "The core claim is valid: _mark_auto_resolved() has no suppression guard and clears suppression metadata on all issues it touches, including explicitly suppressed ones. The missing guard is a one-line fix. The 'permanent' characterization is inaccurate (suppression is recovered on the next in-scope scan), and the submission did not identify the secondary inconsistent-state consequence ({status: 'auto_resolved', suppressed: True}). No scoring engine impact — suppression state is orthogonal to score computation. Fix already landed in main; no code changes needed in this PR."
 }
