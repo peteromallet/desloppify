@@ -110,6 +110,22 @@ def build_run_batches_next_command(context: ReviewPacketContext) -> str:
     return " ".join(parts)
 
 
+def build_prepare_next_command(context: ReviewPacketContext) -> str:
+    """Return the canonical next command for prepare-mode packet output."""
+    parts: list[str] = ["desloppify", "review", "--prepare"]
+    if context.retrospective:
+        parts.extend(
+            [
+                "--retrospective",
+                "--retrospective-max-issues",
+                str(context.retrospective_max_issues),
+                "--retrospective-max-batch-items",
+                str(context.retrospective_max_batch_items),
+            ]
+        )
+    return " ".join(parts)
+
+
 def build_external_submit_next_command(context: ReviewPacketContext) -> str:
     """Return the canonical next command for external-session submit."""
     parts: list[str] = [
@@ -150,6 +166,7 @@ __all__ = [
     "ReviewPacketContext",
     "build_external_submit_next_command",
     "build_holistic_packet",
+    "build_prepare_next_command",
     "build_run_batches_next_command",
     "require_non_empty_packet",
     "resolve_review_packet_context",

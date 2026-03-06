@@ -9,19 +9,20 @@ from pathlib import Path
 from typing import cast
 
 from desloppify.app.commands.helpers.query import write_query_best_effort
-from desloppify.base.coercions import coerce_positive_int
 from desloppify.base.discovery.file_paths import safe_write_text
 from desloppify.base.exception_sets import CommandError, PacketValidationError
 from desloppify.base.output.terminal import colorize, log
-import desloppify.intelligence.narrative.core as narrative_mod
 from desloppify.intelligence import review as review_mod
 from desloppify.intelligence.review.feedback_contract import (
     max_batch_issues_for_dimension_count,
 )
 
-from ..helpers import parse_dimensions
+from ..coordinator import build_review_packet_payload, write_review_packet_snapshot
 from ..importing.cmd import do_import as _do_import
-from ..packet.policy import coerce_review_batch_file_limit, redacted_review_config
+from ..packet.build import (
+    build_run_batches_next_command,
+    resolve_review_packet_context,
+)
 from ..runner_failures import print_failures, print_failures_and_raise
 from ..runner_packets import (
     build_batch_import_provenance,
@@ -29,7 +30,6 @@ from ..runner_packets import (
     prepare_run_artifacts,
     run_stamp,
     selected_batch_indexes,
-    write_packet_snapshot,
 )
 from ..runner_parallel import collect_batch_results, execute_batches
 from ..runner_process import (
@@ -41,9 +41,6 @@ from ..runner_process import (
 from ..runtime.setup import setup_lang_concrete as _setup_lang
 from ..runtime_paths import (
     blind_packet_path as _blind_packet_path,
-)
-from ..runtime_paths import (
-    review_packet_dir as _review_packet_dir,
 )
 from ..runtime_paths import (
     runtime_project_root as _runtime_project_root,
@@ -117,60 +114,28 @@ def _load_or_prepare_packet(
         print(colorize(f"  Blind packet: {blind_path}", "dim"))
         return packet, packet_path, blind_path
 
-    path = Path(args.path)
-    dims = parse_dimensions(args)
-    dimensions = list(dims) if dims else None
-    retrospective = bool(getattr(args, "retrospective", False))
-    retrospective_max_issues = coerce_positive_int(
-        getattr(args, "retrospective_max_issues", None),
-        default=30,
-        minimum=1,
-    )
-    retrospective_max_batch_items = coerce_positive_int(
-        getattr(args, "retrospective_max_batch_items", None),
-        default=20,
-        minimum=1,
-    )
-    lang_run, found_files = _setup_lang(lang, path, config)
-    lang_name = lang_run.name
-    narrative = narrative_mod.compute_narrative(
-        state,
-        context=narrative_mod.NarrativeContext(lang=lang_name, command="review"),
-    )
-
-    blind_path = _blind_packet_path()
-    packet = review_mod.prepare_holistic_review(
-        path,
-        lang_run,
-        state,
-        options=review_mod.HolisticReviewPrepareOptions(
-            dimensions=dimensions,
-            files=found_files or None,
-            max_files_per_batch=coerce_review_batch_file_limit(config),
-            include_issue_history=retrospective,
-            issue_history_max_issues=retrospective_max_issues,
-            issue_history_max_batch_items=retrospective_max_batch_items,
-        ),
-    )
-    packet["config"] = redacted_review_config(config)
-    packet["narrative"] = narrative
-    next_command = "desloppify review --prepare"
-    if retrospective:
-        next_command += (
-            " --retrospective"
-            f" --retrospective-max-issues {retrospective_max_issues}"
-            f" --retrospective-max-batch-items {retrospective_max_batch_items}"
+    context = resolve_review_packet_context(args)
+    next_command = build_run_batches_next_command(context)
+    try:
+        packet = build_review_packet_payload(
+            state=state,
+            lang=lang,
+            config=config,
+            context=context,
+            next_command=next_command,
+            setup_lang_fn=_setup_lang,
+            prepare_holistic_review_fn=review_mod.prepare_holistic_review,
         )
-    packet["next_command"] = next_command
+    except ValueError as exc:
+        raise PacketValidationError(str(exc), exit_code=1) from exc
     write_query_best_effort(
         packet,
         context="review packet query update",
     )
-    packet_path, blind_saved = write_packet_snapshot(
+    packet_path, blind_saved = write_review_packet_snapshot(
         packet,
         stamp=stamp,
-        review_packet_dir=_review_packet_dir(),
-        blind_path=blind_path,
+        blind_path_override=_blind_packet_path(),
         safe_write_text_fn=safe_write_text,
     )
     print(colorize(f"  Immutable packet: {packet_path}", "dim"))
