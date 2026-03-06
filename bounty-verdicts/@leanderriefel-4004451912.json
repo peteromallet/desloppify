@@ -1,43 +1,30 @@
 {
   "submitter": "leanderriefel",
   "comment_id": 4004451912,
-  "verdict": "YES",
-  "verdict_date": "2026-03-06",
-  "scores": {
-    "signal": 5,
-    "originality": 5,
-    "core_impact": 5,
-    "overall": 5
+  "claim_raw": "Many plan subcommand handlers call the bare load_plan() function, ignoring the --state-derived plan path. Only skip, unskip, and reopen in override_handlers.py correctly derive the plan file from the state path via _plan_file_for_state(). All other handlers — describe, note, reorder, queue, commit-log show/reset, and all cluster subcommands — load from the default PLAN_FILE regardless of the --state flag, creating a split-brain between plan reads/writes when a non-default state path is used.",
+  "claim_distilled": "19+ plan subcommand handlers use bare load_plan() ignoring the --state flag, while skip/unskip/reopen correctly derive the plan path from state — causing silent split-brain plan mutations when --state points to a non-default location.",
+  "claim_restated": "When --state is passed to a non-default path (e.g. --state /project/.desloppify/state-python.json), plan_path_for_state() should derive the co-located plan.json. skip/unskip/reopen do this correctly via _plan_file_for_state(state_path). All other plan handlers (describe, note, reorder, queue, commit-log, show, reset, all 9+ cluster sub-handlers) call bare load_plan() which unconditionally loads the default PLAN_FILE, diverging from the state-path-derived plan. This is verified by direct code inspection of all six handler files.",
+  "claude": {
+    "verdict": "YES",
+    "confirmed": true,
+    "evidence": [
+      "reorder_handlers.py: cmd_plan_reorder called bare load_plan() (pre-fix line ~49)",
+      "queue_render.py: cmd_plan_queue called bare load_plan() (pre-fix line ~179)",
+      "commit_log_handlers.py: cmd_commit_log_dispatch called bare load_plan() (pre-fix line ~193)",
+      "cmd.py: _cmd_plan_show and _cmd_plan_reset both called bare load_plan() (pre-fix lines ~102, ~165)",
+      "cluster_handlers.py: 9 handlers all called bare load_plan() (_create, _add, _remove, _delete, _reorder, _show, _list, _update, _merge)",
+      "override_handlers.py: cmd_plan_describe and cmd_plan_note called bare load_plan() (pre-fix)",
+      "override_handlers.py: cmd_plan_skip/unskip/reopen correctly used _plan_file_for_state() — confirming the asymmetry"
+    ],
+    "scores": {
+      "accuracy": 9,
+      "significance": 5,
+      "originality": 5,
+      "core_impact": 5,
+      "overall": 5
+    },
+    "notes": "Claim is accurate and well-scoped. The asymmetry is real and systematic — 19+ call sites wrong vs 3 correct. Practical impact is limited to non-default --state configurations (per-language state files), but the pattern is architecturally wrong. Code refs in the submission match actual codebase structure well. Accuracy docked 1 point because some specific line numbers in the original submission were slightly off from actual pre-fix positions."
   },
-  "claims": [
-    {
-      "id": "claim-1",
-      "title": "Many plan subcommand handlers call bare load_plan() ignoring the state-derived plan path",
-      "status": "CONFIRMED",
-      "detail": "Confirmed across all inspected files. reorder_handlers.py:49, queue_render.py:179, commit_log_handlers.py:193, cmd.py:102 and :165, cluster_handlers.py (9 call sites: _cmd_cluster_create:94, _cmd_cluster_add:117, _cmd_cluster_remove:169, _cmd_cluster_delete:197, _cmd_cluster_reorder:363, _cmd_cluster_show:401, _cmd_cluster_list:494, _cmd_cluster_update:532, _cmd_cluster_merge:565), and override_handlers.py:125 (describe) and :150 (note) all call bare load_plan() without passing the state-derived path."
-    },
-    {
-      "id": "claim-2",
-      "title": "Only skip, unskip, reopen in override_handlers.py correctly use _plan_file_for_state()",
-      "status": "CONFIRMED",
-      "detail": "cmd_plan_skip (lines 241-243), cmd_plan_unskip (lines 310-312), and cmd_plan_reopen (lines 354-355) all correctly derive plan_file from runtime.state_path via _plan_file_for_state(). No other handlers do this consistently."
-    },
-    {
-      "id": "claim-3",
-      "title": "Divergence is only observable with non-default --state paths",
-      "status": "CONFIRMED",
-      "detail": "When --state is the default (.desloppify/state.json), plan_path_for_state() resolves to .desloppify/plan.json which equals PLAN_FILE. Divergence only occurs when a user passes a --state flag pointing to a different directory (e.g. --state /some/other/dir/state.json). In that case, skip/unskip/reopen read the co-located plan.json while all other handlers silently read/write the default plan.json, creating an inconsistency in plan state across a single command invocation."
-    }
-  ],
-  "fix_implemented": true,
-  "fix_description": "Thread plan_file (derived from runtime.state_path via plan_path_for_state) into all handlers that previously used bare load_plan(). Affected: override_handlers.py describe and note; reorder_handlers.py reorder; commit_log_handlers.py dispatch and record; queue_render.py queue; cmd.py show and reset; cluster_handlers.py all 9 handlers. No behaviour change for default --state path usage.",
-  "fix_files": [
-    "desloppify/app/commands/plan/override_handlers.py",
-    "desloppify/app/commands/plan/reorder_handlers.py",
-    "desloppify/app/commands/plan/commit_log_handlers.py",
-    "desloppify/app/commands/plan/queue_render.py",
-    "desloppify/app/commands/plan/cmd.py",
-    "desloppify/app/commands/plan/cluster_handlers.py"
-  ],
-  "notes": "The inconsistency is real and systematic. While the practical blast radius is limited to non-default --state configurations, the pattern is wrong and creates a subtle footgun: users with custom state paths (e.g. per-language state files) will see skip/unskip correctly targeting the language-specific plan while all other commands target the default plan. Significance ~5/10: real bug, modest real-world impact."
+  "gpt": null,
+  "confirmed": true
 }
