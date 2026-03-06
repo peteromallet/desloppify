@@ -22,5 +22,13 @@
   },
   "gpt": null,
   "confirmed": true,
+  "is_poor_engineering": true,
+  "is_significant": true,
+  "why_poor_engineering": "Helper function _plan_file_for_state() was defined in override_handlers.py but never extracted to a shared utility or applied to any sibling handlers. 16+ handlers across 6 files were written after the correct pattern was established without awareness of or adherence to it. The result is an asymmetric invariant: three handlers (skip/unskip/reopen) scope plan reads/writes to the --state-derived path while every other handler silently targets the global default — a split-brain with no error, no warning, and no indication to the user.",
+  "why_missed": {
+    "pattern_not_shared": "The correct pattern (_plan_file_for_state) was defined inside override_handlers.py as a private helper and never extracted to a shared utility module. Handlers in other files had no access to it and no signal that it existed.",
+    "no_cross_state_tests": "No test exercised a non-default --state path across multiple handler files simultaneously. All tests used the default plan path, so the divergence between skip and reorder/cluster/queue/commit-log was never observed.",
+    "silent_failure": "With the default --state the bug is invisible: both load_plan() and load_plan(plan_path_for_state(default_state)) resolve to the same file. Divergence only manifests with a non-default --state path, and even then produces no error — only silently wrong plan state."
+  },
   "notes": "Issue was real and systematic at time of submission. Practical blast radius limited to users with non-default --state configurations, but the pattern was a genuine footgun. Fix complete across all plan subcommand handlers in PR #406 (describe/note/reorder/queue/commit-log/show/reset/9 cluster handlers) and PR #407 (move, resolve, focus, scan_gate, reflect, organize, record_triage_stage). No code changes needed in this PR — fix already landed in main."
 }
