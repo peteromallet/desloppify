@@ -101,6 +101,9 @@ def auto_resolve_disappeared(
         if previous.get("detector", "unknown") in suspect_detectors:
             continue
 
+        if previous.get("suppressed"):
+            continue
+
         if scan_path and scan_path != ".":
             prefix = scan_path.rstrip("/") + "/"
             if (
