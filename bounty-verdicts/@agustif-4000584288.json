@@ -4,6 +4,15 @@
   "verdict": "YES_WITH_CAVEATS",
   "verdict_date": "2026-03-06",
   "scoreboard_id": "S04",
+  "claim_restated": "load_plan() (persistence.py:67) calls ensure_plan_defaults() unconditionally for all plans. ensure_plan_defaults() (schema.py:198) always calls upgrade_plan_to_v7(), which at schema_migrations.py:304-305 sets plan['version'] = V7_SCHEMA_VERSION without checking whether the original version was already higher. A plan saved with version 8+ loaded by load_plan() has its in-memory version silently forced to 7; any subsequent save_plan() call (which also calls ensure_plan_defaults() at persistence.py:80) permanently writes version 7 to disk, downgrading the on-disk plan.",
+  "is_poor_engineering": true,
+  "why_poor_engineering": "A function named upgrade_plan_to_v7() should only act on plans with version < 7. The missing version guard — `if plan.get('version') < V7_SCHEMA_VERSION` — turns what should be a one-directional upgrade into an unconditional version clobber. Any plan that has advanced beyond v7 (e.g. after a schema bump) will be silently downgraded each time it passes through the load/save cycle. The function violates the basic contract of migration code: migrations should be directional and idempotent, not regressive.",
+  "is_significant": false,
+  "why_missed": {
+    "what_should_catch": "A round-trip test: create a plan dict with version = V7_SCHEMA_VERSION + 1, call load_plan() (or directly ensure_plan_defaults()), then save_plan(), and assert the on-disk version is still > 7.",
+    "why_not_caught": "All existing tests load plans at or below V7_SCHEMA_VERSION. The warning branch at persistence.py:59-65 was added for future-proofing but no test exercises the code path where a v8+ plan is loaded and then saved.",
+    "what_could_catch": "A parametric schema regression test covering version > PLAN_VERSION would catch this immediately. Alternatively, a property-based test that round-trips arbitrary version numbers through ensure_plan_defaults() and asserts version monotonicity."
+  },
   "scores": {
     "signal": 5,
     "originality": 4,
