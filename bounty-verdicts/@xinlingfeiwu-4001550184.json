@@ -1,0 +1,12 @@
+{
+  "submission_id": "S031",
+  "comment_id": 4001550184,
+  "author": "xinlingfeiwu",
+  "title": "Systematic Over-Injection Anti-Pattern: Constants Passed as Parameters Throughout the Review Pipeline",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "All three layers of over-injection are confirmed. build_review_context_inner takes 10+ keyword params (including 4 regex constants) from a single call site that always passes the same values. prepare_holistic_review_payload has 14 _fn params with one production caller and tests that monkeypatch at the module boundary instead. CodexBatchRunnerDeps/FollowupScanDeps prove the codebase has a better pattern. Caveats: DI for functions (not regex constants) is a legitimate Python pattern even with one call site; the regex constants are the clearest anti-pattern case; this affects maintainability but causes no bugs."
+}
