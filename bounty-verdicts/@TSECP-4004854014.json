@@ -1,0 +1,12 @@
+{
+  "submission_id": "S126",
+  "comment_id": 4004854014,
+  "author": "TSECP",
+  "title": "Arbitrary Code Execution via Plugin Auto-Loading",
+  "verdict": "NO",
+  "significance": 7,
+  "originality": 0,
+  "core_impact": 6,
+  "overall": 0,
+  "notes": "The underlying security concern (unsandboxed plugin auto-loading from the scan target in discovery.py:95-113) is real and significant. However, this is a verbatim duplicate of S120 by @optimus-fulcria, submitted ~3 hours earlier (2026-03-05T10:10:19Z vs 2026-03-05T12:53:34Z). Both cite the same file, same lines, same arguments (inverted trust boundary, no consent, no sandbox, supply chain vector). S146 by @tianshanclaw is also word-for-word identical to S126, sharing the same Solana wallet. Originality score is 0 — duplicate submission."
+}
