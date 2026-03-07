@@ -7,12 +7,11 @@ from fnmatch import fnmatch
 from typing import Any
 
 from desloppify.base.enums import issue_status_tokens
-from desloppify.base.registry import DETECTORS
+from desloppify.base.registry import ACTION_TYPE_PRIORITY, DETECTORS
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.types import WorkQueueItem
 
 ALL_STATUSES = set(issue_status_tokens(include_all=True))
-ACTION_TYPE_PRIORITY = {"auto_fix": 0, "refactor": 1, "manual_fix": 2, "reorganize": 3}
 ATTEST_EXAMPLE = (
     "I have actually [DESCRIBE THE CONCRETE CHANGE YOU MADE] "
     "and I am not gaming the score by resolving without fixing."
