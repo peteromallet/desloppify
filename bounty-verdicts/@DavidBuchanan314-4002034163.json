@@ -1,0 +1,12 @@
+{
+  "submission_id": "S086",
+  "comment_id": 4002034163,
+  "author": "DavidBuchanan314",
+  "title": "Cross-File Consistency: state.json and plan.json non-atomic writes",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 5,
+  "core_impact": 3,
+  "overall": 4,
+  "notes": "The non-atomic write pattern between state.json and plan.json is real, and the try/except swallowing plan-save failures in resolve is genuinely sloppy. However, the central claim that reconcile_plan_after_scan does not handle state-ahead-of-plan divergence is factually wrong: _is_issue_alive() returns False for fixed issues, so reconciliation DOES supersede fixed-in-state but still-queued-in-plan issues on the next scan. The actual risk window is temporary, not permanent corruption."
+}
