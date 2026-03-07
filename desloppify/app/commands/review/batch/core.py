@@ -367,11 +367,13 @@ def _compute_batch_quality(
     issues: list[NormalizedBatchIssue],
     dimension_notes: dict[str, BatchDimensionNotePayload],
     high_score_missing_issue_note: float,
+    *,
+    expected_dimension_count: int = 0,
 ) -> BatchQualityPayload:
     """Compute quality metrics for a single batch result."""
     return {
         "dimension_coverage": round(
-            len(assessments) / max(len(assessments), 1),
+            len(assessments) / max(expected_dimension_count, len(assessments), 1),
             3,
         ),
         "evidence_density": round(
@@ -469,6 +471,7 @@ def normalize_batch_result(
         issues,
         dimension_notes,
         high_score_missing_issue_note,
+        expected_dimension_count=len(allowed_dims),
     )
     return (
         assessments,
