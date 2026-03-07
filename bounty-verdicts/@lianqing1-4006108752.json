@@ -1,0 +1,16 @@
+{
+  "submission_id": "S168",
+  "comment_id": 4006108752,
+  "author": "lianqing1",
+  "issue": 204,
+  "verdict": "NO",
+  "reason": "Duplicate of S005 (@agustif), which was already verified as YES. The layer violation in base/subjective_dimensions.py importing from intelligence/ and languages/ is real, but was previously reported and accepted.",
+  "significance": 3,
+  "originality": 1,
+  "core_impact": 4,
+  "overall": 2,
+  "duplicate_of": "S005",
+  "file": "desloppify/base/subjective_dimensions.py",
+  "verified_at_commit": "6eb2065",
+  "verified_by": "lota-1"
+}
