@@ -1,0 +1,12 @@
+{
+  "submission_id": "S153",
+  "comment_id": 4005274211,
+  "author": "codenan42",
+  "title": "XXE Vulnerability in C# Project Parsing (Default Install)",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 6,
+  "originality": 7,
+  "core_impact": 5,
+  "overall": 6,
+  "notes": "Valid finding: at snapshot commit 6eb2065, defusedxml is not a base dependency (dependencies=[]) and deps_support.py silently falls back to stdlib xml.etree.ElementTree which is vulnerable to XXE. ET.parse() is called on user-controlled .csproj files found via rglob. However, practical impact is limited: desloppify is a local CLI tool, attacker must place malicious .csproj in a scanned repo, and the user must be on default install without defusedxml. The issue was already known and partially addressed (commit 8b94e4f made it a base dep, then 6eb2065 reverted to lazy fallback). S153 is the earliest XXE submission, predating S224 and S229."
+}
