@@ -1,0 +1,12 @@
+{
+  "submission_id": "S162",
+  "comment_id": 4005896701,
+  "author": "MKng-Z",
+  "title": "Generic code analysis — bare excepts, TODOs, monolithic files, hardcoded URLs",
+  "verdict": "NO",
+  "significance": 1,
+  "originality": 1,
+  "core_impact": 1,
+  "overall": 1,
+  "notes": "All four claims are factually inaccurate or misleading. (1) Bare excepts: claims 11, actual 6, and ALL are in test files, zero in production code. (2) TODO/FIXME: claims 53, actual ~29 in production code, but many are in detector definitions for a tool that detects code smells — expected and benign. (3) Monolithic files >50KB: all 6 qualifying files are test files, zero production files — 'Multiple core files' is false. (4) Hardcoded development URLs: no development URLs found; only legitimate CDN and GitHub raw content URLs exist. Submission provides no specific file paths or line numbers for any claim. Reads like a generic AI-generated template."
+}
