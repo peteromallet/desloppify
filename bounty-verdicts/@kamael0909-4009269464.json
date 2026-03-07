@@ -1,0 +1,12 @@
+{
+  "submission_id": "S209",
+  "comment_id": 4009269464,
+  "author": "kamael0909",
+  "title": "Thread-safety violation: failures set mutated without lock in parallel execution",
+  "verdict": "NO",
+  "significance": 0,
+  "originality": 3,
+  "core_impact": 0,
+  "overall": 1,
+  "notes": "The claim is factually incorrect. The `failures` set is only ever accessed from the main thread. Worker threads run `_run_parallel_task`, which does NOT receive `failures` as a parameter — it only receives `progress_failures` and `started_at` (both lock-protected). `_queue_parallel_tasks` runs in the main thread (sequential loop), and `_complete_parallel_future` runs in the main thread via `_drain_parallel_completions` (consuming futures with as_completed). There is no concurrent access to `failures`. S024 by @jasonsutter87 makes the same incorrect claim."
+}
