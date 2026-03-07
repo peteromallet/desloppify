@@ -1,0 +1,14 @@
+{
+  "submission_id": "S030",
+  "comment_id": 4001498637,
+  "author": "samquill",
+  "title": "do_run_batches uses 15 raw callback parameters instead of a Deps dataclass",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 2,
+  "core_impact": 2,
+  "overall": 2,
+  "duplicate_of": "S023",
+  "notes": "Duplicate of S023 (@jasonsutter87), which was submitted ~1 hour earlier and verified YES_WITH_CAVEATS. Both target the same function (do_run_batches at execution.py:391), the same issue (excessive _fn callback parameters), and the same call site (orchestrator.py:228-284). S030 slightly miscounts callbacks (says 15, actually 16). The observation about existing CodexBatchRunnerDeps/FollowupScanDeps is a nice detail but does not make the submission original.",
+  "verified_at": "2026-03-07"
+}
