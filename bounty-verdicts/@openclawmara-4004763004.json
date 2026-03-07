@@ -1,0 +1,12 @@
+{
+  "submission_id": "S124",
+  "comment_id": 4004763004,
+  "author": "openclawmara",
+  "title": "Shadow Scoring Pipeline: ScoreBundle aggregates silently discarded and replaced by divergent recalculation",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "All four claims verified. ScoreBundle computes 4 aggregate scores never read in production — _materialize_dimension_scores uses only per-dimension data, then _aggregate_scores recomputes independently. Semantic divergence in verified_strict_score confirmed: Pipeline 1 includes subjective dims, Pipeline 2 (live) excludes them. SUBJECTIVE_WEIGHT_FRACTION=0.60 confirmed. Dead computation is real but causes no production bug since discarded values are unused. Maintenance trap is the strongest argument. Related but distinct from S151 (monotonicity angle)."
+}
