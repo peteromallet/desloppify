@@ -1,0 +1,12 @@
+{
+  "submission_id": "S187",
+  "comment_id": 4007430981,
+  "author": "ufct",
+  "title": "Deferred import hides circular dependency between _state and _scoring",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 5,
+  "core_impact": 4,
+  "overall": 4,
+  "notes": "Circular dependency is real: _state/filtering.py deferred-imports recompute_stats from _scoring/state_integration.py, while state_integration.py top-level imports path_scoped_issues from _state/filtering.py. This is a genuine layer violation (_state is lower, _scoring is higher). However, deferred imports to break circular dependencies are an extremely common and pragmatic Python pattern — not a design failure per se. The coupling is limited to a single function (remove_ignored_issues) and the fix (dependency injection or moving the function) is straightforward. Moderate concern, well-described but slightly overstated impact."
+}
