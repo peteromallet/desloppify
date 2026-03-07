@@ -1,0 +1,12 @@
+{
+  "submission_id": "S252",
+  "comment_id": 4012575807,
+  "author": "ifaddict1",
+  "title": "Disappeared Dimensions Are Carried Forward Forever and Permanently Pollute overall_score",
+  "verdict": "YES",
+  "significance": 6,
+  "originality": 6,
+  "core_impact": 5,
+  "overall": 6,
+  "notes": "All claims verified. _materialize_dimension_scores carries forward non-subjective dimensions indefinitely via the loop at state_integration.py:197-213. _aggregate_scores (line 133) recomputes overall_score from the contaminated dimension set including ghosts. carried_forward:True flag is set (line 220) but never checked in compute_health_score/compute_health_breakdown (health.py). Display layer correctly shows '⟲ prior scan' suffix (dimensions.py:120) but scoring ignores the flag entirely. ScoreBundle correctly computes from current-scan-only dimensions, but _materialize_dimension_scores overwrites aggregates via _aggregate_scores. The concrete scenario math is correct: ghost dimensions with non-unity weights cause persistent score depression. Related to S124 (shadow scoring pipeline) but distinct — S124 covers the pipeline divergence, S252 covers the carry-forward persistence mechanism. S253 by lbbcym is a duplicate that explicitly references this finding."
+}
