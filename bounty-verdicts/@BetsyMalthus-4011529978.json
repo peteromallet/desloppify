@@ -1,0 +1,12 @@
+{
+  "submission_id": "S240",
+  "comment_id": 4011529978,
+  "author": "BetsyMalthus",
+  "title": "Vague claims of code duplication and lack of test coverage",
+  "verdict": "NO",
+  "significance": 1,
+  "originality": 1,
+  "core_impact": 1,
+  "overall": 1,
+  "notes": "Submission names real directory paths but makes entirely generic, unsubstantiated claims. No specific files, functions, line numbers, or code snippets cited for alleged duplication. The helpers/ modules are well-factored with distinct responsibilities. '40-60 lines of duplicated code' claim has no evidence. Test coverage claim is unverified. S241 from same author is a near-duplicate submission. Reads like a template filled with directory names from a file listing."
+}
