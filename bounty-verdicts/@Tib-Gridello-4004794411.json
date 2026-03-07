@@ -1,0 +1,12 @@
+{
+  "submission_id": "S125",
+  "comment_id": 4004794411,
+  "author": "Tib-Gridello",
+  "title": "Work Queue Sort Key Crash: _natural_sort_key Produces Heterogeneous Tuples",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 8,
+  "core_impact": 7,
+  "overall": 7,
+  "notes": "_natural_sort_key returns 4-element tuples for subjective items and 6-element tuples for mechanical items at the same _RANK_ISSUE level. When estimated_impact ties (common when dimension_scores is empty) and element[2] ties (subjective_score_value matches a CONFIDENCE_ORDER int), Python compares str vs float at element[3], causing TypeError. Even without the crash, cross-comparing subjective_score (0-100) vs confidence_order (0-2) means mechanical items almost always sort first, contradicting the documented ranking factors. Both bugs confirmed at snapshot commit 6eb2065."
+}
