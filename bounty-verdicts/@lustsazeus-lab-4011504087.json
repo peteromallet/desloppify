@@ -1,0 +1,12 @@
+{
+  "submission_id": "S239",
+  "comment_id": 4011504087,
+  "author": "lustsazeus-lab",
+  "title": "do_run_batches god-function + callback injection",
+  "verdict": "NO",
+  "significance": 5,
+  "originality": 1,
+  "core_impact": 4,
+  "overall": 2,
+  "notes": "Claims are technically accurate: do_run_batches (execution.py:391) is ~355 lines with 15 _fn callback parameters, and orchestrator.py:181 has a wrapper of the same name. However, this is a clear duplicate of multiple earlier submissions: S023 (@jasonsutter87, 2026-03-05T00:43:52Z) identified the same god-function with identical line counts and parameter counts; S030 (@samquill) specifically called out the 15 raw callbacks vs Deps dataclass; S076 (@doncarbon) covered callback-parameter explosion; S182 (@MacHatter1) called out parameter bloat. S239 was submitted 2026-03-06T12:35:43Z, over 35 hours after S023. No novel angle or deeper analysis beyond what prior submissions already covered."
+}
