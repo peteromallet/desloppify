@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any, NotRequired, Required, TypedDict, cast
+from desloppify.base.compatibility import UTC
+from datetime import datetime
+from desloppify.base.compatibility import NotRequired, Required
+from typing import Any, TypedDict, cast
 
 from desloppify.base.enums import Status, canonical_issue_status, issue_status_tokens
 from desloppify.base.discovery.paths import get_project_root

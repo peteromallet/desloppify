@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from desloppify.base.compatibility import NotRequired
+from typing import TypedDict, cast
 
 from desloppify.intelligence.review.feedback_contract import (
     DIMENSION_NOTE_ISSUES_KEY,

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from desloppify.base.compatibility import UTC
+from datetime import datetime, timedelta
 
 from desloppify.engine._plan.annotations import get_issue_note
 from desloppify.engine._plan.operations_meta import append_log_entry

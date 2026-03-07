@@ -7,7 +7,7 @@ name = "desloppify"
 version = "0.9.1"
 description = "Multi-language codebase health scanner and technical debt tracker"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     {name = "Peter O'Malley", email = "pom@banodoco.ai"},
@@ -26,7 +26,10 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+  "typing-extensions>=4.0.0",
+  "tomli>=2.0.0; python_version < '3.11'",
+]
 
 [project.urls]
 Homepage = "https://github.com/peteromallet/desloppify"

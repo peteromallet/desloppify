@@ -1,91 +1,61 @@
-"""Runtime compatibility governance matrix and helper predicates.
+"""Python version compatibility layer.
 
-This module is the single source of truth for import-boundary policy:
-- public runtime modules (stable entry surfaces),
-- deprecated compatibility modules (removal candidates),
-- private modules (internal implementation details).
+Provides compatibility with older Python versions (3.10 and below)
+by backporting required features from newer versions.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-
-# Public package roots intended for runtime imports across the codebase.
-PUBLIC_RUNTIME_ROOTS: tuple[str, ...] = (
-    "desloppify.app",
-    "desloppify.base",
-    "desloppify.engine",
-    "desloppify.intelligence",
-    "desloppify.languages",
-)
-
-# Compatibility shims removed from runtime usage; these must not be reintroduced.
-SOFT_DEPRECATED_MODULES: frozenset[str] = frozenset(
-    {
-        "desloppify.utils",
-        "desloppify.file_discovery",
-        "desloppify.base.output_api",
-        "desloppify.base.output_contract",
-        "desloppify.base.text.text_api",
-        "desloppify.base.discovery.api",
-        "desloppify.base.discovery.path_io",
-    }
-)
-
-SOFT_DEPRECATED_SHORT_IMPORTS: frozenset[str] = frozenset(
-    {
-        "utils",
-        "file_discovery",
-    }
-)
-
-# Private internals: only code under these roots may import them directly.
-PRIVATE_MODULE_PREFIXES: tuple[str, ...] = ()
-PRIVATE_ALLOWED_IMPORTER_PREFIXES: tuple[str, ...] = ("desloppify.base",)
+import sys
+import enum
+from datetime import datetime, timedelta, timezone
 
 
-def is_soft_deprecated_module(module: str) -> bool:
-    """Return True when module is a soft-deprecated compatibility surface."""
-    return module in SOFT_DEPRECATED_MODULES
+# Python 3.10+ compatibility for timezone.utc
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 
 
-def is_private_module(module: str) -> bool:
-    """Return True when module path belongs to a private internal namespace."""
-    normalized = module.strip()
-    if not normalized:
-        return False
-    for prefix in PRIVATE_MODULE_PREFIXES:
-        if normalized == prefix or normalized.startswith(f"{prefix}."):
-            return True
-    return False
+# Python 3.11+ compatibility for enum.StrEnum
+try:
+    from enum import StrEnum
+except ImportError:
+    class StrEnum(str, enum.Enum):
+        """Backport of StrEnum for Python < 3.11."""
+        def __str__(self) -> str:
+            return self.value
+
+        def __repr__(self) -> str:
+            return f"{self.__class__.__name__}.{self.name}"
 
 
-def importer_can_access_private(importer_module: str) -> bool:
-    """Return True when importer module is allowed to reference private APIs."""
-    normalized = importer_module.strip()
-    if not normalized:
-        return False
-    for prefix in PRIVATE_ALLOWED_IMPORTER_PREFIXES:
-        if normalized == prefix or normalized.startswith(f"{prefix}."):
-            return True
-    return False
+# Python 3.11+ compatibility for typing.NotRequired
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired  # type: ignore
 
 
-def iter_soft_deprecated_module_paths() -> Iterable[str]:
-    """Yield python-module relative paths for deprecated compatibility modules."""
-    for module in sorted(SOFT_DEPRECATED_MODULES):
-        parts = module.split(".")
-        yield "/".join(parts) + ".py"
+# Python 3.11+ compatibility for typing.Required
+try:
+    from typing import Required
+except ImportError:
+    from typing_extensions import Required  # type: ignore
+
+
+# Python 3.11+ compatibility for tomllib
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib  # type: ignore
 
 
 __all__ = [
-    "PRIVATE_ALLOWED_IMPORTER_PREFIXES",
-    "PRIVATE_MODULE_PREFIXES",
-    "PUBLIC_RUNTIME_ROOTS",
-    "SOFT_DEPRECATED_MODULES",
-    "SOFT_DEPRECATED_SHORT_IMPORTS",
-    "importer_can_access_private",
-    "is_private_module",
-    "is_soft_deprecated_module",
-    "iter_soft_deprecated_module_paths",
+    "UTC",
+    "StrEnum",
+    "NotRequired",
+    "Required",
+    "tomllib",
 ]
