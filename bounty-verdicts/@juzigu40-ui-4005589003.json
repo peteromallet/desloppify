@@ -1,0 +1,12 @@
+{
+  "submission_id": "S154",
+  "comment_id": 4005589003,
+  "author": "juzigu40-ui",
+  "title": "Tri-state full-sweep logic allows evidence-free holistic attestation to suppress coverage debt",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 5,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "All 5 code references verified. import_holistic_issues defaults full_sweep_included to None; update_holistic_review_cache only stores booleans so None is omitted; detect_review_coverage uses 'is not False' treating None as full sweep; resolve_holistic_coverage_issues auto-resolves markers; auto_resolved absent from FAILURE_STATUSES_BY_MODE. Real scoring integrity chain but requires empty holistic import without explicit review_scope. Partial overlap with S118 (same downstream None-as-full-sweep effect through different entry path)."
+}
