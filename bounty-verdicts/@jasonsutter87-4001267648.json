@@ -1,0 +1,12 @@
+{
+  "submission_id": "S024",
+  "comment_id": 4001267648,
+  "author": "jasonsutter87",
+  "title": "Selective Lock Discipline in Parallel Batch Runner — Shared Mutable State Unprotected",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 4,
+  "core_impact": 1,
+  "overall": 2,
+  "notes": "Core claim is incorrect: failures set is only mutated from the main thread (via _complete_parallel_future and _queue_parallel_tasks), not from worker threads. Worker threads only run _run_parallel_task which never touches failures. The started_at unlocked read in _heartbeat and contract_cache access are technically present but benign under CPython GIL. The submission fundamentally misidentifies the threading model."
+}
