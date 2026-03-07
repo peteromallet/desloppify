@@ -1,0 +1,16 @@
+{
+  "submission_id": "S235",
+  "comment_id": 4011064025,
+  "author": "demithras",
+  "title": "Systematic violation of private module boundaries -- 87 imports across 55 files bypass engine encapsulation",
+  "verdict": "NO",
+  "significance": 5,
+  "originality": 0,
+  "core_impact": 4,
+  "overall": 0,
+  "is_poor_engineering": true,
+  "is_significant": true,
+  "duplicate_of": "S034",
+  "notes": "Duplicate of S034 (@xinlingfeiwu). Same core finding: app/ bypasses engine._* private modules. S235 expands scope to include intelligence/ (30 additional imports, 87 total vs S034's 57). Counts accurate (87 imports, 55 files). Two factual errors: claims state.py facade exists (only plan.py does), says 24 StateModel imports (actually 27). S034 submitted earlier with correct facade analysis.",
+  "verified_at": "2026-03-07"
+}
