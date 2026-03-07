@@ -1,0 +1,12 @@
+{
+  "submission_id": "S217",
+  "comment_id": 4009803342,
+  "author": "admccc",
+  "title": "registry.py — God Object Coupling Unrelated Policy",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 5,
+  "core_impact": 3,
+  "overall": 4,
+  "notes": "The registry IS a wide coupling point — DetectorMeta has 12 fields spanning display, scoring, planning, queue thresholds, and review staleness, imported by 20+ production files across all layers. However, calling it a 'god object' overstates the issue: registry.py is a data-only metadata table (frozen dataclass + dict), not a behavior-rich class. It has ~6 small getter functions. This is a deliberate registry pattern where centralization prevents config drift. The alternative (scattering config across modules) would create worse maintenance problems. Real but well-understood architectural trade-off."
+}
