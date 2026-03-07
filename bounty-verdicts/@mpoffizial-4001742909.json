@@ -1,0 +1,12 @@
+{
+  "submission_id": "S055",
+  "comment_id": 4001742909,
+  "author": "mpoffizial",
+  "title": "object-typed callable dependencies defeat static analysis",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 5,
+  "core_impact": 3,
+  "overall": 4,
+  "notes": "Core claim confirmed: 7 fields across CodexBatchRunnerDeps, FollowupScanDeps, and _AttemptContext use `object` for callables, with 17 production call sites in 2 files. This genuinely defeats mypy/pyright checking. However, scope overstated (1 type file, not 6+ runner files; 17 call sites, not 20+). Impact is moderate — contained to batch runner internals, not a codebase-wide pattern. Fix is trivial (Callable/Protocol). Real but low-severity typing hygiene issue."
+}
