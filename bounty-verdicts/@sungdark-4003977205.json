@@ -1,0 +1,12 @@
+{
+  "submission_id": "S121",
+  "comment_id": 4003977205,
+  "author": "sungdark",
+  "title": "Python Version Compatibility, Build Backend, Excessive Type Annotations",
+  "verdict": "NO",
+  "significance": 1,
+  "originality": 2,
+  "core_impact": 1,
+  "overall": 1,
+  "notes": "All three claims are invalid. (1) NotRequired requires Python 3.11, but the project explicitly declares requires-python>=3.11 — using stdlib typing features for the targeted version is correct engineering. (2) Claim that setuptools doesn't support editable installs is factually wrong — setuptools>=68 fully supports pip install -e. (3) 'Excessive type annotations' is a subjective style complaint, not a structural engineering issue. TypedDict with NotRequired is standard Python typing for the project's target version."
+}
