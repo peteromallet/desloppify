@@ -1,0 +1,12 @@
+{
+  "submission_id": "S034",
+  "comment_id": 4001624378,
+  "author": "xinlingfeiwu",
+  "title": "app/ layer systematically bypasses engine facades — 57 private imports",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "All factual claims verified: exactly 57 private imports from app/ into engine._* modules, with per-package breakdown (_work_queue:24, _scoring:15, _state:11, _plan:7) matching perfectly. Only engine/plan.py exists as a facade; no facades for _work_queue, _scoring, or _state. Minor inaccuracy: claims 42 legitimate engine.plan imports, actual is 33. The sentence 'The same file imports engine.plan 42 times' conflates file-level and codebase-level counts. Real architectural observation but common in Python internal tools. S235 by @demithras covers similar ground (broader scope including intelligence/) but was submitted a day later — S034 has priority."
+}
