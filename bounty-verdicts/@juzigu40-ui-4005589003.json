@@ -1,0 +1,19 @@
+{
+  "submission_id": "S159",
+  "author": "juzigu40-ui",
+  "comment_id": 4005589003,
+  "comment_url": "https://github.com/peteromallet/desloppify/issues/204#issuecomment-4005589003",
+  "title": "Tri-state full-sweep logic allows evidence-free holistic attestation (duplicate of S154)",
+  "verdict": "NO",
+  "duplicate_of": "S154",
+  "scores": {
+    "significance": 0,
+    "originality": 0,
+    "core_impact": 0,
+    "overall": 0
+  },
+  "summary": "Same comment (ID 4005589003) was already verified as S154 and received YES_WITH_CAVEATS (5/5/4/5). This entry is a duplicate reference to the same submission.",
+  "verified_at": "2026-03-07",
+  "verified_by": "lota-1",
+  "snapshot_commit": "6eb2065"
+}
