@@ -1,0 +1,12 @@
+{
+  "submission_id": "S118",
+  "comment_id": 4003258017,
+  "author": "kmccleary3301",
+  "title": "do_import_run omits review_scope — auto-resolve treats partial replay as full sweep",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 8,
+  "core_impact": 6,
+  "overall": 7,
+  "notes": "Real bug: do_import_run (orchestrator.py:320) omits review_scope/reviewed_files/assessment_coverage that _merge_and_write_results (execution.py:253) always sets. Missing full_sweep_included defaults to None, causing scoped_reimport=False at holistic_issue_flow.py:195. Auto-resolve then treats partial replay as full sweep, silently closing unrelated holistic issues. Original finding with clear repro path. Minor inaccuracy: _merge_and_write_results is in execution.py, not orchestrator.py."
+}
