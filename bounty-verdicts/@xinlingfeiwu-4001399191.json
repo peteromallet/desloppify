@@ -1,0 +1,12 @@
+{
+  "submission_id": "S029",
+  "comment_id": 4001399191,
+  "author": "xinlingfeiwu",
+  "title": "compute_score_impact Ignores Confidence Weights — Score Forecasts Systematically Wrong",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 8,
+  "core_impact": 6,
+  "overall": 7,
+  "notes": "Real bug confirmed. compute_score_impact() uses flat 1.0 weight per issue (impact.py:41), while the scoring pipeline uses CONFIDENCE_WEIGHTS (HIGH=1.0, MEDIUM=0.7, LOW=0.3) via detection.py:_issue_weight(). This causes score forecasts to overestimate improvement for MEDIUM issues by 43% and LOW issues by 233%. The fix is straightforward: use avg_weight = old_weighted / max(1, det_data['failing']). Test suite only exercises HIGH-confidence path (weighted_failures=40.0 for 40 issues)."
+}
