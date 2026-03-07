@@ -1,0 +1,12 @@
+{
+  "submission_id": "S225",
+  "comment_id": 4010231082,
+  "author": "g5n-dev",
+  "title": "Arbitrary Code Execution via Malicious User Plugins",
+  "verdict": "NO",
+  "significance": 6,
+  "originality": 1,
+  "core_impact": 5,
+  "overall": 2,
+  "notes": "The vulnerability in discovery.py:95-106 (auto-loading user plugins without consent/sandboxing) is real and well-described. However, this is a duplicate of S120 (@optimus-fulcria, 2026-03-05T10:10:19Z) which reported the exact same issue — same file, same code lines, same vulnerability class — nearly 22 hours earlier. S126 (@TSECP) and S146 (@tianshanclaw) also pre-date this submission with the same finding."
+}
