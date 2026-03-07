@@ -1,0 +1,12 @@
+{
+  "submission_id": "S116",
+  "comment_id": 4002413432,
+  "author": "ShawTim",
+  "title": "Floor blending in scoring.py allows gaming via historical cleanliness",
+  "verdict": "NO",
+  "significance": 1,
+  "originality": 3,
+  "core_impact": 0,
+  "overall": 1,
+  "notes": "Submission misidentifies the floor as historical data. The floor is actually min(score_raw_by_dim) — the minimum raw score from current review batches. The 0.3 floor blend weight pulls scores DOWN (floor <= weighted_mean by definition), making it an anti-gaming mechanism, not a gaming vector. The claim is factually incorrect."
+}
