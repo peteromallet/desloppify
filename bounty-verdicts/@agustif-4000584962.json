@@ -1,0 +1,29 @@
+{
+  "submission_id": "S007",
+  "comment_id": 4000584962,
+  "author": "agustif",
+  "title": "Review packet construction drift",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 8,
+  "core_impact": 6,
+  "overall": 7,
+  "claims": [
+    {
+      "claim": "Three paths bypass canonical packet builder",
+      "verified": true,
+      "evidence": "prepare.py:48, orchestrator.py:142, external.py:150 all call review_mod.prepare_holistic_review() directly instead of packet/build.py:build_holistic_packet()"
+    },
+    {
+      "claim": "max_files_per_batch missing in external.py",
+      "verified": true,
+      "evidence": "prepare.py:55 and orchestrator.py:149 pass max_files_per_batch=coerce_review_batch_file_limit(config), but external.py:154-160 omits it"
+    },
+    {
+      "claim": "config redaction missing in external.py",
+      "verified": true,
+      "evidence": "prepare.py:70 and orchestrator.py:155 set packet['config'] = redacted_review_config(config), but external.py never does"
+    }
+  ],
+  "snapshot_commit": "6eb2065"
+}
