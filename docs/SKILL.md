@@ -1,5 +1,3 @@
-<!-- desloppify-begin -->
-<!-- desloppify-skill-version: 4 -->
 ---
 name: desloppify
 description: >
@@ -10,6 +8,9 @@ description: >
   create a cleanup plan. Supports 28 languages.
 allowed-tools: Bash(desloppify *)
 ---
+
+<!-- desloppify-begin -->
+<!-- desloppify-skill-version: 5 -->
 
 # Desloppify
 

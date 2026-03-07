@@ -842,7 +842,17 @@ class TestUpdateInstalledSkill:
     @patch("desloppify.app.commands.update_skill.colorize", side_effect=lambda t, _c: t)
     @patch("desloppify.app.commands.update_skill._download")
     def test_successful_dedicated_install(self, mock_download, _mock_colorize, capsys, tmp_path):
-        skill_content = "# Skill\n<!-- desloppify-skill-version: 1 -->\nContent"
+        skill_content = (
+            "---\n"
+            "name: desloppify\n"
+            "description: test\n"
+            "allowed-tools: Bash(desloppify *)\n"
+            "---\n\n"
+            "<!-- desloppify-begin -->\n"
+            "<!-- desloppify-skill-version: 1 -->\n"
+            "# Skill\n"
+            "Content\n"
+        )
         mock_download.side_effect = lambda f: {
             "SKILL.md": skill_content,
             "CLAUDE.md": "overlay",
@@ -856,6 +866,7 @@ class TestUpdateInstalledSkill:
 
         assert result is True
         written = (tmp_path / ".claude" / "skills" / "desloppify" / "SKILL.md").read_text()
+        assert written.startswith("---\n")
         assert "desloppify-skill-version" in written
         out = capsys.readouterr().out
         assert "Updated" in out
@@ -864,7 +875,17 @@ class TestUpdateInstalledSkill:
     @patch("desloppify.app.commands.update_skill._download")
     def test_successful_shared_install(self, mock_download, _mock_colorize, capsys, tmp_path):
         """Non-dedicated install (e.g. windsurf) replaces section in existing file."""
-        skill_content = "# Skill\n<!-- desloppify-skill-version: 1 -->\nContent"
+        skill_content = (
+            "---\n"
+            "name: desloppify\n"
+            "description: test\n"
+            "allowed-tools: Bash(desloppify *)\n"
+            "---\n\n"
+            "<!-- desloppify-begin -->\n"
+            "<!-- desloppify-skill-version: 1 -->\n"
+            "# Skill\n"
+            "Content\n"
+        )
         mock_download.side_effect = lambda f: {
             "SKILL.md": skill_content,
             "WINDSURF.md": "windsurf overlay",
