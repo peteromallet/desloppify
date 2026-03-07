@@ -1,0 +1,12 @@
+{
+  "submission_id": "S085",
+  "comment_id": 4002020921,
+  "author": "sungdark",
+  "title": "Generic architectural analysis in Chinese — over-engineering claims",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 1,
+  "core_impact": 1,
+  "overall": 1,
+  "notes": "Generic architectural critique written entirely in Chinese (LLM markers). No specific line references or commit hash. Three claims: (1) language framework over-engineered, (2) state management coupling, (3) framework/app boundary unclear. All are vague directional opinions without concrete evidence. Same author as S071 (also rejected NO). Overlaps with earlier verified submissions (S005 for dimension coupling, S034 for boundary violations). state.py re-export count roughly correct but is a deliberate facade pattern, not a flaw."
+}
