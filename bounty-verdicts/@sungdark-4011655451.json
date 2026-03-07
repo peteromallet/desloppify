@@ -1,0 +1,16 @@
+{
+  "submission_id": "S244",
+  "comment_id": 4011655451,
+  "author": "sungdark",
+  "snapshot_commit": "6eb2065",
+  "verdict": "NO",
+  "reason": "Duplicate of S028 — global mutable _RUNTIME singleton in registry.py was already identified and credited via the stale JUDGMENT_DETECTORS binding bug. Config.py claim is factually incorrect (no global mutable state). S181 made the same observation and was rejected as duplicate.",
+  "scores": {
+    "significance": 4,
+    "originality": 2,
+    "core_impact": 3,
+    "overall": 3
+  },
+  "duplicates": ["S028", "S181"],
+  "verified_at": "2026-03-07"
+}
