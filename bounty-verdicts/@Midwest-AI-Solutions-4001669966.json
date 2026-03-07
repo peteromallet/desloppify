@@ -1,0 +1,12 @@
+{
+  "submission_id": "S036",
+  "comment_id": 4001669966,
+  "author": "Midwest-AI-Solutions",
+  "title": "dimension_coverage tautological metric — len(x)/max(len(x),1) always 1.0 or 0.0",
+  "verdict": "YES",
+  "significance": 6,
+  "originality": 7,
+  "core_impact": 5,
+  "overall": 6,
+  "notes": "Confirmed: core.py:373 computes len(assessments)/max(len(assessments),1) which is mathematically always 1.0 (non-empty) or 0.0 (empty). The metric is intended to measure partial dimension coverage but is structurally incapable of it. Propagates through 4 downstream consumers (accumulate, merge, display, import). Test at review_commands_cases.py:1035 asserts 1.0 — passes trivially. S207 by @Boehner is a later duplicate."
+}
