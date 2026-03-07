@@ -1,0 +1,12 @@
+{
+  "submission_id": "S191",
+  "comment_id": 4007793227,
+  "author": "fl-sean03",
+  "title": "compute_structure_context AttributeError on missing zone_map key",
+  "verdict": "NO",
+  "significance": 0,
+  "originality": 3,
+  "core_impact": 0,
+  "overall": 1,
+  "notes": "Bug does not exist. FileZoneMap.get() (zones.py:147) returns Zone.PRODUCTION as a default when the key is missing — it never returns None. The submitter assumed dict.get() semantics (returns None on miss), but FileZoneMap.get() wraps self._map.get(path, Zone.PRODUCTION). Therefore .value always succeeds and no AttributeError can occur."
+}
