@@ -1,0 +1,38 @@
+{
+  "submission_id": "S003",
+  "comment_id": 4000463750,
+  "author": "juzigu40-ui",
+  "snapshot": "6eb2065fd4b991b88988a0905f6da29ff4216bd8",
+  "title": "Config bootstrap non-transactional with destructive read-path side effects",
+  "verdict": "YES_WITH_CAVEATS",
+  "scores": {
+    "significance": 5,
+    "originality": 6,
+    "core_impact": 5,
+    "overall": 5
+  },
+  "claims": [
+    {
+      "claim": "Read path triggers migration when config is missing (load_config -> _load_config_payload -> _migrate_from_state_files)",
+      "verified": true,
+      "evidence": "config.py:~L144 — _load_config_payload returns _migrate_from_state_files(path) when config.json doesn't exist"
+    },
+    {
+      "claim": "Unstabilized migration source order (glob) + first-writer scalar precedence",
+      "verified": true,
+      "evidence": "config.py:~L396-401 — glob('state-*.json') gives OS-dependent order; _merge_config_value uses first-writer-wins for scalars (key not in config)"
+    },
+    {
+      "claim": "Source files are rewritten (del state['config']) before destination durability",
+      "verified": true,
+      "evidence": "config.py:~L357-381 — _strip_config_from_state_file rewrites each state file inside _migrate_single_state_file, before _migrate_from_state_files calls save_config"
+    },
+    {
+      "claim": "Destination write failure is best-effort logged without rollback",
+      "verified": true,
+      "evidence": "config.py:~L403-409 — save_config in try/except with log_best_effort_failure; state files already stripped at this point"
+    }
+  ],
+  "duplicate_of": null,
+  "notes": "All four claims verified. This is a genuine non-transactional migration with CQS violation. Caveats: one-time migration path, requires config.json absence + write failure to lose data."
+}
