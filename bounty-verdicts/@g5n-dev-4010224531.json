@@ -1,0 +1,12 @@
+{
+  "submission_id": "S224",
+  "comment_id": 4010224531,
+  "author": "g5n-dev",
+  "title": "XXE Vulnerability via Fallback Parser — Duplicate of S153",
+  "verdict": "NO",
+  "significance": 0,
+  "originality": 0,
+  "core_impact": 0,
+  "overall": 0,
+  "notes": "Duplicate of S153 (@codenan42, 2026-03-05T14:02:14Z) which was verified YES_WITH_CAVEATS. S224 was submitted 2026-03-06T08:09:36Z — over 18 hours later — reporting the identical issue: defusedxml fallback to stdlib xml.etree.ElementTree in deps_support.py:10-13. No credit for duplicates."
+}
