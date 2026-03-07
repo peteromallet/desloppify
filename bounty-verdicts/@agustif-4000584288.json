@@ -1,0 +1,12 @@
+{
+  "s_number": "S006",
+  "author": "agustif",
+  "comment_id": 4000584288,
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 5,
+  "overall": 5,
+  "summary": "Factually accurate description of the read-time migration strategy in plan persistence. The version downgrade (v8+ forced to v7) and type coercion to empty containers are real silent data-loss paths. However, severity is moderated by the fact that plans are regenerable, backups are created before saves, and warnings are emitted to stderr. The claim that 'normal flows then save' is overstated — save_plan only runs in specific code paths, not on every load.",
+  "duplicate_of": null
+}
