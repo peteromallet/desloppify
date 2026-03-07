@@ -1,0 +1,12 @@
+{
+  "submission_id": "S171",
+  "comment_id": 4006147250,
+  "author": "SuCriss",
+  "title": "Shotgun list of surface-level observations (long tests, missing types, hardcoded URLs, deps, test coupling)",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 2,
+  "core_impact": 1,
+  "overall": 2,
+  "notes": "Five claims examined: (1) Long test files — real but is a style preference, not poor engineering; 12 files >1000 lines confirmed. (2) Missing type hints — style preference, not engineering; claimed numbers appear inaccurate (wontfix.py functions mostly have type annotations). (3) Hardcoded URLs — only update_skill.py has a real hardcoded URL; jscpd_adapter.py 'URL' is a docstring comment. (4) Empty dependencies — design choice for optional features, not a bug. (5) Test/production coupling — factually wrong; files like test_coverage/detector.py are production code that detects test coverage gaps, not test files in production directories. Submission is a generic LLM-style statistical dump with no deep analysis of actual engineering problems."
+}
