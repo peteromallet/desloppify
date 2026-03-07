@@ -1,0 +1,12 @@
+{
+  "submission_id": "S120",
+  "comment_id": 4003923979,
+  "author": "optimus-fulcria",
+  "title": "Scan-target-controlled code execution via unsandboxed plugin auto-loading",
+  "verdict": "YES",
+  "significance": 8,
+  "originality": 7,
+  "core_impact": 7,
+  "overall": 7,
+  "notes": "Confirmed: discovery.py loads .desloppify/plugins/*.py from the scan target via exec_module() with no consent gate, sandboxing, or warning. get_project_root() resolves to the scanned directory, so scanning an untrusted repo executes attacker-controlled code. This is a genuine design flaw — a code analysis tool should not execute code from its analysis target. S120 has timestamp priority over duplicates S126, S146, S225."
+}
