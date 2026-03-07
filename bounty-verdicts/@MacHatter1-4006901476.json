@@ -1,0 +1,12 @@
+{
+  "submission_id": "S185",
+  "comment_id": 4006901476,
+  "author": "MacHatter1",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 7,
+  "core_impact": 7,
+  "overall": 7,
+  "summary": "Cluster membership is persisted in two independent stores (overrides[id].cluster and clusters[name].issue_ids) that different readers trust. validate_plan() never checks consistency, so divergence produces silent behavioral contradictions where queue badges and cluster focus disagree. The repo already ships _repair_ghost_cluster_refs() to patch one class of drift, confirming this is a known structural weakness.",
+  "snapshot_commit": "6eb2065"
+}
