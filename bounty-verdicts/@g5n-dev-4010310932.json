@@ -1,0 +1,12 @@
+{
+  "submission_id": "S227",
+  "comment_id": 4010310932,
+  "author": "g5n-dev",
+  "title": "Command Injection via Shell Metacharacter Fallback in tool_runner.py",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 3,
+  "core_impact": 1,
+  "overall": 2,
+  "notes": "The shell metacharacter fallback in resolve_command_argv() is intentional design, not a vulnerability. The function exists to run user-configured external tools (like Roslyn) that may require shell features (pipes, env expansion). The claimed attack vector (attacker controls DESLOPPIFY_CSHARP_ROSLYN_CMD env var) presupposes the attacker already has code execution in the user's environment — setting env vars IS code execution. An attacker with env var control can trivially use PATH, LD_PRELOAD, etc. This is a local CLI tool, not a server; the threat model is invalid. S059 made a vaguer version of the same claim and was tagged REVIEW_SPAM."
+}
