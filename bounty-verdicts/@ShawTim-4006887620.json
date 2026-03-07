@@ -1,0 +1,12 @@
+{
+  "submission_id": "S184",
+  "comment_id": 4006887620,
+  "author": "ShawTim",
+  "title": "Floor blending gaming exploit via file merging",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 3,
+  "core_impact": 0,
+  "overall": 2,
+  "notes": "Submission correctly identifies _FLOOR_BLEND_WEIGHT=0.3 and floor=min(score_raw_by_dim) at scoring.py:163, and the math proof is valid in theory. However, the exploit is not practically viable: prepare_batches.py creates exactly ONE batch per dimension (confirmed by its docstring), so score_raw_by_dim[key] always has exactly one element, making floor == weighted_mean always. The floor blend becomes 0.7*x + 0.3*x = x (identity). The file-merging attack is irrelevant because batches are per-dimension, not per-file. Same author as S116, same mechanism, different (but still non-exploitable) attack vector."
+}
