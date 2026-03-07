@@ -1,0 +1,12 @@
+{
+  "submission_id": "S033",
+  "comment_id": 4001601145,
+  "author": "xliry",
+  "title": "false_positive status creates scan-proof score inflation path",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 7,
+  "core_impact": 7,
+  "overall": 7,
+  "notes": "All three claims confirmed: (1) upsert_issues only reopens fixed/auto_resolved, so false_positive findings silently persist when re-detected; (2) FAILURE_STATUSES_BY_MODE strict={open,wontfix} excludes false_positive, and target/next systems use strict_score; (3) verified_strict includes false_positive but is display-only, never used for decisions. Combined, this creates a permanent, unvalidated score inflation vector. File paths in submission use wrong prefix (engine/_state/merge_findings.py vs actual desloppify/engine/_state/merge_issues.py) and line numbers are off, but all conceptual references map correctly to real code."
+}
