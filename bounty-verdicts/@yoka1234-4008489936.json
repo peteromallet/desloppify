@@ -1,0 +1,12 @@
+{
+  "submission_id": "S197",
+  "comment_id": 4008489936,
+  "author": "yoka1234",
+  "title": "_apply_decay dictionary mutation during iteration",
+  "verdict": "NO",
+  "significance": 0,
+  "originality": 1,
+  "core_impact": 0,
+  "overall": 0,
+  "notes": "Fabricated code. _apply_decay does not exist in desloppify/engine/_scoring/subjective/core.py — it lives in intelligence/narrative/reminders_rules_followup.py and operates on reminder lists, not score dicts. The code snippet shown (self._scores iteration + deletion) does not exist anywhere in the codebase. No self._scores attribute found in any file."
+}
