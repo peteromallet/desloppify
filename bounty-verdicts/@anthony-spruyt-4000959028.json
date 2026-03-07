@@ -1,0 +1,12 @@
+{
+  "submission_id": "S020",
+  "comment_id": 4000959028,
+  "author": "anthony-spruyt",
+  "title": "Desloppify penalizes SOLID principles, encourages coupling over composition",
+  "verdict": "NO",
+  "significance": 3,
+  "originality": 4,
+  "core_impact": 2,
+  "overall": 3,
+  "notes": "Vague behavioral feedback with no specific code evidence. The abstraction_fitness dimension and single_use detector can flag some SOLID patterns (single-implementation interfaces, delegation chains), but skip/exemption lists explicitly account for DI/testability/boundary rationale. The coupling detector penalizes coupling, not encourages it. Claim about inheritance is unsubstantiated. References external repo for validation but provides no concrete desloppify output or code paths."
+}
