@@ -1,0 +1,12 @@
+{
+  "submission_id": "S046",
+  "comment_id": 4001700329,
+  "author": "xinlingfeiwu",
+  "title": "Work Queue Priority Uses Lenient Score Headroom Instead of Strict Score Target",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 7,
+  "core_impact": 7,
+  "overall": 7,
+  "notes": "Verified bug: enrich_with_impact() at ranking.py:80 calls compute_health_breakdown(dimension_scores) without score_key='strict', causing work queue prioritization to use lenient headroom while the UI target is strict_score. All line references (ranking.py:80, health.py:53, state_integration.py:142,202-204, next/cmd.py:298) are exactly correct. The fix (pass score_key='strict') is simple and correct. This is a real semantic mismatch between the optimization objective and the displayed target."
+}
