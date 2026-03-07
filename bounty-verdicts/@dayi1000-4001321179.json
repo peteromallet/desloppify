@@ -1,0 +1,12 @@
+{
+  "submission_id": "S028",
+  "comment_id": 4001321179,
+  "author": "dayi1000",
+  "title": "Stale Import Binding Bug in JUDGMENT_DETECTORS + do_run_batches God Function",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "Two issues. Issue 1 (stale import binding): technically correct — concerns.py line 20 does `from ... import JUDGMENT_DETECTORS` which captures frozenset at import time, becoming stale when register_detector() rebinds it. Real bug pattern but low practical impact since generic plugin registration happens during lang setup before concern generation runs. Issue 2 (do_run_batches god function): valid observation but duplicate of S023 (@jasonsutter87, submitted 23 min earlier) which covers the same function with more depth (22 params, 355 lines, 11 responsibilities). Parameter count claimed as 23 is actually 22."
+}
