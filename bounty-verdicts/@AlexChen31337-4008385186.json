@@ -1,0 +1,12 @@
+{
+  "submission_id": "S195",
+  "comment_id": 4008385186,
+  "author": "AlexChen31337",
+  "title": "STATE_DIR, STATE_FILE, PLAN_FILE frozen at import time, breaking RuntimeContext.project_root override",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 7,
+  "core_impact": 6,
+  "overall": 7,
+  "notes": "Module-level constants STATE_DIR/STATE_FILE (schema.py:312-313), PLAN_FILE (persistence.py:24), and PROJECT_ROOT (paths.py:21) are evaluated once at import time, permanently freezing to the initial cwd. This silently defeats the RuntimeContext.project_root / runtime_scope() mechanism for all default-path state and plan operations. The config layer gets this right (_default_config_file is a function), proving the codebase intends dynamic resolution. Tests must monkeypatch constants directly (test_queue_order_guard.py:86,180) as a workaround. Real bug with testability and correctness consequences."
+}
