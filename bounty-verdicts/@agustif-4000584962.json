@@ -1,0 +1,30 @@
+{
+  "submission_id": "S007",
+  "comment_id": 4000584962,
+  "author": "agustif",
+  "snapshot_commit": "6eb2065fd4b991b88988a0905f6da29ff4216bd8",
+  "claim": "Review packet construction is duplicated across three independent pipelines with visible schema/policy drift, bypassing a canonical packet builder",
+  "verdict": "YES",
+  "reason": "All four claims are technically accurate at the cited paths against snapshot 6eb2065. Three independent packet construction flows (prepare.py, batch/orchestrator.py, external.py) duplicate the same logic, bypassing the canonical builder in packet/build.py. Two concrete drift instances are confirmed: max_files_per_batch and config redaction are both missing from external.py.",
+  "scores": {
+    "significance": 7,
+    "originality": 8,
+    "core_impact": 6,
+    "overall": 7
+  },
+  "references": [
+    "desloppify/app/commands/review/prepare.py:55 (max_files_per_batch applied via coerce_review_batch_file_limit)",
+    "desloppify/app/commands/review/prepare.py:70 (config redaction via redacted_review_config)",
+    "desloppify/app/commands/review/batch/orchestrator.py:149 (max_files_per_batch applied)",
+    "desloppify/app/commands/review/batch/orchestrator.py:155 (config redaction applied)",
+    "desloppify/app/commands/review/external.py:130-160 (_prepare_packet_snapshot — missing max_files_per_batch AND config redaction)",
+    "desloppify/app/commands/review/packet/build.py:53-80 (canonical builder that is bypassed by all three flows)"
+  ],
+  "duplicates": [],
+  "caveats": [
+    "The canonical builder in packet/build.py does include max_files_per_batch, confirming the submitter's claim that a correct central path exists but is bypassed",
+    "Line numbers in the submission are approximate but substantively accurate — the drift is real and confirmed"
+  ],
+  "verified_at": "2026-03-07T00:00:00Z",
+  "verified_by": "lota-1"
+}
