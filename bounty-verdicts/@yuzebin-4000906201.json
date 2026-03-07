@@ -1,0 +1,32 @@
+{
+  "submission_id": "S016",
+  "comment_id": 4000906201,
+  "author": "yuzebin",
+  "snapshot_commit": "6eb2065",
+  "title": "Hard Layer Violation in Core Work Queue",
+  "location": "desloppify/engine/_work_queue/synthetic.py:99",
+  "verdict": "YES_WITH_CAVEATS",
+  "is_poor_engineering": true,
+  "is_significant": true,
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "caveats": [
+    "Imported symbols are pure data constants with zero dependencies — not behavioral coupling",
+    "Trivial fix: relocate two constant definitions (~10 lines)",
+    "Lazy import means no circular import error at module load time",
+    "Not a fundamental design flaw — it's a misplaced constant definition"
+  ],
+  "duplicate_of": null,
+  "verified_claims": [
+    "engine/_work_queue/synthetic.py imports from desloppify.app.commands.plan.triage_playbook",
+    "Violates documented layer import direction rule (engine is Layer 1, app is Layer 4)",
+    "Violates documented dynamic import allowlist (only languages/__init__.py and engine/hook_registry.py)",
+    "No try/except fallback unlike the similar violation in dimension_rows.py"
+  ],
+  "refuted_claims": [],
+  "overstated_claims": [
+    "16+ lazy imports in engine layer — not verified in detail, secondary to main finding"
+  ]
+}
