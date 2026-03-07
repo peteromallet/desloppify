@@ -1,0 +1,13 @@
+{
+  "submission_id": "S164",
+  "comment_id": 4006053819,
+  "author": "JohnnieLZ",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 2,
+  "core_impact": 1,
+  "overall": 1,
+  "summary": "Primary claim factually wrong: cmd_plan_resolve is ~100 lines (not 242) with max 5 nesting levels (not 31), at lines 486-585 (not 437-680). Secondary claim overstated: 8 file collector functions share a common signature but each has unique data-extraction logic — not 'nearly identical' and not reducible to 30 lines.",
+  "verified_at_commit": "6eb2065",
+  "verified_file": "desloppify/app/commands/plan/override_handlers.py"
+}
