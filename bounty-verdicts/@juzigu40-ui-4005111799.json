@@ -1,0 +1,12 @@
+{
+  "submission_id": "S147",
+  "comment_id": 4005111799,
+  "author": "juzigu40-ui",
+  "title": "Suppression integrity report contradicts actual scoring behavior",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 5,
+  "core_impact": 3,
+  "overall": 4,
+  "notes": "Real contradiction: integrity_report.py:214 prints 'Suppressed issues still count against strict and verified scores' but _count_issues (state_integration.py:53) and _iter_scoring_candidates (detection.py:44) both skip suppressed issues. Tests confirm exclusion. Users can suppress issues via trivial attestation and improve strict scores while the tool reports they cannot. Attestation analysis overlaps S089. Novel contribution is the integrity report message contradiction — a misleading UI string, not a scoring logic bug."
+}
