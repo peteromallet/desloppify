@@ -315,7 +315,7 @@ def _run_codex_pipeline(
         # Parallel observe path
         used_parallel = False
         if stage == "observe":
-            parallel_ok, merged_report = _run_observe_parallel(
+            parallel_ok, merged_report = _run_observe(
                 si=si,
                 repo_root=repo_root,
                 prompts_dir=prompts_dir,
