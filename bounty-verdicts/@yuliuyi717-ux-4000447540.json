@@ -1,0 +1,28 @@
+{
+  "submission_id": "S002",
+  "comment_id": 4000447540,
+  "author": "yuliuyi717-ux",
+  "snapshot_commit": "6eb2065fd4b991b88988a0905f6da29ff4216bd8",
+  "claim": "State-model coupling: the same mutable state document is used as evidence truth, operator-decision log, and score cache",
+  "verdict": "YES_WITH_CAVEATS",
+  "scores": {
+    "significance": 4,
+    "originality": 3,
+    "core_impact": 3,
+    "overall": 3
+  },
+  "references": [
+    "desloppify/engine/_state/schema.py:322-339 (StateModel co-locates issues, stats, scores, assessments)",
+    "desloppify/engine/_state/merge.py:123-199 (merge_scan mutates issues + recomputes scores)",
+    "desloppify/engine/_state/resolution.py:99-173 (resolve_issues writes decisions + recomputes scores)"
+  ],
+  "caveats": [
+    "Observation is accurate: StateModel does co-locate raw issues, operator decisions, and derived scores in one mutable dict",
+    "Significance is overstated: this is a single-user CLI tool, not a distributed system — concurrency and ordering risks are theoretical",
+    "The 'non-commutative behavior' claim is misleading: scan order is deterministic in practice since the tool runs sequentially",
+    "Provenance ambiguity is partially mitigated by attestation logs and scan history already present in the state model",
+    "The proposed fix (event sourcing with projections) would be massive over-engineering for a CLI code-quality tool"
+  ],
+  "verified_at": "2026-03-07T00:00:00Z",
+  "verified_by": "lota-1"
+}
