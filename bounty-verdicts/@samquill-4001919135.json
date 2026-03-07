@@ -1,0 +1,12 @@
+{
+  "submission_id": "S078",
+  "comment_id": 4001919135,
+  "author": "samquill",
+  "title": "Duplicate, Diverged CONFIDENCE_WEIGHTS — Batch Scoring Uses Different Values Than Canonical Definition",
+  "verdict": "YES",
+  "significance": 6,
+  "originality": 7,
+  "core_impact": 6,
+  "overall": 6,
+  "notes": "Both definitions confirmed at snapshot 6eb2065. Canonical (scoring_constants.py): HIGH=1.0, MEDIUM=0.7, LOW=0.3 (dampening). Batch (batch/scoring.py): high=1.2, medium=1.0, low=0.75 (boosting). Different values AND opposite semantics. batch/scoring.py never imports from canonical source while 5 other files do. Feeds DimensionMergeScorer.issue_severity() which drives real holistic review scores. Not a style issue — this is a genuine consistency gap."
+}
