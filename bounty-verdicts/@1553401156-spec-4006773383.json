@@ -1,0 +1,17 @@
+{
+  "submission_id": "S181",
+  "comment_id": 4006773383,
+  "author": "1553401156-spec",
+  "title": "Global State Anti-Pattern in Registry",
+  "file": "desloppify/base/registry.py",
+  "verdict": "NO",
+  "duplicate_of": "S028",
+  "significance": 3,
+  "originality": 1,
+  "core_impact": 2,
+  "overall": 2,
+  "line_numbers_accurate": false,
+  "claimed_lines": "140-144, 159, 170-171",
+  "actual_lines": "397-410, 420-427, 434-440",
+  "notes": "Duplicate of S028 (@dayi1000). Same JUDGMENT_DETECTORS stale import binding issue, submitted ~17h later. All line numbers wrong (point to DETECTORS dict entries, not the runtime/global code). Additional claims (thread-unsafe, test isolation impossible) overstated for a CLI tool."
+}
