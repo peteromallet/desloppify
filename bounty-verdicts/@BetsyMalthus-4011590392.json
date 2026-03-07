@@ -1,0 +1,12 @@
+{
+  "submission_id": "S241",
+  "comment_id": 4011590392,
+  "author": "BetsyMalthus",
+  "verdict": "NO",
+  "significance": 1,
+  "originality": 0,
+  "core_impact": 1,
+  "overall": 1,
+  "duplicate_of": "S240",
+  "notes": "Self-duplicate of S240 by same author. Same claims (code duplication in helpers/, languages/_framework/, base/output/ + lack of test coverage), same directory references, submitted 12 minutes later. S240 already verified as NO. No file paths, line numbers, or specific evidence in either submission."
+}
