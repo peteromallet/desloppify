@@ -1,0 +1,52 @@
+{
+  "submitter": "agustif",
+  "comment_id": 4000572452,
+  "verdict": "YES_WITH_CAVEATS",
+  "verdict_date": "2026-03-07",
+  "scoreboard_id": "S005",
+  "claim_restated": "The subjective-dimension metadata pipeline has a circular, multi-home source of truth that violates the documented base/ architecture contract: (1) base/subjective_dimensions.py imports upward into intelligence/ and languages/ (lines 10-17), violating the README.md:95 'zero upward imports' rule, (2) metadata_legacy.py imports DISPLAY_NAMES from engine/_scoring/subjective/core (line 5), creating intelligence→engine dependency, (3) scoring core reaches back into intelligence/review/dimensions/metadata via runtime cycle-break imports (core.py:61-80), (4) DISPLAY_NAMES dict is duplicated identically across base/subjective_dimensions.py:21-45 and engine/_scoring/subjective/core.py:9-33, with equivalent defaults in metadata_legacy.py:9-38.",
+  "is_poor_engineering": true,
+  "why_poor_engineering": "The circular dependency chain base→intelligence→engine→(runtime)intelligence is a real architectural violation of a documented contract (README.md:95). The identical DISPLAY_NAMES duplication across 2 files (with equivalent data in a 3rd) creates a multi-home source of truth that can silently diverge. The cycle-break runtime imports with broad except clauses mask real errors.",
+  "is_significant": false,
+  "why_missed": {
+    "what_should_catch": "An import-graph linter that enforces the documented layering rule (base/ has zero upward imports) and a duplicate-constant detector that flags identical dict literals across files.",
+    "why_not_caught": "The circular dependency is mitigated by runtime imports with fallbacks, so the system works correctly in practice. The violation was known (acknowledged by cycle-break comments) and accepted as an architectural shortcut.",
+    "what_could_catch": "A CI check using import-linter or similar tool enforcing the documented base→engine→intelligence→app layer ordering, plus a deduplication pass consolidating DISPLAY_NAMES to a single canonical location."
+  },
+  "scores": {
+    "signal": 4,
+    "originality": 3,
+    "core_impact": 2,
+    "overall": 3
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "base/subjective_dimensions.py upward imports violate architecture contract",
+      "status": "CONFIRMED",
+      "detail": "base/subjective_dimensions.py:10-17 imports from desloppify.intelligence.review.dimensions.data, desloppify.intelligence.review.dimensions.metadata, and desloppify.languages. README.md:95 states 'base/ has zero upward imports'. Partially covered by S307 (which noted it as 'known architectural shortcut')."
+    },
+    {
+      "id": "claim-2",
+      "title": "metadata_legacy.py pulls DISPLAY_NAMES from scoring core",
+      "status": "CONFIRMED",
+      "detail": "metadata_legacy.py:5: 'from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES'. This creates intelligence→engine dependency."
+    },
+    {
+      "id": "claim-3",
+      "title": "Scoring core reaches back into metadata via cycle-break imports",
+      "status": "CONFIRMED",
+      "detail": "engine/_scoring/subjective/core.py:61-69 (_dimension_display_name) and 72-80 (_dimension_weight) use runtime imports from desloppify.intelligence.review.dimensions.metadata with explicit '# cycle-break' comments. Partially covered by S312 (which noted the _dimension_weight 1.0 fallback)."
+    },
+    {
+      "id": "claim-4",
+      "title": "Duplicated dimension defaults across files",
+      "status": "CONFIRMED",
+      "detail": "DISPLAY_NAMES dict (20 entries, identical) exists in both base/subjective_dimensions.py:21-45 and engine/_scoring/subjective/core.py:9-33. metadata_legacy.py:9-38 has equivalent weight and reset-on-scan defaults also duplicated in base/subjective_dimensions.py:49-78."
+    }
+  ],
+  "fix_implemented": false,
+  "fix_description": "No fix needed — verdict is YES_WITH_CAVEATS. The issue is real but partially covered by prior submissions and mitigated by existing cycle-break patterns.",
+  "fix_files": [],
+  "notes": "All 4 claims are technically accurate and well-evidenced. However, individual components overlap with S307 (upward imports from base/) and S312 (_dimension_weight fallback). S005's added value is mapping the complete circular chain and identifying the multi-home DISPLAY_NAMES duplication as a systemic pattern. Practical impact is low because the cycle-break runtime imports with fallbacks prevent actual runtime failures."
+}
