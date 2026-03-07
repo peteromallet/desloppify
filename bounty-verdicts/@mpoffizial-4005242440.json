@@ -1,0 +1,12 @@
+{
+  "submission_id": "S152",
+  "comment_id": 4005242440,
+  "author": "mpoffizial",
+  "title": "Status laundering via auto-resolve: wontfix/false_positive penalties permanently erased by code changes",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 5,
+  "core_impact": 7,
+  "overall": 6,
+  "notes": "Valid finding. auto_resolve_disappeared() converts wontfix/fixed/false_positive statuses to auto_resolved when issues vanish from scan output. auto_resolved is absent from all FAILURE_STATUSES_BY_MODE sets, so strict/verified_strict penalties are permanently erased. The verified_strict mode exists specifically to catch dismissed findings, and this path defeats that purpose. Originality docked because S033, S088, and S127 cover closely related auto-resolve/false_positive scoring gaps."
+}
