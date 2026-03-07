@@ -1,0 +1,12 @@
+{
+  "submission_id": "S183",
+  "comment_id": 4006883883,
+  "author": "MacHatter1",
+  "title": "review import split-brain parser: CLI and tested parser disagree on findings alias",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 5,
+  "overall": 5,
+  "notes": "Verified: helpers._parse_and_validate_import (used by CLI via cmd.py) does not call normalize_legacy_findings_alias, so {\"findings\": []} is rejected. parse._parse_and_validate_import (used by tests) does normalize findings->issues. Behavioral divergence is real and demonstrated. Caveat: findings is a legacy alias with limited practical scope, and S166 already identified related duplication in the same parse.py/helpers.py files."
+}
