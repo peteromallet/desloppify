@@ -1,0 +1,13 @@
+{
+  "submission_id": "S182",
+  "comment_id": 4006872962,
+  "author": "MacHatter1",
+  "verdict": "NO",
+  "significance": 0,
+  "originality": 0,
+  "core_impact": 0,
+  "overall": 0,
+  "summary": "Duplicate of S023 (@jasonsutter87). Both submissions target the exact same function (do_run_batches in execution.py:391) with the same complaint: 23 callback parameters, 356-line god function, poor abstraction. S023 was submitted earlier and already verified YES_WITH_CAVEATS. S182 adds no novel insight beyond what S023 already covered.",
+  "duplicate_of": "S023",
+  "snapshot_commit": "6eb2065"
+}
