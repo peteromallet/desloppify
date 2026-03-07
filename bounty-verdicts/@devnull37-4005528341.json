@@ -1,0 +1,12 @@
+{
+  "submission_id": "S157",
+  "comment_id": 4005528341,
+  "author": "devnull37",
+  "title": "CLI Command Metadata Split Across Three Unsynchronized Locations",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 5,
+  "core_impact": 3,
+  "overall": 4,
+  "notes": "Command metadata is indeed split across registry.py (handler map), parser.py (subcommand registration + USAGE_EXAMPLES). Line references are accurate. Drift between parser and registry would cause a silent KeyError at runtime. However: all 18 commands are currently in sync, this is standard argparse usage in Python CLI tools, command additions are infrequent, and no actual bug or drift exists. The 'dynamic imports' rule cited is about plugin discovery, not command registration. S041 covers related but distinct concern (file/dir inconsistency, not metadata split)."
+}
