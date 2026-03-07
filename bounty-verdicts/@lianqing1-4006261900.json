@@ -1,0 +1,12 @@
+{
+  "submission_id": "S173",
+  "comment_id": 4006261900,
+  "author": "lianqing1",
+  "title": "Race Condition in save_state() — Concurrent Writes Corrupt State File",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 3,
+  "core_impact": 1,
+  "overall": 2,
+  "notes": "Central claim (no concurrency protection → partial writes corrupt state file) is factually wrong. save_state() delegates to safe_write_text() which uses tempfile.mkstemp + os.replace — atomic on POSIX, no partial writes possible. Lost-updates concern (last writer wins) is technically valid but trivial for a single-user CLI tool. Generic observation about missing file locking, severity overstated as 'High — data loss in production use'."
+}
