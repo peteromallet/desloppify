@@ -1,0 +1,14 @@
+{
+  "submission_id": "S160",
+  "comment_id": 4005641818,
+  "author": "leanderriefel",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 4,
+  "originality": 6,
+  "core_impact": 3,
+  "overall": 4,
+  "title": "queue_order stringly-typed mixed domain model",
+  "summary": "queue_order: list[str] mixes real issue IDs with synthetic workflow/triage/subjective IDs via string prefixes. All 8 code references verified: prefix-based dispatch scattered across reconcile, resolve, override_handlers, operations_queue, display, and schema_migrations. SYNTHETIC_PREFIXES is centralized but not used everywhere (override_handlers duplicates, display.py omits subjective::). Common Python trade-off — works correctly, no bugs.",
+  "verified_at": "2026-03-07",
+  "base_commit": "6eb2065"
+}

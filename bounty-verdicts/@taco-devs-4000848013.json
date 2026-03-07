@@ -1,0 +1,12 @@
+{
+  "submission_id": "S012",
+  "comment_id": 4000848013,
+  "author": "taco-devs",
+  "title": "Issue.detail: dict[str, Any] — Stringly-Typed God Field",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "detail field is indeed dict[str,Any] serving 12+ detector shapes across 34 prod files / ~115 access sites. No systematic type narrowing exists. However, Issue.detector acts as an implicit discriminant, and this is a common pragmatic Python pattern for internal tools. Numbers overstated (115 not 200+, 34 not 36+ files). Real but well-understood trade-off."
+}
