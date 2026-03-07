@@ -1,0 +1,12 @@
+{
+  "submission_id": "S088",
+  "comment_id": 4002181008,
+  "author": "juzigu40-ui",
+  "title": "scan_path-driven auto-resolution launders unresolved findings into scan_verified non-failures",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 6,
+  "originality": 7,
+  "core_impact": 5,
+  "overall": 6,
+  "notes": "All 7 code references verified at snapshot 6eb2065. Out-of-scope issues ARE auto-resolved with misleading scan_verified attestation, excluded from all failure modes, and hidden from summary output. However, this is intentional documented behavior with built-in safeguard: re-scanning with wider path reopens issues. The note field distinguishes out-of-scope from genuinely resolved. S088 is the earliest submission (04:52 UTC) covering this scan_path scoping concern, predating S129, S152, and S250."
+}
