@@ -1,0 +1,15 @@
+{
+  "submission_id": "S243",
+  "comment_id": 4011630291,
+  "author": "GenesisAutomator",
+  "issue_url": "https://github.com/peteromallet/desloppify/issues/204#issuecomment-4011630291",
+  "snapshot_commit": "6eb2065",
+  "verdict": "NO",
+  "duplicate_of": "S012",
+  "significance": 5,
+  "originality": 0,
+  "core_impact": 4,
+  "overall": 0,
+  "title": "Issue.detail untyped dict[str, Any] bag — duplicate of S012",
+  "summary": "Same finding as S012 (@taco-devs): Issue.detail is an untyped dict[str,Any] serving 13+ detector-specific schemas. S012 was already verified as YES_WITH_CAVEATS. S243 adds no novel insight — same file, same field, same critique. The S012 verification file explicitly lists S243 as a known duplicate."
+}
