@@ -1,0 +1,12 @@
+{
+  "submission_id": "S117",
+  "comment_id": 4002591580,
+  "author": "campersurfer",
+  "title": "Review issue identity structurally unstable — sha256(summary) in issue IDs causes phantom churn",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 8,
+  "core_impact": 6,
+  "overall": 7,
+  "notes": "All claims verified: sha256(summary)[:8] is baked into issue IDs at per_file.py:113 and holistic_issue_flow.py:107. make_issue uses name (containing the hash) as part of issue_id (filtering.py:160). Auto-resolve (resolution.py:29) marks old IDs as stale when not in new_ids, so any summary rewording by the LLM creates a new issue and resolves the old one — losing first_seen, reopen_count, note, and suppression state. The identifier field alone would provide stable dedup. No duplicates found."
+}
