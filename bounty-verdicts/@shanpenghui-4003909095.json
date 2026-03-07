@@ -1,0 +1,34 @@
+{
+  "submitter": "shanpenghui",
+  "comment_id": 4003909095,
+  "s_number": "S119",
+  "verdict": "YES",
+  "verdict_date": "2026-03-07",
+  "scores": {
+    "signal": 4,
+    "originality": 4,
+    "core_impact": 1,
+    "overall": 3
+  },
+  "claims": [
+    {
+      "id": "claim-1",
+      "title": "helpers.py ACTION_TYPE_PRIORITY ranks refactor(1) > reorganize(3)",
+      "status": "CONFIRMED",
+      "detail": "At 6eb2065, desloppify/engine/_work_queue/helpers.py:15 defines ACTION_TYPE_PRIORITY = {\"auto_fix\": 0, \"refactor\": 1, \"manual_fix\": 2, \"reorganize\": 3}. Used by ranking.py:209 to sort clusters in the work queue. Lower number = higher priority, so refactor sorts before reorganize."
+    },
+    {
+      "id": "claim-2",
+      "title": "base/registry.py _ACTION_PRIORITY ranks reorganize(1) > refactor(2)",
+      "status": "CONFIRMED",
+      "detail": "At 6eb2065, desloppify/base/registry.py:455 defines _ACTION_PRIORITY = {\"auto_fix\": 0, \"reorganize\": 1, \"refactor\": 2, \"manual_fix\": 3}. Used by dimension_action_type() at line 470 to determine the action type label for a dimension. Reorganize sorts before refactor — opposite of helpers.py."
+    }
+  ],
+  "fix_implemented": true,
+  "fix_description": "Renamed _ACTION_PRIORITY in base/registry.py to ACTION_TYPE_PRIORITY (public). Removed the duplicate definition from engine/_work_queue/helpers.py and replaced it with an import from base.registry, establishing a single source of truth.",
+  "fix_files": [
+    "desloppify/base/registry.py",
+    "desloppify/engine/_work_queue/helpers.py"
+  ],
+  "notes": "Both claims are precisely located and factually correct. The two tables cover the same four action types with conflicting priority orders for reorganize vs refactor and manual_fix. Real-world impact is limited — one table drives work queue cluster sorting (UI), the other drives dimension action labels (UI). No scoring or analysis logic is affected. Nevertheless, contradictory priority tables with no single source of truth is poor engineering."
+}
