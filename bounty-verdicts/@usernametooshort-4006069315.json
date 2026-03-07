@@ -1,0 +1,12 @@
+{
+  "submission_id": "S166",
+  "comment_id": 4006069315,
+  "author": "usernametooshort",
+  "title": "Duplicate Exception Class Creates Silent Error Handling Gap",
+  "verdict": "NO",
+  "significance": 2,
+  "originality": 4,
+  "core_impact": 1,
+  "overall": 2,
+  "notes": "Both parse.py and helpers.py define ImportPayloadLoadError, but cmd.py only ever calls helpers.load_import_issues_data() which raises helpers.ImportPayloadLoadError — the same type cmd.py catches. parse.load_import_issues_data() is never called anywhere in the codebase (zero references via git grep). The claimed cross-module exception mismatch is hypothetical and does not exist in any real execution path. The duplication is code smell but not a bug."
+}
