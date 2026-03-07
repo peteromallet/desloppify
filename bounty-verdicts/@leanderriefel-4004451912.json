@@ -1,0 +1,12 @@
+{
+  "submission_id": "S123",
+  "comment_id": 4004451912,
+  "author": "leanderriefel",
+  "title": "Split-brain plan persistence: --state scoping contract ignored by multiple handlers",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 5,
+  "core_impact": 4,
+  "overall": 5,
+  "notes": "Genuine inconsistency: override_handlers correctly derives plan path from --state, but cmd.py:88, reorder_handlers.py:49, queue_render.py:179, and commit_log_handlers.py:193 call load_plan() without state path. However: (1) commit_log_handlers.py lines 119,171 are load_state() not load_plan() as claimed; (2) only triggers with non-default --state which is an uncommon workflow; (3) latent bug, no evidence of user-facing breakage. Real engineering flaw but overstated impact."
+}
