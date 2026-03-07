@@ -1,0 +1,12 @@
+{
+  "submission_id": "S212",
+  "comment_id": 4009388140,
+  "author": "BlueBirdBack",
+  "title": "Circular dependency with divergent duplicate merge logic in review batch pipeline",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 7,
+  "core_impact": 6,
+  "overall": 7,
+  "notes": "Circular dependency between core.py and merge.py is confirmed. Both files contain _should_merge_issues and _merge_issue_payload with genuinely different merge strategies (0.3 threshold vs 0.45 + multi-signal). core.py's versions are dead code since the active path routes through merge.py. Line numbers are slightly off (587 not 591, 41 not 47) but all substantive claims are accurate. No prior duplicate submission found."
+}
