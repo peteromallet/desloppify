@@ -1,0 +1,22 @@
+{
+  "submission_id": "S196",
+  "comment_id": 4008440663,
+  "author": "willtester007-web",
+  "snapshot_commit": "6eb2065fd4b991b88988a0905f6da29ff4216bd8",
+  "claim": "No claim — comment is social praise of other submissions, not a bug report",
+  "verdict": "NO",
+  "reason": "Not a submission. The comment contains no bug report, no code reference, and no identified flaw. It is a social comment praising @zhaowei123-wo and @opspawn for their findings.",
+  "scores": {
+    "significance": 0,
+    "originality": 0,
+    "core_impact": 0,
+    "overall": 0
+  },
+  "references": [],
+  "duplicates": [],
+  "caveats": [
+    "The comment mentions _compute_batch_quality and stale output file reuse, but attributes these findings to other authors — it does not claim them as its own"
+  ],
+  "verified_at": "2026-03-07T00:00:00Z",
+  "verified_by": "lota-1"
+}
