@@ -1,0 +1,12 @@
+{
+  "submission_id": "S249",
+  "comment_id": 4012528650,
+  "author": "Tib-Gridello",
+  "title": "Anti-Gaming Check Active Only Between Scan and First Subsequent Operation",
+  "verdict": "YES",
+  "significance": 7,
+  "originality": 7,
+  "core_impact": 6,
+  "overall": 7,
+  "notes": "All claims verified: resolve_issues (resolution.py:171), remove_ignored_issues (filtering.py:133), and holistic import (merge.py:195 via holistic.py:129) call _recompute_stats without subjective_integrity_target, overwriting state[\"subjective_integrity\"] with {status:\"disabled\", target_score:None}. This defeats the recovery mechanism in persistence.py:147-158 (_resolve_integrity_target). Penalties applied on deepcopy at line 116 — original subjective_assessments survive unchanged. scan/workflow.py correctly passes target at lines 418/432/442. Real bug: anti-gaming protection (60% of overall_score) effectively erased after first post-scan operation. Original finding — no prior submission covers this integrity target erasure mechanism."
+}
