@@ -1,0 +1,12 @@
+{
+  "submission_id": "S189",
+  "comment_id": 4007433124,
+  "author": "ufct",
+  "title": "make_unused_issues omits line number from issue ID, enabling silent overwrites",
+  "verdict": "YES",
+  "significance": 6,
+  "originality": 7,
+  "core_impact": 5,
+  "overall": 6,
+  "notes": "Confirmed: make_unused_issues builds issue IDs as unused::{file}::{name} without embedding the line number. Two unused identifiers with the same name in the same file produce identical IDs, and the second silently overwrites the first in the state dict. This is inconsistent with treesitter phases (empty_catch, unreachable_code, unused_import) which all embed e['line'] in the ID. The line number is available in e['line'] but only stored in detail. Practical impact is moderate — requires same-named unused identifiers in the same file — but it's a real data-loss bug in a core detection pipeline."
+}
