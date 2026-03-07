@@ -1,0 +1,12 @@
+{
+  "submission_id": "S015",
+  "comment_id": 4000894436,
+  "author": "dayi1000",
+  "title": "False Immutability in Dimension.detectors: list[str] inside @dataclass(frozen=True)",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 3,
+  "originality": 5,
+  "core_impact": 2,
+  "overall": 3,
+  "notes": "Claim is technically correct: list[str] inside frozen=True dataclass allows in-place mutation (.append(), .clear() etc.) without raising an error. However, no code in the codebase actually mutates dim.detectors in place — all 10+ usage sites are read-only (iteration, membership checks, str joining). The fix is trivially a one-line change to tuple[str, ...]. Real but theoretical risk with no practical impact at snapshot."
+}
