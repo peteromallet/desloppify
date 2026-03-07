@@ -1,0 +1,16 @@
+{
+  "submission_id": "S188",
+  "comment_id": 4007432060,
+  "author": "ufct",
+  "verdict": "NO",
+  "duplicate_of": "S172",
+  "significance": 0,
+  "originality": 0,
+  "core_impact": 0,
+  "overall": 0,
+  "title": "Production CLI carries a class that exists solely for legacy test compatibility",
+  "summary": "Valid finding — _DetectorNamesCacheCompat is indeed dead production code maintained only for test compatibility — but S172 (@allornothingai, submitted ~4 hours earlier) identifies the exact same class, same files, and same issue. Duplicate.",
+  "files_cited": [
+    "desloppify/cli.py"
+  ]
+}
