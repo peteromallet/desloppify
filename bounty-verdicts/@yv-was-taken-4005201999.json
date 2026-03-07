@@ -1,0 +1,13 @@
+{
+  "submission_id": "S151",
+  "comment_id": 4005201999,
+  "author": "yv-was-taken",
+  "title": "Score Mode Semantic Incoherence: Strictest Mode Can Produce HIGHER Scores Than Strict",
+  "verdict": "YES_WITH_CAVEATS",
+  "significance": 5,
+  "originality": 6,
+  "core_impact": 4,
+  "overall": 5,
+  "duplicate_of": null,
+  "notes": "verified_strict_score can exceed strict_score when subjective dimensions score low. _aggregate_scores filters subjective dims for verified_strict but includes them for strict (60% weight). Correct analysis, but 'verified_strict' may be intentionally named for strictest failure counting on mechanical dims only, not a monotonic ordering guarantee."
+}
