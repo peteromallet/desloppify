@@ -1,0 +1,12 @@
+{
+  "submission_id": "S226",
+  "comment_id": 4010235362,
+  "author": "g5n-dev",
+  "title": "SSRF via Hardcoded GitHub Raw URL with No Validation",
+  "verdict": "NO",
+  "significance": 1,
+  "originality": 2,
+  "core_impact": 0,
+  "overall": 1,
+  "notes": "_download() is only called with hardcoded filenames derived from SKILL_TARGETS constants ('SKILL.md', 'CLAUDE.md', etc.). The filename parameter is never user-controlled. The SSRF claim requires a hypothetical future code change. Python urllib validates HTTPS certificates by default, contradicting the MITM claim. Repository compromise risk applies to all software that fetches updates and is not a code-level vulnerability."
+}
