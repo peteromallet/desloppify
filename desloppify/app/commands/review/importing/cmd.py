@@ -209,10 +209,6 @@ def _sync_plan_after_import(state: dict, diff: dict, assessment_mode: str) -> No
     import-scores, and communicate-score workflow items as needed.
     """
     try:
-        from desloppify.engine._plan.stale_dimensions import (
-            sync_communicate_score_needed,
-            sync_import_scores_needed,
-        )
         from desloppify.engine.plan import (
             append_log_entry,
             current_unscored_ids,
@@ -220,7 +216,9 @@ def _sync_plan_after_import(state: dict, diff: dict, assessment_mode: str) -> No
             load_plan,
             purge_ids,
             save_plan,
+            sync_communicate_score_needed,
             sync_create_plan_needed,
+            sync_import_scores_needed,
             sync_plan_after_review_import,
             sync_score_checkpoint_needed,
         )

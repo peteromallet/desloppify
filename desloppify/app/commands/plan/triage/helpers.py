@@ -6,10 +6,10 @@ import argparse
 from collections import defaultdict
 
 from desloppify.base.output.terminal import colorize
-from desloppify.engine._plan.stale_policy import _REVIEW_DETECTORS
 from desloppify.engine.plan import (
     TRIAGE_IDS,
     TRIAGE_STAGE_IDS,
+    open_review_ids,
     purge_ids,
     review_issue_snapshot_hash,
 )
@@ -123,10 +123,7 @@ def group_issues_into_observe_batches(
 
 def open_review_ids_from_state(state: dict) -> set[str]:
     """Return IDs of open review/concerns issues (excludes subjective_review placeholders)."""
-    return {
-        fid for fid, f in state.get("issues", {}).items()
-        if f.get("status") == "open" and f.get("detector") in ("review", "concerns")
-    }
+    return open_review_ids(state)
 
 def triage_coverage(
     plan: dict,
@@ -181,10 +178,7 @@ def apply_completion(
 
     meta = plan.setdefault("epic_triage_meta", {})
     meta["issue_snapshot_hash"] = current_hash
-    open_ids = sorted(
-        fid for fid, f in state.get("issues", {}).items()
-        if f.get("status") == "open" and f.get("detector") in _REVIEW_DETECTORS
-    )
+    open_ids = sorted(open_review_ids(state))
     meta["triaged_ids"] = open_ids
     if strategy.strip().lower() != "same":
         meta["strategy_summary"] = strategy

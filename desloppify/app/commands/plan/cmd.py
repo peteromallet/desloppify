@@ -33,9 +33,9 @@ from desloppify.app.commands.helpers.queue_progress import (
     plan_aware_queue_breakdown,
 )
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
-from desloppify.engine._plan.annotations import annotation_counts
-from desloppify.engine._plan.skip_policy import USER_SKIP_KINDS
 from desloppify.engine.plan import (
+    USER_SKIP_KINDS,
+    annotation_counts,
     append_log_entry,
     commit_tracking_summary,
     load_plan,

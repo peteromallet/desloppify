@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.engine._plan.epic_triage_prompt import TriageInput
+from desloppify.engine.plan import TriageInput
 
 from ..helpers import manual_clusters_with_issues, observe_dimension_breakdown
 from ..stage_helpers import _unclustered_review_issues, _unenriched_clusters

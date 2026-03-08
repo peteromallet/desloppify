@@ -28,24 +28,16 @@ from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS, CommandError
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
-from desloppify.engine._plan.step_completion import auto_complete_steps
-from desloppify.engine._plan.stale_dimensions import (
-    WORKFLOW_CREATE_PLAN_ID,
-    WORKFLOW_SCORE_CHECKPOINT_ID,
-)
-from desloppify.engine._plan.skip_policy import (
-    SKIP_KIND_LABELS,
-    skip_kind_from_flags,
-    skip_kind_requires_attestation,
-    skip_kind_requires_note,
-    skip_kind_state_status,
-)
 from desloppify.engine._work_queue.core import ATTEST_EXAMPLE
 from desloppify.engine.plan import (
     PLAN_FILE,
     TRIAGE_IDS,
     TRIAGE_STAGE_IDS,
+    SKIP_KIND_LABELS,
+    WORKFLOW_CREATE_PLAN_ID,
+    WORKFLOW_SCORE_CHECKPOINT_ID,
     annotate_issue,
+    auto_complete_steps,
     append_log_entry,
     clear_focus,
     describe_issue,
@@ -55,6 +47,10 @@ from desloppify.engine.plan import (
     purge_uncommitted_ids,
     save_plan,
     set_focus,
+    skip_kind_from_flags,
+    skip_kind_requires_attestation,
+    skip_kind_requires_note,
+    skip_kind_state_status,
     skip_items,
     unskip_items,
 )

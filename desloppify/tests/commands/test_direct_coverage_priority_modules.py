@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import desloppify.app.commands.helpers.display as display_mod
 import desloppify.app.commands.next.render_support as next_render_support_mod
@@ -132,3 +133,21 @@ def test_engine_modules_avoid_app_layer_import_paths():
 
     dimension_rows_src = inspect.getsource(planning_dimension_rows_mod)
     assert "desloppify.app.output.scorecard_parts.dimensions" not in dimension_rows_src
+
+
+def test_app_plan_modules_avoid_private_engine_plan_imports():
+    package_root = Path(__file__).resolve().parents[2]
+    rel_paths = [
+        "app/commands/plan/cmd.py",
+        "app/commands/plan/cluster_handlers.py",
+        "app/commands/plan/override_handlers.py",
+        "app/commands/plan/triage/helpers.py",
+        "app/commands/plan/triage/runner/stage_validation.py",
+        "app/commands/plan/triage/runner/stage_prompts.py",
+        "app/commands/plan/triage_playbook.py",
+        "app/commands/resolve/cmd.py",
+        "app/commands/review/importing/cmd.py",
+    ]
+    for rel_path in rel_paths:
+        text = (package_root / rel_path).read_text(encoding="utf-8")
+        assert "desloppify.engine._plan" not in text

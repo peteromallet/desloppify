@@ -15,9 +15,9 @@ from desloppify.app.commands.helpers.state import state_path
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
-from desloppify.engine._plan.step_completion import auto_complete_steps
 from desloppify.engine.plan import (
     add_uncommitted_issues,
+    auto_complete_steps,
     append_log_entry,
     has_living_plan,
     load_plan,

@@ -11,23 +11,21 @@ from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.app.commands.plan._resolve import resolve_ids_from_patterns
 from desloppify.app.commands.plan.reorder_handlers import resolve_target
 from desloppify.base.output.terminal import colorize
-from desloppify.engine._plan.step_parser import (
-    format_steps,
-    normalize_step,
-    parse_steps_file,
-    step_summary,
-)
 from desloppify.engine.plan import (
     add_to_cluster,
     append_log_entry,
     create_cluster,
     delete_cluster,
+    format_steps,
     load_plan,
     merge_clusters,
     move_items,
+    normalize_step,
+    parse_steps_file,
     plan_lock,
     remove_from_cluster,
     save_plan,
+    step_summary,
 )
 from desloppify.state import utc_now
 
