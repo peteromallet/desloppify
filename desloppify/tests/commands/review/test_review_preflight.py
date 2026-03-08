@@ -17,7 +17,12 @@ from desloppify.base.exception_sets import CommandError
 
 
 def _make_args(**overrides) -> SimpleNamespace:
-    defaults = {"force_review_rerun": False, "dimensions": None}
+    defaults = {
+        "force_review_rerun": False,
+        "dimensions": None,
+        "run_batches": False,
+        "external_start": False,
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -248,6 +253,28 @@ def test_targeting_only_unscored_dims_skips_gate():
     args = _make_args(dimensions="logic_clarity")
     # Gate skipped — no scored dims targeted
     review_rerun_preflight(state, args)
+
+
+def test_run_batches_uses_prepared_query_dimensions_for_gate():
+    """run-batches should honor prepared review dimensions from query.json."""
+    state = {
+        "subjective_assessments": {
+            "naming_quality": {"score": 82.0},
+            "dependency_health": {"score": 0.0},
+        }
+    }
+    args = _make_args(run_batches=True)
+    prepared_query = {
+        "command": "review",
+        "mode": "holistic",
+        "dimensions": ["dependency_health"],
+        "investigation_batches": [{"name": "dependency_health"}],
+    }
+    with (
+        patch("desloppify.app.commands.review.preflight.load_query", return_value=prepared_query),
+        patch(_QUEUE_CONTEXT, return_value=_mock_queue_context(objective_count=3)),
+    ):
+        review_rerun_preflight(state, args)
 
 
 def test_targeting_scored_dim_enforces_gate(capsys):
@@ -650,5 +677,4 @@ def test_merge_skips_preflight():
     ):
         cmd_review(_review_args(merge=True))
         mock_pf.assert_not_called()
-
 

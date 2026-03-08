@@ -497,8 +497,12 @@ from desloppify.engine.detectors.jscpd_adapter import (  # noqa: E402
 
 class TestJscpdAdapter:
     def test_returns_none_when_jscpd_not_installed(self, tmp_path):
-        with patch("subprocess.run", side_effect=FileNotFoundError("npx not found")):
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=None,
+        ), patch("subprocess.run") as mock_run:
             assert detect_with_jscpd(tmp_path) is None
+        mock_run.assert_not_called()
 
     def test_returns_none_on_timeout(self, tmp_path):
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("npx", 120)):
@@ -663,6 +667,9 @@ class TestJscpdAdapter:
             return MagicMock(returncode=0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=_fake_run), patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/opt/jscpd"],
+        ), patch(
             "desloppify.engine.detectors.jscpd_adapter.collect_exclude_dirs",
             return_value=fake_dirs,
         ), patch(

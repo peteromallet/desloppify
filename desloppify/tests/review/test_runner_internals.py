@@ -207,7 +207,7 @@ class TestCheckStall:
     """_check_stall: state machine for detecting runner stalls."""
 
     def test_no_output_file_first_call_not_stalled(self, tmp_path):
-        """First call with missing output file: not stalled, baseline set."""
+        """Missing output file alone should not trigger the stall path."""
         output_file = tmp_path / "nope.json"
         now = 1000.0
         stalled, sig, stable = _check_stall(
@@ -215,10 +215,10 @@ class TestCheckStall:
         )
         assert stalled is False
         assert sig is None
-        assert stable == now  # baseline set to now
+        assert stable is None
 
     def test_no_output_file_stalls_after_threshold(self, tmp_path):
-        """Missing output file stalls when both output age and stream idle exceed threshold."""
+        """Missing output file still should not be treated as a stall."""
         output_file = tmp_path / "nope.json"
         baseline = 1000.0
         now = 1050.0  # 50s later
@@ -226,7 +226,9 @@ class TestCheckStall:
         stalled, sig, stable = _check_stall(
             output_file, None, baseline, now, last_activity, threshold=30
         )
-        assert stalled is True
+        assert stalled is False
+        assert sig is None
+        assert stable is None
 
     def test_no_output_file_not_stalled_when_stream_active(self, tmp_path):
         """Missing output but recent stream activity prevents stall."""
@@ -238,6 +240,8 @@ class TestCheckStall:
             output_file, None, baseline, now, last_activity, threshold=30
         )
         assert stalled is False
+        assert sig is None
+        assert stable is None
 
     def test_file_changes_resets_stable_since(self, tmp_path):
         """When the file signature changes, stable_since resets and no stall."""

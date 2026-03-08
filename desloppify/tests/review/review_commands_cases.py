@@ -800,8 +800,9 @@ class TestCmdReviewPrepare:
         assert not mock_import.called
         packet_files = sorted(review_packet_dir.glob("holistic_packet_*.json"))
         assert len(packet_files) == 1
-        blind_packet = tmp_path / ".desloppify" / "review_packet_blind.json"
-        assert blind_packet.exists()
+        blind_packets = sorted(review_packet_dir.glob("review_packet_blind_*.json"))
+        assert len(blind_packets) == 1
+        blind_packet = blind_packets[0]
         prompt_files = list(runs_dir.glob("*/prompts/batch-*.md"))
         assert len(prompt_files) == 2
         prompt_text = prompt_files[0].read_text()
@@ -818,6 +819,92 @@ class TestCmdReviewPrepare:
         run_log_text = run_logs[0].read_text()
         assert "run-start" in run_log_text
         assert "run-finished dry-run" in run_log_text
+
+    def test_do_run_batches_reuses_prepared_query_packet(
+        self,
+        mock_lang_with_zones,
+        empty_state,
+        tmp_path,
+    ):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "foo.ts").write_text("export const foo = 1;\n")
+        file_list = [str(src / "foo.ts")]
+        mock_lang_with_zones.file_finder = MagicMock(return_value=file_list)
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.dimensions = None
+        args.runner = "codex"
+        args.parallel = False
+        args.dry_run = True
+        args.packet = None
+        args.only_batches = "1"
+        args.scan_after_import = False
+        args.save_run_log = True
+        args.run_log_file = None
+        args.retrospective = False
+
+        prepared_query = {
+            "command": "review",
+            "mode": "holistic",
+            "language": "typescript",
+            "dimensions": ["dependency_health"],
+            "dimension_prompts": {
+                "dependency_health": {
+                    "description": "Assess coupling and dependency direction.",
+                    "look_for": ["unstable dependencies"],
+                    "skip": ["minor style issues"],
+                }
+            },
+            "system_prompt": "prompt",
+            "investigation_batches": [
+                {
+                    "name": "dependency_health",
+                    "dimensions": ["dependency_health"],
+                    "files_to_read": ["src/foo.ts"],
+                    "why": "prepared",
+                }
+            ],
+            "total_files": 1,
+            "workflow": [],
+        }
+
+        review_packet_dir = tmp_path / ".desloppify" / "review_packets"
+        runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
+
+        with (
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator.load_query",
+                return_value=prepared_query,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.PROJECT_ROOT",
+                tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.REVIEW_PACKET_DIR",
+                review_packet_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.SUBAGENT_RUNS_DIR",
+                runs_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator.review_mod.prepare_holistic_review",
+                side_effect=AssertionError("should not rebuild packet"),
+            ),
+        ):
+            do_run_batches(
+                args, empty_state, mock_lang_with_zones, "fake_sp", config={}
+            )
+
+        prompt_files = list(runs_dir.glob("*/prompts/batch-*.md"))
+        assert len(prompt_files) == 1
+        prompt_text = prompt_files[0].read_text()
+        assert "Batch name: dependency_health" in prompt_text
+        assert "DIMENSION TO EVALUATE:" in prompt_text
+        assert "## dependency_health" in prompt_text
 
     def test_do_run_batches_merges_outputs_and_imports(self, empty_state, tmp_path):
         packet = {
@@ -1883,7 +1970,7 @@ class TestCmdReviewPrepare:
                 output_file=output_file,
                 log_file=log_file,
                 deps=runner_helpers_mod.CodexBatchRunnerDeps(
-                    timeout_seconds=30,
+                    timeout_seconds=1,
                     subprocess_run=subprocess.run,
                     timeout_error=TimeoutError,
                     safe_write_text_fn=lambda p, t: p.write_text(t),
@@ -1896,7 +1983,7 @@ class TestCmdReviewPrepare:
 
         assert code == 124
         log_text = log_file.read_text()
-        assert "STALL RECOVERY" in log_text
+        assert "TIMEOUT after 1s" in log_text
         assert "Recovered stalled batch from JSON output file" not in log_text
 
     def test_collect_batch_results_recovers_execution_failure_with_valid_output(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +41,16 @@ def query_writer() -> QueryWriter:
     return QueryWriter(query_file=query_file_path())
 
 
+def load_query() -> dict | None:
+    """Load the active query payload, returning ``None`` on read/parse failure."""
+    path = query_file_path()
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def write_query(data: dict) -> OutputResult:
     """Write structured query output using default best-effort policy."""
     return write_query_best_effort(data, context="query payload update")
@@ -52,6 +63,7 @@ def write_query_best_effort(data: dict, *, context: str) -> OutputResult:
 
 __all__ = [
     "QueryWriter",
+    "load_query",
     "query_file_path",
     "query_writer",
     "write_query",

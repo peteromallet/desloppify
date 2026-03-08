@@ -187,12 +187,10 @@ def _check_stall(
     except OSError:
         current_signature = None
     if current_signature is None:
-        baseline = prev_stable if isinstance(prev_stable, int | float) else now
-        output_age = now - baseline
-        stream_idle = now - last_activity
-        if output_age >= threshold and stream_idle >= threshold:
-            return True, None, baseline
-        return False, None, baseline
+        # Codex may remain silent until it writes the final output artifact.
+        # Only treat a batch as stalled once an output file exists and then
+        # remains stable without stream activity.
+        return False, None, None
     if current_signature != prev_sig:
         return False, current_signature, now
     if prev_stable is None:

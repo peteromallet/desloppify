@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -39,6 +40,25 @@ _BASE_IGNORES = (
 
 _ARTIFACT_PREFIXES = ("build/", "dist/", ".desloppify/", ".claude/")
 _BUILD_MIRROR_PREFIX = "build/lib/"
+
+
+def _resolve_jscpd_command(scan_path: Path) -> list[str] | None:
+    """Return a locally available jscpd command, or ``None`` when absent."""
+    candidates = [
+        scan_path / "node_modules" / ".bin" / "jscpd",
+        Path.cwd() / "node_modules" / ".bin" / "jscpd",
+    ]
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                return [str(candidate)]
+        except OSError:
+            continue
+
+    global_jscpd = shutil.which("jscpd")
+    if global_jscpd:
+        return [global_jscpd]
+    return None
 
 
 def _to_scan_relative(path_resolved: Path, name: str) -> str | None:
@@ -167,15 +187,21 @@ def _parse_jscpd_report(report: dict, scan_path: Path) -> list[dict]:
 
 def detect_with_jscpd(path: Path) -> list[dict] | None:
     """Run jscpd on *path* and return duplication entries, or None on failure."""
+    command = _resolve_jscpd_command(path)
+    if command is None:
+        warn_best_effort(
+            "Boilerplate duplication detection skipped: jscpd not installed locally. "
+            "Install `jscpd` globally or under node_modules/.bin to enable it."
+        )
+        logger.debug("jscpd: no local executable found — skipping boilerplate duplication detection")
+        return None
+
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
             # Use explicit argv (no shell), a bounded timeout, and check=True so
             # non-zero exits are surfaced and handled below.
             subprocess.run(
-                [
-                    "npx",
-                    "--yes",
-                    "jscpd",
+                command + [
                     str(path),
                     "--reporters",
                     "json",
@@ -196,14 +222,13 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
             )
         except FileNotFoundError:
             warn_best_effort(
-                "Boilerplate duplication detection skipped: npx/jscpd not found. "
-                "Install with `npm install -g jscpd`."
+                "Boilerplate duplication detection skipped: jscpd executable not found."
             )
-            logger.debug("jscpd: npx not found — skipping boilerplate duplication detection")
+            logger.debug("jscpd: executable missing at runtime — skipping boilerplate duplication detection")
             return None
         except subprocess.CalledProcessError as exc:
             warn_best_effort(
-                "Boilerplate duplication detection skipped: npx/jscpd exited with errors."
+                "Boilerplate duplication detection skipped: jscpd exited with errors."
             )
             logger.debug(
                 "jscpd: non-zero exit (%s): %s",
@@ -213,9 +238,9 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
             return None
         except OSError as exc:
             warn_best_effort(
-                "Boilerplate duplication detection skipped: npx/jscpd failed to run."
+                "Boilerplate duplication detection skipped: jscpd failed to run."
             )
-            logger.debug("jscpd: OS error running npx/jscpd: %s", exc)
+            logger.debug("jscpd: OS error running executable: %s", exc)
             return None
         except subprocess.TimeoutExpired:
             warn_best_effort(

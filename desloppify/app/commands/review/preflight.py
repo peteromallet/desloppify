@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import sys
 
+from desloppify.app.commands.helpers.query import load_query
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import queue_context
@@ -62,6 +63,32 @@ def _normalize_dimension_key(raw: object) -> str:
     """Normalize a dimension key/name to canonical snake_case."""
     text = str(raw or "").strip().lower().replace(" ", "_")
     return re.sub(r"[^a-z0-9_]+", "_", text).strip("_")
+
+
+def _prepared_query_dimensions() -> set[str] | None:
+    """Return prepared review dimensions from query.json when available."""
+    query = load_query()
+    if not isinstance(query, dict):
+        return None
+    if query.get("command") != "review" or query.get("mode") != "holistic":
+        return None
+    if not isinstance(query.get("investigation_batches"), list):
+        return None
+    dims = query.get("dimensions")
+    if not isinstance(dims, list):
+        return None
+    resolved = {dim.strip() for dim in dims if isinstance(dim, str) and dim.strip()}
+    return resolved or None
+
+
+def _target_dimensions(args: object) -> set[str] | None:
+    """Resolve review target dimensions from CLI args or prepared query state."""
+    dimensions = parse_dimensions(args)
+    if dimensions is not None:
+        return dimensions
+    if getattr(args, "run_batches", False) or getattr(args, "external_start", False):
+        return _prepared_query_dimensions()
+    return None
 
 
 
@@ -167,7 +194,7 @@ def review_rerun_preflight(
     not set. On success, clears stale subjective markers for targeted
     dimensions and persists state.
     """
-    dimensions = parse_dimensions(args)
+    dimensions = _target_dimensions(args)
     normalized_dimensions = (
         {_normalize_dimension_key(dim) for dim in dimensions}
         if dimensions is not None

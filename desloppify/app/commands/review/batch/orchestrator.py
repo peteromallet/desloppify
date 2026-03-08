@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from desloppify.app.commands.helpers.query import load_query
 from desloppify.app.commands.helpers.query import write_query_best_effort
 from desloppify.base.coercions import coerce_positive_int
 from desloppify.base.discovery.file_paths import safe_write_text
@@ -101,6 +102,7 @@ def _load_or_prepare_packet(
     stamp: str,
 ) -> tuple[dict, Path, Path]:
     """Load packet override or prepare a fresh packet snapshot."""
+    blind_path = _blind_packet_path(stamp=stamp)
     packet_override = getattr(args, "packet", None)
     if packet_override:
         packet_path = Path(packet_override)
@@ -110,12 +112,25 @@ def _load_or_prepare_packet(
             packet = json.loads(packet_path.read_text())
         except (OSError, json.JSONDecodeError) as exc:
             raise PacketValidationError(f"reading packet: {exc}", exit_code=1) from exc
-        blind_path = _blind_packet_path()
         blind_packet = build_blind_packet(packet)
         safe_write_text(blind_path, json.dumps(blind_packet, indent=2) + "\n")
         print(colorize(f"  Immutable packet: {packet_path}", "dim"))
         print(colorize(f"  Blind packet: {blind_path}", "dim"))
         return packet, packet_path, blind_path
+
+    prepared_query = _load_prepared_query_packet(args)
+    if prepared_query is not None:
+        packet_path, blind_saved = write_packet_snapshot(
+            prepared_query,
+            stamp=stamp,
+            review_packet_dir=_review_packet_dir(),
+            blind_path=blind_path,
+            safe_write_text_fn=safe_write_text,
+        )
+        print(colorize("  Using prepared review packet from query.json", "cyan"))
+        print(colorize(f"  Immutable packet: {packet_path}", "dim"))
+        print(colorize(f"  Blind packet: {blind_saved}", "dim"))
+        return prepared_query, packet_path, blind_saved
 
     path = Path(args.path)
     dims = parse_dimensions(args)
@@ -138,7 +153,6 @@ def _load_or_prepare_packet(
         context=narrative_mod.NarrativeContext(lang=lang_name, command="review"),
     )
 
-    blind_path = _blind_packet_path()
     packet = review_mod.prepare_holistic_review(
         path,
         lang_run,
@@ -176,6 +190,24 @@ def _load_or_prepare_packet(
     print(colorize(f"  Immutable packet: {packet_path}", "dim"))
     print(colorize(f"  Blind packet: {blind_saved}", "dim"))
     return packet, packet_path, blind_saved
+
+
+def _load_prepared_query_packet(args) -> dict | None:
+    """Reuse the prepared holistic review packet when run-batches follows prepare."""
+    if getattr(args, "dimensions", None):
+        return None
+    if getattr(args, "retrospective", False):
+        return None
+    query = load_query()
+    if not isinstance(query, dict):
+        return None
+    if query.get("command") != "review" or query.get("mode") != "holistic":
+        return None
+    if not isinstance(query.get("investigation_batches"), list):
+        return None
+    if not isinstance(query.get("dimensions"), list):
+        return None
+    return query
 
 
 def do_run_batches(args, state, lang, state_file, config: dict | None = None) -> None:
