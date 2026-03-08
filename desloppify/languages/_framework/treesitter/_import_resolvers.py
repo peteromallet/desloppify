@@ -198,7 +198,9 @@ def resolve_php_import(import_text: str, source_file: str, scan_path: str) -> st
 def resolve_elixir_import(import_text: str, source_file: str, scan_path: str) -> str | None:
     """Resolve Elixir aliases to local files.
 
-    Maps `MyApp.Module.Sub` → lib/my_app/module/sub.ex.
+    Maps ``MyApp.Module.Sub`` → ``lib/my_app/module/sub.ex``.
+    Handles standard Mix projects, umbrella apps (``apps/*/lib/``),
+    and Phoenix ``Web`` suffix conventions.
     """
     parts = import_text.split(".")
     if len(parts) < 2:
@@ -207,17 +209,42 @@ def resolve_elixir_import(import_text: str, source_file: str, scan_path: str) ->
     # Convert CamelCase parts to snake_case for file path.
     snake_parts = [_camel_to_snake(p) for p in parts]
 
+    # 1. Direct path: lib/my_app/module/sub.ex
     rel_path = os.path.join(*snake_parts) + ".ex"
     candidate = os.path.join(scan_path, "lib", rel_path)
     if os.path.isfile(candidate):
         return candidate
 
-    # Try without the app-level prefix.
+    # 2. Without the app-level prefix: lib/my_app/module/sub.ex
     if len(snake_parts) > 1:
         rel_path = os.path.join(*snake_parts[1:]) + ".ex"
         candidate = os.path.join(scan_path, "lib", snake_parts[0], rel_path)
         if os.path.isfile(candidate):
             return candidate
+
+    # 3. Phoenix Web convention: MyAppWeb.FooController → lib/my_app_web/controllers/foo_controller.ex
+    #    (handled by the snake_case conversion above in most cases)
+
+    # 4. Umbrella apps: apps/<app>/lib/<app>/module.ex
+    apps_dir = os.path.join(scan_path, "apps")
+    if os.path.isdir(apps_dir):
+        # Try each umbrella app
+        rel_path = os.path.join(*snake_parts) + ".ex"
+        try:
+            for app in os.listdir(apps_dir):
+                candidate = os.path.join(apps_dir, app, "lib", rel_path)
+                if os.path.isfile(candidate):
+                    return candidate
+                # Also try without top-level prefix inside app
+                if len(snake_parts) > 1:
+                    inner_rel = os.path.join(*snake_parts[1:]) + ".ex"
+                    candidate = os.path.join(
+                        apps_dir, app, "lib", snake_parts[0], inner_rel
+                    )
+                    if os.path.isfile(candidate):
+                        return candidate
+        except OSError:
+            pass
 
     return None
 

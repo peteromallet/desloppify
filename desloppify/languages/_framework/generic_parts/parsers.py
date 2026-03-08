@@ -143,6 +143,27 @@ def parse_cargo(output: str, scan_path: Path) -> list[dict]:
     return entries
 
 
+def parse_credo(output: str, scan_path: Path) -> list[dict]:
+    """Parse Credo JSON: ``{"issues": [{"filename", "line_no", "message", ...}]}``."""
+    del scan_path
+    entries: list[dict] = []
+    data = _load_json_output(output, parser_name="credo")
+    issues = data.get("issues") if isinstance(data, dict) else []
+    for issue in issues or []:
+        filename = issue.get("filename", "")
+        line = _coerce_line(issue.get("line_no", 0))
+        message = issue.get("message", "")
+        category = issue.get("category", "")
+        check = issue.get("check", "")
+        if category and message:
+            message = f"[{category}] {message}"
+        if check:
+            message = f"{message} ({check})"
+        if filename and message and line is not None:
+            entries.append({"file": str(filename), "line": line, "message": str(message)})
+    return entries
+
+
 def parse_eslint(output: str, scan_path: Path) -> list[dict]:
     """Parse ESLint JSON: `[{"filePath": ..., "messages": [...]}]`."""
     del scan_path
@@ -164,6 +185,7 @@ PARSERS: dict[str, Callable[[str, Path], list[dict]]] = {
     "gnu": parse_gnu,
     "golangci": parse_golangci,
     "json": parse_json,
+    "credo": parse_credo,
     "rubocop": parse_rubocop,
     "cargo": parse_cargo,
     "eslint": parse_eslint,
@@ -174,6 +196,7 @@ __all__ = [
     "PARSERS",
     "ToolParserError",
     "parse_cargo",
+    "parse_credo",
     "parse_eslint",
     "parse_gnu",
     "parse_golangci",

@@ -1,0 +1,130 @@
+{
+  "dimension_prompts": {
+    "type_safety": {
+      "description": "Type annotations and compile-time guarantees — Elixir's built-in gradual type system (1.19+) or @spec/@type for older codebases",
+      "look_for": [
+        "Public API functions with no type information (neither native type annotations nor @spec)",
+        "Pattern match clauses that silently drop to a catch-all without logging or raising",
+        "Ecto changeset validations that don't match the schema field types",
+        "Functions accepting overly broad types (term(), any()) where a specific type is known",
+        "Mixed type strategies in the same codebase: some modules use native types, others use @spec, others have nothing",
+        "Structs with enforced keys (@enforce_keys) that don't match what callers actually provide"
+      ],
+      "skip": [
+        "Private helper functions without type annotations (acceptable in Elixir convention)",
+        "Phoenix controller actions (framework-typed)",
+        "Test modules",
+        "Codebases on older Elixir versions using @spec consistently — that is the correct approach pre-1.19"
+      ]
+    },
+    "error_consistency": {
+      "description": "Consistent use of {:ok, _}/{:error, _} tuples, rescue blocks, and error propagation",
+      "look_for": [
+        "Mixed error strategies: some functions return {:ok, _}/{:error, _}, others raise, others return nil",
+        "Bare rescue without specifying exception type (rescue _ -> or rescue e ->)",
+        "with chains that silently pass through unmatched error tuples in the else clause",
+        "Functions using raise for expected control flow instead of {:error, reason}",
+        "Inconsistent error tuple shapes: {:error, reason} vs {:error, reason, details} vs {:error, {type, msg}}",
+        "try/rescue around pure functions that cannot raise"
+      ],
+      "skip": [
+        "Bang functions (foo!) that intentionally raise — this is Elixir convention",
+        "Boundary modules that convert {:error, _} to exceptions for external callers",
+        "ExUnit assertions"
+      ]
+    },
+    "abstraction_fitness": {
+      "description": "OTP abstractions, behaviour implementations, and module decomposition",
+      "look_for": [
+        "GenServer used where a simple module with functions would suffice (no state needed)",
+        "Agent used for complex state that should be a GenServer (needs handle_call logic)",
+        "Supervisor strategies that don't match failure domains (one_for_one vs one_for_all)",
+        "Deeply nested with chains (>4 clauses) that should be extracted or use a pipeline module",
+        "use macros that inject large amounts of code — consider splitting into focused behaviours",
+        "Context modules (Phoenix) that mix unrelated domain concerns",
+        "Ecto queries built with raw SQL when Ecto.Query composability would be clearer"
+      ],
+      "skip": [
+        "GenServer/Supervisor patterns required by OTP design",
+        "Phoenix-generated context modules with standard CRUD operations",
+        "Behaviour implementations that must conform to callback specs"
+      ]
+    },
+    "contract_coherence": {
+      "description": "Behaviour callbacks, @callback specs, and module API consistency",
+      "look_for": [
+        "@callback specs that don't match the implementing function's actual return types",
+        "Modules using @behaviour but missing required callback implementations",
+        "@doc annotations that describe different parameters or return values than the @spec",
+        "Public API functions whose @spec allows success but implementation always raises on certain inputs",
+        "Plug modules where init/1 and call/2 contracts are inconsistent"
+      ],
+      "skip": [
+        "Optional callbacks with default implementations",
+        "Overridable functions in use macros"
+      ]
+    },
+    "cross_module_architecture": {
+      "description": "OTP application boundaries, supervision tree design, and inter-context coupling",
+      "look_for": [
+        "Phoenix contexts calling directly into other contexts instead of through a shared boundary",
+        "Circular aliases between modules in different contexts",
+        "Supervision tree children that depend on siblings' internal state",
+        "Application.get_env/put_env used for cross-module communication instead of proper message passing",
+        "Ecto schemas imported/aliased across context boundaries (schema coupling)",
+        "LiveView components reaching into contexts they shouldn't know about"
+      ],
+      "skip": [
+        "Shared schemas for join tables that naturally span contexts",
+        "Cross-context queries in reporting/analytics modules",
+        "Phoenix.PubSub for legitimate event broadcasting"
+      ]
+    },
+    "initialization_coupling": {
+      "description": "Application boot dependencies, compile-time vs runtime config, and start-order fragility",
+      "look_for": [
+        "Application.get_env at module attribute level (compile-time capture of runtime config)",
+        "Module attributes that call external services or read files at compile time",
+        "Compile-time dependencies that force recompilation cascades (use vs import vs alias)",
+        "config.exs values that should be runtime config (config/runtime.exs)",
+        "Processes started outside the supervision tree (spawn without link/monitor)"
+      ],
+      "skip": [
+        "Module attributes for compile-time constants that genuinely don't change",
+        "Application.compile_env for values that are legitimately compile-time"
+      ]
+    },
+    "convention_outlier": {
+      "description": "Elixir/Phoenix naming conventions, file organization, and community patterns",
+      "look_for": [
+        "Module names that don't follow Elixir CamelCase convention",
+        "Functions not following snake_case convention",
+        "File paths that don't match module names (MyApp.Foo in lib/my_app/bar.ex)",
+        "Inconsistent use of alias vs full module paths across sibling modules",
+        "Mixed approaches to similar problems: some modules use Ecto.Multi, others use manual transactions",
+        "Phoenix controllers not following RESTful action naming (index, show, create, update, delete)"
+      ],
+      "skip": [
+        "Macro-generated module names",
+        "Protocol implementations following their own naming conventions",
+        "Third-party library naming conventions"
+      ]
+    },
+    "test_strategy": {
+      "description": "ExUnit test organization, fixture patterns, and coverage strategy",
+      "look_for": [
+        "Critical GenServer/Supervisor modules with no test coverage",
+        "Tests that start real processes without proper cleanup (missing on_exit/start_supervised)",
+        "Overuse of mocks (Mox) where simple module injection would suffice",
+        "Missing integration tests for Ecto multi-step transactions",
+        "Test modules without describe blocks for logical grouping",
+        "Async tests that share database state without Ecto.Adapters.SQL.Sandbox"
+      ],
+      "skip": [
+        "Phoenix-generated test helpers and support files",
+        "Migration test files",
+        "Property-based tests with intentionally broad generators"
+      ]
+    }
+  }
+}
