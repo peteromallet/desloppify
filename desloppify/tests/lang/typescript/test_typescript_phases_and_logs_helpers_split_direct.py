@@ -366,7 +366,7 @@ def test_phases_coupling_helpers_and_orchestration(monkeypatch) -> None:
     monkeypatch.setattr(phases_coupling_mod.deps_detector_mod, "build_dep_graph", lambda _path: graph)
     monkeypatch.setattr(phases_coupling_mod, "get_src_path", lambda: "src")
 
-    boundary_issues, total_shared = phases_coupling_mod.make_boundary_issues_impl(
+    boundary_issues, total_shared = phases_coupling_mod.make_boundary_issues(
         [{"file": "src/shared/dedupe.ts", "loc": 20, "sole_importer": "src/tools/t.ts"}],
         Path("."),
         graph,
@@ -377,7 +377,7 @@ def test_phases_coupling_helpers_and_orchestration(monkeypatch) -> None:
     assert len(boundary_issues) == 1
     assert total_shared == 3
 
-    issues, potentials = phases_coupling_mod.phase_coupling_impl(Path("."), lang)
+    issues, potentials = phases_coupling_mod.phase_coupling(Path("."), lang)
     assert len(issues) >= 7
     assert lang.dep_graph == graph
     assert potentials == {

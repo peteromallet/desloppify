@@ -23,12 +23,6 @@ from desloppify.languages._framework.issue_factories import (
 from desloppify.languages.typescript.detectors import deps as deps_detector_mod
 from desloppify.languages.typescript.detectors import facade as facade_detector_mod
 from desloppify.languages.typescript.detectors import patterns_analysis as patterns_detector_mod
-from desloppify.languages.typescript.phases_coupling_phase import (
-    make_boundary_issues as _make_boundary_issues_core,
-)
-from desloppify.languages.typescript.phases_coupling_phase import (
-    phase_coupling as _phase_coupling_core,
-)
 from desloppify.languages.typescript.phases_config import TS_SKIP_DIRS, TS_SKIP_NAMES
 from desloppify.state import Issue, make_issue
 
@@ -209,52 +203,118 @@ def detect_naming_inconsistencies(
     return results, total_dirs
 
 
-def make_boundary_issues_impl(
+def make_boundary_issues(
     single_entries: list[dict],
     path: Path,
     graph: dict,
     lang: LangRuntimeContract,
     shared_prefix: str,
     tools_prefix: str,
-) -> tuple[list[dict], int]:
+) -> tuple[list[Issue], int]:
     """Create boundary-candidate issues, deduplicated against single-use."""
-    return _make_boundary_issues_core(
-        single_entries,
+    single_use_emitted = set()
+    for entry in single_entries:
+        is_size_ok = 50 <= entry["loc"] <= 200
+        is_colocated = lang.get_area and (
+            lang.get_area(rel(entry["file"])) == lang.get_area(entry["sole_importer"])
+        )
+        if not is_size_ok and not is_colocated:
+            single_use_emitted.add(rel(entry["file"]))
+
+    results: list[Issue] = []
+    deduped = 0
+    boundary_entries, total_shared = coupling_detector_mod.detect_boundary_candidates(
         path,
         graph,
-        lang,
-        shared_prefix,
-        tools_prefix,
-        detect_boundary_candidates_fn=coupling_detector_mod.detect_boundary_candidates,
-        rel_fn=rel,
-        make_issue_fn=make_issue,
-        log_fn=log,
+        shared_prefix=shared_prefix,
+        tools_prefix=tools_prefix,
+        skip_basenames={"index.ts", "index.tsx"},
     )
+    for entry in boundary_entries:
+        if rel(entry["file"]) in single_use_emitted:
+            deduped += 1
+            continue
+        results.append(
+            make_issue(
+                "coupling",
+                entry["file"],
+                f"boundary::{entry['sole_tool']}",
+                tier=3,
+                confidence="medium",
+                summary=(
+                    f"Boundary candidate ({entry['loc']} LOC): only used by {entry['sole_tool']} "
+                    f"({entry['importer_count']} importers)"
+                ),
+                detail={
+                    "sole_tool": entry["sole_tool"],
+                    "importer_count": entry["importer_count"],
+                    "loc": entry["loc"],
+                },
+            )
+        )
+    if deduped:
+        log(
+            f"         ({deduped} boundary candidates skipped — covered by single_use)"
+        )
+    return results, total_shared
 
 
-def phase_coupling_impl(
+def phase_coupling(
     path: Path,
     lang: LangRuntimeContract,
-    *,
-    make_boundary_issues_fn=make_boundary_issues_impl,
 ) -> tuple[list[Issue], dict[str, int]]:
-    """Run the coupling phase with injectable boundary issue construction."""
-    return _phase_coupling_core(
-        path,
-        lang,
-        make_boundary_issues_fn=make_boundary_issues_fn,
-        build_dep_graph_fn=deps_detector_mod.build_dep_graph,
-        detect_single_use_fn=detect_single_use,
-        get_src_path_fn=get_src_path,
-        detect_coupling_violations_fn=detect_coupling_violations,
-        detect_cross_tool_imports_fn=detect_cross_tool_imports,
-        detect_cycles_and_orphans_fn=detect_cycles_and_orphans,
-        detect_facades_fn=detect_facades,
-        detect_pattern_anomalies_fn=detect_pattern_anomalies,
-        detect_naming_inconsistencies_fn=detect_naming_inconsistencies,
-        adjust_potential_fn=adjust_potential,
-        log_fn=log,
+    """Run the coupling phase."""
+    results: list[Issue] = []
+    graph = deps_detector_mod.build_dep_graph(path)
+    lang.dep_graph = graph
+    zone_map = lang.zone_map
+
+    single_use_issues, single_entries, single_candidates = detect_single_use(
+        path, graph, lang
     )
+    results.extend(single_use_issues)
+
+    src_path = get_src_path()
+    shared_prefix = f"{src_path}/shared/"
+    tools_prefix = f"{src_path}/tools/"
+
+    coupling_issues, coupling_edges = detect_coupling_violations(
+        path, graph, lang, shared_prefix, tools_prefix
+    )
+    results.extend(coupling_issues)
+
+    boundary_issues, _ = make_boundary_issues(
+        single_entries, path, graph, lang, shared_prefix, tools_prefix
+    )
+    results.extend(boundary_issues)
+
+    cross_tool_issues, cross_edges = detect_cross_tool_imports(
+        path, graph, lang, tools_prefix
+    )
+    results.extend(cross_tool_issues)
+
+    cycle_orphan_issues, total_graph_files = detect_cycles_and_orphans(path, graph, lang)
+    results.extend(cycle_orphan_issues)
+
+    results.extend(detect_facades(graph, lang))
+
+    pattern_issues, total_areas = detect_pattern_anomalies(path)
+    results.extend(pattern_issues)
+
+    naming_issues, total_dirs = detect_naming_inconsistencies(path, lang)
+    results.extend(naming_issues)
+
+    log(f"         → {len(results)} coupling/structural issues total")
+    potentials = {
+        "single_use": adjust_potential(zone_map, single_candidates),
+        "coupling": coupling_edges + cross_edges,
+        "cycles": adjust_potential(zone_map, total_graph_files),
+        "orphaned": adjust_potential(zone_map, total_graph_files),
+        "patterns": total_areas,
+        "naming": total_dirs,
+        "facade": adjust_potential(zone_map, total_graph_files),
+    }
+    return results, potentials
 
 
 __all__ = [
@@ -266,7 +326,7 @@ __all__ = [
     "detect_naming_inconsistencies",
     "detect_pattern_anomalies",
     "detect_single_use",
-    "make_boundary_issues_impl",
+    "make_boundary_issues",
     "orphaned_detector_mod",
-    "phase_coupling_impl",
+    "phase_coupling",
 ]
