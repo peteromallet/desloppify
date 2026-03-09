@@ -3,34 +3,24 @@
 from __future__ import annotations
 
 import argparse
-import logging
-import sys
-from typing import NamedTuple
 
+import desloppify.intelligence.narrative.core as narrative_mod
 from desloppify import state as state_mod
+from desloppify.app.commands.helpers.attestation import (
+    show_note_length_requirement,
+    validate_note_length,
+)
 from desloppify.app.commands.helpers.guardrails import require_triage_current_or_exit
 from desloppify.app.commands.helpers.lang import resolve_lang
+from desloppify.app.commands.helpers.persist import save_state_or_exit
 from desloppify.app.commands.helpers.queue_progress import show_score_with_plan_context
 from desloppify.app.commands.helpers.state import state_path
-from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.terminal import colorize
-from desloppify.base.output.user_message import print_user_message
-from desloppify.engine.plan import (
-    add_uncommitted_issues,
-    auto_complete_steps,
-    append_log_entry,
-    has_living_plan,
-    load_plan,
-    purge_ids,
-    purge_uncommitted_ids,
-    save_plan,
-)
-import desloppify.intelligence.narrative.core as narrative_mod
 from desloppify.state import coerce_assessment_score
 
-from desloppify.app.commands.helpers.persist import save_state_or_exit
-
 from .apply import _resolve_all_patterns, _write_resolve_query_entry
+from .living_plan import update_living_plan_after_resolve
+from .messages import print_fixed_next_user_message, print_no_match_warning
 from .queue_guard import _check_queue_order_guard
 from .render import (
     _print_next_command,
@@ -39,50 +29,12 @@ from .render import (
     _print_wontfix_batch_warning,
     render_commit_guidance,
 )
-from desloppify.app.commands.helpers.attestation import (
-    show_note_length_requirement,
-    validate_note_length,
-)
-
 from .selection import (
     ResolveQueryContext,
     _enforce_batch_wontfix_confirmation,
     _previous_score_snapshot,
     _validate_resolve_inputs,
 )
-
-_logger = logging.getLogger(__name__)
-
-
-class ClusterContext(NamedTuple):
-    cluster_name: str | None
-    cluster_completed: bool
-    cluster_remaining: int
-
-
-def _capture_cluster_context(
-    plan: dict, resolved_ids: list[str],
-) -> ClusterContext:
-    """Determine cluster membership for resolved issues, pre-purge."""
-    clusters = plan.get("clusters") or {}
-    overrides = plan.get("overrides") or {}
-    # Find the cluster the first resolved issue belongs to
-    cluster_name: str | None = None
-    for rid in resolved_ids:
-        ov = overrides.get(rid)
-        if ov and ov.get("cluster"):
-            cluster_name = ov["cluster"]
-            break
-    if not cluster_name or cluster_name not in clusters:
-        return ClusterContext(cluster_name=None, cluster_completed=False, cluster_remaining=0)
-    # Count how many will remain after these ids are removed
-    current_ids = set(clusters[cluster_name].get("issue_ids") or [])
-    remaining = current_ids - set(resolved_ids)
-    return ClusterContext(
-        cluster_name=cluster_name,
-        cluster_completed=len(remaining) == 0,
-        cluster_remaining=len(remaining),
-    )
 
 
 def _validate_fixed_note(args: argparse.Namespace) -> bool:
@@ -93,54 +45,6 @@ def _validate_fixed_note(args: argparse.Namespace) -> bool:
         return True
     show_note_length_requirement(note)
     return False
-
-
-def _update_living_plan_after_resolve(
-    *,
-    args: argparse.Namespace,
-    all_resolved: list[str],
-    attestation: str | None,
-) -> tuple[dict | None, ClusterContext]:
-    plan = None
-    ctx = ClusterContext(cluster_name=None, cluster_completed=False, cluster_remaining=0)
-    try:
-        if not has_living_plan():
-            return None, ctx
-        plan = load_plan()
-        ctx = _capture_cluster_context(plan, all_resolved)
-        purged = purge_ids(plan, all_resolved)
-        # Auto-complete steps whose issue_refs are all resolved
-        step_messages = auto_complete_steps(plan)
-        for msg in step_messages:
-            print(colorize(msg, "green"))
-        append_log_entry(
-            plan,
-            "resolve",
-            issue_ids=all_resolved,
-            actor="user",
-            note=getattr(args, "note", None),
-            detail={"status": args.status, "attestation": attestation},
-        )
-        if ctx.cluster_completed and ctx.cluster_name:
-            append_log_entry(
-                plan,
-                "cluster_done",
-                issue_ids=all_resolved,
-                cluster_name=ctx.cluster_name,
-                actor="user",
-            )
-        # Commit tracking: add to uncommitted on fix, remove on reopen
-        if args.status == "fixed":
-            add_uncommitted_issues(plan, all_resolved)
-        elif args.status == "open":
-            purge_uncommitted_ids(plan, all_resolved)
-        save_plan(plan)
-        if purged:
-            print(colorize(f"  Plan updated: {purged} item(s) removed from queue.", "dim"))
-    except PLAN_LOAD_EXCEPTIONS:
-        _logger.debug("plan update failed after resolve", exc_info=True)
-        print(colorize("  Warning: could not update living plan.", "yellow"), file=sys.stderr)
-    return plan, ctx
 
 
 def _load_state_with_guards(
@@ -193,46 +97,6 @@ def _resolve_ids_with_snapshots(
     return prev, prev_subjective_scores, all_resolved
 
 
-def _print_no_match_warning(args: argparse.Namespace) -> None:
-    status_label = "resolved" if args.status == "open" else "open"
-    print(colorize(f"No {status_label} issues matching: {' '.join(args.patterns)}", "yellow"))
-
-
-def _print_fixed_next_user_message(
-    *,
-    args: argparse.Namespace,
-    plan: dict | None,
-    next_command: str,
-    mid_cluster: bool,
-    cluster_ctx: ClusterContext,
-) -> None:
-    if args.status != "fixed" or plan is None or next_command != "desloppify next":
-        return
-
-    if mid_cluster:
-        print_user_message(
-            f"Hey — task done, {cluster_ctx.cluster_remaining} left in"
-            f" cluster '{cluster_ctx.cluster_name}'. Run `desloppify next`"
-            " to pick up the next one. Keep going — don't stop until the"
-            " cluster is finished."
-        )
-    elif cluster_ctx.cluster_completed and cluster_ctx.cluster_name:
-        print_user_message(
-            f"Hey — nice, you just finished cluster '{cluster_ctx.cluster_name}'."
-            " Check the commit tracking above — this is a good time to"
-            " commit and push your work. Then run `desloppify next` to"
-            " pick up your next task."
-        )
-    else:
-        print_user_message(
-            "Hey — nice, on to the next one. Run `desloppify next`"
-            " to pick up your next task. Before moving on, glance at the"
-            " commit tracking above — if there's a decent chunk of"
-            " uncommitted work, consider whether now's a good time"
-            " to commit and push. Otherwise just keep going."
-        )
-
-
 def cmd_resolve(args: argparse.Namespace) -> None:
     """Resolve issue(s) matching one or more patterns."""
     attestation = getattr(args, "attest", None)
@@ -246,12 +110,12 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         attestation=attestation,
     )
     if not all_resolved:
-        _print_no_match_warning(args)
+        print_no_match_warning(args)
         return
 
     save_state_or_exit(state, state_file)
 
-    plan, cluster_ctx = _update_living_plan_after_resolve(
+    plan, cluster_ctx = update_living_plan_after_resolve(
         args=args,
         all_resolved=all_resolved,
         attestation=attestation,
@@ -301,7 +165,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
             state=state,
         )
     )
-    _print_fixed_next_user_message(
+    print_fixed_next_user_message(
         args=args,
         plan=plan,
         next_command=next_command,
