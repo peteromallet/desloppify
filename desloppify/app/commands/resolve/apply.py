@@ -9,9 +9,9 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import (
     write_query_best_effort as _write_query_best_effort,
 )
-from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
-from desloppify.engine.plan import has_living_plan, load_plan
+from desloppify.engine._work_queue.context import resolve_plan_load_status
 
+from .plan_load import warn_plan_load_degraded_once
 from .selection import ResolveQueryContext
 
 _logger = logging.getLogger(__name__)
@@ -19,15 +19,26 @@ _logger = logging.getLogger(__name__)
 
 def _try_expand_cluster(pattern: str) -> list[str] | None:
     """If pattern matches a cluster name, return its issue IDs."""
-    try:
-        if not has_living_plan():
-            return None
-        plan = load_plan()
-        cluster = plan.get("clusters", {}).get(pattern)
-        if cluster and cluster.get("issue_ids"):
-            return list(cluster["issue_ids"])
-    except PLAN_LOAD_EXCEPTIONS:
-        _logger.debug("cluster expansion skipped for %r", pattern, exc_info=True)
+    plan_status = resolve_plan_load_status()
+    if plan_status.degraded:
+        _logger.debug(
+            "cluster expansion skipped for %r due to degraded plan load (%s)",
+            pattern,
+            plan_status.error_kind,
+        )
+        warn_plan_load_degraded_once(
+            error_kind=plan_status.error_kind,
+            behavior=(
+                "Cluster-name pattern expansion is disabled until plan loading succeeds."
+            ),
+        )
+        return None
+    plan = plan_status.plan
+    if not isinstance(plan, dict):
+        return None
+    cluster = plan.get("clusters", {}).get(pattern)
+    if cluster and cluster.get("issue_ids"):
+        return list(cluster["issue_ids"])
     return None
 
 

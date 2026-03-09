@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import logging
 
-from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.terminal import colorize
-from desloppify.engine._work_queue.context import queue_context
+from desloppify.engine._work_queue.context import (
+    queue_context,
+    resolve_plan_load_status,
+)
 from desloppify.engine._work_queue.core import (
     QueueBuildOptions,
     build_work_queue,
 )
 from desloppify.engine._work_queue.plan_order import collapse_clusters
-from desloppify.engine.plan import has_living_plan, load_plan
+
+from .plan_load import warn_plan_load_degraded_once
 
 _logger = logging.getLogger(__name__)
 
@@ -90,65 +93,73 @@ def _check_queue_order_guard(
     """Warn and block if resolving items not at the front of the plan queue."""
     if status != "fixed":
         return False
-    try:
-        if not has_living_plan():
-            return False
-        plan = load_plan()
-        queue_order = plan.get("queue_order", [])
-        if not queue_order:
-            return False
-
-        ctx = queue_context(state, plan=plan)
-        result = build_work_queue(
-            state,
-            options=QueueBuildOptions(
-                count=None,
-                include_subjective=True,
-                context=ctx,
-            ),
+    plan_status = resolve_plan_load_status()
+    if plan_status.degraded:
+        _logger.debug(
+            "queue order guard skipped due to degraded plan load (%s)",
+            plan_status.error_kind,
         )
-        items = result["items"]
-        if not plan.get("active_cluster"):
-            items = collapse_clusters(items, plan)
-        if not items:
-            return False
-
-        clusters = plan.get("clusters", {})
-        issues = state.get("issues", {})
-        resolved_ids = _resolve_target_ids(patterns, clusters)
-        resolved_ids = _filter_open_or_cluster_targets(
-            resolved_ids,
-            clusters=clusters,
-            issues=issues,
+        warn_plan_load_degraded_once(
+            error_kind=plan_status.error_kind,
+            behavior="Queue-order enforcement is disabled until plan loading succeeds.",
         )
-        if not resolved_ids:
-            return False
-
-        # Collect IDs from the first N queue positions where N is the
-        # number of items being resolved.  This allows batch-resolving
-        # a contiguous prefix (e.g. the first 9 items in one command).
-        prefix_depth = max(len(resolved_ids), 1)
-        front_ids: set[str] = set()
-        front_id = items[0]["id"]
-        for item in items[:prefix_depth]:
-            _, item_ids = _front_item_ids(item)
-            front_ids.update(item_ids)
-
-        out_of_order = resolved_ids - front_ids
-        _prune_front_covered_clusters(
-            out_of_order,
-            clusters=clusters,
-            issues=issues,
-            front_ids=front_ids,
-        )
-        if not out_of_order:
-            return False
-
-        _print_queue_order_violation(front_id, out_of_order)
-        return True
-    except PLAN_LOAD_EXCEPTIONS:
-        _logger.debug("queue order guard skipped", exc_info=True)
         return False
+
+    plan = plan_status.plan
+    if not isinstance(plan, dict):
+        return False
+    queue_order = plan.get("queue_order", [])
+    if not queue_order:
+        return False
+
+    ctx = queue_context(state, plan=plan)
+    result = build_work_queue(
+        state,
+        options=QueueBuildOptions(
+            count=None,
+            include_subjective=True,
+            context=ctx,
+        ),
+    )
+    items = result["items"]
+    if not plan.get("active_cluster"):
+        items = collapse_clusters(items, plan)
+    if not items:
+        return False
+
+    clusters = plan.get("clusters", {})
+    issues = state.get("issues", {})
+    resolved_ids = _resolve_target_ids(patterns, clusters)
+    resolved_ids = _filter_open_or_cluster_targets(
+        resolved_ids,
+        clusters=clusters,
+        issues=issues,
+    )
+    if not resolved_ids:
+        return False
+
+    # Collect IDs from the first N queue positions where N is the
+    # number of items being resolved.  This allows batch-resolving
+    # a contiguous prefix (e.g. the first 9 items in one command).
+    prefix_depth = max(len(resolved_ids), 1)
+    front_ids: set[str] = set()
+    front_id = items[0]["id"]
+    for item in items[:prefix_depth]:
+        _, item_ids = _front_item_ids(item)
+        front_ids.update(item_ids)
+
+    out_of_order = resolved_ids - front_ids
+    _prune_front_covered_clusters(
+        out_of_order,
+        clusters=clusters,
+        issues=issues,
+        front_ids=front_ids,
+    )
+    if not out_of_order:
+        return False
+
+    _print_queue_order_violation(front_id, out_of_order)
+    return True
 
 
 __all__ = ["_check_queue_order_guard"]

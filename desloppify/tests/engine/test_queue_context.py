@@ -50,30 +50,53 @@ class TestQueueContextPlanResolution:
         plan = {"queue_order": ["f1"], "skipped": {}}
         ctx = queue_context(_minimal_state(), plan=plan)
         assert ctx.plan is plan
+        assert ctx.plan_load_status.degraded is False
 
     def test_explicit_none_plan(self):
         """Explicit plan=None produces None plan."""
         ctx = queue_context(_minimal_state(), plan=None)
         assert ctx.plan is None
+        assert ctx.plan_load_status.degraded is False
 
     def test_auto_load_plan_from_disk(self):
         """Default sentinel triggers load_plan()."""
         fake_plan = {"queue_order": ["f1"]}
         with patch(
+            "desloppify.engine.plan.has_living_plan",
+            return_value=True,
+        ), patch(
             "desloppify.engine.plan.load_plan",
             return_value=fake_plan,
         ):
             ctx = queue_context(_minimal_state())
         assert ctx.plan is fake_plan
+        assert ctx.plan_load_status.degraded is False
+        assert ctx.plan_load_status.error_kind is None
 
     def test_auto_load_plan_handles_failure(self):
         """When load_plan() raises, plan is None."""
         with patch(
+            "desloppify.engine.plan.has_living_plan",
+            return_value=True,
+        ), patch(
             "desloppify.engine.plan.load_plan",
             side_effect=OSError("no plan file"),
         ):
             ctx = queue_context(_minimal_state())
         assert ctx.plan is None
+        assert ctx.plan_load_status.degraded is True
+        assert ctx.plan_load_status.error_kind == "OSError"
+
+    def test_auto_load_without_plan_file_not_degraded(self):
+        """Missing living plan is not treated as degraded mode."""
+        with patch(
+            "desloppify.engine.plan.has_living_plan",
+            return_value=False,
+        ):
+            ctx = queue_context(_minimal_state())
+        assert ctx.plan is None
+        assert ctx.plan_load_status.degraded is False
+        assert ctx.plan_load_status.error_kind is None
 
 
 # ---------------------------------------------------------------------------

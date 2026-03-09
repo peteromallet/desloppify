@@ -33,6 +33,15 @@ PlanOption = dict | None | _PlanAutoLoad
 
 
 @dataclass(frozen=True)
+class PlanLoadStatus:
+    """Resolved plan load result with degraded-mode signaling."""
+
+    plan: dict | None
+    degraded: bool
+    error_kind: str | None = None
+
+
+@dataclass(frozen=True)
 class QueueContext:
     """Immutable snapshot of resolved queue parameters.
 
@@ -44,6 +53,29 @@ class QueueContext:
     plan: dict | None
     target_strict: float
     policy: SubjectiveVisibility
+    plan_load_status: PlanLoadStatus
+
+
+def resolve_plan_load_status(
+    *,
+    plan: PlanOption = _PLAN_AUTO_LOAD,
+) -> PlanLoadStatus:
+    """Resolve plan loading and explicitly report degraded mode."""
+    if not isinstance(plan, _PlanAutoLoad):
+        return PlanLoadStatus(plan=plan, degraded=False, error_kind=None)
+
+    if not plan_mod.has_living_plan():
+        return PlanLoadStatus(plan=None, degraded=False, error_kind=None)
+
+    try:
+        resolved_plan = plan_mod.load_plan()
+    except PLAN_LOAD_EXCEPTIONS as exc:
+        return PlanLoadStatus(
+            plan=None,
+            degraded=True,
+            error_kind=exc.__class__.__name__,
+        )
+    return PlanLoadStatus(plan=resolved_plan, degraded=False, error_kind=None)
 
 
 def queue_context(
@@ -66,13 +98,8 @@ def queue_context(
        the same objective-vs-subjective balance.
     """
     # --- resolve plan ---
-    if isinstance(plan, _PlanAutoLoad):
-        try:
-            resolved_plan: dict | None = plan_mod.load_plan()
-        except PLAN_LOAD_EXCEPTIONS:
-            resolved_plan = None
-    else:
-        resolved_plan = plan
+    plan_load_status = resolve_plan_load_status(plan=plan)
+    resolved_plan = plan_load_status.plan
 
     # --- resolve target_strict ---
     if target_strict is not None:
@@ -93,10 +120,13 @@ def queue_context(
         plan=resolved_plan,
         target_strict=resolved_target,
         policy=resolved_policy,
+        plan_load_status=plan_load_status,
     )
 
 
 __all__ = [
+    "PlanLoadStatus",
     "QueueContext",
     "queue_context",
+    "resolve_plan_load_status",
 ]
