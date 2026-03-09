@@ -83,6 +83,47 @@ class TestSwallowedError:
         assert "swallowed_error" not in _smell_ids(entries)
 
 
+# ── optional parameter sprawl ─────────────────────────────
+
+
+class TestOptionalParamSprawl:
+    def test_optional_param_sprawl_detected(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def build_payload(required, a=1, b=2, c=3, d=4):
+                return required + a + b + c + d
+        """,
+        )
+        entries, _ = detect_smells(path)
+        assert "optional_param_sprawl" in _smell_ids(entries)
+
+    def test_dataclass_init_is_excluded(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            from dataclasses import dataclass
+
+            @dataclass
+            class Config:
+                value: int
+                a: int = 1
+                b: int = 2
+                c: int = 3
+                d: int = 4
+
+                def __init__(self, value, a=1, b=2, c=3, d=4):
+                    self.value = value
+                    self.a = a
+                    self.b = b
+                    self.c = c
+                    self.d = d
+        """,
+        )
+        entries, _ = detect_smells(path)
+        assert "optional_param_sprawl" not in _smell_ids(entries)
+
+
 # ── monster function ──────────────────────────────────────
 
 

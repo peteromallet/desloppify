@@ -7,6 +7,34 @@ import ast
 from desloppify.languages.python.detectors.smells_ast._helpers import _iter_nodes
 
 
+def _is_dataclass_decorator(decorator: ast.AST) -> bool:
+    """Return True when decorator is ``@dataclass`` (name or call form)."""
+    return (
+        isinstance(decorator, ast.Name)
+        and decorator.id == "dataclass"
+    ) or (
+        isinstance(decorator, ast.Call)
+        and isinstance(decorator.func, ast.Name)
+        and decorator.func.id == "dataclass"
+    )
+
+
+def _dataclass_init_node_ids(
+    tree: ast.Module,
+    *,
+    all_nodes: tuple[ast.AST, ...] | None = None,
+) -> set[int]:
+    """Collect __init__ function node IDs that belong to dataclass classes."""
+    init_ids: set[int] = set()
+    for class_node in _iter_nodes(tree, all_nodes, ast.ClassDef):
+        if not any(_is_dataclass_decorator(dec) for dec in class_node.decorator_list):
+            continue
+        for class_item in class_node.body:
+            if isinstance(class_item, (ast.FunctionDef, ast.AsyncFunctionDef)) and class_item.name == "__init__":
+                init_ids.add(id(class_item))
+    return init_ids
+
+
 def _detect_optional_param_sprawl(
     filepath: str,
     tree: ast.Module,
@@ -14,31 +42,13 @@ def _detect_optional_param_sprawl(
     all_nodes: tuple[ast.AST, ...] | None = None,
 ) -> list[dict]:
     """Flag functions with too many optional parameters."""
-    dataclass_classes: set[str] = set()
-    for node in _iter_nodes(tree, all_nodes, ast.ClassDef):
-        for dec in node.decorator_list:
-            if (isinstance(dec, ast.Name) and dec.id == "dataclass") or (
-                isinstance(dec, ast.Call)
-                and isinstance(dec.func, ast.Name)
-                and dec.func.id == "dataclass"
-            ):
-                dataclass_classes.add(node.name)
+    dataclass_inits = _dataclass_init_node_ids(tree, all_nodes=all_nodes)
 
     results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         if node.name.startswith("test_"):
             continue
-        if node.name == "__init__":
-            parent_is_dataclass = False
-            for parent in ast.walk(tree):
-                if (
-                    isinstance(parent, ast.ClassDef)
-                    and parent.name in dataclass_classes
-                ):
-                    if node in ast.walk(parent):
-                        parent_is_dataclass = True
-                        break
-            if parent_is_dataclass:
+        if node.name == "__init__" and id(node) in dataclass_inits:
                 continue
 
         args = node.args
