@@ -98,77 +98,46 @@ def test_ts_fixer_helpers_and_registry(monkeypatch) -> None:
     assert fixers["debug-logs"].detector == "logs"
 
 
-def test_ts_security_helpers_cover_line_and_file_level_checks() -> None:
-    entry = ts_security_mod._make_security_entry(
-        "src/a.ts",
-        7,
-        "eval(userInput)",
-        check_id="eval_injection",
-        summary="eval usage",
-        severity="critical",
-        confidence="high",
-        remediation="remove eval",
+def test_ts_security_detector_reports_line_and_file_level_issues(tmp_path) -> None:
+    page = tmp_path / "src" / "page.ts"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(
+        "\n".join(
+            [
+                "const x = eval(userInput)",
+                "element.innerHTML = html",
+                "window.location = data.url",
+                "const payload = atob(token.split('.')[1])",
+            ]
+        ),
+        encoding="utf-8",
     )
-    assert entry["detail"]["kind"] == "eval_injection"
 
-    lines = [
-        "const x = eval(userInput)",
-        "element.innerHTML = html",
-        "window.location = data.url",
-        "const payload = atob(token.split('.')[1])",
-    ]
-    line_issues = ts_security_mod._line_security_issues(
-        filepath="src/page.ts",
-        normalized_path="src/page.ts",
-        lines=lines,
-        line_num=1,
-        line=lines[0],
-        is_server_only=False,
-        has_dev_guard=False,
+    edge = tmp_path / "supabase" / "functions" / "foo" / "index.ts"
+    edge.parent.mkdir(parents=True, exist_ok=True)
+    edge.write_text(
+        "Deno.serve(async (req) => {\nconst a = JSON.parse(x)\nreturn new Response('ok')\n}",
+        encoding="utf-8",
     )
-    assert any(issue["detail"]["kind"] == "eval_injection" for issue in line_issues)
 
-    line_issues += ts_security_mod._line_security_issues(
-        filepath="src/page.ts",
-        normalized_path="src/page.ts",
-        lines=lines,
-        line_num=2,
-        line=lines[1],
-        is_server_only=False,
-        has_dev_guard=False,
+    sql = tmp_path / "db" / "schema.sql"
+    sql.parent.mkdir(parents=True, exist_ok=True)
+    sql.write_text("CREATE VIEW public.foo AS SELECT 1;", encoding="utf-8")
+
+    result = ts_security_mod.detect_ts_security_result(
+        [str(page), str(edge), str(sql)],
+        zone_map=None,
     )
-    assert any(issue["detail"]["kind"] == "innerHTML_assignment" for issue in line_issues)
+    kinds = {entry["detail"]["kind"] for entry in result.entries}
 
-    edge_content = "Deno.serve(async (req) => { return new Response('ok'); })"
-    assert ts_security_mod._looks_like_edge_handler("supabase/functions/foo/index.ts", edge_content)
-    assert ts_security_mod._extract_handler_body(edge_content)
-    assert ts_security_mod._handler_has_auth_check(edge_content) is False
-
-    parse_lines = [
-        "const x = JSON.parse(input)",
-        "try {",
-        "  const y = JSON.parse(input)",
-        "} catch (e) {}",
-    ]
-    entries: list[dict] = []
-    ts_security_mod._check_json_parse_unguarded("src/a.ts", parse_lines, entries)
-    assert len(entries) == 1
-    assert entries[0]["detail"]["kind"] == "json_parse_unguarded"
-
-    sql_content = "CREATE VIEW public.foo AS SELECT 1;"
-    sql_entries: list[dict] = []
-    ts_security_mod._check_rls_bypass("db/schema.sql", sql_content, sql_content.splitlines(), sql_entries)
-    assert sql_entries and sql_entries[0]["detail"]["kind"] == "rls_bypass_views"
-
-    file_issues = ts_security_mod._file_level_security_issues(
-        filepath="supabase/functions/foo/index.ts",
-        normalized_path="supabase/functions/foo/index.ts",
-        lines=["Deno.serve(async (req) => {", "const a = JSON.parse(x)", "}"] ,
-        content="Deno.serve(async (req) => {\nconst a = JSON.parse(x)\n}",
-    )
-    kinds = {issue["detail"]["kind"] for issue in file_issues}
+    assert result.population_size == 3
+    assert "eval_injection" in kinds
+    assert "innerHTML_assignment" in kinds
+    assert "open_redirect" in kinds
+    assert "unverified_jwt_decode" in kinds
     assert "edge_function_missing_auth" in kinds
     assert "json_parse_unguarded" in kinds
+    assert "rls_bypass_views" in kinds
 
 
 def test_ts_asset_smells_and_unused_fallback_helpers(monkeypatch, tmp_path) -> None:
