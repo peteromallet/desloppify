@@ -32,7 +32,8 @@ def test_detects_disconnected_dumping_ground_module(tmp_path):
         "def cmd_run(args):\n    return subprocess.run(args, capture_output=True)\n\n"
         "def cmd_check(args):\n    return subprocess.check_output(args)\n\n"
         "def cmd_echo(msg):\n    return cmd_run(['echo', msg])\n\n"
-        + _padding_lines(230)
+        "def cmd_popen(args):\n    return subprocess.Popen(args)\n\n"
+        + _padding_lines(270)
         + "\n"
     )
     _write(tmp_path, "utils.py", module)
@@ -41,7 +42,7 @@ def test_detects_disconnected_dumping_ground_module(tmp_path):
     assert len(entries) == 1
     assert entries[0]["file"].endswith("utils.py")
     assert entries[0]["component_count"] >= 3
-    assert entries[0]["function_count"] >= 9
+    assert entries[0]["function_count"] >= 10
 
 
 def test_ignores_connected_module(tmp_path):

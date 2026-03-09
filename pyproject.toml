@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desloppify"
-version = "0.9.2"
+version = "0.9.3"
 description = "Multi-language codebase health scanner and technical debt tracker"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -106,6 +106,5 @@ files = [
   "desloppify/app/commands/scan/workflow.py",
   "desloppify/app/cli_support/parser.py",
   "desloppify/app/cli_support/parser_groups.py",
-  "desloppify/engine/concerns.py",
   "desloppify/languages/_framework/generic.py",
 ]
