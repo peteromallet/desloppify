@@ -16,6 +16,8 @@ from desloppify.engine._plan.policy.subjective import SubjectiveVisibility
 from desloppify.engine._state.schema import StateModel
 
 from .defer_policy import (
+    DeferEscalationOptions,
+    DeferUpdateOptions,
     should_escalate_defer_state,
     update_defer_state,
 )
@@ -200,14 +202,18 @@ def sync_triage_needed(
                     meta.get(_TRIAGE_DEFER_META_KEY),
                     state=state,
                     deferred_ids=new_since_triage,
-                    deferred_ids_field=_TRIAGE_DEFER_IDS_FIELD,
+                    options=DeferUpdateOptions(
+                        deferred_ids_field=_TRIAGE_DEFER_IDS_FIELD,
+                    ),
                 )
                 meta[_TRIAGE_DEFER_META_KEY] = defer_state
                 meta["triage_recommended"] = True
                 escalated = should_escalate_defer_state(
                     defer_state,
                     state=state,
-                    deferred_ids_field=_TRIAGE_DEFER_IDS_FIELD,
+                    options=DeferEscalationOptions(
+                        deferred_ids_field=_TRIAGE_DEFER_IDS_FIELD,
+                    ),
                 )
                 if escalated:
                     meta[_TRIAGE_FORCE_VISIBLE_KEY] = True

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from desloppify.base.discovery.file_paths import resolve_path
 
-from desloppify.base.discovery.source import find_source_files
+from desloppify.base.discovery.source import SourceDiscoveryOptions, find_source_files
 from desloppify.base.text_utils import strip_c_style_comments
 from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.languages.csharp._parse_helpers import (
@@ -29,7 +29,11 @@ _KEYWORDS = {"if", "for", "while", "switch", "catch", "return"}
 
 def find_dart_files(path: Path | str) -> list[str]:
     """Find Dart source files under path."""
-    return find_source_files(path, [".dart"], exclusions=DART_FILE_EXCLUSIONS)
+    return find_source_files(
+        path,
+        [".dart"],
+        SourceDiscoveryOptions(exclusions=tuple(DART_FILE_EXCLUSIONS)),
+    )
 
 
 def _find_matching_brace(content: str, open_pos: int) -> int | None:

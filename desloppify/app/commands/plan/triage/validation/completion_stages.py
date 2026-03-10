@@ -44,7 +44,7 @@ def _auto_confirm_stage_for_complete(
     attestation: str | None,
     save_plan_fn=None,
 ) -> bool:
-    from .core import _auto_confirm_stage  # noqa: PLC0415
+    from .core import AutoConfirmStageRequest, _auto_confirm_stage  # noqa: PLC0415
 
     stage_record = stages.get(stage)
     if stage_record is None:
@@ -54,13 +54,15 @@ def _auto_confirm_stage_for_complete(
     return _auto_confirm_stage(
         plan=plan,
         stage_record=stage_record,
-        stage_name=stage,
-        stage_label=config["label"],
         attestation=attestation,
-        blocked_heading=config["blocked_heading"],
-        confirm_cmd=config["confirm_cmd"],
-        inline_hint=config["inline_hint"],
-        cluster_names=_manual_cluster_names(plan),
+        request=AutoConfirmStageRequest(
+            stage_name=stage,
+            stage_label=config["label"],
+            blocked_heading=config["blocked_heading"],
+            confirm_cmd=config["confirm_cmd"],
+            inline_hint=config["inline_hint"],
+            cluster_names=_manual_cluster_names(plan),
+        ),
         save_plan_fn=save_plan_fn,
     )
 

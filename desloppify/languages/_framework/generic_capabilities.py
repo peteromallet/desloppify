@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from desloppify.base.discovery.source import find_source_files
+from desloppify.base.discovery.source import SourceDiscoveryOptions, find_source_files
 from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 from desloppify.languages._framework.base.types import LangConfig
@@ -36,7 +36,11 @@ def make_file_finder(
     excl = exclusions or []
 
     def finder(path: str | Path) -> list[str]:
-        return find_source_files(path, extensions, excl or None)
+        return find_source_files(
+            path,
+            extensions,
+            SourceDiscoveryOptions(exclusions=tuple(excl or [])),
+        )
 
     return finder
 

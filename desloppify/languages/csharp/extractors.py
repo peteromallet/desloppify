@@ -8,7 +8,7 @@ from pathlib import Path
 
 from desloppify.base.discovery.file_paths import resolve_path
 
-from desloppify.base.discovery.source import find_source_files
+from desloppify.base.discovery.source import SourceDiscoveryOptions, find_source_files
 from desloppify.engine.detectors.base import ClassInfo, FunctionInfo
 from desloppify.languages.csharp._parse_helpers import (
     extract_csharp_params as _extract_csharp_params,
@@ -70,7 +70,11 @@ _COMMENT_LINE_RE = re.compile(r"//.*?$", re.MULTILINE)
 
 def find_csharp_files(path: Path | str) -> list[str]:
     """Find C# source files below ``path``."""
-    return find_source_files(path, [".cs"], exclusions=CSHARP_FILE_EXCLUSIONS)
+    return find_source_files(
+        path,
+        [".cs"],
+        SourceDiscoveryOptions(exclusions=tuple(CSHARP_FILE_EXCLUSIONS)),
+    )
 
 
 def _read_file(filepath: str) -> str | None:

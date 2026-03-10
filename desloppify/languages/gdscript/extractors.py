@@ -8,7 +8,7 @@ from pathlib import Path
 
 from desloppify.base.discovery.file_paths import resolve_path
 
-from desloppify.base.discovery.source import find_source_files
+from desloppify.base.discovery.source import SourceDiscoveryOptions, find_source_files
 from desloppify.engine.detectors.base import FunctionInfo
 
 GDSCRIPT_FILE_EXCLUSIONS = [
@@ -24,7 +24,11 @@ _COMMENT_RE = re.compile(r"(?m)#.*$")
 
 def find_gdscript_files(path: Path | str) -> list[str]:
     """Find GDScript files under path."""
-    return find_source_files(path, [".gd"], exclusions=GDSCRIPT_FILE_EXCLUSIONS)
+    return find_source_files(
+        path,
+        [".gd"],
+        SourceDiscoveryOptions(exclusions=tuple(GDSCRIPT_FILE_EXCLUSIONS)),
+    )
 
 
 def _extract_params(raw_params: str) -> list[str]:

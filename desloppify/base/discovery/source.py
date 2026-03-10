@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from desloppify.base.discovery.file_paths import matches_exclusion
@@ -47,6 +48,16 @@ DEFAULT_EXCLUSIONS = frozenset(
         ".hg",
     }
 )
+
+
+@dataclass(frozen=True)
+class SourceDiscoveryOptions:
+    """Options bundle for source-file discovery and cache lookups."""
+
+    exclusions: tuple[str, ...] | None = None
+    extra_exclusions: tuple[str, ...] = ()
+    project_root: Path | None = None
+    source_file_cache: SourceFileCache | None = None
 
 
 def set_exclusions(
@@ -160,26 +171,24 @@ def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
 def _find_source_files_cached(
     path: str,
     extensions: tuple[str, ...],
-    exclusions: tuple[str, ...] | None = None,
-    extra_exclusions: tuple[str, ...] = (),
+    options: SourceDiscoveryOptions | None = None,
     *,
-    project_root: Path | None = None,
-    source_file_cache: SourceFileCache | None = None,
     runtime: RuntimeContext | None = None,
 ) -> tuple[str, ...]:
     """Cached file discovery using os.walk with traversal-time pruning."""
     resolved_runtime = resolve_runtime_context(runtime)
+    resolved_options = options or SourceDiscoveryOptions()
     resolved_project_root = (
-        project_root.resolve()
-        if project_root is not None
+        resolved_options.project_root.resolve()
+        if resolved_options.project_root is not None
         else get_project_root(runtime=resolved_runtime)
     )
-    cache = source_file_cache or resolved_runtime.source_file_cache
+    cache = resolved_options.source_file_cache or resolved_runtime.source_file_cache
     cache_key = (
         path,
         extensions,
-        exclusions,
-        extra_exclusions,
+        resolved_options.exclusions,
+        resolved_options.extra_exclusions,
         str(resolved_project_root),
     )
     cached = cache.get(cache_key)
@@ -189,7 +198,9 @@ def _find_source_files_cached(
     root = Path(path)
     if not root.is_absolute():
         root = resolved_project_root / root
-    all_exclusions = (exclusions or ()) + extra_exclusions
+    all_exclusions = (
+        (resolved_options.exclusions or ()) + resolved_options.extra_exclusions
+    )
     ext_set = set(extensions)
     files: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -220,32 +231,32 @@ def _find_source_files_cached(
 def find_source_files(
     path: str | Path,
     extensions: list[str],
-    exclusions: list[str] | None = None,
+    options: SourceDiscoveryOptions | None = None,
     *,
-    project_root: str | Path | None = None,
-    extra_exclusions: list[str] | tuple[str, ...] | None = None,
-    source_file_cache: SourceFileCache | None = None,
     runtime: RuntimeContext | None = None,
 ) -> list[str]:
     """Find all files with given extensions under a path, excluding patterns."""
     resolved_runtime = resolve_runtime_context(runtime)
+    resolved_options = options or SourceDiscoveryOptions()
     resolved_project_root = get_project_root(
-        project_root=project_root,
+        project_root=resolved_options.project_root,
         runtime=resolved_runtime,
     )
     resolved_extra_exclusions = (
-        tuple(extra_exclusions)
-        if extra_exclusions is not None
+        resolved_options.extra_exclusions
+        if resolved_options.extra_exclusions
         else get_exclusions(runtime=resolved_runtime)
     )
     return list(
         _find_source_files_cached(
             str(path),
             tuple(extensions),
-            tuple(exclusions) if exclusions else None,
-            resolved_extra_exclusions,
-            project_root=resolved_project_root,
-            source_file_cache=source_file_cache,
+            SourceDiscoveryOptions(
+                exclusions=resolved_options.exclusions,
+                extra_exclusions=resolved_extra_exclusions,
+                project_root=resolved_project_root,
+                source_file_cache=resolved_options.source_file_cache,
+            ),
             runtime=resolved_runtime,
         )
     )
@@ -283,6 +294,7 @@ def find_py_files(path: str | Path, *, runtime: RuntimeContext | None = None) ->
 
 __all__ = [
     "DEFAULT_EXCLUSIONS",
+    "SourceDiscoveryOptions",
     "collect_exclude_dirs",
     "set_exclusions",
     "get_exclusions",

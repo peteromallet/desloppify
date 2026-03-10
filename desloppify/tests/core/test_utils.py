@@ -14,6 +14,7 @@ from desloppify.base.discovery.file_paths import (
     resolve_path,
 )
 from desloppify.base.discovery.source import (
+    SourceDiscoveryOptions,
     clear_source_file_cache_for_tests,
     find_source_files,
     get_exclusions,
@@ -189,7 +190,11 @@ def test_find_source_files_with_explicit_exclusion(tmp_path, patch_project_root)
     gen.mkdir()
     (gen / "auto.py").write_text("auto")
 
-    files = find_source_files(str(src), [".py"], exclusions=["generated"])
+    files = find_source_files(
+        str(src),
+        [".py"],
+        SourceDiscoveryOptions(exclusions=("generated",)),
+    )
     assert len(files) == 1
     assert any("keep.py" in f for f in files)
     assert not any("generated" in f for f in files)

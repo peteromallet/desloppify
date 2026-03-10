@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from desloppify.engine._state.schema import StateModel, utc_now
 
 DEFER_ESCALATE_AFTER_SCANS = 3
 DEFER_ESCALATE_AFTER_DAYS = 7
+
+
+@dataclass(frozen=True)
+class DeferUpdateOptions:
+    """Options for durable defer-state updates."""
+
+    deferred_ids_field: str = "deferred_ids"
+    now: str | None = None
+
+
+@dataclass(frozen=True)
+class DeferEscalationOptions:
+    """Options for defer-state escalation checks."""
+
+    deferred_ids_field: str = "deferred_ids"
+    now: str | None = None
+    min_scans: int = DEFER_ESCALATE_AFTER_SCANS
+    min_days: int = DEFER_ESCALATE_AFTER_DAYS
 
 
 def _coerce_non_negative_int(value: object, *, default: int = 0) -> int:
@@ -77,18 +96,21 @@ def update_defer_state(
     *,
     state: StateModel,
     deferred_ids: set[str],
-    deferred_ids_field: str = "deferred_ids",
-    now: str | None = None,
+    options: DeferUpdateOptions | None = None,
 ) -> dict[str, object]:
     """Return updated durable defer metadata for the current deferred ID set."""
+    resolved_options = options or DeferUpdateOptions()
     previous = defer_state if isinstance(defer_state, dict) else {}
     current_ids = _normalized_ids(deferred_ids)
-    previous_ids = _deferred_ids(previous, deferred_ids_field=deferred_ids_field)
+    previous_ids = _deferred_ids(
+        previous,
+        deferred_ids_field=resolved_options.deferred_ids_field,
+    )
     scan_count = _scan_count(state)
-    timestamp = _current_timestamp(state, now=now)
+    timestamp = _current_timestamp(state, now=resolved_options.now)
 
     updated = dict(previous)
-    updated[deferred_ids_field] = current_ids
+    updated[resolved_options.deferred_ids_field] = current_ids
     updated["last_deferred_scan"] = scan_count
     updated["last_deferred_at"] = timestamp
 
@@ -115,21 +137,22 @@ def should_escalate_defer_state(
     defer_state: dict[str, object] | None,
     *,
     state: StateModel,
-    deferred_ids_field: str = "deferred_ids",
-    now: str | None = None,
-    min_scans: int = DEFER_ESCALATE_AFTER_SCANS,
-    min_days: int = DEFER_ESCALATE_AFTER_DAYS,
+    options: DeferEscalationOptions | None = None,
 ) -> bool:
     """Return True when defer metadata crosses configured escalation bounds."""
     if not isinstance(defer_state, dict):
         return False
+    resolved_options = options or DeferEscalationOptions()
 
-    deferred_ids = _deferred_ids(defer_state, deferred_ids_field=deferred_ids_field)
+    deferred_ids = _deferred_ids(
+        defer_state,
+        deferred_ids_field=resolved_options.deferred_ids_field,
+    )
     if not deferred_ids:
         return False
 
-    min_scans = max(1, int(min_scans))
-    min_days = max(1, int(min_days))
+    min_scans = max(1, int(resolved_options.min_scans))
+    min_days = max(1, int(resolved_options.min_days))
 
     defer_count = _coerce_non_negative_int(defer_state.get("defer_count"), default=0)
     if defer_count >= min_scans:
@@ -144,7 +167,9 @@ def should_escalate_defer_state(
         return True
 
     first_deferred_at = _parse_timestamp(defer_state.get("first_deferred_at"))
-    current_at = _parse_timestamp(state.get("last_scan")) or _parse_timestamp(now)
+    current_at = _parse_timestamp(state.get("last_scan")) or _parse_timestamp(
+        resolved_options.now
+    )
     if first_deferred_at is None or current_at is None:
         return False
     return (current_at - first_deferred_at).total_seconds() >= min_days * 86400
@@ -153,7 +178,8 @@ def should_escalate_defer_state(
 __all__ = [
     "DEFER_ESCALATE_AFTER_DAYS",
     "DEFER_ESCALATE_AFTER_SCANS",
+    "DeferEscalationOptions",
+    "DeferUpdateOptions",
     "should_escalate_defer_state",
     "update_defer_state",
 ]
-

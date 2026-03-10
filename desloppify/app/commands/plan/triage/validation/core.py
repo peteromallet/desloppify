@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import re
 from collections import Counter
+from dataclasses import dataclass
 
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.base.output.terminal import colorize
@@ -53,18 +54,25 @@ from ..helpers import manual_clusters_with_issues, observe_dimension_breakdown
 from ..stages.helpers import unclustered_review_issues, unenriched_clusters
 
 
+@dataclass(frozen=True)
+class AutoConfirmStageRequest:
+    """Configuration for one fold-confirm stage auto-confirmation."""
+
+    stage_name: str
+    stage_label: str
+    blocked_heading: str
+    confirm_cmd: str
+    inline_hint: str
+    dimensions: list[str] | None = None
+    cluster_names: list[str] | None = None
+
+
 def _auto_confirm_stage(
     *,
     plan: dict,
     stage_record: dict,
-    stage_name: str,
-    stage_label: str,
     attestation: str | None,
-    blocked_heading: str,
-    confirm_cmd: str,
-    inline_hint: str,
-    dimensions: list[str] | None = None,
-    cluster_names: list[str] | None = None,
+    request: AutoConfirmStageRequest,
     save_plan_fn=None,
 ) -> bool:
     """Shared auto-confirm flow for stage fold-confirm operations."""
@@ -73,17 +81,17 @@ def _auto_confirm_stage(
     if stage_record.get("confirmed_at"):
         return True
     if not attestation or len(attestation.strip()) < MIN_ATTESTATION_LEN:
-        print(colorize(f"  {blocked_heading}", "red"))
-        print(colorize(f"  Run: {confirm_cmd}", "dim"))
-        print(colorize(f"  {inline_hint}", "dim"))
+        print(colorize(f"  {request.blocked_heading}", "red"))
+        print(colorize(f"  Run: {request.confirm_cmd}", "dim"))
+        print(colorize(f"  {request.inline_hint}", "dim"))
         return False
 
     confirmed_text = attestation.strip()
     validation_err = validate_attestation(
         confirmed_text,
-        stage_name,
-        dimensions=dimensions,
-        cluster_names=cluster_names,
+        request.stage_name,
+        dimensions=request.dimensions,
+        cluster_names=request.cluster_names,
     )
     if validation_err:
         print(colorize(f"  {validation_err}", "red"))
@@ -92,7 +100,7 @@ def _auto_confirm_stage(
     stage_record["confirmed_at"] = utc_now()
     stage_record["confirmed_text"] = confirmed_text
     save_plan_fn(plan)
-    print(colorize(f"  ✓ {stage_label} auto-confirmed via --attestation.", "green"))
+    print(colorize(f"  ✓ {request.stage_label} auto-confirmed via --attestation.", "green"))
     return True
 
 
@@ -111,13 +119,15 @@ def _auto_confirm_observe_if_attested(
     return _auto_confirm_stage(
         plan=plan,
         stage_record=observe_stage,
-        stage_name="observe",
-        stage_label="Observe",
         attestation=attestation,
-        blocked_heading="Cannot reflect: observe stage not confirmed.",
-        confirm_cmd="desloppify plan triage --confirm observe",
-        inline_hint="Or pass --attestation to auto-confirm observe inline.",
-        dimensions=dim_names,
+        request=AutoConfirmStageRequest(
+            stage_name="observe",
+            stage_label="Observe",
+            blocked_heading="Cannot reflect: observe stage not confirmed.",
+            confirm_cmd="desloppify plan triage --confirm observe",
+            inline_hint="Or pass --attestation to auto-confirm observe inline.",
+            dimensions=dim_names,
+        ),
         save_plan_fn=save_plan_fn,
     )
 
@@ -311,14 +321,16 @@ def _auto_confirm_reflect_for_organize(
     return _auto_confirm_stage(
         plan=plan,
         stage_record=reflect_stage,
-        stage_name="reflect",
-        stage_label="Reflect",
         attestation=attestation,
-        blocked_heading="Cannot organize: reflect stage not confirmed.",
-        confirm_cmd="desloppify plan triage --confirm reflect",
-        inline_hint="Or pass --attestation to auto-confirm reflect inline.",
-        dimensions=reflect_dims,
-        cluster_names=reflect_clusters,
+        request=AutoConfirmStageRequest(
+            stage_name="reflect",
+            stage_label="Reflect",
+            blocked_heading="Cannot organize: reflect stage not confirmed.",
+            confirm_cmd="desloppify plan triage --confirm reflect",
+            inline_hint="Or pass --attestation to auto-confirm reflect inline.",
+            dimensions=reflect_dims,
+            cluster_names=reflect_clusters,
+        ),
         save_plan_fn=save_plan_fn,
     )
 
@@ -388,6 +400,7 @@ def _organize_report_or_error(report: str | None) -> str | None:
 __all__ = [
     "_auto_confirm_enrich_for_complete",
     "_auto_confirm_observe_if_attested",
+    "AutoConfirmStageRequest",
     "_auto_confirm_stage_for_complete",
     "_auto_confirm_reflect_for_organize",
     "_cluster_file_overlaps",

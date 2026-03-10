@@ -52,8 +52,7 @@ def test_defer_policy_updates_counts_and_escalates_by_scan_or_time() -> None:
             "first_deferred_at": "2026-03-10T00:00:00+00:00",
         },
         state={"scan_count": 4, "last_scan": "2026-03-10T12:00:00+00:00"},
-        min_scans=5,
-        min_days=10,
+        options=defer_policy_mod.DeferEscalationOptions(min_scans=5, min_days=10),
     )
 
 

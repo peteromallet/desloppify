@@ -7,6 +7,8 @@ from desloppify.engine._plan.sync.context import (
     has_objective_backlog as _has_objective_backlog,
 )
 from desloppify.engine._plan.sync.defer_policy import (
+    DeferEscalationOptions,
+    DeferUpdateOptions,
     should_escalate_defer_state,
     update_defer_state,
 )
@@ -252,14 +254,18 @@ def sync_subjective_clusters(
                 plan.get(_SUBJECTIVE_DEFER_META_KEY),
                 state=state,
                 deferred_ids=set(deferred_subjective_ids),
-                deferred_ids_field=_SUBJECTIVE_DEFER_IDS_FIELD,
-                now=now,
+                options=DeferUpdateOptions(
+                    deferred_ids_field=_SUBJECTIVE_DEFER_IDS_FIELD,
+                    now=now,
+                ),
             )
             escalated = should_escalate_defer_state(
                 defer_state,
                 state=state,
-                deferred_ids_field=_SUBJECTIVE_DEFER_IDS_FIELD,
-                now=now,
+                options=DeferEscalationOptions(
+                    deferred_ids_field=_SUBJECTIVE_DEFER_IDS_FIELD,
+                    now=now,
+                ),
             )
             if escalated:
                 defer_state[_SUBJECTIVE_FORCE_IDS_KEY] = list(deferred_subjective_ids)
