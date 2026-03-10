@@ -159,25 +159,10 @@ def cmd_plan_triage(args: argparse.Namespace) -> None:
     if stage == "sense-check":
         _flow_mod.cmd_stage_sense_check(args, services=resolved_services)
         return
-
-    if getattr(args, "dry_run", False):
-        plan = resolved_services.load_plan()
-        si = resolved_services.collect_triage_input(plan, state)
-        prompt = resolved_services.build_triage_prompt(si)
-        print(colorize("  Epic triage — dry run", "bold"))
-        print(colorize("  " + "─" * 60, "dim"))
-        print(f"  Open review issues: {len(si.open_issues)}")
-        print(f"  Existing epics: {len(si.existing_epics)}")
-        print(f"  New since last: {len(si.new_since_last)}")
-        print(f"  Resolved since last: {len(si.resolved_since_last)}")
-        print(colorize("\n  Prompt that would be sent to LLM:", "dim"))
-        print()
-        print(prompt)
+    if stage == "commit":
+        _flow_mod.cmd_stage_commit(args, services=resolved_services)
         return
 
-    _display_mod.cmd_triage_dashboard(args, services=resolved_services)
-
-__all__ = [
-    "_triage_coverage",
-    "cmd_plan_triage",
-]
+    # Default: show help
+    print(colorize("  No valid stage specified.", "yellow"))
+    print("  Usage: desloppify plan triage --stage <observe|reflect|organize|enrich|sense-check|commit>")
