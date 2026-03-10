@@ -23,7 +23,7 @@ from .types import (
     BatchResult,
     BatchTask,
 )
-from ..runner_process import _extract_payload_from_log
+from ..runner_process_impl.io import extract_payload_from_log
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def collect_batch_results(
                 logger.warning("Failed reading batch payload %s: %s", raw_path, exc)
                 payload = None
         if payload is None:
-            payload = _extract_payload_from_log(idx, raw_path, extract_payload_fn)
+            payload = extract_payload_from_log(idx, raw_path, extract_payload_fn)
             parsed_from_log = payload is not None
         if payload is None:
             failure_set.add(idx)

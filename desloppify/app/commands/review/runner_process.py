@@ -7,14 +7,13 @@ import sys
 from pathlib import Path
 
 from .runner_process_impl.attempts import (
-    _handle_early_attempt_return,
-    _handle_failed_attempt,
-    _handle_successful_attempt,
-    _handle_timeout_or_stall,
-    _resolve_retry_config,
-    _run_batch_attempt,
+    handle_early_attempt_return,
+    handle_failed_attempt,
+    handle_successful_attempt,
+    handle_timeout_or_stall,
+    resolve_retry_config,
+    run_batch_attempt,
 )
-from .runner_process_impl.io import _extract_payload_from_log  # noqa: F401 (runner_parallel import)
 from .runner_process_impl.types import (
     CodexBatchRunnerDeps,
     FollowupScanDeps,
@@ -61,11 +60,11 @@ def run_codex_batch(
         repo_root=repo_root,
         output_file=output_file,
     )
-    config = _resolve_retry_config(deps)
+    config = resolve_retry_config(deps)
     log_sections: list[str] = []
 
     for attempt in range(1, config.max_attempts + 1):
-        header, result = _run_batch_attempt(
+        header, result = run_batch_attempt(
             cmd=cmd,
             deps=deps,
             output_file=output_file,
@@ -77,10 +76,10 @@ def run_codex_batch(
             live_log_interval=config.live_log_interval,
             stall_seconds=config.stall_seconds,
         )
-        early_return = _handle_early_attempt_return(result)
+        early_return = handle_early_attempt_return(result)
         if early_return is not None:
             return early_return
-        timeout_or_stall = _handle_timeout_or_stall(
+        timeout_or_stall = handle_timeout_or_stall(
             header=header,
             result=result,
             deps=deps,
@@ -108,7 +107,7 @@ def run_codex_batch(
             f"{header}\n\nSTDOUT:\n{result.stdout_text}\n\nSTDERR:\n{result.stderr_text}\n"
         )
 
-        success_code = _handle_successful_attempt(
+        success_code = handle_successful_attempt(
             result=result,
             output_file=output_file,
             log_file=log_file,
@@ -117,7 +116,7 @@ def run_codex_batch(
         )
         if success_code is not None:
             return success_code
-        failure_code = _handle_failed_attempt(
+        failure_code = handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=attempt,
@@ -191,7 +190,6 @@ def run_followup_scan(
 __all__ = [
     "CodexBatchRunnerDeps",
     "FollowupScanDeps",
-    "_extract_payload_from_log",
     "codex_batch_command",
     "run_codex_batch",
     "run_followup_scan",

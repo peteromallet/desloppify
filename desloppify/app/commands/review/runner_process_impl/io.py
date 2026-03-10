@@ -42,7 +42,7 @@ def _output_file_has_json_payload(output_file: Path) -> bool:
     return isinstance(payload, dict)
 
 
-def _extract_payload_from_log(
+def extract_payload_from_log(
     batch_index: int,
     raw_path: Path,
     extract_fn,
@@ -212,7 +212,7 @@ def _check_stall(
 __all__ = [
     "_check_stall",
     "_drain_stream",
-    "_extract_payload_from_log",
+    "extract_payload_from_log",
     "_output_file_has_json_payload",
     "_output_file_status_text",
     "_start_live_writer",

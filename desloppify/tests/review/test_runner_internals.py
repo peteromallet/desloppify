@@ -21,17 +21,17 @@ from desloppify.app.commands.review.runner_parallel.execution import (
     _resolve_parallel_runtime,
 )
 from desloppify.app.commands.review.runner_process_impl.attempts import (
-    _handle_early_attempt_return,
-    _handle_failed_attempt,
-    _handle_successful_attempt,
-    _handle_timeout_or_stall,
-    _resolve_retry_config,
+    handle_early_attempt_return,
+    handle_failed_attempt,
+    handle_successful_attempt,
+    handle_timeout_or_stall,
+    resolve_retry_config,
 )
 from desloppify.app.commands.review.runner_process_impl.io import (
     _check_stall,
-    _extract_payload_from_log,
     _output_file_has_json_payload,
     _output_file_status_text,
+    extract_payload_from_log,
 )
 from desloppify.app.commands.review.runner_process_impl.types import (
     CodexBatchRunnerDeps,
@@ -113,7 +113,7 @@ class TestOutputFileHasJsonPayload:
 
 
 class TestExtractPayloadFromLog:
-    """_extract_payload_from_log: recovers batch payload from runner log files."""
+    """extract_payload_from_log: recovers batch payload from runner log files."""
 
     def _setup_log(self, tmp_path, batch_index: int, content: str) -> Path:
         """Write a log file and return the raw_path that the function expects."""
@@ -128,7 +128,7 @@ class TestExtractPayloadFromLog:
 
     def test_no_log_file_returns_none(self, tmp_path):
         raw_path = tmp_path / "subagents" / "raw" / "batch-1.json"
-        result = _extract_payload_from_log(0, raw_path, lambda t: None)
+        result = extract_payload_from_log(0, raw_path, lambda t: None)
         assert result is None
 
     def test_extracts_from_stdout_section(self, tmp_path):
@@ -149,7 +149,7 @@ class TestExtractPayloadFromLog:
             except json.JSONDecodeError:
                 return None
 
-        result = _extract_payload_from_log(0, raw_path, extract_fn)
+        result = extract_payload_from_log(0, raw_path, extract_fn)
         assert result == payload
 
     def test_extracts_from_stdout_at_start_of_file(self, tmp_path):
@@ -165,7 +165,7 @@ class TestExtractPayloadFromLog:
             except json.JSONDecodeError:
                 return None
 
-        result = _extract_payload_from_log(2, raw_path, extract_fn)
+        result = extract_payload_from_log(2, raw_path, extract_fn)
         assert result == payload
 
     def test_stdout_section_no_payload_returns_none(self, tmp_path):
@@ -178,7 +178,7 @@ class TestExtractPayloadFromLog:
             '{"this_should_not_be_found": true}\n'
         )
         raw_path = self._setup_log(tmp_path, 0, log_content)
-        result = _extract_payload_from_log(0, raw_path, lambda t: None)
+        result = extract_payload_from_log(0, raw_path, lambda t: None)
         assert result is None
 
     def test_no_stdout_marker_falls_back_to_whole_log(self, tmp_path):
@@ -194,14 +194,14 @@ class TestExtractPayloadFromLog:
             except json.JSONDecodeError:
                 return None
 
-        result = _extract_payload_from_log(1, raw_path, extract_fn)
+        result = extract_payload_from_log(1, raw_path, extract_fn)
         assert result == payload
 
     def test_extract_fn_returning_none_propagates(self, tmp_path):
         """When extract_fn cannot parse anything, None is returned."""
         log_content = "no json here at all"
         raw_path = self._setup_log(tmp_path, 0, log_content)
-        result = _extract_payload_from_log(0, raw_path, lambda t: None)
+        result = extract_payload_from_log(0, raw_path, lambda t: None)
         assert result is None
 
 
@@ -307,11 +307,11 @@ class TestCheckStall:
 
 
 class TestResolveRetryConfig:
-    """_resolve_retry_config: normalizes deps into _RetryConfig."""
+    """resolve_retry_config: normalizes deps into _RetryConfig."""
 
     def test_defaults(self):
         deps = _make_deps()
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.max_attempts == 1  # 0 retries => 1 attempt
         assert cfg.retry_backoff_seconds == 0.0
         assert cfg.live_log_interval == 5.0
@@ -320,84 +320,84 @@ class TestResolveRetryConfig:
 
     def test_retries_become_attempts(self):
         deps = _make_deps(max_retries=3)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.max_attempts == 4  # 3 retries + 1 initial
 
     def test_negative_retries_clamped_to_zero(self):
         deps = _make_deps(max_retries=-5)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.max_attempts == 1
 
     def test_backoff_seconds(self):
         deps = _make_deps(retry_backoff_seconds=2.5)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.retry_backoff_seconds == 2.5
 
     def test_negative_backoff_clamped(self):
         deps = _make_deps(retry_backoff_seconds=-1.0)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.retry_backoff_seconds == 0.0
 
     def test_live_log_interval_custom(self):
         deps = _make_deps(live_log_interval_seconds=10.0)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.live_log_interval == 10.0
 
     def test_live_log_interval_zero_uses_default(self):
         deps = _make_deps(live_log_interval_seconds=0)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.live_log_interval == 5.0  # fallback
 
     def test_stall_seconds_custom(self):
         deps = _make_deps(stall_after_output_seconds=120)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.stall_seconds == 120
 
     def test_stall_seconds_zero_disables(self):
         deps = _make_deps(stall_after_output_seconds=0)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.stall_seconds == 0
 
     def test_use_popen_true_with_callable(self):
         deps = _make_deps(use_popen_runner=True, subprocess_popen=MagicMock())
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.use_popen is True
 
     def test_use_popen_true_without_callable(self):
         deps = _make_deps(use_popen_runner=True, subprocess_popen=None)
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.use_popen is False  # no callable => disabled
 
     def test_non_numeric_retries_defaults_to_zero(self):
         deps = _make_deps(max_retries="abc")
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.max_attempts == 1
 
     def test_non_numeric_backoff_defaults_to_zero(self):
         deps = _make_deps(retry_backoff_seconds="bad")
-        cfg = _resolve_retry_config(deps)
+        cfg = resolve_retry_config(deps)
         assert cfg.retry_backoff_seconds == 0.0
 
 
 class TestHandleEarlyAttemptReturn:
-    """_handle_early_attempt_return: passes through early_return from result."""
+    """handle_early_attempt_return: passes through early_return from result."""
 
     def test_none_when_no_early_return(self):
         result = _ExecutionResult(code=0, stdout_text="", stderr_text="")
-        assert _handle_early_attempt_return(result) is None
+        assert handle_early_attempt_return(result) is None
 
     def test_returns_early_return_code(self):
         result = _ExecutionResult(code=0, stdout_text="", stderr_text="", early_return=127)
-        assert _handle_early_attempt_return(result) == 127
+        assert handle_early_attempt_return(result) == 127
 
 
 class TestHandleTimeoutOrStall:
-    """_handle_timeout_or_stall: returns exit code for timeout/stall scenarios."""
+    """handle_timeout_or_stall: returns exit code for timeout/stall scenarios."""
 
     def test_returns_none_for_normal_result(self, tmp_path):
         result = _ExecutionResult(code=0, stdout_text="ok", stderr_text="")
         deps = _make_deps()
-        ret = _handle_timeout_or_stall(
+        ret = handle_timeout_or_stall(
             header="ATTEMPT 1/1",
             result=result,
             deps=deps,
@@ -416,7 +416,7 @@ class TestHandleTimeoutOrStall:
         )
         deps = _make_deps()
         log_sections: list[str] = []
-        ret = _handle_timeout_or_stall(
+        ret = handle_timeout_or_stall(
             header="ATTEMPT 1/1",
             result=result,
             deps=deps,
@@ -432,7 +432,7 @@ class TestHandleTimeoutOrStall:
             code=1, stdout_text="", stderr_text="", timed_out=True
         )
         deps = _make_deps()
-        ret = _handle_timeout_or_stall(
+        ret = handle_timeout_or_stall(
             header="ATTEMPT 1/1",
             result=result,
             deps=deps,
@@ -451,7 +451,7 @@ class TestHandleTimeoutOrStall:
         )
         deps = _make_deps()
         log_sections: list[str] = []
-        ret = _handle_timeout_or_stall(
+        ret = handle_timeout_or_stall(
             header="ATTEMPT 1/1",
             result=result,
             deps=deps,
@@ -467,7 +467,7 @@ class TestHandleTimeoutOrStall:
             code=1, stdout_text="", stderr_text="", stalled=True
         )
         deps = _make_deps()
-        ret = _handle_timeout_or_stall(
+        ret = handle_timeout_or_stall(
             header="ATTEMPT 1/1",
             result=result,
             deps=deps,
@@ -484,7 +484,7 @@ class TestHandleTimeoutOrStall:
         )
         deps = _make_deps(timeout_seconds=120)
         log_sections: list[str] = []
-        _handle_timeout_or_stall(
+        handle_timeout_or_stall(
             header="ATTEMPT 1/2",
             result=result,
             deps=deps,
@@ -502,7 +502,7 @@ class TestHandleTimeoutOrStall:
         )
         deps = _make_deps()
         log_sections: list[str] = []
-        _handle_timeout_or_stall(
+        handle_timeout_or_stall(
             header="ATTEMPT 1/1",
             result=result,
             deps=deps,
@@ -515,11 +515,11 @@ class TestHandleTimeoutOrStall:
 
 
 class TestHandleSuccessfulAttempt:
-    """_handle_successful_attempt: validates code==0 results have valid output."""
+    """handle_successful_attempt: validates code==0 results have valid output."""
 
     def test_nonzero_code_returns_none(self, tmp_path):
         result = _ExecutionResult(code=1, stdout_text="", stderr_text="")
-        ret = _handle_successful_attempt(
+        ret = handle_successful_attempt(
             result=result,
             output_file=tmp_path / "out.json",
             log_file=tmp_path / "log.txt",
@@ -532,7 +532,7 @@ class TestHandleSuccessfulAttempt:
         output_file = tmp_path / "out.json"
         output_file.write_text('{"assessments": {}}')
         result = _ExecutionResult(code=0, stdout_text="done", stderr_text="")
-        ret = _handle_successful_attempt(
+        ret = handle_successful_attempt(
             result=result,
             output_file=output_file,
             log_file=tmp_path / "log.txt",
@@ -545,7 +545,7 @@ class TestHandleSuccessfulAttempt:
         """Exit 0 but missing output file => treated as failure."""
         result = _ExecutionResult(code=0, stdout_text="done", stderr_text="")
         log_sections: list[str] = []
-        ret = _handle_successful_attempt(
+        ret = handle_successful_attempt(
             result=result,
             output_file=tmp_path / "missing.json",
             log_file=tmp_path / "log.txt",
@@ -575,7 +575,7 @@ class TestHandleSuccessfulAttempt:
             sleep_fn=MagicMock(),
         )
         log_sections: list[str] = []
-        ret = _handle_successful_attempt(
+        ret = handle_successful_attempt(
             result=result,
             output_file=output_file,
             log_file=tmp_path / "log.txt",
@@ -598,7 +598,7 @@ class TestHandleSuccessfulAttempt:
 
         result = _ExecutionResult(code=0, stdout_text="fallback output", stderr_text="")
         log_sections: list[str] = []
-        ret = _handle_successful_attempt(
+        ret = handle_successful_attempt(
             result=result,
             output_file=output_file,
             log_file=tmp_path / "log.txt",
@@ -615,14 +615,14 @@ class TestHandleSuccessfulAttempt:
 
 
 class TestHandleFailedAttempt:
-    """_handle_failed_attempt: transient failure detection and retry delay."""
+    """handle_failed_attempt: transient failure detection and retry delay."""
 
     def test_non_transient_failure_returns_code(self, tmp_path):
         result = _ExecutionResult(
             code=1, stdout_text="", stderr_text="something unexpected"
         )
         deps = _make_deps(max_retries=2)
-        ret = _handle_failed_attempt(
+        ret = handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=1,
@@ -642,7 +642,7 @@ class TestHandleFailedAttempt:
         )
         deps = _make_deps(max_retries=2, sleep_fn=MagicMock())
         log_sections: list[str] = []
-        ret = _handle_failed_attempt(
+        ret = handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=1,
@@ -663,7 +663,7 @@ class TestHandleFailedAttempt:
             stderr_text="connection reset by peer",
         )
         deps = _make_deps()
-        ret = _handle_failed_attempt(
+        ret = handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=3,
@@ -683,7 +683,7 @@ class TestHandleFailedAttempt:
         )
         deps = _make_deps(max_retries=3, sleep_fn=MagicMock())
         # attempt=2, backoff=1.0 => delay = 1.0 * 2^(2-1) = 2.0
-        _handle_failed_attempt(
+        handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=2,
@@ -706,7 +706,7 @@ class TestHandleFailedAttempt:
             sleep_fn=MagicMock(side_effect=OSError("sleep broken")),
         )
         log_sections: list[str] = []
-        ret = _handle_failed_attempt(
+        ret = handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=1,
@@ -726,7 +726,7 @@ class TestHandleFailedAttempt:
             stderr_text="network is unreachable",
         )
         deps = _make_deps(max_retries=2, sleep_fn=MagicMock())
-        _handle_failed_attempt(
+        handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=1,
@@ -746,7 +746,7 @@ class TestHandleFailedAttempt:
             stderr_text="CONNECTION RESET BY PEER",
         )
         deps = _make_deps(max_retries=2, sleep_fn=MagicMock())
-        ret = _handle_failed_attempt(
+        ret = handle_failed_attempt(
             result=result,
             deps=deps,
             attempt=1,
@@ -761,5 +761,4 @@ class TestHandleFailedAttempt:
 # ═══════════════════════════════════════════════════════════════════
 # runner_parallel.execution.py
 # ═══════════════════════════════════════════════════════════════════
-
 

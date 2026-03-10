@@ -205,7 +205,7 @@ def _run_via_subprocess(
         )
 
 
-def _resolve_retry_config(deps: CodexBatchRunnerDeps) -> _RetryConfig:
+def resolve_retry_config(deps: CodexBatchRunnerDeps) -> _RetryConfig:
     retries_raw = deps.max_retries if isinstance(deps.max_retries, int) else 0
     max_retries = max(0, retries_raw)
     max_attempts = max_retries + 1
@@ -239,7 +239,7 @@ def _resolve_retry_config(deps: CodexBatchRunnerDeps) -> _RetryConfig:
     )
 
 
-def _run_batch_attempt(
+def run_batch_attempt(
     *,
     cmd: list[str],
     deps: CodexBatchRunnerDeps,
@@ -279,11 +279,11 @@ def _run_batch_attempt(
     return header, result
 
 
-def _handle_early_attempt_return(result: _ExecutionResult) -> int | None:
+def handle_early_attempt_return(result: _ExecutionResult) -> int | None:
     return result.early_return
 
 
-def _handle_timeout_or_stall(
+def handle_timeout_or_stall(
     *,
     header: str,
     result: _ExecutionResult,
@@ -321,7 +321,7 @@ def _handle_timeout_or_stall(
     return 124
 
 
-def _handle_successful_attempt(
+def handle_successful_attempt(
     *,
     result: _ExecutionResult,
     output_file: Path,
@@ -347,7 +347,7 @@ def _handle_successful_attempt(
     )
 
 
-def _handle_failed_attempt(
+def handle_failed_attempt(
     *,
     result: _ExecutionResult,
     deps: CodexBatchRunnerDeps,
@@ -380,12 +380,12 @@ def _handle_failed_attempt(
 
 
 __all__ = [
-    "_handle_early_attempt_return",
-    "_handle_failed_attempt",
-    "_handle_successful_attempt",
-    "_handle_timeout_or_stall",
-    "_resolve_retry_config",
-    "_run_batch_attempt",
+    "handle_early_attempt_return",
+    "handle_failed_attempt",
+    "handle_successful_attempt",
+    "handle_timeout_or_stall",
+    "resolve_retry_config",
+    "run_batch_attempt",
     "_run_via_popen",
     "_run_via_subprocess",
 ]
