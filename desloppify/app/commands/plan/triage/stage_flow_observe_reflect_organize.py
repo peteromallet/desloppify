@@ -40,32 +40,7 @@ from .helpers import (
 from .services import TriageServices, default_triage_services
 
 
-def _ensure_observe_triage_started(
-    *,
-    plan: dict,
-    state: dict,
-    attestation: str | None,
-    services: TriageServices,
-    has_triage_in_queue_fn,
-    inject_triage_stages_fn,
-) -> bool:
-    """Auto-start planning mode for observe when triage stages are absent."""
-    if has_triage_in_queue_fn(plan):
-        return True
-    start_outcome = ensure_triage_started(
-        plan,
-        services=services,
-        request=TriageStartRequest(
-            state=state,
-            attestation=attestation,
-            start_message="  Planning mode auto-started (6 stages queued).",
-        ),
-        deps=TriageLifecycleDeps(
-            has_triage_in_queue=has_triage_in_queue_fn,
-            inject_triage_stages=inject_triage_stages_fn,
-        ),
-    )
-    return start_outcome.status != "blocked"
+# -- Shared helpers (used by multiple stage commands) --
 
 
 def _validate_stage_report_length(
@@ -81,200 +56,6 @@ def _validate_stage_report_length(
     print(colorize(f"  Report too short: {len(report)} chars (minimum {min_chars}).", "red"))
     print(colorize(guidance, "dim"))
     return False
-
-
-def _validate_observe_evidence_or_error(
-    *,
-    report: str,
-    valid_ids: set[str],
-    issue_count: int,
-) -> list[dict[str, object]] | None:
-    """Validate observe evidence and return structured assessments."""
-    from .stages.evidence_parsing import (
-        format_evidence_failures,
-        parse_observe_evidence,
-        validate_observe_evidence,
-    )
-
-    evidence = parse_observe_evidence(report, valid_ids)
-    evidence_failures = validate_observe_evidence(evidence, issue_count)
-    blocking = [failure for failure in evidence_failures if failure.blocking]
-    advisory = [failure for failure in evidence_failures if not failure.blocking]
-    if blocking:
-        msg = format_evidence_failures(blocking, stage_label="observe")
-        print(colorize(msg, "red"))
-        return None
-    if advisory:
-        msg = format_evidence_failures(advisory, stage_label="observe")
-        print(colorize(msg, "yellow"))
-    return [
-        {
-            "hash": entry.issue_hash,
-            "verdict": entry.verdict,
-            "verdict_reasoning": entry.verdict_reasoning,
-            "files_read": entry.files_read,
-            "recommendation": entry.recommendation,
-        }
-        for entry in evidence.entries
-    ]
-
-
-def _handle_zero_issue_observe(
-    *,
-    plan: dict,
-    stages: dict,
-    report: str,
-    existing_stage: dict | None,
-    is_reuse: bool,
-    save_plan_fn,
-) -> bool:
-    """Record an observe stage when there are no open issues."""
-    cleared = record_observe_stage(
-        stages,
-        report=report,
-        issue_count=0,
-        cited_ids=[],
-        existing_stage=existing_stage,
-        is_reuse=is_reuse,
-    )
-    save_plan_fn(plan)
-    print(colorize("  Observe stage recorded (no issues to analyse).", "green"))
-    if is_reuse:
-        print(colorize("  Observe data preserved (no changes).", "dim"))
-        if cleared:
-            print_cascade_clear_feedback(cleared, stages)
-    return True
-
-
-def _finish_observe_stage(
-    *,
-    plan: dict,
-    stages: dict,
-    report: str,
-    issue_count: int,
-    cited_ids: list[str],
-    existing_stage: dict | None,
-    is_reuse: bool,
-    assessments: list[dict[str, object]],
-    services: TriageServices,
-) -> None:
-    """Persist observe stage data, append logs, and print follow-up guidance."""
-    cleared = record_observe_stage(
-        stages,
-        report=report,
-        issue_count=issue_count,
-        cited_ids=cited_ids,
-        existing_stage=existing_stage,
-        is_reuse=is_reuse,
-        assessments=assessments,
-    )
-    services.save_plan(plan)
-    services.append_log_entry(
-        plan,
-        "triage_observe",
-        actor="user",
-        detail={"issue_count": issue_count, "cited_ids": cited_ids, "reuse": is_reuse},
-    )
-    services.save_plan(plan)
-
-    print(colorize(f"  Observe stage recorded: {issue_count} issues analysed.", "green"))
-    if is_reuse:
-        print(colorize("  Observe data preserved (no changes).", "dim"))
-        if cleared:
-            print_cascade_clear_feedback(cleared, stages)
-        return
-
-    print(colorize("  Now confirm your analysis.", "yellow"))
-    print(colorize("    desloppify plan triage --confirm observe", "dim"))
-    print_user_message(
-        "Observe recorded. Before confirming — did the subagent"
-        " verify every issue with code reads? Check: are there"
-        " specific file/line citations in the report, or just"
-        " restated issue titles? Each issue needs a verdict:"
-        " genuine / false positive / exaggerated. Don't confirm"
-        " until the analysis is backed by actual code evidence."
-    )
-
-
-def _resolve_reflect_report(
-    *,
-    report: str | None,
-    existing_stage: dict | None,
-) -> tuple[str | None, bool]:
-    """Reuse the prior reflect report when the user omits a new one."""
-    if not report and existing_stage and existing_stage.get("report"):
-        return existing_stage["report"], True
-    return report, False
-
-
-def _validate_reflect_skip_evidence(report: str) -> bool:
-    """Validate reflect skip-reason evidence before stage persistence."""
-    from .stages.evidence_parsing import (
-        format_evidence_failures,
-        validate_reflect_skip_evidence,
-    )
-
-    skip_failures = validate_reflect_skip_evidence(report)
-    blocking_skips = [failure for failure in skip_failures if failure.blocking]
-    if not blocking_skips:
-        return True
-    msg = format_evidence_failures(blocking_skips, stage_label="reflect")
-    print(colorize(msg, "red"))
-    return False
-
-
-def _record_reflect_stage(
-    *,
-    plan: dict,
-    meta: dict,
-    existing_stage: dict | None,
-    report: str,
-    issue_count: int,
-    cited_ids: list[str],
-    missing_ids: list[str],
-    duplicate_ids: list[str],
-    recurring_dims: list[str],
-    recurring: dict,
-    is_reuse: bool,
-    services: TriageServices,
-) -> None:
-    """Persist reflect stage state and append the triage log entry."""
-    stages = meta.setdefault("triage_stages", {})
-    reflect_stage = {
-        "stage": "reflect",
-        "report": report,
-        "cited_ids": cited_ids,
-        "timestamp": utc_now(),
-        "issue_count": issue_count,
-        "missing_issue_ids": missing_ids,
-        "duplicate_issue_ids": duplicate_ids,
-        "recurring_dims": recurring_dims,
-    }
-    stages["reflect"] = reflect_stage
-
-    if is_reuse and existing_stage and existing_stage.get("confirmed_at"):
-        reflect_stage["confirmed_at"] = existing_stage["confirmed_at"]
-        reflect_stage["confirmed_text"] = existing_stage.get("confirmed_text", "")
-    cleared = cascade_clear_later_confirmations(stages, "reflect")
-
-    services.save_plan(plan)
-    services.append_log_entry(
-        plan,
-        "triage_reflect",
-        actor="user",
-        detail={"issue_count": issue_count, "reuse": is_reuse, "recurring_dims": recurring_dims},
-    )
-    services.save_plan(plan)
-
-    print_reflect_result(
-        issue_count=issue_count,
-        recurring_dims=recurring_dims,
-        recurring=recurring,
-        report=report,
-        is_reuse=is_reuse,
-        cleared=cleared,
-        stages=stages,
-    )
 
 
 def _enforce_cluster_activity_for_organize(
@@ -322,23 +103,7 @@ def _enforce_cluster_activity_for_organize(
     return False
 
 
-def _validate_organize_cluster_references(
-    *,
-    report: str,
-    manual_clusters: list[str],
-) -> bool:
-    """Require organize reports to reference at least one cluster."""
-    from .stages.evidence_parsing import (
-        format_evidence_failures,
-        validate_report_references_clusters,
-    )
-
-    cluster_ref_failures = validate_report_references_clusters(report, manual_clusters)
-    if not cluster_ref_failures:
-        return True
-    msg = format_evidence_failures(cluster_ref_failures, stage_label="organize")
-    print(colorize(msg, "red"))
-    return False
+# -- Stage commands --
 
 
 def _cmd_stage_observe(
@@ -357,15 +122,23 @@ def _cmd_stage_observe(
     state = runtime.state
     plan = resolved_services.load_plan()
 
-    if not _ensure_observe_triage_started(
-        plan=plan,
-        state=state,
-        attestation=attestation,
-        services=resolved_services,
-        has_triage_in_queue_fn=has_triage_in_queue_fn,
-        inject_triage_stages_fn=inject_triage_stages_fn,
-    ):
-        return
+    # Auto-start triage if needed
+    if not has_triage_in_queue_fn(plan):
+        start_outcome = ensure_triage_started(
+            plan,
+            services=resolved_services,
+            request=TriageStartRequest(
+                state=state,
+                attestation=attestation,
+                start_message="  Planning mode auto-started (6 stages queued).",
+            ),
+            deps=TriageLifecycleDeps(
+                has_triage_in_queue=has_triage_in_queue_fn,
+                inject_triage_stages=inject_triage_stages_fn,
+            ),
+        )
+        if start_outcome.status == "blocked":
+            return
 
     meta = plan.setdefault("epic_triage_meta", {})
     stages = meta.setdefault("triage_stages", {})
@@ -379,14 +152,22 @@ def _cmd_stage_observe(
     si = resolved_services.collect_triage_input(plan, state)
     issue_count = len(si.open_issues)
 
-    if issue_count == 0 and _handle_zero_issue_observe(
-        plan=plan,
-        stages=stages,
-        report=report,
-        existing_stage=existing_stage,
-        is_reuse=is_reuse,
-        save_plan_fn=resolved_services.save_plan,
-    ):
+    # Zero-issue fast path
+    if issue_count == 0:
+        cleared = record_observe_stage(
+            stages,
+            report=report,
+            issue_count=0,
+            cited_ids=[],
+            existing_stage=existing_stage,
+            is_reuse=is_reuse,
+        )
+        resolved_services.save_plan(plan)
+        print(colorize("  Observe stage recorded (no issues to analyse).", "green"))
+        if is_reuse:
+            print(colorize("  Observe data preserved (no changes).", "dim"))
+            if cleared:
+                print_cascade_clear_feedback(cleared, stages)
         return
 
     if not _validate_stage_report_length(
@@ -396,25 +177,72 @@ def _cmd_stage_observe(
     ):
         return
 
+    # Validate structured evidence
+    from .stages.evidence_parsing import (
+        format_evidence_failures,
+        parse_observe_evidence,
+        validate_observe_evidence,
+    )
+
     valid_ids = set(si.open_issues.keys())
     cited = resolved_services.extract_issue_citations(report, valid_ids)
-    assessments = _validate_observe_evidence_or_error(
-        report=report,
-        valid_ids=valid_ids,
-        issue_count=issue_count,
-    )
-    if assessments is None:
+
+    evidence = parse_observe_evidence(report, valid_ids)
+    evidence_failures = validate_observe_evidence(evidence, issue_count)
+    blocking = [f for f in evidence_failures if f.blocking]
+    advisory = [f for f in evidence_failures if not f.blocking]
+    if blocking:
+        print(colorize(format_evidence_failures(blocking, stage_label="observe"), "red"))
         return
-    _finish_observe_stage(
-        plan=plan,
-        stages=stages,
+    if advisory:
+        print(colorize(format_evidence_failures(advisory, stage_label="observe"), "yellow"))
+
+    assessments = [
+        {
+            "hash": entry.issue_hash,
+            "verdict": entry.verdict,
+            "verdict_reasoning": entry.verdict_reasoning,
+            "files_read": entry.files_read,
+            "recommendation": entry.recommendation,
+        }
+        for entry in evidence.entries
+    ]
+
+    # Persist
+    cleared = record_observe_stage(
+        stages,
         report=report,
         issue_count=issue_count,
         cited_ids=sorted(cited),
         existing_stage=existing_stage,
         is_reuse=is_reuse,
         assessments=assessments,
-        services=resolved_services,
+    )
+    resolved_services.save_plan(plan)
+    resolved_services.append_log_entry(
+        plan,
+        "triage_observe",
+        actor="user",
+        detail={"issue_count": issue_count, "cited_ids": sorted(cited), "reuse": is_reuse},
+    )
+    resolved_services.save_plan(plan)
+
+    print(colorize(f"  Observe stage recorded: {issue_count} issues analysed.", "green"))
+    if is_reuse:
+        print(colorize("  Observe data preserved (no changes).", "dim"))
+        if cleared:
+            print_cascade_clear_feedback(cleared, stages)
+        return
+
+    print(colorize("  Now confirm your analysis.", "yellow"))
+    print(colorize("    desloppify plan triage --confirm observe", "dim"))
+    print_user_message(
+        "Observe recorded. Before confirming — did the subagent"
+        " verify every issue with code reads? Check: are there"
+        " specific file/line citations in the report, or just"
+        " restated issue titles? Each issue needs a verdict:"
+        " genuine / false positive / exaggerated. Don't confirm"
+        " until the analysis is backed by actual code evidence."
     )
 
 
@@ -440,10 +268,11 @@ def _cmd_stage_reflect(
     stages = meta.get("triage_stages", {})
 
     existing_stage = stages.get("reflect")
-    report, is_reuse = _resolve_reflect_report(
-        report=report,
-        existing_stage=existing_stage,
-    )
+    if not report and existing_stage and existing_stage.get("report"):
+        report = existing_stage["report"]
+        is_reuse = True
+    else:
+        is_reuse = False
     if not report:
         _print_reflect_report_requirement()
         return
@@ -494,22 +323,54 @@ def _cmd_stage_reflect(
     if not accounting_ok:
         return
 
-    if not _validate_reflect_skip_evidence(report):
+    # Validate skip-reason evidence
+    from .stages.evidence_parsing import (
+        format_evidence_failures,
+        validate_reflect_skip_evidence,
+    )
+
+    skip_failures = validate_reflect_skip_evidence(report)
+    blocking_skips = [f for f in skip_failures if f.blocking]
+    if blocking_skips:
+        print(colorize(format_evidence_failures(blocking_skips, stage_label="reflect"), "red"))
         return
 
-    _record_reflect_stage(
-        plan=plan,
-        meta=meta,
-        existing_stage=existing_stage,
-        report=report,
+    # Persist
+    stages = meta.setdefault("triage_stages", {})
+    reflect_stage = {
+        "stage": "reflect",
+        "report": report,
+        "cited_ids": sorted(cited_ids),
+        "timestamp": utc_now(),
+        "issue_count": issue_count,
+        "missing_issue_ids": missing_ids,
+        "duplicate_issue_ids": duplicate_ids,
+        "recurring_dims": recurring_dims,
+    }
+    stages["reflect"] = reflect_stage
+
+    if is_reuse and existing_stage and existing_stage.get("confirmed_at"):
+        reflect_stage["confirmed_at"] = existing_stage["confirmed_at"]
+        reflect_stage["confirmed_text"] = existing_stage.get("confirmed_text", "")
+    cleared = cascade_clear_later_confirmations(stages, "reflect")
+
+    resolved_services.save_plan(plan)
+    resolved_services.append_log_entry(
+        plan,
+        "triage_reflect",
+        actor="user",
+        detail={"issue_count": issue_count, "reuse": is_reuse, "recurring_dims": recurring_dims},
+    )
+    resolved_services.save_plan(plan)
+
+    print_reflect_result(
         issue_count=issue_count,
-        cited_ids=sorted(cited_ids),
-        missing_ids=missing_ids,
-        duplicate_ids=duplicate_ids,
         recurring_dims=recurring_dims,
         recurring=recurring,
+        report=report,
         is_reuse=is_reuse,
-        services=resolved_services,
+        cleared=cleared,
+        stages=stages,
     )
 
 
@@ -579,12 +440,21 @@ def _cmd_stage_organize(
     if report is None:
         return
 
-    if not _validate_organize_cluster_references(
-        report=report,
-        manual_clusters=manual_clusters,
-    ):
+    # Validate cluster references in report
+    from .stages.evidence_parsing import (
+        format_evidence_failures,
+        validate_report_references_clusters,
+    )
+
+    cluster_ref_failures = validate_report_references_clusters(report, manual_clusters)
+    if cluster_ref_failures:
+        print(colorize(
+            format_evidence_failures(cluster_ref_failures, stage_label="organize"),
+            "red",
+        ))
         return
 
+    # Persist
     stages = meta.setdefault("triage_stages", {})
     cleared = record_organize_stage(
         stages,
