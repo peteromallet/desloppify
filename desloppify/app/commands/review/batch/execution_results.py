@@ -101,11 +101,7 @@ def merge_and_write_results(
 ) -> tuple[Path, list[str]]:
     """Merge batch results, enrich with metadata, and write to disk."""
     merged = merge_batch_results_fn(batch_results)
-    quality = merged.get("quality")
-    if not isinstance(quality, dict):
-        quality = merged.get("review_quality", {})
-    merged["quality"] = quality
-    merged["review_quality"] = quality
+    quality = merged.get("review_quality", {})
     reviewed_files = collect_reviewed_files_from_batches(
         batches=batches,
         selected_indexes=successful_indexes,

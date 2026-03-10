@@ -182,7 +182,7 @@ def test_merge_and_finalize_helpers(tmp_path: Path, monkeypatch) -> None:
         merge_batch_results_fn=lambda _batch_results: {
             "assessments": {"design_coherence": 80.0},
             "issues": [{"dimension": "type_safety"}],
-            "quality": {"overall": 0.8},
+            "review_quality": {"overall": 0.8},
         },
         build_import_provenance_fn=lambda **_kwargs: {"trusted": True},
         batch_results=[{"dummy": True}],
@@ -204,7 +204,6 @@ def test_merge_and_finalize_helpers(tmp_path: Path, monkeypatch) -> None:
     merged_payload = json.loads(merged_path.read_text())
     assert merged_payload["review_scope"]["reviewed_files_count"] == 2
     assert merged_payload["provenance"]["trusted"] is True
-    assert merged_payload["quality"]["overall"] == 0.8
     assert merged_payload["review_quality"]["overall"] == 0.8
 
     logs: list[str] = []

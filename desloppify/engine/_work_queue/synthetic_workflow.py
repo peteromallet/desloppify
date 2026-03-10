@@ -178,8 +178,6 @@ def build_import_scores_item(plan: dict, state: dict) -> WorkQueueItem | None:
     import_file = str(meta.get("import_file", "")).strip() or "issues.json"
     quoted_import_file = shlex.quote(import_file)
     packet_sha = str(meta.get("packet_sha256", "")).strip()
-    packet_path = str(meta.get("packet_path", "")).strip()
-    dims = meta.get("assessment_dimensions") or []
     explanation = (
         "Review issues were imported but assessment scores were skipped "
         "(untrusted source). Re-import the same batch with attestation to update dimension scores."
@@ -188,10 +186,6 @@ def build_import_scores_item(plan: dict, state: dict) -> WorkQueueItem | None:
         explanation += f" Expected import file: `{import_file}`."
     if packet_sha:
         explanation += f" Expected packet sha256: `{packet_sha}`."
-    if packet_path:
-        explanation += f" Blind packet: `{packet_path}`."
-    if dims:
-        explanation += f" Assessment dimensions: {', '.join(dims)}."
 
     return {
         "id": WORKFLOW_IMPORT_SCORES_ID,
@@ -205,8 +199,6 @@ def build_import_scores_item(plan: dict, state: dict) -> WorkQueueItem | None:
             "explanation": explanation,
             "expected_import_file": import_file,
             "packet_sha256": packet_sha,
-            "packet_path": packet_path,
-            "assessment_dimensions": dims,
         },
         "primary_command": (
             f"desloppify review --import {quoted_import_file} --attested-external "

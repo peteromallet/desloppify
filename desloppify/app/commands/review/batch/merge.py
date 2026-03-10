@@ -198,34 +198,28 @@ def merge_batch_results(
             "component_scores": component_scores,
         }
 
-    quality = {
-        "batch_count": len(batch_results),
-        "dimension_coverage": round(
-            sum(coverage_values) / max(len(coverage_values), 1),
-            3,
-        ),
-        "evidence_density": round(
-            sum(evidence_density_values) / max(len(evidence_density_values), 1),
-            3,
-        ),
-        REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY: int(
-            high_score_missing_issue_note_total
-        ),
-        "issue_pressure": round(sum(issue_pressure_by_dim.values()), 3),
-        "dimensions_with_issues": len(issue_count_by_dim),
-    }
-
-    merged_result = {
+    return {
         "assessments": merged_assessment_payload,
         "dimension_notes": merged_dimension_notes,
         "dimension_judgment": merged_dimension_judgment,
         "issues": merged_issues,
-        "quality": quality,
+        "review_quality": {
+            "batch_count": len(batch_results),
+            "dimension_coverage": round(
+                sum(coverage_values) / max(len(coverage_values), 1),
+                3,
+            ),
+            "evidence_density": round(
+                sum(evidence_density_values) / max(len(evidence_density_values), 1),
+                3,
+            ),
+            REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY: int(
+                high_score_missing_issue_note_total
+            ),
+            "issue_pressure": round(sum(issue_pressure_by_dim.values()), 3),
+            "dimensions_with_issues": len(issue_count_by_dim),
+        },
     }
-    # Keep the external merged artifact stable while using the canonical
-    # internal payload key expected by batch normalization/types.
-    merged_result["review_quality"] = quality
-    return merged_result
 
 
 __all__ = ["assessment_weight", "merge_batch_results"]

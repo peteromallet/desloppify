@@ -537,8 +537,6 @@ def test_sync_import_scores_updates_metadata_on_consecutive_issues_only_import()
     meta = plan["refresh_state"]["pending_import_scores"]
     assert meta["import_file"] == "/tmp/review-v2.json"
     assert meta["packet_sha256"] == "hash-v2"
-    assert meta["issue_count"] == 2
-    assert meta["assessment_dimensions"] == ["design_coherence", "naming_quality"]
 
 
 def test_sync_communicate_score_reinjects_after_trusted_score_import() -> None:

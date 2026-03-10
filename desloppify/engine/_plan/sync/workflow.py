@@ -64,18 +64,10 @@ def _build_pending_import_scores_meta(
     issues_only_audit: dict[str, Any] | None,
 ) -> dict[str, Any]:
     provenance = {}
-    assessments = {}
-    issues = []
     if isinstance(import_payload, dict):
         raw_provenance = import_payload.get("provenance")
         if isinstance(raw_provenance, dict):
             provenance = raw_provenance
-        raw_assessments = import_payload.get("assessments")
-        if isinstance(raw_assessments, dict):
-            assessments = raw_assessments
-        raw_issues = import_payload.get("issues")
-        if isinstance(raw_issues, list):
-            issues = raw_issues
     recorded_file = (
         str(import_file).strip()
         if isinstance(import_file, str) and import_file.strip()
@@ -90,16 +82,7 @@ def _build_pending_import_scores_meta(
         "timestamp": timestamp,
         "import_file": recorded_file,
         "normalized_import_file": _normalize_match_path(recorded_file),
-        "packet_path": str(provenance.get("packet_path", "")).strip(),
-        "normalized_packet_path": _normalize_match_path(provenance.get("packet_path")),
         "packet_sha256": str(provenance.get("packet_sha256", "")).strip(),
-        "runner": str(provenance.get("runner", "")).strip(),
-        "assessment_dimensions": sorted(
-            key.strip()
-            for key in assessments.keys()
-            if isinstance(key, str) and key.strip()
-        ),
-        "issue_count": len(issues),
     }
 
 
@@ -128,49 +111,31 @@ def import_scores_meta_matches(
     *,
     import_file: str,
     import_payload: dict[str, Any],
-) -> tuple[bool, list[str]]:
-    """Return whether the current import matches the pending score-import batch."""
-    if not isinstance(meta, dict) or not meta:
-        return True, []
+) -> tuple[bool, str]:
+    """Return (matches, reason) for whether the import matches the pending batch.
 
-    mismatches: list[str] = []
-    expected_file = str(meta.get("normalized_import_file", "")).strip()
-    current_file = _normalize_match_path(import_file) or ""
-    if expected_file and current_file != expected_file:
-        mismatches.append(
-            f"expected import file {meta.get('import_file')}, got {import_file}"
-        )
+    Checks packet_sha256 first (strongest signal), falls back to normalized
+    file path.  Returns a single human-readable reason on mismatch.
+    """
+    if not isinstance(meta, dict) or not meta:
+        return True, ""
 
     provenance = import_payload.get("provenance")
     provenance_dict = provenance if isinstance(provenance, dict) else {}
+
     expected_hash = str(meta.get("packet_sha256", "")).strip()
     current_hash = str(provenance_dict.get("packet_sha256", "")).strip()
-    if expected_hash and current_hash != expected_hash:
-        mismatches.append(
-            f"expected packet_sha256 {expected_hash}, got {current_hash or '<missing>'}"
-        )
+    if expected_hash and current_hash:
+        if current_hash == expected_hash:
+            return True, ""
+        return False, f"expected packet_sha256 {expected_hash}, got {current_hash}"
 
-    expected_packet_path = str(meta.get("normalized_packet_path", "")).strip()
-    current_packet_path = _normalize_match_path(provenance_dict.get("packet_path")) or ""
-    if expected_packet_path and current_packet_path != expected_packet_path:
-        mismatches.append(
-            "expected packet_path "
-            f"{meta.get('packet_path')}, got {provenance_dict.get('packet_path') or '<missing>'}"
-        )
+    expected_file = str(meta.get("normalized_import_file", "")).strip()
+    current_file = _normalize_match_path(import_file) or ""
+    if expected_file and current_file and current_file != expected_file:
+        return False, f"expected import file {meta.get('import_file')}, got {import_file}"
 
-    expected_dims = meta.get("assessment_dimensions") or []
-    if expected_dims:
-        assessments = import_payload.get("assessments")
-        assessment_keys = sorted(
-            key.strip()
-            for key in (assessments if isinstance(assessments, dict) else {}).keys()
-            if isinstance(key, str) and key.strip()
-        )
-        if assessment_keys != expected_dims:
-            mismatches.append(
-                f"expected assessment dimensions {expected_dims}, got {assessment_keys}"
-            )
-    return not mismatches, mismatches
+    return True, ""
 
 
 def _clear_pending_import_scores(plan: PlanModel) -> None:

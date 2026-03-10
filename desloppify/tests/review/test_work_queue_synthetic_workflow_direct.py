@@ -52,8 +52,6 @@ def test_build_create_plan_and_import_scores_items() -> None:
                 "pending_import_scores": {
                     "import_file": "/tmp/review/issues.json",
                     "packet_sha256": "abc123",
-                    "packet_path": "/tmp/review_packet_blind.json",
-                    "assessment_dimensions": ["naming_quality"],
                 }
             },
         },
