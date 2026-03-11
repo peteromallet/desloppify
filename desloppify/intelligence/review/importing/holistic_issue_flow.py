@@ -34,6 +34,27 @@ _POSITIVE_PREFIXES = (
 )
 
 
+def _build_holistic_detail(
+    *,
+    content_hash: str,
+    dimension: str,
+    related_files: list[str],
+    evidence: list[str],
+    suggestion: str,
+    reasoning: str,
+) -> dict[str, Any]:
+    detail: dict[str, Any] = {
+        "holistic": True,
+        "dimension": dimension,
+        "related_files": related_files,
+        "evidence": evidence,
+        "suggestion": suggestion,
+        "reasoning": reasoning,
+    }
+    detail["summary_hash"] = content_hash
+    return detail
+
+
 def validate_and_build_issues(
     issues_list: list[ReviewIssuePayload],
     holistic_prompts: dict[str, Any],
@@ -105,15 +126,14 @@ def validate_and_build_issues(
         detector = "concerns" if is_confirmed_concern else "review"
 
         content_hash = hashlib.sha256(summary_text.encode()).hexdigest()[:8]
-        detail: dict[str, Any] = {
-            "holistic": True,
-            "summary_hash": content_hash,
-            "dimension": dimension,
-            "related_files": issue["related_files"],
-            "evidence": issue["evidence"],
-            "suggestion": issue.get("suggestion", ""),
-            "reasoning": issue.get("reasoning", ""),
-        }
+        detail = _build_holistic_detail(
+            content_hash=content_hash,
+            dimension=dimension,
+            related_files=issue["related_files"],
+            evidence=issue["evidence"],
+            suggestion=issue.get("suggestion", ""),
+            reasoning=issue.get("reasoning", ""),
+        )
         if is_confirmed_concern:
             detail["concern_type"] = issue.get("concern_type", "")
             detail["concern_verdict"] = "confirmed"

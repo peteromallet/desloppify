@@ -45,10 +45,10 @@ class BatchResult:
         payload: dict[str, Any] = {
             "assessments": self.assessments,
             "dimension_notes": self.dimension_notes,
-            "dimension_judgment": self.dimension_judgment,
             "issues": self.issues,
             "quality": self.quality,
         }
+        payload["dimension_judgment"] = self.dimension_judgment
         payload["batch_index"] = self.batch_index
         return payload
 

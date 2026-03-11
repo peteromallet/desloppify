@@ -13,16 +13,17 @@ _CLUSTER_MEMBER_SAMPLE_LIMIT = 25
 
 def _serialize_cluster_member(member: Mapping[str, Any]) -> dict[str, Any]:
     """Serialize a cluster member without nested plan metadata."""
-    return {
+    serialized: dict[str, Any] = {
         "id": member.get("id"),
-        "kind": member.get("kind", "issue"),
         "confidence": member.get("confidence"),
         "detector": member.get("detector"),
         "file": member.get("file"),
         "summary": member.get("summary"),
         "status": member.get("status"),
-        "primary_command": member.get("primary_command"),
     }
+    serialized["kind"] = member.get("kind", "issue")
+    serialized["primary_command"] = member.get("primary_command")
+    return serialized
 
 
 def _serialize_cluster_item(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -35,7 +36,6 @@ def _serialize_cluster_item(item: Mapping[str, Any]) -> dict[str, Any]:
     member_count = int(item.get("member_count", len(members_raw)))
     serialized_cluster: dict[str, Any] = {
         "id": item.get("id"),
-        "kind": "cluster",
         "action_type": item.get("action_type", "manual_fix"),
         "summary": item.get("summary"),
         "member_count": member_count,
@@ -43,8 +43,9 @@ def _serialize_cluster_item(item: Mapping[str, Any]) -> dict[str, Any]:
         "cluster_name": item.get("cluster_name", item.get("id")),
         "cluster_auto": item.get("cluster_auto", True),
         "detector": item.get("detector"),
-        "primary_command": item.get("primary_command"),
     }
+    serialized_cluster["kind"] = "cluster"
+    serialized_cluster["primary_command"] = item.get("primary_command")
     if member_count > len(serialized_members):
         serialized_cluster["members_truncated"] = True
         serialized_cluster["members_sample_limit"] = _CLUSTER_MEMBER_SAMPLE_LIMIT
@@ -60,17 +61,18 @@ def _serialize_cluster_item(item: Mapping[str, Any]) -> dict[str, Any]:
 
 def _serialize_issue_item_base(item: Mapping[str, Any]) -> dict[str, Any]:
     """Serialize core issue fields shared across output modes."""
-    return {
+    serialized: dict[str, Any] = {
         "id": item.get("id"),
-        "kind": item.get("kind", "issue"),
         "confidence": item.get("confidence"),
         "detector": item.get("detector"),
         "file": item.get("file"),
         "summary": item.get("summary"),
         "detail": item.get("detail", {}),
         "status": item.get("status"),
-        "primary_command": item.get("primary_command"),
     }
+    serialized["kind"] = item.get("kind", "issue")
+    serialized["primary_command"] = item.get("primary_command")
+    return serialized
 
 
 def serialize_item(item: Mapping[str, Any]) -> dict[str, Any]:

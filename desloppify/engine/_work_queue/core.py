@@ -341,15 +341,16 @@ def _empty_queue_fallback(plan: dict | None) -> list[WorkQueueItem]:
     if not postflight_scan_pending(plan):
         return items
 
-    items.append({
+    workflow_item: WorkQueueItem = {
         "id": "workflow::run-scan",
-        "kind": "workflow_action",
         "summary": "Queue cleared - run scan to refresh and surface follow-up review work.",
-        "primary_command": "desloppify scan",
         "file": "",
         "detector": "workflow",
         "confidence": "high",
-    })
+    }
+    workflow_item["kind"] = "workflow_action"
+    workflow_item["primary_command"] = "desloppify scan"
+    items.append(workflow_item)
     return items
 
 

@@ -133,6 +133,52 @@ def _merge_issues_transitively(
     return merged
 
 
+def _build_review_quality_payload(
+    *,
+    batch_count: int,
+    coverage_values: list[float],
+    evidence_density_values: list[float],
+    high_score_missing_issue_note_total: float,
+    issue_pressure_by_dim: dict[str, float],
+    issue_count_by_dim: dict[str, int],
+) -> dict[str, object]:
+    quality: dict[str, object] = {
+        "batch_count": batch_count,
+        "dimension_coverage": round(
+            sum(coverage_values) / max(len(coverage_values), 1),
+            3,
+        ),
+        "evidence_density": round(
+            sum(evidence_density_values) / max(len(evidence_density_values), 1),
+            3,
+        ),
+        "issue_pressure": round(sum(issue_pressure_by_dim.values()), 3),
+        "dimensions_with_issues": len(issue_count_by_dim),
+    }
+    quality[REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY] = int(
+        high_score_missing_issue_note_total
+    )
+    return quality
+
+
+def _build_merged_review_payload(
+    *,
+    assessments: dict[str, float | dict[str, object]],
+    dimension_notes: dict[str, BatchDimensionNotePayload],
+    dimension_judgment: dict[str, BatchDimensionJudgmentPayload],
+    issues: list[BatchIssuePayload],
+    review_quality: dict[str, object],
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "assessments": assessments,
+        "dimension_notes": dimension_notes,
+        "dimension_judgment": dimension_judgment,
+        "issues": issues,
+    }
+    payload["review_quality"] = review_quality
+    return payload
+
+
 def merge_batch_results(
     batch_results: list[BatchResultPayload],
     *,
@@ -198,28 +244,20 @@ def merge_batch_results(
             "component_scores": component_scores,
         }
 
-    return {
-        "assessments": merged_assessment_payload,
-        "dimension_notes": merged_dimension_notes,
-        "dimension_judgment": merged_dimension_judgment,
-        "issues": merged_issues,
-        "review_quality": {
-            "batch_count": len(batch_results),
-            "dimension_coverage": round(
-                sum(coverage_values) / max(len(coverage_values), 1),
-                3,
-            ),
-            "evidence_density": round(
-                sum(evidence_density_values) / max(len(evidence_density_values), 1),
-                3,
-            ),
-            REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY: int(
-                high_score_missing_issue_note_total
-            ),
-            "issue_pressure": round(sum(issue_pressure_by_dim.values()), 3),
-            "dimensions_with_issues": len(issue_count_by_dim),
-        },
-    }
+    return _build_merged_review_payload(
+        assessments=merged_assessment_payload,
+        dimension_notes=merged_dimension_notes,
+        dimension_judgment=merged_dimension_judgment,
+        issues=merged_issues,
+        review_quality=_build_review_quality_payload(
+            batch_count=len(batch_results),
+            coverage_values=coverage_values,
+            evidence_density_values=evidence_density_values,
+            high_score_missing_issue_note_total=high_score_missing_issue_note_total,
+            issue_pressure_by_dim=issue_pressure_by_dim,
+            issue_count_by_dim=issue_count_by_dim,
+        ),
+    )
 
 
 __all__ = ["assessment_weight", "merge_batch_results"]
