@@ -85,10 +85,6 @@ def _parse_action_steps(raw_steps: object) -> list[dict]:
             if isinstance(done, bool):
                 step["done"] = done
             steps.append(step)
-            continue
-        if isinstance(raw_step, str) and raw_step.strip():
-            # Legacy fallback for historical prompts that emitted string-only steps.
-            steps.append({"title": raw_step.strip()})
     return steps
 
 

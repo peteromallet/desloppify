@@ -25,7 +25,7 @@ from desloppify.engine.plan_triage import (
     TRIAGE_STAGE_IDS,
     TriageInput,
 )
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 from .services import TriageServices, default_triage_services
 

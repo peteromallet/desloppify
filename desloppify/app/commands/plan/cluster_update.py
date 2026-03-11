@@ -16,7 +16,7 @@ from desloppify.engine.plan_ops import (
     parse_steps_file,
     step_summary,
 )
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 from .cluster_update_flow import (
     ClusterUpdateServices,

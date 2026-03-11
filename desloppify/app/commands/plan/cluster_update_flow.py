@@ -390,12 +390,10 @@ def _show_long_title_warning(*, title: str, colorize_fn: ColorizeFn) -> None:
     print(colorize_fn("  Move implementation detail to --detail instead.", "dim"))
 
 
-def _as_step_list(raw_steps: list[str | ActionStep]) -> list[ActionStep]:
+def _as_step_list(raw_steps: list[ActionStep]) -> list[ActionStep]:
     normalized: list[ActionStep] = []
     for step in raw_steps:
-        if isinstance(step, str):
-            normalized.append({"title": step})
-        elif isinstance(step, dict):
+        if isinstance(step, dict):
             normalized.append(cast(ActionStep, dict(step)))
     return normalized
 

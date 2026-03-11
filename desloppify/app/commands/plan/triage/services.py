@@ -21,7 +21,7 @@ from desloppify.engine.plan_triage import (
     detect_recurring_patterns,
     extract_issue_citations,
 )
-from desloppify.state import Issue, StateModel
+from desloppify.state_io import Issue, StateModel
 
 IssueMap = dict[str, Issue]
 RecurringPatternMap = dict[str, dict[str, list[str]]]

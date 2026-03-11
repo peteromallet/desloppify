@@ -15,7 +15,7 @@ from desloppify.engine.plan_triage import (
     detect_recurring_patterns,
     extract_issue_citations,
 )
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 from .completion_policy import (
     _completion_clusters_valid,

@@ -20,7 +20,7 @@ from desloppify.engine.plan_ops import (
     normalize_step,
     parse_steps_file,
 )
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 
 def _import_yaml_module() -> Any | None:

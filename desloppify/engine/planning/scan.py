@@ -21,7 +21,7 @@ from desloppify.languages.framework import (
     get_lang,
     make_lang_run,
 )
-from desloppify.state import Issue
+from desloppify.state_io import Issue
 
 
 @dataclass

@@ -32,7 +32,7 @@ from desloppify.engine.planning.render_sections import (
     summary_lines as _summary_lines,
 )
 from desloppify.engine.planning.types import PlanState
-from desloppify.state import score_snapshot
+from desloppify.state_scoring import score_snapshot
 
 
 def _plan_header(state: PlanState, stats: dict) -> list[str]:

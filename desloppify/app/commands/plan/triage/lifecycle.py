@@ -13,7 +13,7 @@ from desloppify.engine.plan_triage import (
     decide_triage_start,
 )
 from desloppify.base.output.terminal import colorize
-from desloppify.state import StateModel
+from desloppify.state_io import StateModel
 
 from .helpers import has_triage_in_queue, inject_triage_stages
 from .services import TriageServices

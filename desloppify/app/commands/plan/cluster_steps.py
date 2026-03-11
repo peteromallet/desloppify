@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 
-def print_step(i: int, step: str | dict, *, colorize_fn) -> None:
+def print_step(i: int, step: dict, *, colorize_fn) -> None:
     """Print a single step with title, detail, refs, and done status."""
-    if isinstance(step, str):
-        print(colorize_fn(f"    {i}. {step}", "dim"))
-        return
     done = step.get("done", False)
     marker = "[x]" if done else "[ ]"
     title = step.get("title", "")

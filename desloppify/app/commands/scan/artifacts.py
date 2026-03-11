@@ -19,8 +19,9 @@ from desloppify.base.output.terminal import colorize
 from desloppify.base.output.contract import OutputResult
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.engine._scoring.results.core import compute_health_breakdown
+from desloppify.engine._state.filtering import open_scope_breakdown
 from desloppify.engine.plan_state import load_plan
-from desloppify.state import open_scope_breakdown, score_snapshot
+from desloppify.state_scoring import score_snapshot
 
 logger = logging.getLogger(__name__)
 

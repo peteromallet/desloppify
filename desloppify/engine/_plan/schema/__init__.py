@@ -64,7 +64,7 @@ class Cluster(TypedDict, total=False):
     dismissed: list[str]
     agent_safe: bool
     dependency_order: int
-    action_steps: list[str | ActionStep]
+    action_steps: list[ActionStep]
     priority: int
     source_clusters: list[str]
     status: str

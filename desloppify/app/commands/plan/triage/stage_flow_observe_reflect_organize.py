@@ -6,7 +6,7 @@ import argparse
 
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 from .lifecycle import TriageLifecycleDeps, TriageStartRequest, ensure_triage_started
 from .stages.records import (

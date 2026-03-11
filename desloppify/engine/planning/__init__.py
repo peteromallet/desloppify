@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from desloppify.engine.planning.scan import PlanScanOptions
     from desloppify.engine.planning.types import PlanItem, PlanState
     from desloppify.languages.framework import LangConfig, LangRun
-    from desloppify.state import Issue
+    from desloppify.state_io import Issue
 
 
 def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
@@ -34,23 +34,6 @@ def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
     if plan is None:
         return _generate_plan_md(state)
     return _generate_plan_md(state, plan)
-
-
-def generate_issues(
-    path: Path,
-    lang: LangConfig | LangRun | None = None,
-    *,
-    options: PlanScanOptions | None = None,
-) -> tuple[list[Issue], dict[str, int]]:
-    from desloppify.engine.planning.scan import generate_issues as _generate_issues
-
-    if lang is None and options is None:
-        return _generate_issues(path)
-    if options is None:
-        return _generate_issues(path, lang)
-    if lang is None:
-        return _generate_issues(path, options=options)
-    return _generate_issues(path, lang, options=options)
 
 
 def get_next_item(
@@ -82,7 +65,6 @@ def get_next_items(
 
 __all__ = [
     "CONFIDENCE_ORDER",
-    "generate_issues",
     "generate_plan_md",
     "get_next_item",
     "get_next_items",

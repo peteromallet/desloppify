@@ -37,7 +37,7 @@ def test_format_steps_renders_done_detail_and_refs() -> None:
     rendered = format_steps(
         [
             {"title": "Do thing", "done": True, "detail": "line a\nline b", "issue_refs": ["x", "y"]},
-            "legacy step",
+            {"title": "Second step"},
         ]
     )
 
@@ -45,11 +45,9 @@ def test_format_steps_renders_done_detail_and_refs() -> None:
     assert "   line a" in rendered
     assert "   line b" in rendered
     assert "   Refs: x, y" in rendered
-    assert "2. legacy step" in rendered
+    assert "2. Second step" in rendered
 
 
-def test_normalize_step_and_summary_handle_strings_and_dicts() -> None:
-    assert normalize_step("hello") == {"title": "hello"}
+def test_normalize_step_and_summary_handle_structured_steps() -> None:
     assert normalize_step({"title": "world"}) == {"title": "world"}
-    assert step_summary("hello") == "hello"
     assert step_summary({"title": "world"}) == "world"

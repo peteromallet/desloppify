@@ -19,19 +19,18 @@ from desloppify.base.exception_sets import CommandError
 
 
 def test_cluster_steps_print_step_variants(capsys) -> None:
-    cluster_steps_mod.print_step(1, "string step", colorize_fn=lambda text, _tone: text)
     cluster_steps_mod.print_step(
-        2,
+        1,
         {"title": "Structured", "detail": "line one\nline two", "issue_refs": ["x", "y"]},
         colorize_fn=lambda text, _tone: text,
     )
     cluster_steps_mod.print_step(
-        3,
+        2,
         {"title": "Done step", "done": True},
         colorize_fn=lambda text, _tone: text,
     )
     out = capsys.readouterr().out
-    assert "1. string step" in out
+    assert "1. [ ] Structured" in out
     assert "line one" in out
     assert "Refs: x, y" in out
     assert "(completed)" in out

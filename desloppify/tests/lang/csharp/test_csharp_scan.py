@@ -6,8 +6,8 @@ from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
-from desloppify.engine.planning import generate_issues
 from desloppify.engine.planning.scan import PlanScanOptions
+from desloppify.engine.planning.scan import generate_issues
 from desloppify.languages._framework.runtime import LangRunOverrides, make_lang_run
 from desloppify.languages.csharp import CSharpConfig
 from desloppify.languages.csharp.phases import _apply_csharp_actionability_gates

@@ -10,6 +10,11 @@ import pytest
 from desloppify.app.commands.scan.preflight import scan_queue_preflight
 from desloppify.base.exception_sets import CommandError
 
+
+def _plan_status(plan=None, *, degraded=False, error_kind=None):
+    return SimpleNamespace(plan=plan, degraded=degraded, error_kind=error_kind)
+
+
 # ── CI profile bypass ───────────────────────────────────────
 
 
@@ -27,8 +32,8 @@ def test_no_plan_file_passes():
     """When no plan exists, scan is allowed."""
     args = SimpleNamespace(profile=None, force_rescan=False)
     with patch(
-        "desloppify.app.commands.scan.preflight.load_plan",
-        side_effect=OSError("no plan"),
+        "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+        return_value=_plan_status(),
     ):
         scan_queue_preflight(args)
 
@@ -37,8 +42,8 @@ def test_plan_without_start_scores_passes():
     """Plan without plan_start_scores means no active cycle."""
     args = SimpleNamespace(profile=None, force_rescan=False)
     with patch(
-        "desloppify.app.commands.scan.preflight.load_plan",
-        return_value={},
+        "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+        return_value=_plan_status({}),
     ):
         scan_queue_preflight(args)
 
@@ -54,8 +59,8 @@ def test_queue_clear_allows_scan():
     plan = {"plan_start_scores": {"strict": 80.0}}
     with (
         patch(
-            "desloppify.app.commands.scan.preflight.load_plan",
-            return_value=plan,
+            "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+            return_value=_plan_status(plan),
         ),
         patch(
             "desloppify.app.commands.scan.preflight.state_path",
@@ -82,8 +87,8 @@ def test_queue_remaining_blocks_scan():
     plan = {"plan_start_scores": {"strict": 80.0}}
     with (
         patch(
-            "desloppify.app.commands.scan.preflight.load_plan",
-            return_value=plan,
+            "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+            return_value=_plan_status(plan),
         ),
         patch(
             "desloppify.app.commands.scan.preflight.state_path",
@@ -115,8 +120,8 @@ def test_queue_with_only_subjective_items_blocks_scan():
     assert breakdown.objective_actionable == 0  # precondition
     with (
         patch(
-            "desloppify.app.commands.scan.preflight.load_plan",
-            return_value=plan,
+            "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+            return_value=_plan_status(plan),
         ),
         patch(
             "desloppify.app.commands.scan.preflight.state_path",
@@ -147,8 +152,8 @@ def test_queue_with_only_workflow_items_blocks_scan():
     assert breakdown.objective_actionable == 0  # precondition
     with (
         patch(
-            "desloppify.app.commands.scan.preflight.load_plan",
-            return_value=plan,
+            "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+            return_value=_plan_status(plan),
         ),
         patch(
             "desloppify.app.commands.scan.preflight.state_path",
@@ -204,7 +209,7 @@ def test_force_rescan_tolerates_missing_plan():
         attest="I understand this is not the intended workflow",
     )
     with patch(
-        "desloppify.app.commands.scan.preflight.load_plan",
-        side_effect=OSError("no plan"),
+        "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+        return_value=_plan_status(),
     ):
         scan_queue_preflight(args)

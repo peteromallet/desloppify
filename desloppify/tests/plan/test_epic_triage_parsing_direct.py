@@ -70,11 +70,10 @@ def test_parse_triage_result_filters_ids_and_normalizes_direction() -> None:
                 "dismissed": ["review::1234abcd", "review::other"],
                 "agent_safe": 1,
                 "dependency_order": "3",
-                "action_steps": [
-                    {"title": "step 1", "detail": "touch src/a.py", "issue_refs": ["review::abcdef12"]},
-                    2,
-                    "step 3",
-                ],
+                    "action_steps": [
+                        {"title": "step 1", "detail": "touch src/a.py", "issue_refs": ["review::abcdef12"]},
+                        2,
+                    ],
                 "status": "pending",
             }
         ],
@@ -103,7 +102,6 @@ def test_parse_triage_result_filters_ids_and_normalizes_direction() -> None:
     assert epic["dependency_order"] == 3
     assert epic["action_steps"] == [
         {"title": "step 1", "detail": "touch src/a.py", "issue_refs": ["review::abcdef12"]},
-        {"title": "step 3"},
     ]
 
     assert [d.issue_id for d in result.dismissed_issues] == ["review::abcdef12"]

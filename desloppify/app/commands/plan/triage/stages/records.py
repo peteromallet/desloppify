@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 from ..helpers import cascade_clear_later_confirmations
 

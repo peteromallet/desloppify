@@ -11,7 +11,7 @@ from desloppify.engine.plan_ops import (
     get_issue_override,
 )
 from desloppify.engine._work_queue.types import WorkQueueItem
-from desloppify.state import StateModel
+from desloppify.state_io import StateModel
 
 
 def _cluster_issue_ids(cluster: dict[str, Any]) -> list[str]:

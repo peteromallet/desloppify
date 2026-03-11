@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from desloppify.base.output.terminal import colorize
-from desloppify.state import utc_now
+from desloppify.state_io import utc_now
 
 from ..helpers import purge_triage_stage
 

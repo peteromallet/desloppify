@@ -31,22 +31,20 @@ def test_consume_indented_line_parses_refs_and_detail_lines() -> None:
     assert detail_lines == ["additional detail"]
 
 
-def test_format_step_lines_handles_string_dict_and_invalid_values() -> None:
-    assert parser_mod._format_step_lines(1, "legacy") == ["1. legacy", ""]
-
+def test_format_step_lines_handles_dict_and_invalid_values() -> None:
     lines = parser_mod._format_step_lines(
-        2,
+        1,
         {"title": "Task", "done": True, "detail": "a\nb", "issue_refs": ["x"]},
     )
     assert lines == [
-        "2. [x] Task",
+        "1. [x] Task",
         "   a",
         "   b",
         "   Refs: x",
         "",
     ]
 
-    assert parser_mod._format_step_lines(3, 123) == [""]
+    assert parser_mod._format_step_lines(2, 123) == [""]
 
 
 def test_parse_steps_file_ignores_noise_before_first_header() -> None:

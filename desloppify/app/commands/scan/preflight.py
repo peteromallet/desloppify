@@ -12,9 +12,9 @@ from desloppify.app.commands.helpers.queue_progress import (
 )
 from desloppify.app.commands.helpers.queue_progress import get_plan_start_strict
 from desloppify.app.commands.helpers.state import state_path
-from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS, CommandError
+from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan_state import load_plan
+from desloppify.engine._work_queue.context import resolve_plan_load_status
 
 _logger = logging.getLogger(__name__)
 
@@ -43,11 +43,18 @@ def scan_queue_preflight(args: object) -> None:
         )
         return
 
-    # No plan = no gate (first scan, or user never uses plan)
-    try:
-        plan = load_plan()
-    except PLAN_LOAD_EXCEPTIONS:
-        _logger.debug("scan preflight plan load skipped", exc_info=True)
+    # No plan = no gate (first scan, or user never uses plan). Use the same
+    # plan-load contract as the work queue so degraded-plan handling stays
+    # consistent across queue rendering and scan preflight.
+    plan_status = resolve_plan_load_status()
+    if plan_status.degraded:
+        _logger.debug(
+            "scan preflight plan load degraded: %s",
+            plan_status.error_kind,
+        )
+        return
+    plan = plan_status.plan
+    if not isinstance(plan, dict):
         return
     if not plan.get("plan_start_scores"):
         return  # No active cycle
@@ -61,7 +68,7 @@ def scan_queue_preflight(args: object) -> None:
         breakdown = plan_aware_queue_breakdown(state, plan)
         plan_start_strict = get_plan_start_strict(plan)
         mode = score_display_mode(breakdown, plan_start_strict)
-    except PLAN_LOAD_EXCEPTIONS:
+    except OSError:
         _logger.debug("scan preflight queue breakdown skipped", exc_info=True)
         return
     if mode is ScoreDisplayMode.LIVE:

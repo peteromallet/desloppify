@@ -6,7 +6,8 @@ import fnmatch
 
 from desloppify.engine.plan_state import PlanModel
 from desloppify.engine._work_queue.core import QueueBuildOptions, build_work_queue
-from desloppify.state import StateModel, match_issues
+from desloppify.engine._state.resolution import match_issues
+from desloppify.state_io import StateModel
 
 
 def _append_unique(issue_id: str, seen: set[str], result: list[str]) -> None:
