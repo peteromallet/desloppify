@@ -231,14 +231,47 @@ After resolving findings as `fixed`, the tool shows uncommitted work, committed 
 - **Wontfix cost**: widens the lenient↔strict gap. Challenge past decisions when the gap grows.
 - Score can temporarily drop after fixes (cascade effects are normal).
 
-## 4. Escalate Tool Issues Upstream
+## 4. Fix Tool Issues Upstream
 
-When desloppify itself appears wrong or inconsistent:
+When desloppify itself appears wrong or inconsistent — a bug, a bad detection, a crash, confusing output — **fix it and open a PR**. If you can't confidently fix it, file an issue instead.
 
-1. Capture a minimal repro (`command`, `path`, `expected`, `actual`).
-2. Open a GitHub issue in `peteromallet/desloppify`.
-3. If you can fix it safely, open a PR linked to that issue.
-4. If unsure whether it is tool bug vs user workflow, issue first, PR second.
+### Fix and PR (preferred)
+
+Clone the tool repo to a temp directory, make the fix there, and verify it works against the project you're scanning before pushing.
+
+```bash
+git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify-fix
+cd /tmp/desloppify-fix
+git checkout -b fix/<short-description>
+```
+
+Make your changes, then run the test suite and verify the fix against the original project:
+
+```bash
+python -m pytest desloppify/tests/ -q
+python -m desloppify scan --path <project-root>   # the project you were scanning
+```
+
+Once it looks good, push and open a PR:
+
+```bash
+git add <files> && git commit -m "fix: <what and why>"
+git push -u origin fix/<short-description>
+gh pr create --title "fix: <short description>" --body "$(cat <<'EOF'
+## Problem
+<what went wrong — include the command and output>
+
+## Fix
+<what you changed and why>
+EOF
+)"
+```
+
+Clean up after: `rm -rf /tmp/desloppify-fix`
+
+### File an issue (fallback)
+
+If the fix is unclear or the change needs discussion, open an issue at `https://github.com/peteromallet/desloppify/issues` with a minimal repro: command, path, expected output, actual output.
 
 ## Prerequisite
 
