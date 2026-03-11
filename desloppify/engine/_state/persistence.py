@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import errno
-import fcntl
 import json
 import logging
+import os
 import shutil
 import sys
 import time
@@ -14,7 +14,14 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import cast
 
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
+
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
+
 __all__ = [
     "load_state",
     "save_state",
@@ -299,19 +306,24 @@ def state_lock(
     lock_path = state_path.with_suffix(".json.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-    lock_fd = open(lock_path, "w")  # noqa: SIM115
+    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_WRONLY)
     try:
         deadline = time.monotonic() + timeout
         while True:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if sys.platform == "win32":
+                    import msvcrt
+
+                    msvcrt.locking(lock_fd, msvcrt.LK_LOCK, 1)
+                elif fcntl is not None:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except OSError as exc:
                 if exc.errno not in (errno.EACCES, errno.EAGAIN):
-                    lock_fd.close()
+                    os.close(lock_fd)
                     raise
                 if time.monotonic() >= deadline:
-                    lock_fd.close()
+                    os.close(lock_fd)
                     raise TimeoutError(
                         f"Could not acquire state lock within {timeout}s. "
                         "Another desloppify command may be running."
@@ -328,7 +340,12 @@ def state_lock(
         )
     finally:
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            if sys.platform == "win32":
+                import msvcrt
+
+                msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
+            elif fcntl is not None:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
         except OSError:
             pass
-        lock_fd.close()
+        os.close(lock_fd)
