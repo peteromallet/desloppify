@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from desloppify.base.discovery.paths import get_area
 from desloppify.engine.hook_registry import register_lang_hooks
-from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
     detector_phase_signature,
@@ -38,11 +37,9 @@ from desloppify.languages.go.review import (
     module_patterns,
 )
 
-GO_ENTRY_PATTERNS = ["/main.go", "/cmd/"]
+from desloppify.languages.go._zones import GO_ZONE_RULES
 
-GO_ZONE_RULES = [
-    ZoneRule(Zone.TEST, ["_test.go"]),
-] + COMMON_ZONE_RULES
+GO_ENTRY_PATTERNS = ["/main.go", "/cmd/"]
 
 class GoConfig(LangConfig):
     """Go language configuration."""
