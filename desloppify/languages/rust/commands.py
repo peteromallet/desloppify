@@ -23,6 +23,7 @@ from desloppify.languages._framework.commands_base_registry import (
     make_cmd_dupes,
     make_cmd_orphaned,
 )
+from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
 from desloppify.languages._framework.generic_parts.tool_runner import run_tool_result
 from desloppify.languages.rust.detectors import (
     detect_async_locking,
@@ -48,15 +49,15 @@ from desloppify.languages.rust.phases import (
 from desloppify.languages.rust.tools import (
     CARGO_ERROR_CMD as RUST_CHECK_CMD,
     CLIPPY_WARNING_CMD as RUST_CLIPPY_CMD,
-    RUSTDOC_WARNING_CMD as RUST_RUSTDOC_CMD,
     parse_cargo_errors,
     parse_clippy_messages,
     parse_rustdoc_messages,
+    run_rustdoc_result,
 )
 
 DetectCommand = Callable[[argparse.Namespace], None]
 EntryDetector = Callable[[Path], tuple[list[dict[str, Any]], int]]
-ToolOutputParser = Callable[[str, Path], list[dict[str, Any]]]
+ToolResultRunner = Callable[[Path], ToolRunResult]
 
 cmd_large = make_cmd_large(
     find_rust_files,
@@ -102,11 +103,10 @@ cmd_smells = make_cmd_smells(detect_smells, module_name=__name__)
 
 def _make_tool_detect_command(
     label: str,
-    cmd: str,
-    parser: ToolOutputParser,
+    runner: ToolResultRunner,
 ) -> DetectCommand:
     def command(args: argparse.Namespace) -> None:
-        result = run_tool_result(cmd, Path(args.path), parser)
+        result = runner(Path(args.path))
         if result.status == "error":
             payload = {
                 "count": 0,
@@ -175,18 +175,15 @@ def _make_entry_detect_command(
 
 cmd_clippy_warning = _make_tool_detect_command(
     RUST_CLIPPY_LABEL,
-    RUST_CLIPPY_CMD,
-    parse_clippy_messages,
+    lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
 )
 cmd_cargo_error = _make_tool_detect_command(
     RUST_CHECK_LABEL,
-    RUST_CHECK_CMD,
-    parse_cargo_errors,
+    lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
 )
 cmd_rustdoc_warning = _make_tool_detect_command(
     RUST_RUSTDOC_LABEL,
-    RUST_RUSTDOC_CMD,
-    parse_rustdoc_messages,
+    run_rustdoc_result,
 )
 cmd_rust_import_hygiene = _make_entry_detect_command(
     "Rust import hygiene",

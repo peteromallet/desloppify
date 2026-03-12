@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from desloppify.base.output.terminal import log
@@ -26,6 +27,7 @@ from desloppify.languages._framework.issue_factories import (
 from desloppify.languages._framework.generic_parts.tool_factories import (
     _record_tool_failure_coverage,
 )
+from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
 from desloppify.languages._framework.generic_parts.tool_runner import run_tool_result
 from desloppify.languages.rust.detectors import (
     detect_async_locking,
@@ -46,7 +48,7 @@ from desloppify.languages.rust.tools import (
     RUSTDOC_WARNING_CMD as RUST_RUSTDOC_CMD,
     parse_cargo_errors,
     parse_clippy_messages,
-    parse_rustdoc_messages,
+    run_rustdoc_result,
 )
 from desloppify.state import Issue
 from desloppify.state import make_issue
@@ -236,9 +238,12 @@ def phase_signature(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue],
     return issues, {"signature": len(entries)} if entries else {}
 
 
-def _make_rust_tool_phase(label: str, cmd: str, parser, detector: str, tier: int):
+ToolResultRunner = Callable[[Path], ToolRunResult]
+
+
+def _make_rust_tool_phase(label: str, runner: ToolResultRunner, detector: str, tier: int):
     def run(path: Path, lang) -> tuple[list[dict], dict[str, int]]:
-        result = run_tool_result(cmd, path, parser)
+        result = runner(path)
         if result.status == "error":
             _record_tool_failure_coverage(
                 lang,
@@ -268,8 +273,7 @@ def _make_rust_tool_phase(label: str, cmd: str, parser, detector: str, tier: int
 def tool_phase_clippy():
     return _make_rust_tool_phase(
         RUST_CLIPPY_LABEL,
-        RUST_CLIPPY_CMD,
-        parse_clippy_messages,
+        lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
         "clippy_warning",
         tier=2,
     )
@@ -278,8 +282,7 @@ def tool_phase_clippy():
 def tool_phase_check():
     return _make_rust_tool_phase(
         RUST_CHECK_LABEL,
-        RUST_CHECK_CMD,
-        parse_cargo_errors,
+        lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
         "cargo_error",
         tier=3,
     )
@@ -288,8 +291,7 @@ def tool_phase_check():
 def tool_phase_rustdoc():
     return _make_rust_tool_phase(
         RUST_RUSTDOC_LABEL,
-        RUST_RUSTDOC_CMD,
-        parse_rustdoc_messages,
+        run_rustdoc_result,
         "rustdoc_warning",
         tier=2,
     )

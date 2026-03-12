@@ -308,7 +308,7 @@ Current command policy:
 
 - Clippy runs workspace-wide, all targets, all features, JSON output
 - Cargo check runs workspace-wide, all targets, all features, JSON output
-- Rustdoc runs workspace-wide, all features, library target only, JSON output
+- Rustdoc runs once per workspace library package with `cargo rustdoc -p <package> --lib`, all features, JSON output
 
 Current rustdoc warnings enabled:
 
