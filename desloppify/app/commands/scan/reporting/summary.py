@@ -183,27 +183,18 @@ def _print_score_guide() -> None:
     print(colorize("    verified = strict, but only credits scan-verified fixes", "dim"))
 
 
-def _subjective_target_label(target: object) -> str:
-    if target is None:
-        return "target threshold"
-    return f"target {target}"
-
-
 def _print_subjective_integrity_warning(
     state: StateModel,
     integrity: dict[str, Any],
 ) -> None:
     status = integrity.get("status")
     matched_count = int(integrity.get("matched_count", 0) or 0)
-    target = integrity.get("target_score")
-    target_label = _subjective_target_label(target)
-
     if status == "penalized":
         print(
             colorize(
                 "  ⚠ Subjective integrity: "
                 f"{matched_count} target-matched dimensions were reset to 0.0 "
-                f"({target_label}).",
+                "(target-matched).",
                 "red",
             )
         )
@@ -232,7 +223,7 @@ def _print_subjective_integrity_warning(
         colorize(
             "  ⚠ Subjective integrity: "
             f"{matched_count} dimension matched the target "
-            f"({target_label}). Re-review recommended.",
+            "(near target). Re-review recommended.",
             "yellow",
         )
     )

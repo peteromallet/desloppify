@@ -274,12 +274,12 @@ def subjective_integrity_notice_lines(
             (
                 "red",
                 "WARNING: "
-                f"{count} subjective dimensions matched target {target_display:.1f} "
+                f"{count} subjective dimensions clustered on the scoring target "
                 f"and were reset to 0.0 this scan: {rendered}.",
             ),
             (
                 "yellow",
-                "Anti-gaming safeguard applied. Re-review objectively and import fresh assessments.",
+                "Anti-gaming safeguard applied. Launch a fresh, context-isolated agent to re-review. Do not re-review in this session.",
             ),
             (
                 "dim",
@@ -298,7 +298,7 @@ def subjective_integrity_notice_lines(
             (
                 "yellow",
                 "WARNING: "
-                f"{count} subjective {dimension_label} parked on target {target_display:.1f}. "
+                f"{count} subjective {dimension_label} parked on the scoring target. "
                 "Re-run that review with evidence-first scoring before treating this score as final.",
             ),
             ("dim", f"Next step: {command}"),
