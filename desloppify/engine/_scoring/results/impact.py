@@ -38,7 +38,10 @@ def compute_score_impact(
         return 0.0
 
     old_weighted = det_data["weighted_failures"]
-    avg_weight = old_weighted / max(1, det_data["failing"])
+    failing = det_data.get("failing")
+    if not isinstance(failing, (int, float)) or failing <= 0:
+        failing = det_data.get("count")
+    avg_weight = old_weighted / max(1, int(failing) if isinstance(failing, (int, float)) else 1)
     new_weighted = max(0.0, old_weighted - issues_to_fix * avg_weight)
 
     total_potential = 0

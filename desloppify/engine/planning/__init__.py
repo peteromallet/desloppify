@@ -36,6 +36,19 @@ def generate_plan_md(state: PlanState, plan: dict | None = None) -> str:
     return _generate_plan_md(state, plan)
 
 
+def generate_issues(
+    path: Path,
+    lang: LangConfig | LangRun | None = None,
+    *,
+    options: PlanScanOptions | None = None,
+) -> tuple[list[Issue], dict[str, int]]:
+    from desloppify.engine.planning.scan import generate_issues as _generate_issues
+
+    if options is None:
+        return _generate_issues(path, lang)
+    return _generate_issues(path, lang, options=options)
+
+
 def get_next_item(
     state: PlanState,
     scan_path: str | None = None,
@@ -67,6 +80,7 @@ def get_next_items(
 
 __all__ = [
     "CONFIDENCE_ORDER",
+    "generate_issues",
     "generate_plan_md",
     "get_next_item",
     "get_next_items",
