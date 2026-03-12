@@ -13,7 +13,7 @@ import hashlib
 import json
 import logging
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
 
@@ -216,7 +216,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                 text=True,
                 timeout=120,
                 check=True,
-            )
+            )  # nosec B603
         except FileNotFoundError:
             warn_best_effort(
                 "Boilerplate duplication detection skipped: jscpd/npx not found. "

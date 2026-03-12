@@ -22,15 +22,24 @@ class TestKnipAdapter:
         """Patch subprocess.run to return a synthetic Knip result."""
         mock_result = MagicMock()
         mock_result.stdout = stdout
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.typescript.detectors.knip_adapter.shutil.which",
+            return_value="/usr/bin/npx",
+        ), patch("subprocess.run", return_value=mock_result):
             return detect_with_knip(Path("/fake/project"))
 
     def test_returns_none_when_knip_not_installed(self):
-        with patch("subprocess.run", side_effect=FileNotFoundError("npx not found")):
+        with patch(
+            "desloppify.languages.typescript.detectors.knip_adapter.shutil.which",
+            return_value="/usr/bin/npx",
+        ), patch("subprocess.run", side_effect=FileNotFoundError("npx not found")):
             assert detect_with_knip(Path("/fake/project")) is None
 
     def test_returns_none_on_timeout(self):
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("npx", 120)):
+        with patch(
+            "desloppify.languages.typescript.detectors.knip_adapter.shutil.which",
+            return_value="/usr/bin/npx",
+        ), patch("subprocess.run", side_effect=subprocess.TimeoutExpired("npx", 120)):
             assert detect_with_knip(Path("/fake/project")) is None
 
     def test_returns_none_on_empty_output(self):
@@ -60,7 +69,10 @@ class TestKnipAdapter:
         )
         mock_result = MagicMock()
         mock_result.stdout = payload
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.typescript.detectors.knip_adapter.shutil.which",
+            return_value="/usr/bin/npx",
+        ), patch("subprocess.run", return_value=mock_result):
             result = detect_with_knip(tmp_path)
         assert result is not None
         assert len(result) == 1
@@ -83,7 +95,10 @@ class TestKnipAdapter:
         )
         mock_result = MagicMock()
         mock_result.stdout = payload
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.typescript.detectors.knip_adapter.shutil.which",
+            return_value="/usr/bin/npx",
+        ), patch("subprocess.run", return_value=mock_result):
             result = detect_with_knip(tmp_path)
         assert result is not None
         assert any(e["kind"] == "type" and e["name"] == "MyType" for e in result)
@@ -101,7 +116,10 @@ class TestKnipAdapter:
         )
         mock_result = MagicMock()
         mock_result.stdout = payload
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.typescript.detectors.knip_adapter.shutil.which",
+            return_value="/usr/bin/npx",
+        ), patch("subprocess.run", return_value=mock_result):
             result = detect_with_knip(tmp_path)
         assert result == []
 
@@ -501,7 +519,10 @@ class TestJscpdAdapter:
             assert detect_with_jscpd(tmp_path) is None
 
     def test_returns_none_on_timeout(self, tmp_path):
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("npx", 120)):
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch("subprocess.run", side_effect=subprocess.TimeoutExpired("npx", 120)):
             assert detect_with_jscpd(tmp_path) is None
 
     def test_returns_empty_on_no_duplicates(self, tmp_path):
@@ -511,7 +532,10 @@ class TestJscpdAdapter:
     def test_returns_none_on_invalid_json_file(self, tmp_path):
         bad_report = tmp_path / "jscpd-report.json"
         bad_report.write_text("not-json")
-        with patch("subprocess.run"), patch("tempfile.TemporaryDirectory") as mock_td:
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch("subprocess.run"), patch("tempfile.TemporaryDirectory") as mock_td:
             mock_td.return_value.__enter__.return_value = str(tmp_path)
             mock_td.return_value.__exit__.return_value = None
             result = detect_with_jscpd(tmp_path)
@@ -662,7 +686,10 @@ class TestJscpdAdapter:
             assert "**/node_modules/**" in ignore_value
             return MagicMock(returncode=0, stdout="", stderr="")
 
-        with patch("subprocess.run", side_effect=_fake_run), patch(
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch("subprocess.run", side_effect=_fake_run), patch(
             "desloppify.engine.detectors.jscpd_adapter.collect_exclude_dirs",
             return_value=fake_dirs,
         ), patch(
@@ -782,7 +809,10 @@ class TestImportLinterAdapter:
 
     def test_returns_none_when_lint_imports_not_installed(self, tmp_path):
         self._write_config(tmp_path)
-        with patch("subprocess.run", side_effect=FileNotFoundError("lint-imports not found")):
+        with patch(
+            "desloppify.languages.python.detectors.import_linter_adapter.shutil.which",
+            return_value="/usr/bin/lint-imports",
+        ), patch("subprocess.run", side_effect=FileNotFoundError("lint-imports not found")):
             assert detect_with_import_linter(tmp_path) is None
 
     def test_returns_none_when_no_importlinter_config(self, tmp_path):
@@ -796,7 +826,10 @@ class TestImportLinterAdapter:
         mock_result.returncode = 0
         mock_result.stdout = "All contracts ok.\n"
         mock_result.stderr = ""
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.python.detectors.import_linter_adapter.shutil.which",
+            return_value="/usr/bin/lint-imports",
+        ), patch("subprocess.run", return_value=mock_result):
             result = detect_with_import_linter(tmp_path)
         assert result == []
 
@@ -809,7 +842,10 @@ class TestImportLinterAdapter:
             "    foo.engine.detectors.coupling imports foo.languages.typescript\n"
         )
         mock_result.stderr = ""
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.python.detectors.import_linter_adapter.shutil.which",
+            return_value="/usr/bin/lint-imports",
+        ), patch("subprocess.run", return_value=mock_result):
             result = detect_with_import_linter(tmp_path)
         assert result is not None
         assert len(result) == 1
@@ -827,7 +863,10 @@ class TestImportLinterAdapter:
             "    foo.engine.c imports foo.languages.d\n"
         )
         mock_result.stderr = ""
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "desloppify.languages.python.detectors.import_linter_adapter.shutil.which",
+            return_value="/usr/bin/lint-imports",
+        ), patch("subprocess.run", return_value=mock_result):
             result = detect_with_import_linter(tmp_path)
         assert result is not None
         assert len(result) == 2
@@ -837,6 +876,9 @@ class TestImportLinterAdapter:
     def test_returns_none_on_timeout(self, tmp_path):
         self._write_config(tmp_path)
         with patch(
+            "desloppify.languages.python.detectors.import_linter_adapter.shutil.which",
+            return_value="/usr/bin/lint-imports",
+        ), patch(
             "subprocess.run", side_effect=subprocess.TimeoutExpired("lint-imports", 60)
         ):
             assert detect_with_import_linter(tmp_path) is None
@@ -904,5 +946,3 @@ class TestCollectExcludeDirs:
             result = collect_exclude_dirs(tmp_path)
         node_entries = [p for p in result if p.endswith("/node_modules")]
         assert len(node_entries) == 1
-
-

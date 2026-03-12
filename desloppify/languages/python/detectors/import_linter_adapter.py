@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 import re
-import subprocess
+import shutil
+import subprocess  # nosec B404
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,10 @@ def _module_to_file(module: str) -> str:
     return module.replace(".", "/") + ".py"
 
 
+def _resolve_import_linter_command() -> str | None:
+    return shutil.which("lint-imports")
+
+
 def detect_with_import_linter(path: Path) -> list[dict] | None:
     """Run lint-imports and return layer violation entries, or None on failure."""
     config_dir = _find_importlinter_root(path)
@@ -51,14 +56,19 @@ def detect_with_import_linter(path: Path) -> list[dict] | None:
         logger.debug("import-linter: no .importlinter config found — skipping")
         return None
 
+    lint_imports_path = _resolve_import_linter_command()
+    if lint_imports_path is None:
+        logger.debug("import-linter: lint-imports not found — skipping")
+        return None
+
     try:
         result = subprocess.run(
-            ["lint-imports"],
+            [lint_imports_path],
             capture_output=True,
             text=True,
             cwd=config_dir,
             timeout=60,
-        )
+        )  # nosec B603
     except FileNotFoundError:
         logger.debug("import-linter: lint-imports not found — skipping")
         return None

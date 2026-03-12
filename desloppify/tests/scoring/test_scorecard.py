@@ -247,6 +247,7 @@ class TestGetProjectName:
     def test_gh_cli_success(self, monkeypatch):
         import desloppify.app.output.scorecard_parts.meta as meta
 
+        monkeypatch.setattr(meta.shutil, "which", lambda name: f"/usr/bin/{name}")
         monkeypatch.setattr(
             meta.subprocess,
             "check_output",
@@ -259,6 +260,7 @@ class TestGetProjectName:
     def test_falls_back_to_git_remote_ssh(self, monkeypatch):
         import desloppify.app.output.scorecard_parts.meta as meta
 
+        monkeypatch.setattr(meta.shutil, "which", lambda name: f"/usr/bin/{name}")
         def mock_check_output(cmd, **kw):
             if str(cmd[0]).endswith("gh"):
                 raise FileNotFoundError
@@ -270,6 +272,7 @@ class TestGetProjectName:
     def test_falls_back_to_git_remote_https(self, monkeypatch):
         import desloppify.app.output.scorecard_parts.meta as meta
 
+        monkeypatch.setattr(meta.shutil, "which", lambda name: f"/usr/bin/{name}")
         def mock_check_output(cmd, **kw):
             if str(cmd[0]).endswith("gh"):
                 raise FileNotFoundError
@@ -281,6 +284,7 @@ class TestGetProjectName:
     def test_falls_back_to_directory_name(self, monkeypatch):
         import desloppify.app.output.scorecard_parts.meta as meta
 
+        monkeypatch.setattr(meta.shutil, "which", lambda _name: None)
         monkeypatch.setattr(
             meta.subprocess, "check_output", lambda cmd, **kw: (_ for _ in ()).throw(FileNotFoundError)
         )
@@ -291,6 +295,7 @@ class TestGetProjectName:
     def test_https_with_token_stripped(self, monkeypatch):
         import desloppify.app.output.scorecard_parts.meta as meta
 
+        monkeypatch.setattr(meta.shutil, "which", lambda name: f"/usr/bin/{name}")
         def mock_check_output(cmd, **kw):
             if str(cmd[0]).endswith("gh"):
                 raise FileNotFoundError

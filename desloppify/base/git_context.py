@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-import subprocess
+import shutil
+import subprocess  # nosec B404
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -20,45 +21,37 @@ class GitContext:
     root: str | None = None
 
 
+def _run_git_command(*args: str) -> subprocess.CompletedProcess[str]:
+    git_path = shutil.which("git")
+    if not git_path:
+        raise FileNotFoundError("git not found")
+    return subprocess.run(  # nosec B603
+        [git_path, *args],
+        capture_output=True,
+        text=True,
+        timeout=_GIT_TIMEOUT,
+    )
+
+
 def detect_git_context() -> GitContext:
     """Detect current git context (branch, HEAD, uncommitted changes).
 
     Returns ``available=False`` when git is missing or not in a repo.
     """
     try:
-        head = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT,
-        )
+        head = _run_git_command("rev-parse", "HEAD")
         if head.returncode != 0:
             return GitContext(available=False)
 
         sha = head.stdout.strip()[:12]
 
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT,
-        )
+        branch_result = _run_git_command("rev-parse", "--abbrev-ref", "HEAD")
         branch = branch_result.stdout.strip() if branch_result.returncode == 0 else None
 
-        root_result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT,
-        )
+        root_result = _run_git_command("rev-parse", "--show-toplevel")
         root = root_result.stdout.strip() if root_result.returncode == 0 else None
 
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT,
-        )
+        status_result = _run_git_command("status", "--porcelain")
         has_uncommitted = bool(status_result.stdout.strip()) if status_result.returncode == 0 else False
 
         return GitContext(
@@ -76,12 +69,15 @@ def detect_git_context() -> GitContext:
 def update_pr_body(pr_number: int, body: str) -> bool:
     """Update PR description via ``gh pr edit``.  Returns True on success."""
     try:
+        gh_path = shutil.which("gh")
+        if not gh_path:
+            raise FileNotFoundError("gh not found")
         result = subprocess.run(
-            ["gh", "pr", "edit", str(pr_number), "--body", body],
+            [gh_path, "pr", "edit", str(pr_number), "--body", body],
             capture_output=True,
             text=True,
             timeout=_GIT_TIMEOUT * 3,
-        )
+        )  # nosec B603
         if result.returncode != 0:
             logger.warning("gh pr edit failed: %s", result.stderr.strip())
             return False

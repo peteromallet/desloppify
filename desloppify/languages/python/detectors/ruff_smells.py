@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
+import subprocess  # nosec B404
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -72,6 +73,8 @@ def detect_with_ruff_smells(path: Path) -> list[dict] | None:
     """
     exclude_dirs = _collect_exclude_dirs(path)
     cmd = [
+        sys.executable,
+        "-m",
         "ruff",
         "check",
         "--select",
@@ -91,7 +94,7 @@ def detect_with_ruff_smells(path: Path) -> list[dict] | None:
             text=True,
             cwd=get_project_root(),
             timeout=60,
-        )
+        )  # nosec B603
     except FileNotFoundError:
         logger.debug("ruff smells: ruff not found — skipping supplemental smell detection")
         return None

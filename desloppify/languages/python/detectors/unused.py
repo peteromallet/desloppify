@@ -1,8 +1,11 @@
 """Python unused detection via ruff (F401=unused imports, F841=unused vars)."""
 
+from __future__ import annotations
+
 import json
 import re
-import subprocess
+import subprocess  # nosec B404
+import sys
 from pathlib import Path
 
 from desloppify.base.discovery.source import collect_exclude_dirs as _collect_exclude_dirs
@@ -149,6 +152,8 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
 
     exclude_dirs = _collect_exclude_dirs(path)
     cmd = [
+        sys.executable,
+        "-m",
         "ruff",
         "check",
         "--select",
@@ -168,7 +173,7 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
             text=True,
             cwd=get_project_root(),
             timeout=60,
-        )
+        )  # nosec B603
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
 
@@ -190,12 +195,12 @@ def _try_pyflakes(path: Path, category: str) -> list[dict] | None:
     """Fallback: try pyflakes for unused detection."""
     try:
         result = subprocess.run(
-            ["pyflakes", str(path)],
+            [sys.executable, "-m", "pyflakes", str(path)],
             capture_output=True,
             text=True,
             cwd=get_project_root(),
             timeout=60,
-        )
+        )  # nosec B603
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
 

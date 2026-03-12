@@ -14,6 +14,7 @@ def test_detect_git_context_success(monkeypatch) -> None:
         SimpleNamespace(returncode=0, stdout="/repo\n", stderr=""),
         SimpleNamespace(returncode=0, stdout=" M file.py\n", stderr=""),
     ]
+    monkeypatch.setattr(git_mod.shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(git_mod.subprocess, "run", lambda *_a, **_k: results.pop(0))
 
     ctx = git_mod.detect_git_context()
@@ -26,6 +27,7 @@ def test_detect_git_context_success(monkeypatch) -> None:
 
 
 def test_detect_git_context_returns_unavailable_when_head_fails(monkeypatch) -> None:
+    monkeypatch.setattr(git_mod.shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(
         git_mod.subprocess,
         "run",
@@ -37,6 +39,7 @@ def test_detect_git_context_returns_unavailable_when_head_fails(monkeypatch) -> 
 
 
 def test_update_pr_body_success_and_failure_paths(monkeypatch) -> None:
+    monkeypatch.setattr(git_mod.shutil, "which", lambda _name: "/usr/bin/gh")
     monkeypatch.setattr(
         git_mod.subprocess,
         "run",
@@ -57,4 +60,3 @@ def test_update_pr_body_success_and_failure_paths(monkeypatch) -> None:
         lambda *_a, **_k: (_ for _ in ()).throw(OSError("no gh")),
     )
     assert git_mod.update_pr_body(42, "body") is False
-

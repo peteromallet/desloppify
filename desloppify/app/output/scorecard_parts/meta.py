@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
-import subprocess
+import shutil
+import subprocess  # nosec B404
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,9 +17,12 @@ logger = logging.getLogger(__name__)
 def resolve_project_name(project_root: Path) -> str:
     """Resolve owner/repo display name from GitHub CLI, git remote, or folder."""
     try:
+        gh_path = shutil.which("gh")
+        if gh_path is None:
+            raise FileNotFoundError("gh not found")
         name = subprocess.check_output(
             [
-                "gh",
+                gh_path,
                 "repo",
                 "view",
                 "--json",
@@ -30,7 +34,7 @@ def resolve_project_name(project_root: Path) -> str:
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=5,
-        ).strip()
+        ).strip()  # nosec B603
         if "/" in name:
             return name
     except (
@@ -41,13 +45,16 @@ def resolve_project_name(project_root: Path) -> str:
         logger.debug("gh repo view failed, falling back to git remote: %s", exc)
 
     try:
+        git_path = shutil.which("git")
+        if git_path is None:
+            raise FileNotFoundError("git not found")
         url = subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
+            [git_path, "config", "--get", "remote.origin.url"],
             cwd=str(project_root),
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=5,
-        ).strip()
+        ).strip()  # nosec B603
         if url.startswith("git@") and ":" in url:
             path = url.split(":")[-1]
         else:

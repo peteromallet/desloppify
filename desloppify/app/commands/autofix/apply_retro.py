@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
+import shutil
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -34,12 +35,15 @@ def _resolve_fixer_results(
 
 def _warn_uncommitted_changes() -> None:
     try:
+        git_path = shutil.which("git")
+        if not git_path:
+            return
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            [git_path, "status", "--porcelain"],
             capture_output=True,
             text=True,
             timeout=5,
-        )
+        )  # nosec B603
         if result.stdout.strip():
             print(colorize("\n  ⚠ You have uncommitted changes. Consider running:", "yellow"))
             print(

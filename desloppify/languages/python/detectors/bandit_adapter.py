@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
+import subprocess  # nosec B404
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -198,6 +199,8 @@ def detect_with_bandit(
         recursive scan.
     """
     cmd = [
+        sys.executable,
+        "-m",
         "bandit",
         "-r",
         "-f",
@@ -215,7 +218,7 @@ def detect_with_bandit(
             text=True,
             cwd=get_project_root(),
             timeout=timeout,
-        )
+        )  # nosec B603
     except FileNotFoundError:
         logger.debug("bandit: not installed — Python-specific security checks will be skipped")
         return BanditScanResult(

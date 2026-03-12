@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
+import shutil
+import subprocess  # nosec B404
 from pathlib import Path
 
 from desloppify.base.discovery.file_paths import rel
@@ -24,10 +25,14 @@ logger = logging.getLogger(__name__)
 
 def _run_knip(path: Path, timeout: int = 120) -> dict | None:
     """Run ``npx knip --reporter json`` and return parsed JSON, or None on failure."""
+    npx_path = shutil.which("npx")
+    if not npx_path:
+        logger.debug("knip: npx not found")
+        return None
     try:
         result = subprocess.run(
             [
-                "npx",
+                npx_path,
                 "knip",
                 "--reporter",
                 "json",
@@ -37,7 +42,7 @@ def _run_knip(path: Path, timeout: int = 120) -> dict | None:
             text=True,
             cwd=str(path),
             timeout=timeout,
-        )
+        )  # nosec B603
     except FileNotFoundError:
         logger.debug("knip: npx not found")
         return None

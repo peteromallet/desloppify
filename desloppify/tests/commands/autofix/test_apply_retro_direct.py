@@ -38,6 +38,7 @@ def _state_with_issue(issue_id: str) -> dict:
 
 
 def test_warn_uncommitted_changes_prints_git_checkpoint_hint(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(retro_mod.shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(
         retro_mod.subprocess,
         "run",
@@ -54,6 +55,7 @@ def test_warn_uncommitted_changes_swallows_git_errors(monkeypatch) -> None:
     def _boom(*_a, **_k):
         raise subprocess.TimeoutExpired(cmd="git", timeout=5)
 
+    monkeypatch.setattr(retro_mod.shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(retro_mod.subprocess, "run", _boom)
     retro_mod._warn_uncommitted_changes()
 
