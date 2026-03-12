@@ -431,6 +431,23 @@ def test_normalize_tool_entries_ignores_cppcheck_random_prefix_false_positive():
     assert entries == []
 
 
+def test_normalize_tool_entries_ignores_generic_buffer_size_message():
+    entries = security_mod._normalize_tool_entries(
+        [
+            {
+                "file": r"D:/repo/math.cpp",
+                "line": 12,
+                "severity": "warning",
+                "check_id": "zerodiv",
+                "message": "Possible division by zero when buffer size is zero.",
+                "source": "cppcheck",
+            }
+        ]
+    )
+
+    assert entries == []
+
+
 def test_cxx_config_security_hook_returns_lang_result(tmp_path):
     source = tmp_path / "src" / "token.cpp"
     source.parent.mkdir(parents=True)

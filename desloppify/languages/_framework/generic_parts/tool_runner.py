@@ -43,9 +43,11 @@ def resolve_command_argv(cmd: str) -> list[str]:
     if _SHELL_META_CHARS.search(cmd):
         return _shell_argv(cmd)
     try:
-        argv = shlex.split(cmd, posix=True)
+        argv = shlex.split(cmd, posix=os.name != "nt")
     except ValueError:
         return _shell_argv(cmd)
+    if os.name == "nt":
+        argv = [arg[1:-1] if len(arg) >= 2 and arg[0] == arg[-1] == '"' else arg for arg in argv]
     return argv if argv else _shell_argv(cmd)
 
 

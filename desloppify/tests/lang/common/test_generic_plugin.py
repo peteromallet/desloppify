@@ -376,6 +376,19 @@ class TestMakeToolPhase:
             assert argv == ["/bin/sh", "-lc", "echo ok | cat"]
 
 
+    def test_resolve_command_argv_windows_backslash_path_preserved(self):
+        if os.name != "nt":
+            pytest.skip("windows-specific path parsing")
+        argv = resolve_command_argv(r"C:\Tools\tool.exe --flag")
+        assert argv == [r"C:\Tools\tool.exe", "--flag"]
+
+    def test_resolve_command_argv_windows_quoted_path_unquotes_executable(self):
+        if os.name != "nt":
+            pytest.skip("windows-specific path parsing")
+        argv = resolve_command_argv('"C:\\Program Files\\Tool\\tool.exe" --flag')
+        assert argv == [r"C:\Program Files\Tool\tool.exe", "--flag"]
+
+
 class TestToolSpecNormalization:
     def test_missing_fix_cmd_normalizes_to_none(self):
         normalized = normalize_tool_specs(

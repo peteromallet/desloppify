@@ -7,7 +7,7 @@ from desloppify.languages._framework.scaffold_move import (
     find_self_replacements as scaffold_find_self_replacements,
 )
 
-VERIFY_HINT = "desloppify detect deps --lang cxx"
+VERIFY_HINT = "desloppify --lang cxx detect deps"
 
 
 def find_replacements(

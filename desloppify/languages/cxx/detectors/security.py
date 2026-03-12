@@ -250,7 +250,7 @@ def _normalize_kind(check_id: str, message: str) -> str | None:
 
     if any(api in text for api in _UNSAFE_C_STRING_APIS):
         return "unsafe_c_string"
-    if "unsafebufferhandling" in check or re.search(r"\bbuffer\b", msg):
+    if "unsafebufferhandling" in check:
         return "unsafe_c_string"
 
     if check == "cert-msc30-c" or re.search(r"\brand\b", msg):
@@ -276,7 +276,6 @@ def _looks_security_finding(source: str, check_id: str, message: str) -> bool:
             "overflow",
             "insecure",
             "unsafe",
-            "buffer",
             "crypto",
             "hash",
             "command",
