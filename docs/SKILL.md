@@ -122,7 +122,7 @@ Four paths to get subjective scores:
 - **Manual path**: `desloppify review --prepare` → review per dimension → `desloppify review --import file.json`.
 
 - Import first, fix after — import creates tracked state entries for correlation.
-- Target-matching scores trigger auto-reset to prevent gaming.
+- Target-matching scores trigger auto-reset to prevent gaming. Use the blind-review workflow described in your agent overlay doc (e.g. `docs/CLAUDE.md`, `docs/HERMES.md`).
 - Even moderate scores (60-80) dramatically improve overall health.
 - Stale dimensions auto-surface in `next` — just follow the queue.
 

@@ -281,6 +281,14 @@ def subjective_integrity_notice_lines(
                 "yellow",
                 "Anti-gaming safeguard applied. Re-review objectively and import fresh assessments.",
             ),
+            (
+                "dim",
+                "Use a blind, isolated reviewer on `.desloppify/review_packet_blind.json` to avoid score anchoring.",
+            ),
+            (
+                "dim",
+                "See docs/CLAUDE.md or docs/HERMES.md for the full blind-review workflow.",
+            ),
             ("dim", f"Rerun now: {command}"),
         ]
 

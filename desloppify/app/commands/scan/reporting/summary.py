@@ -207,13 +207,20 @@ def _print_subjective_integrity_warning(
                 "red",
             )
         )
+        print(
+            colorize(
+                "    Review with `.desloppify/review_packet_blind.json` to avoid score anchoring."
+                " See docs/CLAUDE.md or docs/HERMES.md for the workflow.",
+                "dim",
+            )
+        )
         streak = _consecutive_subjective_integrity_status(state, "penalized")
         if streak < 2:
             return
         print(
             colorize(
                 "    Repeated penalty across scans. Use a blind, isolated reviewer "
-                "on `.desloppify/review_packet_blind.json` and re-import before trusting subjective scores.",
+                "and re-import before trusting subjective scores.",
                 "yellow",
             )
         )
