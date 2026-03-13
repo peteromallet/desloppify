@@ -26,6 +26,22 @@ def test_banner_pending_when_objective_backlog_exists():
     assert banner.startswith("TRIAGE PENDING")
 
 
+def test_banner_pending_when_stale_triage_is_deferred_behind_objective_backlog():
+    plan = empty_plan()
+    plan["plan_start_scores"] = {"strict": 72.0}
+    plan["epic_triage_meta"] = {"triaged_ids": ["review::old"]}
+    state = {
+        "issues": {
+            "obj-1": {"id": "obj-1", "status": "open", "detector": "complexity"},
+            "review::old": {"id": "review::old", "status": "open", "detector": "review"},
+            "review::new": {"id": "review::new", "status": "open", "detector": "review"},
+        }
+    }
+
+    banner = triage_phase_banner(plan, state)
+    assert banner.startswith("TRIAGE PENDING")
+
+
 def test_banner_mode_when_no_objective_backlog():
     plan = empty_plan()
     plan["queue_order"] = list(TRIAGE_STAGE_IDS)

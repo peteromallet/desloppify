@@ -58,7 +58,7 @@ def _print_triage_start_block(reason: str, *, deps: TriageLifecycleDeps) -> None
         )
         return
 
-    print(deps.colorize("  Cannot start triage while objective backlog is still open.", "red"))
+    print(deps.colorize("  Triage is pending behind the current objective backlog.", "red"))
     print(
         deps.colorize(
             "  Finish current objective work first, or pass --attestation "

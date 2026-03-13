@@ -59,7 +59,7 @@ from desloppify.engine._plan.sync.triage_start_policy import (
     TriageStartDecision,
     decide_triage_start,
 )
-from desloppify.engine._plan.sync.context import has_objective_backlog
+from desloppify.engine._plan.sync.context import has_objective_backlog, is_mid_cycle
 from desloppify.engine.plan_state import PlanModel, ensure_plan_defaults
 
 
@@ -80,6 +80,16 @@ def triage_phase_banner(
     resolved_snapshot = snapshot or build_triage_snapshot(plan, resolved_state)
 
     if not resolved_snapshot.has_triage_in_queue:
+        if (
+            resolved_state
+            and resolved_snapshot.is_triage_stale
+            and is_mid_cycle(plan)
+            and has_objective_backlog(resolved_state, None)
+        ):
+            return (
+                "TRIAGE PENDING — review issues changed since last triage and will "
+                "activate after objective work is complete."
+            )
         undispositioned = len(resolved_snapshot.undispositioned_ids)
         if undispositioned:
             return (
