@@ -542,15 +542,15 @@ def test_detect_cxx_security_keeps_distinct_same_line_tool_findings(
     }
 
 
-def test_normalize_tool_entries_ignores_cppcheck_syntax_error_with_fontsystem_name():
+def test_normalize_tool_entries_ignores_cppcheck_syntax_error_with_projectish_name():
     entries = security_mod._normalize_tool_entries(
         [
             {
-                "file": r"D:/repo/FontSystem.h",
+                "file": r"D:/repo/WidgetCatalog.h",
                 "line": 9,
                 "severity": "error",
                 "check_id": "syntaxError",
-                "message": "Code 'namespaceFontSystem{' is invalid C code.",
+                "message": "Code 'namespaceWidgetCatalog{' is invalid C code.",
                 "source": "cppcheck",
             }
         ]
