@@ -168,7 +168,7 @@ class TestDenoFallback:
     def test_run_tsc_unused_check_raises_without_npx(self, tmp_path, monkeypatch):
         monkeypatch.setattr(ts_unused_mod.shutil, "which", lambda _name: None)
 
-        with pytest.raises(OSError, match="npx executable not found"):
+        with pytest.raises(OSError, match="TypeScript compiler not found"):
             ts_unused_mod._run_tsc_unused_check(tmp_path, tmp_path / "tsconfig.json")
 
     def test_detect_unused_uses_deno_fallback_for_url_imports(self, tmp_path, monkeypatch):
@@ -238,6 +238,11 @@ class TestDenoFallback:
             calls["count"] += 1
             return _Result()
 
+        monkeypatch.setattr(
+            ts_unused_mod.shutil,
+            "which",
+            lambda name: "/opt/homebrew/bin/npx" if name == "npx" else None,
+        )
         monkeypatch.setattr(ts_unused_mod._proc_runtime, "run", _fake_run)
         entries, total = detect_unused(tmp_path / "src")
         assert calls["count"] == 1
@@ -263,6 +268,11 @@ class TestDenoFallback:
             calls["count"] += 1
             return _Result()
 
+        monkeypatch.setattr(
+            ts_unused_mod.shutil,
+            "which",
+            lambda name: "/opt/homebrew/bin/npx" if name == "npx" else None,
+        )
         monkeypatch.setattr(ts_unused_mod._proc_runtime, "run", _fake_run)
         entries, total = detect_unused(tmp_path / "src")
         assert calls["count"] == 1

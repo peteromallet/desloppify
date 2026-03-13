@@ -835,6 +835,7 @@ def test_registry_standalone_threshold_count():
         "dict_keys",
         "dupes",
         "naming",
+        "nextjs",
         "patterns",
         "props",
         "react",

@@ -16,6 +16,9 @@ import desloppify.languages.typescript.detectors.react.context as react_context_
 import desloppify.languages.typescript.detectors.react.hook_bloat as react_hook_bloat_mod
 import desloppify.languages.typescript.detectors.react.state_sync as react_state_sync_mod
 import desloppify.languages.typescript.detectors.smells as smells_detector_mod
+from desloppify.languages.typescript.frameworks import detect_primary_ts_framework
+from desloppify.languages.typescript.frameworks.nextjs import nextjs_info_from_detection
+from desloppify.languages.typescript.frameworks.nextjs.phase import detect_nextjs_framework_smells
 from desloppify.state_io import Issue
 
 
@@ -106,10 +109,29 @@ def phase_smells(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], di
     if bool_entries:
         log(f"         react: {len(bool_entries)} boolean state explosions")
 
-    return results, {
+    framework = detect_primary_ts_framework(path, lang)
+    nextjs_info = nextjs_info_from_detection(framework)
+    nextjs_scanned = 0
+    next_lint_potential = 0
+    if nextjs_info.is_primary:
+        scan_root = nextjs_info.package_root
+        nextjs_issues, nextjs_potentials = detect_nextjs_framework_smells(
+            scan_root, nextjs_info, log
+        )
+        results.extend(nextjs_issues)
+        nextjs_scanned = nextjs_potentials.get("nextjs", 0)
+        next_lint_potential = nextjs_potentials.get("next_lint", 0)
+
+    potentials: dict[str, int] = {
         "smells": adjust_potential(lang.zone_map, total_smell_files),
         "react": total_effects,
     }
+    if nextjs_scanned > 0:
+        potentials["nextjs"] = nextjs_scanned
+    if next_lint_potential > 0:
+        potentials["next_lint"] = next_lint_potential
+
+    return results, potentials
 
 
 __all__ = ["phase_smells"]

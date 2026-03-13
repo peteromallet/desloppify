@@ -286,6 +286,30 @@ def find_tsx_files(path: str | Path, *, runtime: RuntimeContext | None = None) -
     return find_source_files(path, [".tsx"], runtime=runtime)
 
 
+def find_js_and_jsx_files(
+    path: str | Path,
+    *,
+    runtime: RuntimeContext | None = None,
+) -> list[str]:
+    """Find JavaScript source files across common extensions."""
+    exts = [".js", ".jsx", ".mjs", ".cjs"]
+    if runtime is None:
+        return find_source_files(path, exts)
+    return find_source_files(path, exts, runtime=runtime)
+
+
+def find_js_ts_and_tsx_files(
+    path: str | Path,
+    *,
+    runtime: RuntimeContext | None = None,
+) -> list[str]:
+    """Find JavaScript + TypeScript source files across common extensions."""
+    exts = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"]
+    if runtime is None:
+        return find_source_files(path, exts)
+    return find_source_files(path, exts, runtime=runtime)
+
+
 def find_py_files(path: str | Path, *, runtime: RuntimeContext | None = None) -> list[str]:
     if runtime is None:
         return find_source_files(path, [".py"])
@@ -309,5 +333,7 @@ __all__ = [
     "find_ts_files",
     "find_ts_and_tsx_files",
     "find_tsx_files",
+    "find_js_and_jsx_files",
+    "find_js_ts_and_tsx_files",
     "find_py_files",
 ]

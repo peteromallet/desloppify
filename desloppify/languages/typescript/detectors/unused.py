@@ -46,14 +46,27 @@ def _run_tsc_unused_check(
     project_root: Path,
     tsconfig_path: Path,
 ) -> subprocess.CompletedProcess[str]:
-    """Run the fixed `npx tsc` unused-symbol check for one project root."""
+    """Run the unused-symbol check for one project root.
+
+    Prefers `npx tsc` (project-local), then `node_modules/.bin/tsc`, then `tsc`.
+    """
     npx_path = shutil.which("npx")
-    if not npx_path:
-        raise OSError("npx executable not found in PATH")
+    if npx_path:
+        cmd = [npx_path, "tsc"]
+    else:
+        local_tsc = project_root / "node_modules" / ".bin" / "tsc"
+        if local_tsc.is_file():
+            cmd = [str(local_tsc)]
+        else:
+            tsc_path = shutil.which("tsc")
+            if tsc_path:
+                cmd = [tsc_path]
+            else:
+                raise OSError("TypeScript compiler not found (npx/tsc)")
+
     return _proc_runtime.run(  # nosec B603
         [
-            npx_path,
-            "tsc",
+            *cmd,
             "--project",
             str(tsconfig_path),
             "--noEmit",

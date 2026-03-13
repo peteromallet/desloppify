@@ -22,6 +22,8 @@ DISPLAY_ORDER = [
     "naming",
     "smells",
     "react",
+    "nextjs",
+    "next_lint",
     "dupes",
     "stale_exclude",
     "dict_keys",
