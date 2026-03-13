@@ -181,11 +181,29 @@ def parse_eslint(output: str, scan_path: Path) -> list[dict]:
     return entries
 
 
+def parse_phpstan(output: str, scan_path: Path) -> list[dict]:
+    """Parse PHPStan JSON: `{"files": {"<path>": {"messages": [{"message", "line"}]}}}`."""
+    del scan_path
+    entries: list[dict] = []
+    data = _load_json_output(output, parser_name="phpstan")
+    files = data.get("files") if isinstance(data, dict) else {}
+    for filepath, fdata in (files or {}).items():
+        if not isinstance(fdata, dict):
+            continue
+        for msg in fdata.get("messages") or []:
+            line = _coerce_line(msg.get("line", 0))
+            message = msg.get("message", "")
+            if filepath and message and line is not None:
+                entries.append({"file": str(filepath), "line": line, "message": str(message)})
+    return entries
+
+
 PARSERS: dict[str, Callable[[str, Path], list[dict]]] = {
     "gnu": parse_gnu,
     "golangci": parse_golangci,
     "json": parse_json,
     "credo": parse_credo,
+    "phpstan": parse_phpstan,
     "rubocop": parse_rubocop,
     "cargo": parse_cargo,
     "eslint": parse_eslint,
@@ -201,5 +219,6 @@ __all__ = [
     "parse_gnu",
     "parse_golangci",
     "parse_json",
+    "parse_phpstan",
     "parse_rubocop",
 ]

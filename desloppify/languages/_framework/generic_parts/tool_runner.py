@@ -91,8 +91,15 @@ def run_tool_result(
             error_kind="tool_timeout",
             message=str(exc),
         )
-    output = (result.stdout or "") + (result.stderr or "")
-    if not output.strip():
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    # Use stdout for parsing (structured JSON tools always write there).
+    # Only fall back to combined output for the emptiness check so that tools
+    # that write diagnostics to stderr but produce no stdout are still treated
+    # as "no output" rather than silently swallowing the stderr content.
+    parse_input = stdout if stdout.strip() else (stdout + stderr)
+    combined = stdout + stderr
+    if not combined.strip():
         if result.returncode not in (0, None):
             return ToolRunResult(
                 entries=[],
@@ -107,7 +114,7 @@ def run_tool_result(
             returncode=result.returncode,
         )
     try:
-        parsed = parser(output, path)
+        parsed = parser(parse_input, path)
     except ToolParserError as exc:
         logger.debug("Parser decode error for tool output: %s", exc)
         return ToolRunResult(
@@ -136,7 +143,7 @@ def run_tool_result(
         )
     if not parsed:
         if result.returncode not in (0, None):
-            preview = _output_preview(output)
+            preview = _output_preview(combined)
             return ToolRunResult(
                 entries=[],
                 status="error",

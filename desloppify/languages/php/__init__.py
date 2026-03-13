@@ -73,7 +73,7 @@ generic_lang(
         {
             "label": "phpstan",
             "cmd": "phpstan analyse --error-format=json --no-progress",
-            "fmt": "json",
+            "fmt": "phpstan",
             "id": "phpstan_error",
             "tier": 2,
             "fix_cmd": None,
