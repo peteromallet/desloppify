@@ -93,14 +93,11 @@ def test_integration_workflow_uses_deterministic_roslyn_path() -> None:
 def test_publish_workflow_keeps_release_safety_gates() -> None:
     wf = _load_yaml(PUBLISH_WORKFLOW)
     on_block = _on_block(wf)
-    assert on_block.get("release", {}).get("types") == ["published"]
-    assert on_block.get("push", {}).get("tags") == ["v*"]
-    assert "workflow_dispatch" in on_block
     assert on_block.get("push", {}).get("branches") == ["main"]
+    assert "workflow_dispatch" in on_block
 
     publish_job = wf["jobs"]["publish"]
     names = _step_names(publish_job)
-    assert "Validate tag matches package version" in names
     assert "Check if version exists on PyPI" in names
     assert "Run packaging smoke gate" in names
     assert "Publish to PyPI" in names

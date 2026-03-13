@@ -1,27 +1,24 @@
-# Publish to PyPI from controlled release triggers only.
+# Publish to PyPI on every push to main.
+# The "Check if version exists" step makes this idempotent — if the version
+# is already on PyPI, the job skips the publish cleanly.
 
 name: Publish to PyPI
 
 on:
-  release:
-    types: [published]
   push:
     branches: [main]
-    tags:
-      - "v*"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-pypi-${{ github.ref }}
+  group: publish-pypi
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: github.event_name != 'release' || github.event.release.target_commitish == 'main'
     permissions:
       id-token: write  # required for trusted publishing
 
@@ -43,16 +40,6 @@ jobs:
         run: |
           VERSION=$(python -c "import tomllib; print(tomllib.loads(open('pyproject.toml').read())['project']['version'])")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Validate tag matches package version
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          PKG_VERSION="${{ steps.version.outputs.version }}"
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag version $TAG_VERSION does not match package version $PKG_VERSION"
-            exit 1
-          fi
 
       - name: Check if version exists on PyPI
         id: check
