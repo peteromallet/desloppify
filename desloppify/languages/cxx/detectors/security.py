@@ -659,7 +659,13 @@ def detect_cxx_security(
         tool_results.append(_run_clang_tidy(scan_root, scoped_files))
     tool_results.append(_run_cppcheck(scan_root, scoped_files))
 
-    tool_entries = [entry for result in tool_results for entry in result.entries]
+    scoped_file_set = {str(Path(filepath).resolve()) for filepath in scoped_files}
+    tool_entries = [
+        entry
+        for result in tool_results
+        for entry in result.entries
+        if str(Path(str(entry.get("file", ""))).resolve()) in scoped_file_set
+    ]
     covered_files = {
         filepath
         for result in tool_results

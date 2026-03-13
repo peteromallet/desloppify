@@ -186,6 +186,8 @@ def test_unused_import_helpers_and_detection(monkeypatch) -> None:
     assert unused_imports_mod._extract_alias(go_alias) == "pkg"
     assert unused_imports_mod._extract_import_name("pkg/module") == "module"
     assert unused_imports_mod._extract_import_name("crate::Thing") == "Thing"
+    assert unused_imports_mod._extract_import_name("SystemFontLocator.h") == "SystemFontLocator"
+    assert unused_imports_mod._extract_import_name("nlohmann/json.hpp") == "json"
 
     import_node = FakeNode(
         "import_statement",

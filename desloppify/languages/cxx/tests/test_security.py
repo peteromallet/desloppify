@@ -91,6 +91,48 @@ def test_detect_cxx_security_normalizes_clang_tidy_findings_when_compile_command
     assert entry["detail"]["check_id"] == "clang-analyzer-security.insecureAPI.strcpy"
 
 
+def test_detect_cxx_security_ignores_findings_outside_scanned_files(
+    tmp_path,
+    monkeypatch,
+ ):
+    source = tmp_path / "src" / "unsafe.cpp"
+    source.parent.mkdir(parents=True)
+    source.write_text("int main() { return 0; }\n")
+    (tmp_path / "compile_commands.json").write_text("[]\n")
+    external_header = tmp_path / "vendor" / "external.hpp"
+
+    def _fake_which(cmd: str) -> str | None:
+        return "C:/tools/clang-tidy.exe" if cmd == "clang-tidy" else None
+
+    def _fake_run_tool_result(cmd, path, parser, **_kwargs):
+        assert cmd.startswith("clang-tidy ")
+        output = (
+            f"{source}:4:5: warning: call to 'strcpy' is insecure because it can overflow "
+            "[clang-analyzer-security.insecureAPI.strcpy]\n"
+            f"{external_header}:18:3: warning: declaration uses reserved identifier "
+            "[cert-dcl37-c]\n"
+        )
+        return ToolRunResult(entries=parser(output, path), status="ok", returncode=1)
+
+    monkeypatch.setattr(
+        security_mod,
+        "shutil",
+        SimpleNamespace(which=_fake_which),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        security_mod,
+        "run_tool_result",
+        _fake_run_tool_result,
+        raising=False,
+    )
+
+    result = detect_cxx_security([str(source.resolve())], zone_map=None)
+
+    assert len(result.entries) == 1
+    assert result.entries[0]["file"] == str(source.resolve())
+
+
 def test_detect_cxx_security_uses_cppcheck_when_clang_tidy_missing_without_reduced_coverage(
     tmp_path,
     monkeypatch,
@@ -568,3 +610,46 @@ def test_cxx_config_security_hook_returns_lang_result(tmp_path):
     assert result.files_scanned == 1
     assert result.entries
     assert result.entries[0]["detail"]["kind"] == "command_injection"
+
+
+def test_detect_cxx_security_ignores_findings_outside_scoped_files(
+    tmp_path,
+    monkeypatch,
+ ):
+    source = tmp_path / "src" / "unsafe.cpp"
+    source.parent.mkdir(parents=True)
+    source.write_text("int main() { return 0; }\n")
+    (tmp_path / "compile_commands.json").write_text("[]\n")
+
+    external_header = tmp_path / "vendor" / "external.hpp"
+
+    def _fake_which(cmd: str) -> str | None:
+        return "C:/tools/clang-tidy.exe" if cmd == "clang-tidy" else None
+
+    def _fake_run_tool_result(cmd, path, parser, **_kwargs):
+        assert str(path.resolve()) == str(tmp_path.resolve())
+        output = (
+            f"{source}:4:5: warning: call to 'strcpy' is insecure because it can overflow "
+            "[clang-analyzer-security.insecureAPI.strcpy]\n"
+            f"{external_header}:18:3: warning: declaration uses reserved identifier "
+            "[cert-dcl37-c]\n"
+        )
+        return ToolRunResult(entries=parser(output, path), status="ok", returncode=1)
+
+    monkeypatch.setattr(
+        security_mod,
+        "shutil",
+        SimpleNamespace(which=_fake_which),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        security_mod,
+        "run_tool_result",
+        _fake_run_tool_result,
+        raising=False,
+    )
+
+    result = detect_cxx_security([str(source.resolve())], zone_map=None)
+
+    assert len(result.entries) == 1
+    assert result.entries[0]["file"] == str(source.resolve())

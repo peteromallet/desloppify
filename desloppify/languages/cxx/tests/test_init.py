@@ -38,3 +38,9 @@ def test_cxx_includes_tree_sitter_phases(monkeypatch):
 
     assert captured["spec_name"] == "cpp"
     assert "Tree-sitter sentinel" in labels
+
+
+def test_cxx_excludes_unused_imports_phase():
+    cfg = cxx_mod.CxxConfig()
+    labels = {phase.label for phase in cfg.phases}
+    assert "Unused imports" not in labels

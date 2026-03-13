@@ -8,6 +8,9 @@ from desloppify.engine.detectors.coverage.mapping import (
     naming_based_mapping,
     transitive_coverage,
 )
+from desloppify.engine.detectors.coverage.mapping_imports import (
+    _discover_additional_test_mapping_files,
+)
 from desloppify.engine.policy.zones import FileZoneMap
 
 from .discovery import (
@@ -19,6 +22,7 @@ from .heuristics import _has_inline_tests
 from .issues import (
     _generate_issues,
 )
+
 
 
 def detect_test_coverage(
@@ -49,14 +53,23 @@ def detect_test_coverage(
         entries = _no_tests_issues(scorable, graph, lang_name, complexity_map)
         return entries, potential
 
-    directly_tested = set(inline_tested)
+    mapping_test_files = set(test_files)
     if test_files:
-        directly_tested |= import_based_mapping(
-            graph,
+        mapping_test_files |= _discover_additional_test_mapping_files(
             test_files,
             production_files,
             lang_name,
         )
+
+    directly_tested = set(inline_tested)
+    if mapping_test_files:
+        directly_tested |= import_based_mapping(
+            graph,
+            mapping_test_files,
+            production_files,
+            lang_name,
+        )
+    if test_files:
         directly_tested |= naming_based_mapping(test_files, production_files, lang_name)
 
     transitively_tested = transitive_coverage(directly_tested, graph, production_files)

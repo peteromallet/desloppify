@@ -147,27 +147,28 @@ def _extract_import_name(import_path: str) -> str:
         "MyApp::Model::User" -> "User"
         "Data.List" -> "List"
     """
-    # Strip common path separators and take the last segment.
-    for sep in ("::", ".", "/", "\\"):
-        if sep in import_path:
-            parts = import_path.split(sep)
-            # Filter out empty segments and take the last.
-            parts = [p for p in parts if p]
+    candidate = import_path.strip()
+    for sep in ("/", "\\"):
+        if sep in candidate:
+            parts = [p for p in candidate.split(sep) if p]
             if parts:
-                name = parts[-1]
-                # Strip file extensions.
-                for ext in (".go", ".rs", ".rb", ".py", ".js", ".jsx", ".ts",
-                            ".tsx", ".java", ".kt", ".cs", ".fs", ".ml",
-                            ".ex", ".erl", ".hs", ".lua", ".zig", ".pm",
-                            ".sh", ".pl", ".scala", ".swift", ".php",
-                            ".dart", ".mjs", ".cjs"):
-                    if name.endswith(ext):
-                        name = name[:-len(ext)]
-                        break
-                return name
+                candidate = parts[-1]
 
-    # No separator — the path itself is the name.
-    return import_path
+    for ext in (".go", ".rs", ".rb", ".py", ".js", ".jsx", ".ts",
+                ".tsx", ".java", ".kt", ".cs", ".fs", ".ml",
+                ".ex", ".erl", ".hs", ".lua", ".zig", ".pm",
+                ".sh", ".pl", ".scala", ".swift", ".php",
+                ".dart", ".mjs", ".cjs", ".h", ".hh", ".hpp"):
+        if candidate.endswith(ext):
+            return candidate[:-len(ext)]
+
+    for sep in ("::", "."):
+        if sep in candidate:
+            parts = [p for p in candidate.split(sep) if p]
+            if parts:
+                return parts[-1]
+
+    return candidate
 
 
 __all__ = ["detect_unused_imports"]
