@@ -85,7 +85,7 @@ def test_update_installed_skill_handles_download_and_shared_file_write(
 ) -> None:
     skill_content = (
         "<!-- desloppify-begin -->\n"
-        "<!-- desloppify-skill-version: 5 -->\n"
+        f"<!-- desloppify-skill-version: {update_skill_cmd_mod.SKILL_VERSION} -->\n"
         "---\n"
         "name: desloppify\n"
         "---\n"
@@ -119,6 +119,10 @@ def test_update_installed_skill_handles_download_and_shared_file_write(
     assert "overlay text" in written
     out = capsys.readouterr().out
     assert "Updated .codex/skills/desloppify/SKILL.md" in out
+    assert (
+        f"(v{update_skill_cmd_mod.SKILL_VERSION}, tool expects v{update_skill_cmd_mod.SKILL_VERSION})"
+        in out
+    )
 
 
 def test_cmd_update_skill_handles_missing_and_ambiguous_installs(monkeypatch, capsys) -> None:
