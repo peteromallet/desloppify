@@ -41,6 +41,7 @@ class GenericLangOptions:
     entry_patterns: list[str] | None = None
     external_test_dirs: list[str] | None = None
     test_file_extensions: list[str] | None = None
+    custom_phases: list[DetectorPhase] | None = None
 
 
 def _register_generic_tool_specs(tool_specs: list[dict[str, Any]]) -> dict[str, FixerConfig]:
@@ -106,6 +107,7 @@ def _build_generic_phases(
     has_treesitter: bool,
     extract_fn,
     dep_graph_fn,
+    custom_phases: list[DetectorPhase] | None = None,
 ) -> list[DetectorPhase]:
     from desloppify.languages._framework.base.phase_builders import (
         detector_phase_security,
@@ -140,6 +142,9 @@ def _build_generic_phases(
     if dep_graph_fn is not empty_dep_graph:
         phases.append(_make_coupling_phase(dep_graph_fn))
         phases.append(detector_phase_test_coverage())
+
+    if custom_phases:
+        phases.extend(custom_phases)
 
     phases.extend(shared_subjective_duplicates_tail())
     return phases

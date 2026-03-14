@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from desloppify.engine.policy.zones import ZoneRule
-from desloppify.languages._framework.base.types import LangConfig
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 from .capabilities import (
     SHARED_PHASE_LABELS,
     capability_report,
@@ -60,6 +60,7 @@ def generic_lang(
     external_test_dirs: list[str] | None = None,
     test_file_extensions: list[str] | None = None,
     frameworks: bool = False,
+    custom_phases: list[DetectorPhase] | None = None,
 ) -> LangConfig:
     """Build and register a generic language plugin from tool specs.
 
@@ -86,6 +87,7 @@ def generic_lang(
         entry_patterns=entry_patterns,
         external_test_dirs=external_test_dirs,
         test_file_extensions=test_file_extensions,
+        custom_phases=custom_phases,
     )
 
     from desloppify.languages import register_generic_lang
@@ -102,6 +104,7 @@ def generic_lang(
         has_treesitter=has_treesitter,
         extract_fn=extract_fn,
         dep_graph_fn=dep_graph_fn,
+        custom_phases=opts.custom_phases,
     )
 
     cfg = LangConfig(
