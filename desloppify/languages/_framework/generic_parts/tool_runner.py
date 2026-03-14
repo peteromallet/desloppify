@@ -93,10 +93,10 @@ def run_tool_result(
         )
     stdout = result.stdout or ""
     stderr = result.stderr or ""
-    # Use stdout for parsing (structured JSON tools always write there).
-    # Only fall back to combined output for the emptiness check so that tools
-    # that write diagnostics to stderr but produce no stdout are still treated
-    # as "no output" rather than silently swallowing the stderr content.
+    # Parse stdout when it has content (structured JSON tools always write
+    # there).  Fall back to combined stdout+stderr only when stdout is empty,
+    # so that tools which emit diagnostics to stderr don't corrupt the JSON
+    # parse input while still being treated as "no output" when truly silent.
     parse_input = stdout if stdout.strip() else (stdout + stderr)
     combined = stdout + stderr
     if not combined.strip():

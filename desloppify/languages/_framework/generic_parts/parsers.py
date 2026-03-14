@@ -182,7 +182,7 @@ def parse_eslint(output: str, scan_path: Path) -> list[dict]:
 
 
 def parse_phpstan(output: str, scan_path: Path) -> list[dict]:
-    """Parse PHPStan JSON: `{"files": {"<path>": {"messages": [{"message", "line"}]}}}`."""
+    """Parse PHPStan JSON: ``{"files": {"<path>": {"messages": [{"message": "...", "line": 42}]}}}``."""
     del scan_path
     entries: list[dict] = []
     data = _load_json_output(output, parser_name="phpstan")
@@ -191,6 +191,8 @@ def parse_phpstan(output: str, scan_path: Path) -> list[dict]:
         if not isinstance(fdata, dict):
             continue
         for msg in fdata.get("messages") or []:
+            if not isinstance(msg, dict):
+                continue
             line = _coerce_line(msg.get("line", 0))
             message = msg.get("message", "")
             if filepath and message and line is not None:

@@ -22,7 +22,7 @@ from desloppify.languages._framework.generic_support.core import (
     parse_json,
     parse_rubocop,
 )
-from desloppify.languages._framework.generic_parts.parsers import ToolParserError
+from desloppify.languages._framework.generic_parts.parsers import ToolParserError, parse_phpstan
 from desloppify.languages._framework.generic_parts.tool_runner import (
     resolve_command_argv,
     run_tool_result,
@@ -233,6 +233,71 @@ class TestParseEslint:
             parse_eslint("not json", Path("."))
 
 
+class TestParsePhpstan:
+    def test_extracts_messages(self):
+        data = {
+            "totals": {"errors": 2},
+            "files": {
+                "/app/src/Foo.php": {
+                    "messages": [
+                        {"message": "Call to undefined method Bar::baz().", "line": 10},
+                        {"message": "Variable $x might not be defined.", "line": 25},
+                    ]
+                },
+                "/app/src/Bar.php": {
+                    "messages": [
+                        {"message": "Parameter #1 expects int, string given.", "line": 5},
+                    ]
+                },
+            },
+        }
+        entries = parse_phpstan(json.dumps(data), Path("."))
+        assert len(entries) == 3
+        assert entries[0] == {
+            "file": "/app/src/Foo.php",
+            "line": 10,
+            "message": "Call to undefined method Bar::baz().",
+        }
+        assert entries[2] == {
+            "file": "/app/src/Bar.php",
+            "line": 5,
+            "message": "Parameter #1 expects int, string given.",
+        }
+
+    def test_empty_files(self):
+        assert parse_phpstan(json.dumps({"files": {}}), Path(".")) == []
+
+    def test_empty_messages_list(self):
+        data = {"files": {"/app/src/Foo.php": {"messages": []}}}
+        assert parse_phpstan(json.dumps(data), Path(".")) == []
+
+    def test_skips_non_dict_messages(self):
+        data = {
+            "files": {
+                "/app/src/Foo.php": {
+                    "messages": [
+                        "unexpected string",
+                        {"message": "Real error", "line": 7},
+                    ]
+                }
+            }
+        }
+        entries = parse_phpstan(json.dumps(data), Path("."))
+        assert len(entries) == 1
+        assert entries[0]["message"] == "Real error"
+
+    def test_skips_non_dict_file_values(self):
+        data = {"files": {"/app/src/Foo.php": "not a dict"}}
+        assert parse_phpstan(json.dumps(data), Path(".")) == []
+
+    def test_invalid_json(self):
+        with pytest.raises(ToolParserError):
+            parse_phpstan("not json", Path("."))
+
+    def test_non_dict_root(self):
+        assert parse_phpstan(json.dumps([1, 2, 3]), Path(".")) == []
+
+
 # ── make_tool_phase tests ─────────────────────────────────
 
 
@@ -359,6 +424,41 @@ class TestMakeToolPhase:
         )
         assert failed_result.status == "error"
         assert failed_result.error_kind == "parser_error"
+
+    def test_run_tool_result_parses_stdout_ignoring_stderr_preamble(self, tmp_path):
+        """stdout JSON should parse successfully even when stderr has non-JSON diagnostics."""
+        valid_json = json.dumps([{"file": "a.php", "line": 1, "message": "err"}])
+        result_with_stderr_noise = subprocess.CompletedProcess(
+            args="fake",
+            returncode=1,
+            stdout=valid_json,
+            stderr="Note: Using configuration file /app/phpstan.neon.dist.\n",
+        )
+        result = run_tool_result(
+            "fake",
+            tmp_path,
+            parse_json,
+            run_subprocess=lambda *_a, **_k: result_with_stderr_noise,
+        )
+        assert result.status == "ok"
+        assert len(result.entries) == 1
+
+    def test_run_tool_result_error_preview_uses_combined_output(self, tmp_path):
+        """When parsing fails, the error preview should include both stdout and stderr."""
+        result_bad = subprocess.CompletedProcess(
+            args="fake",
+            returncode=1,
+            stdout="not json at all",
+            stderr="Some stderr diagnostic\n",
+        )
+        result = run_tool_result(
+            "fake",
+            tmp_path,
+            parse_json,
+            run_subprocess=lambda *_a, **_k: result_bad,
+        )
+        assert result.status == "error"
+        assert result.error_kind == "parser_error"
 
     def test_resolve_command_argv_plain_command_does_not_shell_fallback(self):
         argv = resolve_command_argv("nonexistent_tool_xyz_123 --version")
