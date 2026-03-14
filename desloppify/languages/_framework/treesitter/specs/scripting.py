@@ -170,6 +170,13 @@ R_SPEC = TreeSitterLangSpec(
             (function_definition
                 (parameters) @params
                 body: (braced_expression) @body)) @func
+        (call
+            function: (identifier) @fn
+            arguments: (arguments
+                (argument
+                    (function_definition
+                        (parameters) @params
+                        body: (braced_expression) @body)))) @func
     """,
     comment_node_types=frozenset({"comment"}),
     import_query="""
@@ -177,6 +184,11 @@ R_SPEC = TreeSitterLangSpec(
             function: (identifier) @fn
             arguments: (arguments
                 (argument) @path)) @import
+        (call
+            function: (namespace_operator
+                (identifier) @path
+                "::"
+                (identifier) @fn)) @import
     """,
     resolve_import=resolve_r_import,
     log_patterns=(
