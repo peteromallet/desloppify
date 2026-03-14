@@ -1,4 +1,4 @@
-# Next.js Framework Module
+# Next.js Framework Support (Scanners + Spec)
 
 This document explains the Next.js framework support used by Desloppify's TypeScript and JavaScript plugins.
 
@@ -6,11 +6,11 @@ It covers:
 
 - What the Next.js framework module does
 - How framework detection and scanning flow works
-- What each file in `desloppify/languages/typescript/frameworks/nextjs/` is responsible for
+- What each file in `desloppify/languages/_framework/node/frameworks/nextjs/` is responsible for
 - Which shared files outside this folder affect behavior
 - Current limits and safe extension points
 
-If you are new to this code, start with the `detect_nextjs_framework_smells` section and then read the "Scan flow" section.
+If you are new to this code, start with the "Spec + scan flow" section, then read `scanners.py`.
 
 ## High-level purpose
 
@@ -31,10 +31,14 @@ This module is intentionally heuristic-heavy (regex/file-structure based) so sca
 
 Files in this folder:
 
-- `desloppify/languages/typescript/frameworks/nextjs/__init__.py`
-- `desloppify/languages/typescript/frameworks/nextjs/info.py`
-- `desloppify/languages/typescript/frameworks/nextjs/phase.py`
-- `desloppify/languages/typescript/frameworks/nextjs/scanners.py`
+- `desloppify/languages/_framework/node/frameworks/nextjs/__init__.py`
+- `desloppify/languages/_framework/node/frameworks/nextjs/info.py`
+- `desloppify/languages/_framework/node/frameworks/nextjs/scanners.py`
+
+Spec + orchestration lives outside this folder:
+
+- `desloppify/languages/_framework/frameworks/specs/nextjs.py`
+- `desloppify/languages/_framework/frameworks/phases.py`
 
 ### What each file does
 
@@ -45,39 +49,34 @@ Files in this folder:
 `info.py`:
 
 - Defines `NextjsFrameworkInfo`
-- Converts generic framework detection output into Next.js-specific router roots and flags
-
-`phase.py`:
-
-- Orchestrates all Next.js scanners
-- Converts scanner entries into normalized issues (`nextjs` detector)
-- Runs `next lint` integration and emits normalized lint issues (`next_lint` detector)
+- Converts ecosystem detection evidence into Next.js-specific router roots and flags
 
 `scanners.py`:
 
 - Implements all Next.js smell scanners
 - Performs fast source-file discovery and content heuristics
-- Returns normalized scanner entries for the phase orchestrator
+- Returns normalized scanner entries for the framework spec adapter
 
 ## Shared surfaces outside this folder
 
 These files are part of the same feature boundary and should be considered together:
 
-- `desloppify/languages/typescript/frameworks/detect.py`
-- `desloppify/languages/typescript/frameworks/catalog.py`
-- `desloppify/languages/typescript/frameworks/types.py`
-- `desloppify/languages/typescript/phases_smells.py`
-- `desloppify/languages/javascript/phases_nextjs.py`
-- `desloppify/languages/_framework/node/next_lint.py`
+- `desloppify/languages/_framework/frameworks/detection.py`
+- `desloppify/languages/_framework/frameworks/phases.py`
+- `desloppify/languages/_framework/frameworks/specs/nextjs.py`
+- `desloppify/languages/typescript/__init__.py`
+- `desloppify/languages/javascript/__init__.py`
+- `desloppify/languages/_framework/generic_parts/parsers.py` (parser: `parse_next_lint`)
+- `desloppify/languages/_framework/generic_parts/tool_factories.py` (tool phase: `make_tool_phase`)
 - `desloppify/base/discovery/source.py`
 
 ### Responsibility split
 
-- `frameworks/detect.py` decides whether Next.js is the primary framework and where package roots are.
-- `nextjs/info.py` exposes Next.js routing context (`app_roots`, `pages_roots`) used by scanners.
-- `nextjs/scanners.py` only finds smell candidates.
-- `nextjs/phase.py` maps candidates to detector issues and handles scoring potentials.
-- `next_lint.py` provides lint execution/parsing, independent of smell mapping.
+- `frameworks/detection.py` decides whether Next.js is present for a scan path and where package roots are.
+- `frameworks/specs/nextjs.py` defines the Next.js FrameworkSpec (detection config + scanners + tool integrations).
+- `frameworks/phases.py` adapts specs into `DetectorPhase` objects.
+- `nextjs/info.py` derives routing context (`app_roots`, `pages_roots`) from detection evidence.
+- `nextjs/scanners.py` only finds smell candidates (fast, heuristic).
 
 ## Detectors
 
@@ -94,27 +93,28 @@ Registry/scoring wiring lives outside this folder in:
 
 ## Scan flow in plain language
 
-When TypeScript or JavaScript code smells run for a Next.js project, flow is:
+## Spec + scan flow in plain language
 
-1. Framework detection picks primary framework from package markers and scripts.
-2. Next.js info derives App/Pages router roots from detection evidence.
-3. Shared Next.js phase runs all scanner functions.
-4. Scanner entries are mapped into normalized `nextjs` issues.
-5. `next lint` is executed and mapped into `next_lint` issues.
-6. Potentials are returned for scoring and state merge.
+When TypeScript or JavaScript scans run for a Next.js project, flow is:
+
+1. Ecosystem framework detection (Node) evaluates deterministic presence signals from `package.json`.
+2. Next.js info derives App/Pages router roots from detection evidence (`marker_dir_hits`).
+3. Next.js framework smells phase runs all scanner functions and maps entries into normalized `nextjs` issues.
+4. `next lint` tool phase runs (slow) and maps ESLint JSON output into `next_lint` issues.
+5. Potentials are returned for scoring and state merge.
 
 ## `next lint` behavior
 
-`run_next_lint(...)` executes:
+The Next.js spec runs:
 
 - `npx --no-install next lint --format json`
 
 Behavior:
 
-- If lint runs and returns JSON, file-level lint findings are emitted.
-- If lint cannot run or output cannot be parsed, a `next_lint::unavailable` issue is emitted.
+- If lint runs and returns JSON, file-level lint findings are emitted (one issue per file).
+- If lint cannot run or output cannot be parsed, coverage is degraded for `next_lint` (shown as a scan coverage warning).
 
-This keeps lint participation explicit in Next.js scans instead of silently skipping.
+`next lint` runs as a slow phase (`DetectorPhase.slow=True`) so `--skip-slow` skips it automatically.
 
 ## Smell families covered
 

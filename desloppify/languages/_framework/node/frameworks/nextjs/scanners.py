@@ -12,7 +12,10 @@ from pathlib import Path
 
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.discovery.source import find_js_ts_and_tsx_files
-from desloppify.languages.typescript.detectors.smells.helpers import _code_text, _strip_ts_comments
+from desloppify.languages._framework.node.js_text import (
+    code_text as _code_text,
+    strip_js_ts_comments as _strip_ts_comments,
+)
 
 from .info import NextjsFrameworkInfo
 
@@ -90,7 +93,6 @@ _PROCESS_ENV_BRACKET_RE = re.compile(r"""\bprocess\.env\[\s*['"]([A-Z0-9_]+)['"]
 _CLIENT_ENV_ALLOWLIST: set[str] = {"NODE_ENV"}
 
 _USE_SERVER_LINE_RE = re.compile(r"""^\s*(?:'use server'|"use server")\s*;?\s*(?://.*)?$""")
-_USE_SERVER_LITERAL_RE = re.compile(r"""(?:'use server'|"use server")""")
 _DIRECTIVE_LINE_RE = re.compile(r"""^\s*(?:'[^']*'|"[^"]*")\s*;?\s*(?://.*)?$""")
 _ASYNC_EXPORT_DEFAULT_RE = re.compile(r"""\bexport\s+default\s+async\s+(?:function\b|\()""")
 _BROWSER_GLOBAL_ACCESS_RE = re.compile(
@@ -103,9 +105,10 @@ _INVALID_REACTY_MODULES_IN_ROUTE_CONTEXT: set[str] = {
     "next/script",
 }
 
-_NEXT_NAV_SERVER_API_CALL_RE = re.compile(
-    r"""\b(?P<api>redirect|permanentRedirect|notFound)\s*\("""
-)
+# NOTE: `redirect()` and `permanentRedirect()` can be called from Client
+# Components during the render phase (not event handlers). We intentionally do
+# not flag those patterns here.
+_NEXT_NAV_SERVER_API_CALL_RE = re.compile(r"""\b(?P<api>notFound)\s*\(""")
 _ROUTE_HANDLER_HTTP_EXPORT_RE = re.compile(
     r"""\bexport\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b"""
 )
@@ -189,16 +192,6 @@ def _is_node_builtin(module: str) -> bool:
     return base in _NODE_BUILTIN_MODULES
 
 
-def _has_use_server_directive_anywhere(content: str) -> int | None:
-    for idx, line in enumerate(content.splitlines()[:500], start=1):
-        if _USE_SERVER_LINE_RE.match(line):
-            return idx
-        literal = _USE_SERVER_LITERAL_RE.search(line)
-        if literal:
-            return idx
-    return None
-
-
 def _find_misplaced_module_use_server_directive(content: str) -> int | None:
     """Find module-level 'use server' directives that are not first.
 
@@ -250,7 +243,16 @@ def scan_nextjs_error_files_missing_use_client(
     if not info.uses_app_router:
         return [], 0
 
-    targets = {"error.tsx", "error.ts", "global-error.tsx", "global-error.ts"}
+    targets = {
+        "error.tsx",
+        "error.ts",
+        "error.jsx",
+        "error.js",
+        "global-error.tsx",
+        "global-error.ts",
+        "global-error.jsx",
+        "global-error.js",
+    }
     entries: list[dict] = []
     scanned = 0
     for filepath in find_js_ts_and_tsx_files(path):
@@ -425,7 +427,7 @@ def scan_nextjs_next_document_misuse(
 def scan_nextjs_server_navigation_apis_in_client(
     path: Path, info: NextjsFrameworkInfo
 ) -> tuple[list[dict], int]:
-    """Find 'use client' modules calling server-only next/navigation APIs (redirect/notFound)."""
+    """Find 'use client' modules calling server-only next/navigation APIs (notFound)."""
     if not info.uses_app_router:
         return [], 0
 
@@ -577,7 +579,9 @@ def scan_nextjs_use_server_in_client(
         if not _has_use_client_directive(content):
             continue
 
-        line_no = _has_use_server_directive_anywhere(content)
+        # Only module-level 'use server' directives are invalid in 'use client' modules.
+        # Inline server actions (e.g. inside a function body) are valid and should not be flagged.
+        line_no = _find_misplaced_module_use_server_directive(content)
         if line_no is None:
             continue
 
@@ -595,8 +599,18 @@ def scan_nextjs_server_modules_in_pages_router(
 
     entries: list[dict] = []
     scanned = 0
+
+    def _is_pages_api_route(fp: str) -> bool:
+        for root in info.pages_roots:
+            prefix = root.rstrip("/") + "/api/"
+            if fp.startswith(prefix) or fp == (root.rstrip("/") + "/api"):
+                return True
+        return False
+
     for filepath in find_js_ts_and_tsx_files(path):
         if not _is_under_any_root(filepath, info.pages_roots):
+            continue
+        if _is_pages_api_route(filepath):
             continue
 
         scanned += 1
@@ -957,38 +971,6 @@ def scan_nextjs_pages_router_apis_in_app_router(
     return entries, scanned
 
 
-def scan_nextjs_next_navigation_in_pages_router(
-    path: Path, info: NextjsFrameworkInfo
-) -> tuple[list[dict], int]:
-    """Find Pages Router modules importing next/navigation (likely misuse)."""
-    if not info.uses_pages_router:
-        return [], 0
-
-    entries: list[dict] = []
-    scanned = 0
-    for filepath in find_js_ts_and_tsx_files(path):
-        if not _is_under_any_root(filepath, info.pages_roots):
-            continue
-
-        scanned += 1
-        try:
-            full = Path(filepath) if Path(filepath).is_absolute() else get_project_root() / filepath
-            content = full.read_text()
-        except (OSError, UnicodeDecodeError) as exc:
-            logger.debug("Skipping unreadable Next.js candidate %s: %s", filepath, exc)
-            continue
-
-        search_text = _strip_ts_comments(content)
-        match = _NEXT_NAV_IMPORT_RE.search(search_text)
-        if not match:
-            continue
-
-        line_no = search_text[: match.start()].count("\n") + 1
-        entries.append({"file": filepath, "line": line_no})
-
-    return entries, scanned
-
-
 def scan_nextjs_env_leaks_in_client(
     path: Path, info: NextjsFrameworkInfo
 ) -> tuple[list[dict], int]:
@@ -1049,10 +1031,24 @@ def scan_nextjs_route_handlers_and_middleware_misuse(
     def _is_route_handler(fp: str) -> bool:
         if not _is_under_any_root(fp, info.app_roots):
             return False
-        return fp.endswith("/route.ts") or fp.endswith("/route.tsx") or fp == "route.ts"
+        return fp.endswith(("/route.ts", "/route.tsx", "/route.js", "/route.jsx")) or fp in {
+            "route.ts",
+            "route.tsx",
+            "route.js",
+            "route.jsx",
+        }
 
     def _is_middleware(fp: str) -> bool:
-        return fp in {"middleware.ts", "middleware.tsx", "src/middleware.ts", "src/middleware.tsx"}
+        return fp in {
+            "middleware.ts",
+            "middleware.tsx",
+            "middleware.js",
+            "middleware.jsx",
+            "src/middleware.ts",
+            "src/middleware.tsx",
+            "src/middleware.js",
+            "src/middleware.jsx",
+        }
 
     for filepath in find_js_ts_and_tsx_files(path):
         if not (_is_route_handler(filepath) or _is_middleware(filepath)):
@@ -1198,7 +1194,6 @@ __all__ = [
     "scan_nextjs_navigation_hooks_missing_use_client",
     "scan_nextjs_next_document_misuse",
     "scan_nextjs_next_head_in_app_router",
-    "scan_nextjs_next_navigation_in_pages_router",
     "scan_nextjs_pages_router_apis_in_app_router",
     "scan_nextjs_pages_api_route_handlers",
     "scan_nextjs_pages_router_artifacts_in_app_router",

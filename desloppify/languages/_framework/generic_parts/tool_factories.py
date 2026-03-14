@@ -63,12 +63,16 @@ def make_tool_phase(
     fmt: str,
     smell_id: str,
     tier: int,
+    *,
+    confidence: str = "medium",
+    cwd_fn: Callable[[Path, Any], Path] | None = None,
 ) -> DetectorPhase:
     """Create a DetectorPhase that runs an external tool and parses output."""
     parser = PARSERS[fmt]
 
     def run(path: Path, lang: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
-        run_result = run_tool_result(cmd, path, parser)
+        run_path = cwd_fn(path, lang).resolve() if cwd_fn is not None else path
+        run_result = run_tool_result(cmd, run_path, parser)
         if run_result.status == "error":
             _record_tool_failure_coverage(
                 lang,
@@ -78,20 +82,28 @@ def make_tool_phase(
             )
             return [], {}
         entries = list(run_result.entries)
+        meta = run_result.meta if isinstance(run_result.meta, dict) else {}
+        meta_potential = meta.get("potential")
+        potential = meta_potential if isinstance(meta_potential, int) else 0
+
+        if run_result.status == "empty":
+            return [], ({smell_id: potential} if potential > 0 else {})
+
         if not entries:
-            return [], {}
+            return [], ({smell_id: potential} if potential > 0 else {})
         issues = [
             make_issue(
                 smell_id,
                 entry["file"],
-                f"{smell_id}::{entry['line']}",
+                str(entry.get("id") or f"{smell_id}::{entry['line']}"),
                 tier=tier,
-                confidence="medium",
-                summary=entry["message"],
+                confidence=str(entry.get("confidence") or confidence),
+                summary=str(entry.get("summary") or entry["message"]),
+                detail=entry.get("detail") if isinstance(entry.get("detail"), dict) else None,
             )
             for entry in entries
         ]
-        return issues, {smell_id: len(entries)}
+        return issues, {smell_id: potential if potential > 0 else len(entries)}
 
     return DetectorPhase(label, run)
 

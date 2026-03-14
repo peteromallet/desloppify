@@ -128,6 +128,11 @@ def _generate_issues_from_lang(
     profile: str = "full",
 ) -> tuple[list[Issue], dict[str, int]]:
     """Run detector phases from a LangRun."""
+    runtime_options = getattr(lang, "runtime_options", None)
+    if isinstance(runtime_options, dict):
+        runtime_options["include_slow"] = include_slow
+        runtime_options["profile"] = profile
+
     _build_zone_map(path, lang, zone_overrides)
     phases = _select_phases(lang, include_slow=include_slow, profile=profile)
     issues, all_potentials = _run_phases(path, lang, phases)

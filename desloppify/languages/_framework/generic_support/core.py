@@ -57,6 +57,7 @@ def generic_lang(
     zone_rules: list[ZoneRule] | None = None,
     test_coverage_module: Any | None = None,
     entry_patterns: list[str] | None = None,
+    frameworks: bool = False,
 ) -> LangConfig:
     """Build and register a generic language plugin from tool specs.
 
@@ -126,6 +127,20 @@ def generic_lang(
         test_file_extensions=extensions,
         zone_rules=opts.zone_rules if opts.zone_rules is not None else generic_zone_rules(extensions),
     )
+
+    if frameworks:
+        from desloppify.languages._framework.frameworks.phases import framework_phases
+
+        phases = list(cfg.phases)
+        fw_phases = framework_phases(name)
+
+        insert_at = len(phases)
+        for idx, phase in enumerate(phases):
+            if getattr(phase, "label", "") == "Structural analysis":
+                insert_at = idx + 1
+                break
+        phases[insert_at:insert_at] = fw_phases
+        cfg.phases = phases
 
     # Set integration depth — upgrade when tree-sitter provides capabilities.
     if has_treesitter and opts.depth in ("shallow", "minimal"):

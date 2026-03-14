@@ -1,4 +1,4 @@
-"""Generic framework detection for TypeScript projects."""
+"""Ecosystem-specific framework presence detection (deterministic, evidence-based)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from typing import Any
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.languages._framework.base.types import LangRuntimeContract
 
-from .catalog import TS_FRAMEWORK_SIGNATURES, FrameworkSignature
-from .types import FrameworkCandidate, FrameworkId, PrimaryFrameworkDetection
+from .registry import ensure_builtin_specs_loaded, list_framework_specs
+from .types import DetectionConfig, EcosystemFrameworkDetection, FrameworkEvidence
 
-_CACHE_KEY = "framework.typescript.primary"
+_CACHE_PREFIX = "frameworks.ecosystem.present"
 
 
 def _find_nearest_package_json(scan_path: Path, project_root: Path) -> Path | None:
@@ -87,40 +87,32 @@ def _existing_relpaths(
     return tuple(hits)
 
 
-def _score_signature(
-    sig: FrameworkSignature,
+def _node_framework_evidence(
     *,
+    cfg: DetectionConfig,
     package_root: Path,
     project_root: Path,
     deps: set[str],
     dev_deps: set[str],
     scripts: list[str],
-) -> FrameworkCandidate:
-    dep_hits = tuple(sorted(set(sig.dependencies).intersection(deps)))
-    dev_dep_hits = tuple(sorted(set(sig.dev_dependencies).intersection(dev_deps)))
-    config_hits = _existing_relpaths(package_root, project_root, sig.config_files, kind="file")
-    marker_file_hits = _existing_relpaths(package_root, project_root, sig.marker_files, kind="file")
-    marker_dir_hits = _existing_relpaths(package_root, project_root, sig.marker_dirs, kind="dir")
-
-    score = 0
-    score += sig.weight_dependency if (dep_hits or dev_dep_hits) else 0
-    score += sig.weight_config if config_hits else 0
-    score += sig.weight_marker if (marker_file_hits or marker_dir_hits) else 0
+) -> tuple[bool, FrameworkEvidence]:
+    dep_hits = tuple(sorted(set(cfg.dependencies).intersection(deps)))
+    dev_dep_hits = tuple(sorted(set(cfg.dev_dependencies).intersection(dev_deps)))
+    config_hits = _existing_relpaths(package_root, project_root, cfg.config_files, kind="file")
+    marker_file_hits = _existing_relpaths(package_root, project_root, cfg.marker_files, kind="file")
+    marker_dir_hits = _existing_relpaths(package_root, project_root, cfg.marker_dirs, kind="dir")
 
     script_hits: list[str] = []
-    if scripts:
-        if sig.id == "nextjs":
-            pat = re.compile(r"(?:^|\s)next(?:\s|$)")
-        elif sig.id == "vite":
-            pat = re.compile(r"(?:^|\s)vite(?:\s|$)")
-        else:
-            pat = None
-        if pat is not None:
-            script_hits = [s for s in scripts if pat.search(s)]
-            if script_hits:
-                score += sig.weight_script
+    if scripts and cfg.script_pattern:
+        pat = re.compile(cfg.script_pattern)
+        script_hits = [s for s in scripts if pat.search(s)]
 
-    evidence: dict[str, Any] = {
+    # Presence is deterministic: deps/config/scripts imply presence. Marker dirs are context by default.
+    present = bool(dep_hits or dev_dep_hits or config_hits or marker_file_hits or script_hits)
+    if cfg.marker_dirs_imply_presence and marker_dir_hits:
+        present = True
+
+    evidence: FrameworkEvidence = {
         "dep_hits": list(dep_hits),
         "dev_dep_hits": list(dev_dep_hits),
         "config_hits": list(config_hits),
@@ -128,40 +120,41 @@ def _score_signature(
         "marker_dir_hits": list(marker_dir_hits),
         "script_hits": script_hits[:5],
     }
-
-    if sig.id == "nextjs":
-        evidence["app_roots"] = [
-            p for p in marker_dir_hits if p.endswith("/app") or p == "app"
-        ]
-        evidence["pages_roots"] = [
-            p for p in marker_dir_hits if p.endswith("/pages") or p == "pages"
-        ]
-
-    return FrameworkCandidate(
-        id=sig.id,
-        label=sig.label,
-        score=score,
-        evidence=evidence,
-    )
+    return present, evidence
 
 
-def detect_primary_ts_framework(
+def detect_ecosystem_frameworks(
     scan_path: Path,
-    lang: LangRuntimeContract | None = None,
-    *,
-    signatures: tuple[FrameworkSignature, ...] = TS_FRAMEWORK_SIGNATURES,
-) -> PrimaryFrameworkDetection:
-    """Detect the primary TS framework for this scan path (cached per run)."""
-    cache_key = f"{_CACHE_KEY}:{Path(scan_path).resolve().as_posix()}"
+    lang: LangRuntimeContract | None,
+    ecosystem: str,
+) -> EcosystemFrameworkDetection:
+    """Detect framework presence for an ecosystem and scan path (cached per run)."""
+    ensure_builtin_specs_loaded()
+    eco = str(ecosystem or "").strip().lower()
+    resolved_scan_path = Path(scan_path).resolve()
+    cache_key = f"{_CACHE_PREFIX}:{eco}:{resolved_scan_path.as_posix()}"
+
     if lang is not None:
         cache = getattr(lang, "review_cache", None)
         if isinstance(cache, dict):
             cached = cache.get(cache_key)
-            if isinstance(cached, PrimaryFrameworkDetection):
+            if isinstance(cached, EcosystemFrameworkDetection):
                 return cached
 
     project_root = get_project_root()
-    package_json = _find_nearest_package_json(scan_path, project_root)
+
+    if eco != "node":
+        result = EcosystemFrameworkDetection(
+            ecosystem=eco,
+            package_root=project_root,
+            package_json_relpath=None,
+            present={},
+        )
+        if lang is not None and isinstance(getattr(lang, "review_cache", None), dict):
+            lang.review_cache[cache_key] = result
+        return result
+
+    package_json = _find_nearest_package_json(resolved_scan_path, project_root)
     package_root = (package_json.parent if package_json else project_root).resolve()
     payload = _read_package_json(package_json) if package_json else {}
 
@@ -171,29 +164,30 @@ def detect_primary_ts_framework(
     dev_deps = _dep_set(payload, "devDependencies")
     scripts = _script_values(payload)
 
-    candidates = tuple(
-        _score_signature(
-            sig,
+    specs = list_framework_specs(ecosystem=eco)
+    present: dict[str, FrameworkEvidence] = {}
+    for framework_id, spec in specs.items():
+        ok, evidence = _node_framework_evidence(
+            cfg=spec.detection,
             package_root=package_root,
             project_root=project_root,
             deps=deps,
             dev_deps=dev_deps,
             scripts=scripts,
         )
-        for sig in signatures
-    )
-    ordered = sorted(candidates, key=lambda c: (-c.score, c.label))
+        if ok:
+            present[framework_id] = evidence
 
-    primary_id: FrameworkId | None = None
-    primary_score = 0
-    if ordered and ordered[0].score > 0:
-        sig = next((s for s in signatures if s.id == ordered[0].id), None)
-        threshold = sig.primary_score_threshold if sig is not None else 5
-        if ordered[0].score >= threshold:
-            primary_id = ordered[0].id
-            primary_score = ordered[0].score
+    # Apply mutual exclusions deterministically: present frameworks can suppress others.
+    present_ids = set(present.keys())
+    for framework_id, spec in specs.items():
+        if framework_id not in present_ids:
+            continue
+        for excluded in spec.excludes:
+            present.pop(str(excluded), None)
 
-    result = PrimaryFrameworkDetection(
+    result = EcosystemFrameworkDetection(
+        ecosystem=eco,
         package_root=package_root,
         package_json_relpath=(
             (
@@ -204,9 +198,7 @@ def detect_primary_ts_framework(
             if package_json
             else None
         ),
-        primary_id=primary_id,
-        primary_score=primary_score,
-        candidates=tuple(ordered),
+        present=present,
     )
 
     if lang is not None:
@@ -217,4 +209,5 @@ def detect_primary_ts_framework(
     return result
 
 
-__all__ = ["detect_primary_ts_framework"]
+__all__ = ["detect_ecosystem_frameworks"]
+

@@ -1,8 +1,8 @@
-"""Next.js framework support for TypeScript scans."""
+"""Next.js framework support shared across JS/TS scans."""
 
 from __future__ import annotations
 
-from .info import NextjsFrameworkInfo, nextjs_info_from_detection
+from .info import NextjsFrameworkInfo, nextjs_info_from_evidence
 from .scanners import (
     scan_nextjs_app_router_exports_in_pages_router,
     scan_nextjs_async_client_components,
@@ -15,7 +15,6 @@ from .scanners import (
     scan_nextjs_navigation_hooks_missing_use_client,
     scan_nextjs_next_document_misuse,
     scan_nextjs_next_head_in_app_router,
-    scan_nextjs_next_navigation_in_pages_router,
     scan_nextjs_pages_api_route_handlers,
     scan_nextjs_pages_router_apis_in_app_router,
     scan_nextjs_pages_router_artifacts_in_app_router,
@@ -32,7 +31,7 @@ from .scanners import (
 
 __all__ = [
     "NextjsFrameworkInfo",
-    "nextjs_info_from_detection",
+    "nextjs_info_from_evidence",
     "scan_nextjs_app_router_exports_in_pages_router",
     "scan_nextjs_async_client_components",
     "scan_nextjs_browser_globals_missing_use_client",
@@ -44,7 +43,6 @@ __all__ = [
     "scan_nextjs_navigation_hooks_missing_use_client",
     "scan_nextjs_next_document_misuse",
     "scan_nextjs_next_head_in_app_router",
-    "scan_nextjs_next_navigation_in_pages_router",
     "scan_nextjs_pages_api_route_handlers",
     "scan_nextjs_pages_router_apis_in_app_router",
     "scan_nextjs_pages_router_artifacts_in_app_router",

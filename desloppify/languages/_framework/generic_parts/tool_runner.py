@@ -15,6 +15,7 @@ from typing import Literal
 from desloppify.languages._framework.generic_parts.parsers import ToolParserError
 
 SubprocessRun = Callable[..., subprocess.CompletedProcess[str]]
+ToolParser = Callable[[str, Path], list[dict] | tuple[list[dict], dict]]
 
 _SHELL_META_CHARS = re.compile(r"[|&;<>()$`\n]")
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class ToolRunResult:
 
     entries: list[dict]
     status: Literal["ok", "empty", "error"]
+    meta: dict | None = None
     error_kind: str | None = None
     message: str | None = None
     returncode: int | None = None
@@ -62,7 +64,7 @@ def _output_preview(output: str, *, limit: int = 160) -> str:
 def run_tool_result(
     cmd: str,
     path: Path,
-    parser: Callable[[str, Path], list[dict]],
+    parser: ToolParser,
     *,
     run_subprocess: SubprocessRun | None = None,
 ) -> ToolRunResult:
@@ -126,7 +128,25 @@ def run_tool_result(
             message=str(exc),
             returncode=result.returncode,
         )
-    if not isinstance(parsed, list):
+    meta: dict | None = None
+    parsed_entries = parsed
+    if isinstance(parsed, tuple):
+        if (
+            len(parsed) != 2
+            or not isinstance(parsed[0], list)
+            or not isinstance(parsed[1], dict)
+        ):
+            return ToolRunResult(
+                entries=[],
+                status="error",
+                error_kind="parser_shape_error",
+                message="parser returned invalid (entries, meta) tuple",
+                returncode=result.returncode,
+            )
+        parsed_entries = parsed[0]
+        meta = dict(parsed[1])
+
+    if not isinstance(parsed_entries, list):
         return ToolRunResult(
             entries=[],
             status="error",
@@ -134,7 +154,7 @@ def run_tool_result(
             message="parser returned non-list output",
             returncode=result.returncode,
         )
-    if not parsed:
+    if not parsed_entries:
         if result.returncode not in (0, None):
             preview = _output_preview(output)
             return ToolRunResult(
@@ -150,11 +170,13 @@ def run_tool_result(
         return ToolRunResult(
             entries=[],
             status="empty",
+            meta=meta,
             returncode=result.returncode,
         )
     return ToolRunResult(
-        entries=parsed,
+        entries=parsed_entries,
         status="ok",
+        meta=meta,
         returncode=result.returncode,
     )
 

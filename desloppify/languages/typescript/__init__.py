@@ -16,6 +16,7 @@ from desloppify.languages._framework.base.types import (
     LangConfig,
     LangSecurityResult,
 )
+from desloppify.languages._framework.frameworks.phases import framework_phases
 from desloppify.languages._framework.registry.registration import register_full_plugin
 from desloppify.languages.typescript import test_coverage as ts_test_coverage_hooks
 from desloppify.languages.typescript._fixers import get_ts_fixers
@@ -118,6 +119,7 @@ class TypeScriptConfig(LangConfig):
                 detector_phase_signature(),
                 detector_phase_test_coverage(),
                 DetectorPhase("Code smells", phase_smells),
+                *framework_phases("typescript"),
                 detector_phase_security(),
                 *shared_subjective_duplicates_tail(),
             ],
