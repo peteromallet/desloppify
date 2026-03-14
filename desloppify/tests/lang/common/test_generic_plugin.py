@@ -444,12 +444,15 @@ class TestMakeToolPhase:
         assert len(result.entries) == 1
 
     def test_run_tool_result_error_preview_uses_combined_output(self, tmp_path):
-        """When parsing fails, the error preview should include both stdout and stderr."""
+        """Error preview in tool_failed_unparsed_output message includes both stdout and stderr."""
+        # Use parse_json with a non-array JSON object: parses without error but returns [].
+        # Combined with non-zero returncode, this hits the tool_failed_unparsed_output path
+        # where _output_preview(combined) is embedded in the message.
         result_bad = subprocess.CompletedProcess(
             args="fake",
-            returncode=1,
-            stdout="not json at all",
-            stderr="Some stderr diagnostic\n",
+            returncode=2,
+            stdout='{"not": "an array"}',
+            stderr="Note: some diagnostic from stderr\n",
         )
         result = run_tool_result(
             "fake",
@@ -458,7 +461,10 @@ class TestMakeToolPhase:
             run_subprocess=lambda *_a, **_k: result_bad,
         )
         assert result.status == "error"
-        assert result.error_kind == "parser_error"
+        assert result.error_kind == "tool_failed_unparsed_output"
+        assert result.message is not None
+        assert "not" in result.message  # from stdout
+        assert "diagnostic from stderr" in result.message  # from stderr
 
     def test_resolve_command_argv_plain_command_does_not_shell_fallback(self):
         argv = resolve_command_argv("nonexistent_tool_xyz_123 --version")
