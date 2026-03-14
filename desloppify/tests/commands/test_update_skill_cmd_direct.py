@@ -8,7 +8,33 @@ from pathlib import Path
 import desloppify.app.commands.update_skill.cmd as update_skill_cmd_mod
 
 
+def _install(
+    rel_path: str,
+    *,
+    interface: str | None,
+    overlay: str | None,
+    scope: str = "project",
+    source_kind: str = "legacy_project",
+    canonical: bool = False,
+    version: int = 5,
+    stale: bool = False,
+) -> update_skill_cmd_mod.SkillInstall:
+    return update_skill_cmd_mod.SkillInstall(
+        rel_path=rel_path,
+        absolute_path=Path("C:/fake") / rel_path.replace("~/", ""),
+        interface=interface,
+        scope=scope,
+        source_kind=source_kind,
+        canonical=canonical,
+        version=version,
+        overlay=overlay,
+        stale=stale,
+    )
+
+
 def test_update_skill_helper_functions_cover_frontmatter_resolution_and_replace() -> None:
+    assert update_skill_cmd_mod._RAW_BASE == "https://raw.githubusercontent.com/cpjet64/desloppify/main/docs"
+
     content = (
         "<!-- desloppify-begin -->\n"
         "<!-- version -->\n"
@@ -36,21 +62,19 @@ def test_update_skill_helper_functions_cover_frontmatter_resolution_and_replace(
 def test_resolve_interface_prefers_explicit_then_install_metadata(monkeypatch) -> None:
     assert update_skill_cmd_mod.resolve_interface("CoDeX") == "codex"
 
-    install = update_skill_cmd_mod.SkillInstall(
-        rel_path=".claude/skills/desloppify/SKILL.md",
-        version=5,
+    install = _install(
+        ".claude/skills/desloppify/SKILL.md",
+        interface="claude",
         overlay="windsurf",
-        stale=False,
     )
     assert update_skill_cmd_mod.resolve_interface(None, install=install) == "windsurf"
 
-    inferred = update_skill_cmd_mod.SkillInstall(
-        rel_path=".cursor/rules/desloppify.md",
-        version=5,
+    inferred = _install(
+        ".cursor/rules/desloppify.md",
+        interface="cursor",
         overlay=None,
-        stale=False,
     )
-    monkeypatch.setattr(update_skill_cmd_mod, "find_installed_skill", lambda: inferred)
+    monkeypatch.setattr(update_skill_cmd_mod, "find_installed_skills", lambda: [inferred])
     assert update_skill_cmd_mod.resolve_interface() == "cursor"
 
 
@@ -70,7 +94,7 @@ def test_update_installed_skill_handles_download_and_shared_file_write(
     )
     overlay_content = "overlay text\n"
     writes: list[tuple[Path, str]] = []
-    target = tmp_path / ".agents" / "skills" / "desloppify" / "SKILL.md"
+    target = tmp_path / ".codex" / "skills" / "desloppify" / "SKILL.md"
     target.parent.mkdir(parents=True)
     target.write_text("prefix only", encoding="utf-8")
 
@@ -80,6 +104,7 @@ def test_update_installed_skill_handles_download_and_shared_file_write(
         lambda filename: skill_content if filename == "SKILL.md" else overlay_content,
     )
     monkeypatch.setattr(update_skill_cmd_mod, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(update_skill_cmd_mod, "_get_home_path", lambda: tmp_path)
     monkeypatch.setattr(
         update_skill_cmd_mod,
         "safe_write_text",
@@ -93,21 +118,46 @@ def test_update_installed_skill_handles_download_and_shared_file_write(
     assert written.startswith("---\nname: desloppify\n---\n")
     assert "overlay text" in written
     out = capsys.readouterr().out
-    assert "Updated .agents/skills/desloppify/SKILL.md" in out
+    assert "Updated .codex/skills/desloppify/SKILL.md" in out
 
 
-def test_cmd_update_skill_handles_missing_and_unknown_interfaces(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(update_skill_cmd_mod, "resolve_interface", lambda _explicit=None: None)
+def test_cmd_update_skill_handles_missing_and_ambiguous_installs(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        update_skill_cmd_mod,
+        "find_installed_skills",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        update_skill_cmd_mod,
+        "resolve_interface",
+        lambda _explicit=None, installs=None: None,
+    )
     monkeypatch.setattr(update_skill_cmd_mod, "colorize", lambda text, _style: text)
-    update_skill_cmd_mod.cmd_update_skill(argparse.Namespace(interface=None))
+    update_skill_cmd_mod.cmd_update_skill(argparse.Namespace(interface=None, scope="auto"))
     out = capsys.readouterr().out
     assert "No installed skill document found." in out
 
     monkeypatch.setattr(
         update_skill_cmd_mod,
-        "resolve_interface",
-        lambda _explicit=None: "unknown_thing",
+        "find_installed_skills",
+        lambda: [
+            _install("~/.codex/skills/desloppify/SKILL.md", interface="codex", overlay="codex", scope="user", source_kind="canonical_user", canonical=True),
+            _install("~/.claude/skills/desloppify/SKILL.md", interface="claude", overlay="claude", scope="user", source_kind="canonical_user", canonical=True),
+        ],
     )
-    update_skill_cmd_mod.cmd_update_skill(argparse.Namespace(interface=None))
+    monkeypatch.setattr(
+        update_skill_cmd_mod,
+        "resolve_interface",
+        lambda _explicit=None, installs=None: None,
+    )
+    update_skill_cmd_mod.cmd_update_skill(argparse.Namespace(interface=None, scope="auto"))
+    out = capsys.readouterr().out
+    assert "Multiple installed skill documents were detected." in out
+
+
+def test_cmd_update_skill_handles_unknown_interface(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(update_skill_cmd_mod, "find_installed_skills", lambda: [])
+    monkeypatch.setattr(update_skill_cmd_mod, "colorize", lambda text, _style: text)
+    update_skill_cmd_mod.cmd_update_skill(argparse.Namespace(interface="unknown_thing", scope="auto"))
     out = capsys.readouterr().out
     assert "Unknown interface 'unknown_thing'." in out

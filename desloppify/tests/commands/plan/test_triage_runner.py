@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,13 @@ def _make_triage_input(n_issues: int = 5) -> TriageInput:
         resolved_issues={},
         completed_clusters=[],
     )
+
+
+def _fake_cli_command() -> str:
+    """Return a platform-appropriate fake helper path for prompt tests."""
+    if os.name == "nt":
+        return r"C:\tmp\run_desloppify.cmd"
+    return "/tmp/run_desloppify.sh"
 
 
 # ---------- Stage prompts ----------
@@ -217,14 +225,15 @@ def test_build_organize_prompt(tmp_path: Path) -> None:
 def test_build_organize_prompt_uses_exact_cli_command_when_provided(tmp_path: Path) -> None:
     si = _make_triage_input()
     prior = {"observe": "obs", "reflect": "ref"}
+    cli_command = _fake_cli_command()
     prompt = build_stage_prompt(
         "organize",
         si,
         prior,
         repo_root=tmp_path,
-        cli_command="/tmp/run_desloppify.sh",
+        cli_command=cli_command,
     )
-    assert "/tmp/run_desloppify.sh plan cluster create" in prompt
+    assert f"{cli_command} plan cluster create" in prompt
     assert "Use the exact CLI command prefix shown" in prompt
     assert "Do NOT debug, repair, reinstall, or inspect the CLI/environment." in prompt
     assert "write a short plain-text summary to stdout" in prompt

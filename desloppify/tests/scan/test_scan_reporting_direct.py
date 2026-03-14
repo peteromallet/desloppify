@@ -12,6 +12,61 @@ import desloppify.app.commands.scan.reporting.summary as scan_reporting_summary_
 import desloppify.state as state_mod
 
 
+def test_auto_update_skill_migrates_legacy_codex_install(monkeypatch, capsys):
+    install = scan_reporting_llm_mod.skill_docs_mod.SkillInstall(
+        rel_path=".agents/skills/desloppify/SKILL.md",
+        absolute_path=Path("C:/repo/.agents/skills/desloppify/SKILL.md"),
+        interface="codex",
+        scope="project",
+        source_kind="legacy_project",
+        canonical=False,
+        version=4,
+        overlay="codex",
+        stale=True,
+    )
+    calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(scan_reporting_llm_mod, "is_agent_environment", lambda: True)
+    monkeypatch.setattr(scan_reporting_llm_mod, "_detect_agent_interface", lambda: "codex")
+    monkeypatch.setattr(scan_reporting_llm_mod.skill_docs_mod, "find_installed_skills", lambda interface=None: [install] if interface in {None, "codex"} else [])
+    monkeypatch.setattr(scan_reporting_llm_mod.skill_docs_mod, "find_installed_skill", lambda interface=None: install if interface == "codex" else None)
+    monkeypatch.setattr(scan_reporting_llm_mod.skill_docs_mod, "select_preferred_install", lambda installs, interface=None: install)
+    monkeypatch.setattr(scan_reporting_llm_mod, "update_installed_skill", lambda interface, scope="auto": calls.append((interface, scope)))
+
+    scan_reporting_llm_mod.auto_update_skill()
+
+    assert calls == [("codex", "user")]
+    out = capsys.readouterr().out
+    assert "Migrating legacy project-scoped skill install" in out
+
+
+def test_auto_update_skill_skips_current_canonical_install(monkeypatch, capsys):
+    install = scan_reporting_llm_mod.skill_docs_mod.SkillInstall(
+        rel_path="~/.claude/skills/desloppify/SKILL.md",
+        absolute_path=Path("C:/Users/test/.claude/skills/desloppify/SKILL.md"),
+        interface="claude",
+        scope="user",
+        source_kind="canonical_user",
+        canonical=True,
+        version=5,
+        overlay="claude",
+        stale=False,
+    )
+    calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(scan_reporting_llm_mod, "is_agent_environment", lambda: True)
+    monkeypatch.setattr(scan_reporting_llm_mod, "_detect_agent_interface", lambda: "claude")
+    monkeypatch.setattr(scan_reporting_llm_mod.skill_docs_mod, "find_installed_skills", lambda interface=None: [install] if interface in {None, "claude"} else [])
+    monkeypatch.setattr(scan_reporting_llm_mod.skill_docs_mod, "find_installed_skill", lambda interface=None: install if interface == "claude" else None)
+    monkeypatch.setattr(scan_reporting_llm_mod.skill_docs_mod, "select_preferred_install", lambda installs, interface=None: install)
+    monkeypatch.setattr(scan_reporting_llm_mod, "update_installed_skill", lambda interface, scope="auto": calls.append((interface, scope)))
+
+    scan_reporting_llm_mod.auto_update_skill()
+
+    assert calls == []
+    assert capsys.readouterr().out == ""
+
+
 def test_show_diff_summary_prints_changes_and_suspects(capsys):
     scan_reporting_summary_mod.show_diff_summary(
         {
@@ -714,5 +769,4 @@ def test_show_scorecard_dimensions_uses_scorecard_rows(monkeypatch, capsys):
     assert "Elegance" in out
     if "Scorecard dimensions (matches scorecard.png):" in out:
         assert "File health" in out
-
 

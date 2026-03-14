@@ -185,3 +185,9 @@ def _add_update_skill_parser(sub) -> None:
         help="Agent interface (amp, claude, codex, cursor, copilot, windsurf, gemini, opencode). "
         "Auto-detected on updates if omitted.",
     )
+    p.add_argument(
+        "--scope",
+        choices=["auto", "user", "project"],
+        default="auto",
+        help="Install scope. Codex and Claude default to the native user scope in auto mode.",
+    )

@@ -95,14 +95,24 @@ def _read_stage_output(output_file: Path) -> str:
 def _write_desloppify_cli_helper(run_dir: Path) -> Path:
     """Create an exact CLI wrapper so codex subagents use this checkout + interpreter."""
     package_root = Path(desloppify.__file__).resolve().parent.parent
-    script_path = run_dir / "run_desloppify.sh"
-    script = (
-        "#!/bin/sh\n"
-        f"export PYTHONPATH={shlex.quote(str(package_root))}${{PYTHONPATH:+:$PYTHONPATH}}\n"
-        f"exec {shlex.quote(sys.executable)} -m desloppify.cli \"$@\"\n"
-    )
+    if os.name == "nt":
+        script_path = run_dir / "run_desloppify.cmd"
+        script = (
+            "@echo off\r\n"
+            "setlocal\r\n"
+            f'set "PYTHONPATH={package_root};%PYTHONPATH%"\r\n'
+            f'"{sys.executable}" -m desloppify.cli %*\r\n'
+        )
+    else:
+        script_path = run_dir / "run_desloppify.sh"
+        script = (
+            "#!/bin/sh\n"
+            f"export PYTHONPATH={shlex.quote(str(package_root))}${{PYTHONPATH:+:$PYTHONPATH}}\n"
+            f"exec {shlex.quote(sys.executable)} -m desloppify.cli \"$@\"\n"
+        )
     safe_write_text(script_path, script)
-    os.chmod(script_path, 0o700)
+    if os.name != "nt":
+        os.chmod(script_path, 0o700)
     return script_path
 def _stage_execution_dependencies() -> StageExecutionDependencies:
     """Resolve stage execution dependencies from module symbols for patchability."""

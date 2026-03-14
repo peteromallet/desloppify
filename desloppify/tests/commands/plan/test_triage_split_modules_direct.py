@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,6 +34,18 @@ from desloppify.base.exception_sets import CommandError
 from desloppify.engine.plan_triage import build_triage_snapshot
 
 
+def _fake_cli_command() -> str:
+    """Return a platform-appropriate fake helper path for tests."""
+    if os.name == "nt":
+        return r"C:\tmp\run_desloppify.cmd"
+    return "/tmp/run_desloppify.sh"
+
+
+def _expected_helper_name() -> str:
+    """Return the generated helper filename for the current platform."""
+    return "run_desloppify.cmd" if os.name == "nt" else "run_desloppify.sh"
+
+
 def _make_stage_context(
     tmp_path: Path,
     **overrides,
@@ -51,7 +64,7 @@ def _make_stage_context(
         "prompts_dir": tmp_path / "prompts",
         "output_dir": tmp_path / "output",
         "logs_dir": tmp_path / "logs",
-        "cli_command": "/tmp/run_desloppify.sh",
+        "cli_command": _fake_cli_command(),
         "timeout_seconds": 60,
         "dry_run": False,
         "append_run_log": lambda _line: None,
@@ -1006,7 +1019,7 @@ def test_orchestrator_sense_apply_updates_sequences_and_reloads_plan(monkeypatch
         logs_dir=logs_dir,
         timeout_seconds=60,
         dry_run=False,
-        cli_command="/tmp/run_desloppify.sh",
+        cli_command=_fake_cli_command(),
         apply_updates=True,
         reload_plan=fake_reload_plan,
     )
@@ -1126,7 +1139,7 @@ def test_default_sense_handler_enables_apply_update_mode(monkeypatch, tmp_path: 
         logs_dir=tmp_path / "logs",
         timeout_seconds=60,
         dry_run=False,
-        cli_command="/tmp/run_desloppify.sh",
+        cli_command=_fake_cli_command(),
         append_run_log=lambda _line: None,
         services=SimpleNamespace(load_plan=lambda: {"clusters": {}}),
         state=None,
@@ -1136,7 +1149,7 @@ def test_default_sense_handler_enables_apply_update_mode(monkeypatch, tmp_path: 
 
     result = handler.run_parallel(context)
     assert result.ok
-    assert captured["cli_command"] == "/tmp/run_desloppify.sh"
+    assert captured["cli_command"] == _fake_cli_command()
     assert captured["apply_updates"] is True
     assert callable(captured["reload_plan"])
 
@@ -1212,9 +1225,14 @@ def test_orchestrator_pipeline_writes_exact_cli_helper(tmp_path: Path) -> None:
     helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(tmp_path)
     text = helper.read_text(encoding="utf-8")
     assert helper.exists()
-    assert helper.stat().st_mode & 0o111
-    assert "PYTHONPATH=" in text
+    assert helper.name == _expected_helper_name()
     assert "-m desloppify.cli" in text
+    if os.name == "nt":
+        assert text.startswith("@echo off")
+        assert 'set "PYTHONPATH=' in text
+    else:
+        assert helper.stat().st_mode & 0o111
+        assert "PYTHONPATH=" in text
 
 
 def test_load_prior_reports_from_plan_uses_existing_stage_reports() -> None:
@@ -1313,7 +1331,7 @@ def test_execute_stage_uses_self_record_mode_for_organize(monkeypatch, tmp_path:
     assert result.payload == {}
     assert captured["stage"] == "organize"
     assert captured["mode"] == "self_record"
-    assert captured["cli_command"] == "/tmp/run_desloppify.sh"
+    assert captured["cli_command"] == _fake_cli_command()
 
 
 def test_preflight_stage_allows_self_record_organize_before_ledger_materializes() -> None:
@@ -1563,7 +1581,7 @@ Cluster "alpha" owns the actual code changes.
         prompts_dir=tmp_path / "prompts",
         output_dir=tmp_path / "output",
         logs_dir=tmp_path / "logs",
-        cli_command="/tmp/run_desloppify.sh",
+        cli_command=_fake_cli_command(),
         timeout_seconds=30,
         append_run_log=lambda _line: None,
         dependencies=dependencies,
@@ -1754,7 +1772,7 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
         "_write_desloppify_cli_helper",
-        lambda run_dir: run_dir / "run_desloppify.sh",
+        lambda run_dir: run_dir / _expected_helper_name(),
     )
     monkeypatch.setattr(
         orchestrator_pipeline_mod,

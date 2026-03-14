@@ -29,9 +29,9 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/peteromallet/desloppify"
-Repository = "https://github.com/peteromallet/desloppify"
-Issues = "https://github.com/peteromallet/desloppify/issues"
+Homepage = "https://github.com/cpjet64/desloppify"
+Repository = "https://github.com/cpjet64/desloppify"
+Issues = "https://github.com/cpjet64/desloppify/issues"
 
 [project.optional-dependencies]
 treesitter = [

@@ -10,7 +10,7 @@ allowed-tools: Bash(desloppify *)
 ---
 
 <!-- desloppify-begin -->
-<!-- desloppify-skill-version: 5 -->
+<!-- desloppify-skill-version: 6 -->
 
 # Desloppify
 
@@ -177,6 +177,13 @@ explain uncertainty.
 
 See your editor's overlay section below for the agent config format.
 
+### Installing this skill
+
+- `desloppify update-skill codex` installs the native Codex skill to `~/.codex/skills/desloppify/SKILL.md`.
+- `desloppify update-skill claude` installs the native Claude skill to `~/.claude/skills/desloppify/SKILL.md`.
+- `desloppify update-skill <interface> --scope project` writes the legacy repo-local compatibility install instead.
+- If both Codex and Claude are present, pass the interface explicitly instead of relying on auto-detection.
+
 ### Plan commands
 
 ```bash
@@ -223,11 +230,11 @@ When desloppify itself appears wrong or inconsistent — a bug, a bad detection,
 
 ### Fix and PR (preferred)
 
-Clone the tool repo to a temp directory, make the fix there, and verify it works against the project you're scanning before pushing.
+Clone the tool repo to a temporary working directory, make the fix there, and verify it works against the project you're scanning before pushing.
 
 ```bash
-git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify-fix
-cd /tmp/desloppify-fix
+git clone https://github.com/cpjet64/desloppify.git <scratch-dir>/desloppify-fix
+cd <scratch-dir>/desloppify-fix
 git checkout -b fix/<short-description>
 ```
 
@@ -253,14 +260,14 @@ EOF
 )"
 ```
 
-Clean up after: `rm -rf /tmp/desloppify-fix`
+Clean up after by deleting `<scratch-dir>/desloppify-fix` with your normal shell/file-manager workflow.
 
 ### File an issue (fallback)
 
-If the fix is unclear or the change needs discussion, open an issue at `https://github.com/peteromallet/desloppify/issues` with a minimal repro: command, path, expected output, actual output.
+If the fix is unclear or the change needs discussion, open an issue at `https://github.com/cpjet64/desloppify/issues` with a minimal repro: command, path, expected output, actual output.
 
 ## Prerequisite
 
-`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: pip install --upgrade git+https://github.com/peteromallet/desloppify.git"`
+Run `desloppify --help`. If that fails, install with `pip install --upgrade "git+https://github.com/cpjet64/desloppify.git#egg=desloppify[full]"`.
 
 <!-- desloppify-end -->

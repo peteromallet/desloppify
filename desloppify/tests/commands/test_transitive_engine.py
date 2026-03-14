@@ -633,6 +633,7 @@ class TestLangsAndUpdateSkillParsers:
 
         args = parser.parse_args(["update-skill"])
         assert args.interface is None
+        assert args.scope == "auto"
 
     def test_update_skill_parser_with_interface(self):
         parser = argparse.ArgumentParser()
@@ -641,6 +642,7 @@ class TestLangsAndUpdateSkillParsers:
 
         args = parser.parse_args(["update-skill", "claude"])
         assert args.interface == "claude"
+        assert args.scope == "auto"
 
     def test_update_skill_parser_with_opencode_interface(self):
         parser = argparse.ArgumentParser()
@@ -649,6 +651,7 @@ class TestLangsAndUpdateSkillParsers:
 
         args = parser.parse_args(["update-skill", "opencode"])
         assert args.interface == "opencode"
+        assert args.scope == "auto"
 
 
 # =====================================================================

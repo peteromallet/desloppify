@@ -245,19 +245,21 @@ def _try_auto_update_skill() -> None:
     Best-effort: swallows all exceptions so a network failure or permission
     error never breaks the scan.
     """
-    install = skill_docs_mod.find_installed_skill()
-
-    if install and not install.stale:
-        return  # Up to date.
-
     try:
-        if install:
-            interface = resolve_interface(install=install)
-        else:
-            interface = _detect_agent_interface()
+        interface = _detect_agent_interface()
+        installs = skill_docs_mod.find_installed_skills(interface=interface) if interface else skill_docs_mod.find_installed_skills()
 
-        if interface:
-            update_installed_skill(interface)
+        if interface is None:
+            interface = resolve_interface(installs=installs)
+        if interface is None:
+            return
+
+        active_install = skill_docs_mod.select_preferred_install(installs, interface=interface)
+        if active_install and active_install.canonical and not active_install.stale:
+            return
+        if active_install and active_install.source_kind == "legacy_project":
+            print("Migrating legacy project-scoped skill install to the native user location.")
+        update_installed_skill(interface, "user" if interface in {"codex", "claude"} else "auto")
     except (ImportError, OSError, RuntimeError, ValueError) as exc:
         log_best_effort_failure(
             logger,
@@ -414,10 +416,11 @@ def auto_update_skill() -> None:
     if not is_agent_environment():
         return
 
+    active_interface = _detect_agent_interface()
     _try_auto_update_skill()
 
     # Single post-check: whatever happened above, is the doc current now?
-    install = skill_docs_mod.find_installed_skill()
+    install = skill_docs_mod.find_installed_skill(active_interface)
     if not install:
         names = ", ".join(sorted(skill_docs_mod.SKILL_TARGETS))
         print(
@@ -425,10 +428,13 @@ def auto_update_skill() -> None:
             f"desloppify update-skill <{names}>"
         )
     elif install.stale:
+        update_hint = "desloppify update-skill"
+        if install.interface:
+            update_hint = f"desloppify update-skill {install.interface}"
         print(
             f"Skill document is outdated "
             f"(v{install.version}, current v{skill_docs_mod.SKILL_VERSION}). "
-            f"Run: desloppify update-skill"
+            f"Run: {update_hint}"
         )
 
 

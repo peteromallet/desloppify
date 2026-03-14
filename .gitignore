@@ -43,3 +43,5 @@ CLAUDE.md
 AGENTS.md
 tasks/
 /scripts/
+
+.codex/worktrees.json

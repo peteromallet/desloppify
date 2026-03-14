@@ -12,6 +12,7 @@ Tests cover:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -743,8 +744,8 @@ class TestResolveInterface:
 
     def test_none_with_no_install(self):
         with patch(
-            "desloppify.app.commands.update_skill.find_installed_skill",
-            return_value=None,
+            "desloppify.app.commands.update_skill.find_installed_skills",
+            return_value=[],
         ):
             assert resolve_interface(None) is None
 
@@ -752,6 +753,11 @@ class TestResolveInterface:
         from desloppify.app.skill_docs import SkillInstall
         install = SkillInstall(
             rel_path=".claude/skills/desloppify/SKILL.md",
+            absolute_path=Path("C:/fake/.claude/skills/desloppify/SKILL.md"),
+            interface="claude",
+            scope="project",
+            source_kind="legacy_project",
+            canonical=False,
             version=1,
             overlay="claude",
             stale=False,
@@ -763,6 +769,11 @@ class TestResolveInterface:
         from desloppify.app.skill_docs import SkillInstall
         install = SkillInstall(
             rel_path=".claude/skills/desloppify/SKILL.md",
+            absolute_path=Path("C:/fake/.claude/skills/desloppify/SKILL.md"),
+            interface="claude",
+            scope="project",
+            source_kind="legacy_project",
+            canonical=False,
             version=1,
             overlay=None,
             stale=False,
@@ -775,6 +786,11 @@ class TestResolveInterface:
 
         install = SkillInstall(
             rel_path=".opencode/skills/desloppify/SKILL.md",
+            absolute_path=Path("C:/fake/.opencode/skills/desloppify/SKILL.md"),
+            interface="opencode",
+            scope="project",
+            source_kind="legacy_project",
+            canonical=False,
             version=1,
             overlay=None,
             stale=False,
@@ -786,6 +802,11 @@ class TestResolveInterface:
         from desloppify.app.skill_docs import SkillInstall
         install = SkillInstall(
             rel_path="unknown/path.md",
+            absolute_path=Path("C:/fake/unknown/path.md"),
+            interface=None,
+            scope="project",
+            source_kind="shared_file",
+            canonical=False,
             version=1,
             overlay=None,
             stale=False,
@@ -798,22 +819,23 @@ class TestCmdUpdateSkill:
     @patch("desloppify.app.commands.update_skill.update_installed_skill")
     @patch("desloppify.app.commands.update_skill.resolve_interface", return_value="claude")
     def test_valid_interface(self, _mock_resolve, mock_update):
-        args = argparse.Namespace(interface="claude")
+        args = argparse.Namespace(interface="claude", scope="auto")
         cmd_update_skill(args)
-        mock_update.assert_called_once_with("claude")
+        mock_update.assert_called_once_with("claude", "auto")
 
     @patch("desloppify.app.commands.update_skill.colorize", side_effect=lambda t, _c: t)
     @patch("desloppify.app.commands.update_skill.resolve_interface", return_value=None)
-    def test_no_interface_found(self, _mock_resolve, _mock_colorize, capsys):
-        args = argparse.Namespace(interface=None)
+    @patch("desloppify.app.commands.update_skill.find_installed_skills", return_value=[])
+    def test_no_interface_found(self, _mock_installs, _mock_resolve, _mock_colorize, capsys):
+        args = argparse.Namespace(interface=None, scope="auto")
         cmd_update_skill(args)
         out = capsys.readouterr().out
         assert "No installed skill document found" in out
 
     @patch("desloppify.app.commands.update_skill.colorize", side_effect=lambda t, _c: t)
-    @patch("desloppify.app.commands.update_skill.resolve_interface", return_value="unknown_thing")
-    def test_unknown_interface(self, _mock_resolve, _mock_colorize, capsys):
-        args = argparse.Namespace(interface="unknown_thing")
+    @patch("desloppify.app.commands.update_skill.find_installed_skills", return_value=[])
+    def test_unknown_interface(self, _mock_installs, _mock_colorize, capsys):
+        args = argparse.Namespace(interface="unknown_thing", scope="auto")
         cmd_update_skill(args)
         out = capsys.readouterr().out
         assert "Unknown interface" in out
@@ -858,9 +880,15 @@ class TestUpdateInstalledSkill:
             "CLAUDE.md": "overlay",
         }[f]
 
-        with patch(
-            "desloppify.app.commands.update_skill.get_project_root",
-            return_value=tmp_path,
+        with (
+            patch(
+                "desloppify.app.commands.update_skill.get_project_root",
+                return_value=tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.update_skill._get_home_path",
+                return_value=tmp_path,
+            ),
         ):
             result = update_installed_skill("claude")
 
@@ -895,9 +923,15 @@ class TestUpdateInstalledSkill:
         agents_file = tmp_path / "AGENTS.md"
         agents_file.write_text("# My Project\nExisting content.\n")
 
-        with patch(
-            "desloppify.app.commands.update_skill.get_project_root",
-            return_value=tmp_path,
+        with (
+            patch(
+                "desloppify.app.commands.update_skill.get_project_root",
+                return_value=tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.update_skill._get_home_path",
+                return_value=tmp_path,
+            ),
         ):
             result = update_installed_skill("windsurf")
 
@@ -905,3 +939,4 @@ class TestUpdateInstalledSkill:
         written = agents_file.read_text()
         assert "Existing content" in written
         assert "desloppify-skill-version" in written
+

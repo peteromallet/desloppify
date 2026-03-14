@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import patch
 
 from desloppify.app.commands.update_skill import (
@@ -12,6 +13,32 @@ from desloppify.app.commands.update_skill import (
     resolve_interface,
     update_installed_skill,
 )
+
+
+def _install(
+    rel_path: str,
+    *,
+    interface: str | None,
+    overlay: str | None,
+    scope: str = "project",
+    source_kind: str = "legacy_project",
+    canonical: bool = False,
+    version: int = 1,
+    stale: bool = False,
+):
+    from desloppify.app.skill_docs import SkillInstall
+
+    return SkillInstall(
+        rel_path=rel_path,
+        absolute_path=Path("C:/fake") / rel_path.replace("~/", ""),
+        interface=interface,
+        scope=scope,
+        source_kind=source_kind,
+        canonical=canonical,
+        version=version,
+        overlay=overlay,
+        stale=stale,
+    )
 
 
 class TestBuildSection:
@@ -65,53 +92,28 @@ class TestResolveInterface:
 
     def test_none_with_no_install(self):
         with patch(
-            "desloppify.app.commands.update_skill.find_installed_skill",
-            return_value=None,
+            "desloppify.app.commands.update_skill.find_installed_skills",
+            return_value=[],
         ):
             assert resolve_interface(None) is None
 
     def test_from_install_overlay(self):
-        from desloppify.app.skill_docs import SkillInstall
-        install = SkillInstall(
-            rel_path=".claude/skills/desloppify/SKILL.md",
-            version=1,
-            overlay="claude",
-            stale=False,
-        )
+        install = _install(".claude/skills/desloppify/SKILL.md", interface="claude", overlay="claude")
         result = resolve_interface(None, install=install)
         assert result == "claude"
 
     def test_from_install_path_match(self):
-        from desloppify.app.skill_docs import SkillInstall
-        install = SkillInstall(
-            rel_path=".claude/skills/desloppify/SKILL.md",
-            version=1,
-            overlay=None,
-            stale=False,
-        )
+        install = _install(".claude/skills/desloppify/SKILL.md", interface="claude", overlay=None)
         result = resolve_interface(None, install=install)
         assert result == "claude"
 
     def test_from_install_path_match_opencode(self):
-        from desloppify.app.skill_docs import SkillInstall
-
-        install = SkillInstall(
-            rel_path=".opencode/skills/desloppify/SKILL.md",
-            version=1,
-            overlay=None,
-            stale=False,
-        )
+        install = _install(".opencode/skills/desloppify/SKILL.md", interface="opencode", overlay=None)
         result = resolve_interface(None, install=install)
         assert result == "opencode"
 
     def test_from_install_no_match(self):
-        from desloppify.app.skill_docs import SkillInstall
-        install = SkillInstall(
-            rel_path="unknown/path.md",
-            version=1,
-            overlay=None,
-            stale=False,
-        )
+        install = _install("unknown/path.md", interface=None, overlay=None)
         result = resolve_interface(None, install=install)
         assert result is None
 
@@ -120,22 +122,23 @@ class TestCmdUpdateSkill:
     @patch("desloppify.app.commands.update_skill.update_installed_skill")
     @patch("desloppify.app.commands.update_skill.resolve_interface", return_value="claude")
     def test_valid_interface(self, _mock_resolve, mock_update):
-        args = argparse.Namespace(interface="claude")
+        args = argparse.Namespace(interface="claude", scope="auto")
         cmd_update_skill(args)
-        mock_update.assert_called_once_with("claude")
+        mock_update.assert_called_once_with("claude", "auto")
 
     @patch("desloppify.app.commands.update_skill.colorize", side_effect=lambda t, _c: t)
     @patch("desloppify.app.commands.update_skill.resolve_interface", return_value=None)
-    def test_no_interface_found(self, _mock_resolve, _mock_colorize, capsys):
-        args = argparse.Namespace(interface=None)
+    @patch("desloppify.app.commands.update_skill.find_installed_skills", return_value=[])
+    def test_no_interface_found(self, _mock_installs, _mock_resolve, _mock_colorize, capsys):
+        args = argparse.Namespace(interface=None, scope="auto")
         cmd_update_skill(args)
         out = capsys.readouterr().out
         assert "No installed skill document found" in out
 
     @patch("desloppify.app.commands.update_skill.colorize", side_effect=lambda t, _c: t)
-    @patch("desloppify.app.commands.update_skill.resolve_interface", return_value="unknown_thing")
-    def test_unknown_interface(self, _mock_resolve, _mock_colorize, capsys):
-        args = argparse.Namespace(interface="unknown_thing")
+    @patch("desloppify.app.commands.update_skill.find_installed_skills", return_value=[])
+    def test_unknown_interface(self, _mock_installs, _mock_colorize, capsys):
+        args = argparse.Namespace(interface="unknown_thing", scope="auto")
         cmd_update_skill(args)
         out = capsys.readouterr().out
         assert "Unknown interface" in out
@@ -172,6 +175,9 @@ class TestUpdateInstalledSkill:
 
         with patch(
             "desloppify.app.commands.update_skill.get_project_root",
+            return_value=tmp_path,
+        ), patch(
+            "desloppify.app.commands.update_skill._get_home_path",
             return_value=tmp_path,
         ):
             result = update_installed_skill("claude")

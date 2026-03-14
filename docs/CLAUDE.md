@@ -2,6 +2,8 @@
 
 Use Claude subagents for subjective scoring work. **Do not use `--runner codex`** — use Claude subagents exclusively.
 
+Install it with `desloppify update-skill claude`. The native Claude target is `~/.claude/skills/desloppify/SKILL.md`. Use `--scope project` only if you intentionally need the legacy repo-local compatibility install.
+
 ### Review workflow
 
 Run `desloppify review --prepare` first to generate review data, then use Claude subagents:

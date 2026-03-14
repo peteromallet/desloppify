@@ -1,6 +1,6 @@
 # Desloppify - an agent harness to make your codebase 🤌
 
-[![PyPI version](https://img.shields.io/pypi/v/desloppify)](https://pypi.org/project/desloppify/) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+[![GitHub repo](https://img.shields.io/badge/github-cpjet64%2Fdesloppify-black)](https://github.com/cpjet64/desloppify) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 
 Desloppify gives your AI coding agent the tools to identify, understand, and systematically improve codebase quality. It combines mechanical detection (dead code, duplication, complexity) with subjective LLM review (naming, abstractions, module boundaries), then works through a prioritized fix loop. State persists across scans so it chips away over multiple sessions, and the scoring is designed to resist gaming.
 
@@ -22,8 +22,12 @@ Paste this prompt into your agent:
 I want you to improve the quality of this codebase. To do this, install and run desloppify.
 Run ALL of the following (requires Python 3.11+):
 
-pip install --upgrade "desloppify[full]"
-desloppify update-skill claude    # installs the full workflow guide — pick yours: claude, cursor, codex, copilot, windsurf, gemini
+pip install --upgrade "git+https://github.com/cpjet64/desloppify.git#egg=desloppify[full]"
+desloppify update-skill claude    # native user install for Claude: ~/.claude/skills/desloppify/SKILL.md
+# or:
+desloppify update-skill codex     # native user install for Codex: ~/.codex/skills/desloppify/SKILL.md
+# use --scope project only for legacy repo-local installs:
+desloppify update-skill codex --scope project
 
 Add .desloppify/ to your .gitignore — it contains local state that shouldn't be committed.
 
@@ -69,6 +73,6 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 
 ---
 
-Issues, improvements, and PRs are hugely appreciated — [github.com/peteromallet/desloppify](https://github.com/peteromallet/desloppify).
+Issues, improvements, and PRs are hugely appreciated — [github.com/cpjet64/desloppify](https://github.com/cpjet64/desloppify).
 
 MIT License
