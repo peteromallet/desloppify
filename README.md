@@ -24,17 +24,18 @@ Use the prompt that matches your agent.
 I want you to improve the quality of this codebase. To do this, install and run desloppify.
 Run ALL of the following (requires Python 3.11+):
 
-pip install --upgrade "git+https://github.com/cpjet64/desloppify.git#egg=desloppify[full]"
-desloppify update-skill codex
+python -m pip install --upgrade "desloppify[full] @ git+https://github.com/cpjet64/desloppify.git"
+python -m desloppify update-skill codex
 
 Add .desloppify/ to your .gitignore — it contains local state that shouldn't be committed.
 
 Before scanning, check for directories that should be excluded (vendor, build output,
-generated code, worktrees, etc.) and exclude obvious ones with `desloppify exclude <path>`.
+generated code, worktrees, etc.) and exclude obvious ones with `python -m desloppify exclude <path>`.
+Run the exclude command once per path.
 Share any questionable candidates with me before excluding.
 
-desloppify scan --path .
-desloppify next
+python -m desloppify scan --path .
+python -m desloppify next
 
 --path is the directory to scan (use "." for the whole project, or "src/" etc).
 
@@ -45,14 +46,15 @@ THE LOOP: run `next`. It is the execution queue from the living plan, not the wh
 It tells you what to fix now, which file, and the resolve command to run when done.
 Fix it, resolve it, run `next` again. Over and over. This is your main job.
 
-Use `desloppify backlog` only when you need to inspect broader open work that is not currently
+Use `python -m desloppify backlog` only when you need to inspect broader open work that is not currently
 driving execution.
 
 Don't be lazy. Large refactors and small detailed fixes — do both with equal energy. No task
 is too big or too small. Fix things properly, not minimally.
 
-Use `plan` / `plan queue` to reorder priorities or cluster related issues. Rescan periodically.
+Use `python -m desloppify plan` / `python -m desloppify plan queue` to reorder priorities or cluster related issues. Rescan periodically.
 The scan output includes agent instructions — follow them, don't substitute your own analysis.
+If desloppify itself is broken, fix it in the forked repo or file an issue. Do not patch installed `site-packages`.
 ```
 
 ### Claude prompt
@@ -61,17 +63,18 @@ The scan output includes agent instructions — follow them, don't substitute yo
 I want you to improve the quality of this codebase. To do this, install and run desloppify.
 Run ALL of the following (requires Python 3.11+):
 
-pip install --upgrade "git+https://github.com/cpjet64/desloppify.git#egg=desloppify[full]"
-desloppify update-skill claude
+python -m pip install --upgrade "desloppify[full] @ git+https://github.com/cpjet64/desloppify.git"
+python -m desloppify update-skill claude
 
 Add .desloppify/ to your .gitignore — it contains local state that shouldn't be committed.
 
 Before scanning, check for directories that should be excluded (vendor, build output,
-generated code, worktrees, etc.) and exclude obvious ones with `desloppify exclude <path>`.
+generated code, worktrees, etc.) and exclude obvious ones with `python -m desloppify exclude <path>`.
+Run the exclude command once per path.
 Share any questionable candidates with me before excluding.
 
-desloppify scan --path .
-desloppify next
+python -m desloppify scan --path .
+python -m desloppify next
 
 --path is the directory to scan (use "." for the whole project, or "src/" etc).
 
@@ -82,14 +85,15 @@ THE LOOP: run `next`. It is the execution queue from the living plan, not the wh
 It tells you what to fix now, which file, and the resolve command to run when done.
 Fix it, resolve it, run `next` again. Over and over. This is your main job.
 
-Use `desloppify backlog` only when you need to inspect broader open work that is not currently
+Use `python -m desloppify backlog` only when you need to inspect broader open work that is not currently
 driving execution.
 
 Don't be lazy. Large refactors and small detailed fixes — do both with equal energy. No task
 is too big or too small. Fix things properly, not minimally.
 
-Use `plan` / `plan queue` to reorder priorities or cluster related issues. Rescan periodically.
+Use `python -m desloppify plan` / `python -m desloppify plan queue` to reorder priorities or cluster related issues. Rescan periodically.
 The scan output includes agent instructions — follow them, don't substitute your own analysis.
+If desloppify itself is broken, fix it in the forked repo or file an issue. Do not patch installed `site-packages`.
 ```
 
 ### Short bootstrap prompt
@@ -97,27 +101,28 @@ The scan output includes agent instructions — follow them, don't substitute yo
 ```text
 I want you to improve the quality of this codebase. Install and run desloppify first.
 
-pip install --upgrade "git+https://github.com/cpjet64/desloppify.git#egg=desloppify[full]"
+python -m pip install --upgrade "desloppify[full] @ git+https://github.com/cpjet64/desloppify.git"
 
 If you are Codex, run:
-desloppify update-skill codex
+python -m desloppify update-skill codex
 
 If you are Claude, run:
-desloppify update-skill claude
+python -m desloppify update-skill claude
 
 Add .desloppify/ to .gitignore if it is not already ignored.
 Before scanning, look for obvious exclude candidates such as vendor, build output, generated
-code, and worktrees; exclude obvious ones with `desloppify exclude <path>`, but ask me before
+code, and worktrees; exclude obvious ones with `python -m desloppify exclude <path>`, one path per command, but ask me before
 excluding anything questionable.
 
 Then run:
-desloppify scan --path .
-desloppify next
+python -m desloppify scan --path .
+python -m desloppify next
 
-After that, stay in the `next` loop: fix the current item, resolve it, run `desloppify next`
-again, and keep going. Use `desloppify backlog` only when you need wider context, and use
-`plan` / `plan queue` to reorder or cluster work when needed. The goal is to raise the strict
-score by actually improving the code, not by gaming the tool.
+After that, stay in the `next` loop: fix the current item, resolve it, run `python -m desloppify next`
+again, and keep going. Use `python -m desloppify backlog` only when you need wider context, and use
+`python -m desloppify plan` / `python -m desloppify plan queue` to reorder or cluster work when needed.
+If desloppify itself is broken, fix it in the forked repo or file an issue instead of patching installed
+`site-packages`. The goal is to raise the strict score by actually improving the code, not by gaming the tool.
 ```
 
 ### Continuation prompt
@@ -135,24 +140,25 @@ First, inspect the existing setup:
 
 If the skill is not installed yet, install from my fork and update the matching skill:
 
-pip install --upgrade "git+https://github.com/cpjet64/desloppify.git#egg=desloppify[full]"
+python -m pip install --upgrade "desloppify[full] @ git+https://github.com/cpjet64/desloppify.git"
 
 If you are Codex, run:
-desloppify update-skill codex
+python -m desloppify update-skill codex
 
 If you are Claude, run:
-desloppify update-skill claude
+python -m desloppify update-skill claude
 
 Then continue from the current state:
-- if a scan has not been run yet, run `desloppify scan --path .`
-- if scan state already exists, do not wipe it; continue with `desloppify next`
+- if a scan has not been run yet, run `python -m desloppify scan --path .`
+- if scan state already exists, do not wipe it; continue with `python -m desloppify next`
 - if a task was partially completed, inspect the related files, finish it properly, and then run
   the resolve command the plan specifies
-- keep looping on `desloppify next`
+- keep looping on `python -m desloppify next`
 
-Use `desloppify backlog` only when you need broader context, and use `plan` / `plan queue`
-only when reprioritization is actually needed. The goal is to resume momentum without losing
-the living plan or redoing work unnecessarily.
+Use `python -m desloppify backlog` only when you need broader context, and use `python -m desloppify plan` /
+`python -m desloppify plan queue` only when reprioritization is actually needed.
+If desloppify itself is broken, fix it in the forked repo or file an issue instead of patching installed
+`site-packages`. The goal is to resume momentum without losing the living plan or redoing work unnecessarily.
 ```
 
 ## From Vibe Coding to Vibe Engineering

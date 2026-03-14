@@ -253,7 +253,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
             return []
 
         try:
-            report = json.loads(report_file.read_text())
+            report = json.loads(report_file.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("jscpd: failed to parse report: %s", exc)
             return None

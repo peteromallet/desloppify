@@ -541,6 +541,47 @@ class TestJscpdAdapter:
             result = detect_with_jscpd(tmp_path)
         assert result is None
 
+    def test_reads_jscpd_report_as_utf8(self, tmp_path):
+        report_file = tmp_path / "jscpd-report.json"
+        fragment = "print('caf\u00e9')\nprint('caf\u00e9')\n"
+        report = {
+            "duplicates": [
+                {
+                    "fragment": fragment,
+                    "lines": 2,
+                    "firstFile": {"name": str(tmp_path / "a.py"), "start": 1},
+                    "secondFile": {"name": str(tmp_path / "b.py"), "start": 10},
+                }
+            ]
+        }
+        report_file.write_text(
+            json.dumps(report, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        original_read_text = Path.read_text
+
+        def _read_text_with_assertion(path_self, *args, **kwargs):
+            if path_self == report_file:
+                assert kwargs.get("encoding") == "utf-8"
+            return original_read_text(path_self, *args, **kwargs)
+
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch("subprocess.run"), patch(
+            "pathlib.Path.read_text",
+            autospec=True,
+            side_effect=_read_text_with_assertion,
+        ), patch("tempfile.TemporaryDirectory") as mock_td:
+            mock_td.return_value.__enter__.return_value = str(tmp_path)
+            mock_td.return_value.__exit__.return_value = None
+            result = detect_with_jscpd(tmp_path)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["sample"] == ["print('caf\u00e9')", "print('caf\u00e9')"]
+
     def test_clusters_pairs_with_same_fragment_hash(self, tmp_path):
         f1 = str(tmp_path / "a.py")
         f2 = str(tmp_path / "b.py")
