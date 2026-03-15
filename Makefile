@@ -12,9 +12,8 @@
 	install-ci-tools \
 	install-full-tools
 
-PYTHON ?= python3
-PIP := $(PYTHON) -m pip
-LINT_IMPORTS := $(shell $(PYTHON) -c "import pathlib,sys; print(pathlib.Path(sys.executable).with_name('lint-imports'))")
+PIP := python -m pip
+LINT_IMPORTS := $(shell python -c "import pathlib,sys; print(pathlib.Path(sys.executable).with_name('lint-imports'))")
 IMPORTLINTER_CONFIG ?= .github/importlinter.ini
 PYTEST_XML ?=
 PYTEST_XML_FLAG := $(if $(PYTEST_XML),--junitxml=$(PYTEST_XML),)
@@ -31,7 +30,7 @@ lint: install-ci-tools
 	ruff check . --select E9,F63,F7,F82
 
 typecheck: install-ci-tools
-	$(PYTHON) -m mypy
+	python -m mypy
 
 arch: install-ci-tools
 	@if [ ! -f "$(IMPORTLINTER_CONFIG)" ]; then \
@@ -55,9 +54,9 @@ tests-full: install-full-tools
 
 package-smoke: install-ci-tools
 	rm -rf dist .pkg-smoke
-	$(PYTHON) -m build
+	python -m build
 	twine check dist/*
-	$(PYTHON) -m venv .pkg-smoke
+	python -m venv .pkg-smoke
 	. .pkg-smoke/bin/activate && \
 		python -m pip install --upgrade pip && \
 		WHEEL=$$(ls -t dist/desloppify-*.whl | head -n 1) && \
