@@ -215,6 +215,22 @@ class TestReconcilePlanPostScan:
         assert isinstance(saved[0]["plan_start_scores"].get("strict"), float)
         assert saved[0]["refresh_state"]["postflight_scan_completed_at_scan_count"] == 1
 
+    def test_force_rescan_marks_postflight_scan_complete(self, monkeypatch):
+        plan = empty_plan()
+        plan["queue_order"] = ["workflow::run-scan"]
+        plan["plan_start_scores"] = {"strict": 86.4}
+        state = _make_state(scan_count=5)
+
+        saved: list[dict] = []
+        monkeypatch.setattr(reconcile_mod, "load_plan", lambda _path=None: plan)
+        monkeypatch.setattr(reconcile_mod, "save_plan", lambda p, _path=None: saved.append(p))
+
+        reconcile_mod.reconcile_plan_post_scan(_runtime(state=state, force_rescan=True))
+
+        assert len(saved) == 1
+        assert saved[0]["plan_start_scores"] == {"strict": 86.4}
+        assert saved[0]["refresh_state"]["postflight_scan_completed_at_scan_count"] == 5
+
     def test_superseded_issue_removed_from_clusters(self, monkeypatch):
         plan = empty_plan()
         plan["queue_order"] = ["issue-1", "issue-2"]

@@ -9,6 +9,7 @@ from desloppify import state as state_mod
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.base.config import target_strict_score_from_config
 from desloppify.engine._plan.constants import (
     WORKFLOW_COMMUNICATE_SCORE_ID,
@@ -34,16 +35,19 @@ logger = logging.getLogger(__name__)
 
 
 def _reset_cycle_for_force_rescan(plan: dict[str, object]) -> bool:
-    """Clear all cycle state when --force-rescan is used."""
+    """Clear synthetic queue items when --force-rescan is used.
+
+    Preserves ``plan_start_scores`` so that ``is_mid_cycle()`` still
+    returns True — this prevents ``auto_cluster_issues()`` from running
+    full cluster regeneration, which would wipe manual cluster items.
+    """
     order: list[str] = plan.get("queue_order", [])
     synthetic = [item for item in order if is_synthetic_id(item)]
-    if not synthetic and not plan.get("plan_start_scores"):
+    if not synthetic:
         return False
     for item in synthetic:
         order.remove(item)
-    plan["plan_start_scores"] = {}
     clear_score_communicated_sentinel(plan)
-    plan.pop("scan_count_at_plan_start", None)
     meta = plan.get("epic_triage_meta", {})
     if isinstance(meta, dict):
         meta.pop("triage_recommended", None)
@@ -295,13 +299,14 @@ def reconcile_plan_post_scan(runtime: Any) -> None:
             plan,
             mid_cycle=_is_mid_cycle_scan(plan, runtime.state) or force_rescan,
         )
+        if result.lifecycle_phase_changed:
+            emit_transition_message(result.lifecycle_phase)
         dirty = result.dirty or dirty
 
-    if not force_rescan:
-        if _sync_plan_start_scores_and_log(plan, runtime.state):
-            dirty = True
-        if _sync_postflight_scan_completion_and_log(plan, runtime.state):
-            dirty = True
+    if not force_rescan and _sync_plan_start_scores_and_log(plan, runtime.state):
+        dirty = True
+    if _sync_postflight_scan_completion_and_log(plan, runtime.state):
+        dirty = True
 
     if dirty:
         try:
