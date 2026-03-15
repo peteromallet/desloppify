@@ -49,6 +49,532 @@ def test_parse_clippy_messages_ignores_non_json_noise():
     ]
 
 
+def test_parse_clippy_messages_skips_inline_cfg_test_module_diagnostics(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+pub fn runtime_value() -> usize {
+    1
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn inline_test_uses_unwrap() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 9,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_keeps_non_test_diagnostics_in_same_file(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+pub fn runtime_value() -> usize {
+    Some(1usize).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn inline_test_uses_unwrap() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 2,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == [
+        {
+            "file": "src/lib.rs",
+            "line": 2,
+            "message": "[clippy::unwrap_used] used `unwrap()` on an `Option` value",
+        }
+    ]
+
+
+def test_parse_clippy_messages_keeps_cfg_not_test_inline_module(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(not(test))]
+mod production_only {
+    pub fn value() -> usize {
+        Some(1usize).unwrap()
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 4,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == [
+        {
+            "file": "src/lib.rs",
+            "line": 4,
+            "message": "[clippy::unwrap_used] used `unwrap()` on an `Option` value",
+        }
+    ]
+
+
+def test_parse_clippy_messages_skips_cfg_all_test_inline_module(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(all(test, feature = "unstable"))]
+mod tests {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 4,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_keeps_cfg_any_test_or_other_inline_module(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(any(test, feature = "bench"))]
+mod maybe_test {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 4,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == [
+        {
+            "file": "src/lib.rs",
+            "line": 4,
+            "message": "[clippy::unwrap_used] used `unwrap()` on an `Option` value",
+        }
+    ]
+
+
+def test_parse_clippy_messages_skips_inline_cfg_test_with_comment_between_attr_and_mod(
+    tmp_path,
+):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+// inline tests live below
+mod tests {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 5,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_ignores_commented_out_cfg_test_marker(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+// #[cfg(test)]
+mod production {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 4,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == [
+        {
+            "file": "src/lib.rs",
+            "line": 4,
+            "message": "[clippy::unwrap_used] used `unwrap()` on an `Option` value",
+        }
+    ]
+
+
+def test_parse_clippy_messages_skips_full_inline_module_when_strings_contain_closing_braces(
+    tmp_path,
+):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+mod tests {
+    pub fn first() {
+        println!("brace in string: }");
+    }
+
+    pub fn second() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 8,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_skips_inline_module_when_test_contains_url_string(
+    tmp_path,
+):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+mod tests {
+    pub fn first() {
+        let _url = "http://example.com";
+    }
+
+    pub fn second() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 8,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_skips_inline_module_when_test_contains_lifetime(
+    tmp_path,
+):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+mod tests {
+    pub fn with_lifetime(input: &'static str) -> &'static str {
+        let _ = Some(input).unwrap();
+        input
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 4,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_skips_inline_module_with_raw_identifier_name(tmp_path):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+mod r#tests {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 4,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_skips_inline_module_with_doc_attr_containing_bracket(
+    tmp_path,
+):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+#[doc = "]"]
+mod tests {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 5,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
+def test_parse_clippy_messages_skips_inline_module_when_block_comment_contains_double_slash(
+    tmp_path,
+):
+    source = tmp_path / "src" / "lib.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+#[cfg(test)]
+/* this comment includes // text that should not terminate scanning */
+mod tests {
+    pub fn helper() {
+        let _ = Some(1usize).unwrap();
+    }
+}
+""".strip()
+        + "\n"
+    )
+
+    message = {
+        "reason": "compiler-message",
+        "message": {
+            "level": "warning",
+            "message": "used `unwrap()` on an `Option` value",
+            "code": {"code": "clippy::unwrap_used"},
+            "spans": [
+                {
+                    "is_primary": True,
+                    "file_name": "src/lib.rs",
+                    "line_start": 5,
+                }
+            ],
+        },
+    }
+
+    entries = parse_clippy_messages(json.dumps(message), tmp_path)
+
+    assert entries == []
+
+
 def test_parse_cargo_errors_prefers_primary_span_and_includes_error_code():
     message = {
         "reason": "compiler-message",
@@ -147,22 +673,23 @@ def test_run_rustdoc_result_scans_each_workspace_library_package(tmp_path):
             },
         ],
     }
-    rustdoc_message = lambda file_name, line_no: json.dumps(
-        {
-            "reason": "compiler-message",
-            "message": {
-                "level": "warning",
-                "message": "missing docs",
-                "spans": [
-                    {
-                        "is_primary": True,
-                        "file_name": file_name,
-                        "line_start": line_no,
-                    }
-                ],
-            },
-        }
-    )
+    def rustdoc_message(file_name: str, line_no: int) -> str:
+        return json.dumps(
+            {
+                "reason": "compiler-message",
+                "message": {
+                    "level": "warning",
+                    "message": "missing docs",
+                    "spans": [
+                        {
+                            "is_primary": True,
+                            "file_name": file_name,
+                            "line_start": line_no,
+                        }
+                    ],
+                },
+            }
+        )
 
     def runner(args, **kwargs):
         command = args[2] if args[:2] == ["/bin/sh", "-lc"] else " ".join(args)
