@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 import tomllib
 from dataclasses import dataclass
@@ -34,6 +35,15 @@ class RustFileContext:
     module_segments: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class RustProductionFileIndex:
+    """Precomputed lookup tables for production-file resolution."""
+
+    project_root: Path
+    by_absolute: dict[str, str]
+    by_relative: dict[str, str]
+
+
 def normalize_crate_name(name: str | None) -> str | None:
     """Normalize Cargo package names to Rust crate names."""
     if not name:
@@ -50,6 +60,35 @@ def find_rust_files(path: Path | str) -> list[str]:
         path,
         [".rs"],
         SourceDiscoveryOptions(exclusions=tuple(RUST_FILE_EXCLUSIONS)),
+    )
+
+
+def build_production_file_index(
+    production_files: set[str],
+    *,
+    project_root: Path | None = None,
+) -> RustProductionFileIndex:
+    """Build O(1) absolute/relative lookup maps for production files."""
+    root = (project_root or get_project_root()).resolve()
+    by_absolute: dict[str, str] = {}
+    by_relative: dict[str, str] = {}
+    for production_file in production_files:
+        prod_path = Path(production_file)
+        resolved = (
+            prod_path.resolve() if prod_path.is_absolute() else (root / prod_path).resolve()
+        )
+        resolved_str = str(resolved)
+        by_absolute.setdefault(resolved_str, production_file)
+        try:
+            rel_path = rel(resolved, project_root=root)
+        except (TypeError, ValueError, OSError):
+            rel_path = None
+        if rel_path is not None:
+            by_relative.setdefault(rel_path, production_file)
+    return RustProductionFileIndex(
+        project_root=root,
+        by_absolute=by_absolute,
+        by_relative=by_relative,
     )
 
 
@@ -181,20 +220,117 @@ def iter_mod_targets(content: str) -> list[tuple[str, str | None]]:
 
 def iter_use_specs(content: str) -> list[str]:
     """Return normalized Rust `use` / `pub use` specs from a file."""
-    stripped = strip_rust_comments(content)
-    specs: list[str] = []
-    for match in USE_STATEMENT_RE.finditer(stripped):
-        specs.extend(_expand_use_tree(match.group(1)))
-    return specs
+    return _iter_use_specs_with_pattern(content, USE_STATEMENT_RE)
 
 
 def iter_pub_use_specs(content: str) -> list[str]:
     """Return normalized `pub use` specs from a file."""
-    stripped = strip_rust_comments(content)
+    return _iter_use_specs_with_pattern(content, PUB_USE_STATEMENT_RE)
+
+
+def _iter_use_specs_with_pattern(content: str, pattern: re.Pattern[str]) -> list[str]:
+    """Extract `use` specs while ignoring string-literal contents.
+
+    Rust files can contain natural-language strings (for example JSON tool
+    descriptions) with lines that begin with "use ...". We mask string literal
+    content before regex matching so import extraction only sees real code.
+    """
+    stripped = strip_rust_comments(content, preserve_lines=True)
+    masked = _mask_rust_string_literals_preserve_lines(stripped)
     specs: list[str] = []
-    for match in PUB_USE_STATEMENT_RE.finditer(stripped):
-        specs.extend(_expand_use_tree(match.group(1)))
+    for match in pattern.finditer(masked):
+        start, end = match.span(1)
+        specs.extend(_expand_use_tree(stripped[start:end]))
     return specs
+
+
+def _mask_rust_string_literals_preserve_lines(content: str) -> str:
+    """Replace string literal contents with spaces while preserving newlines."""
+    chars = list(content)
+    result = chars[:]
+    length = len(chars)
+    i = 0
+    in_normal_string = False
+    raw_hash_count: int | None = None
+    while i < length:
+        ch = chars[i]
+
+        if raw_hash_count is not None:
+            if ch == '"':
+                if raw_hash_count == 0:
+                    result[i] = " "
+                    raw_hash_count = None
+                    i += 1
+                    continue
+                hash_count = raw_hash_count
+                hashes = "#" * hash_count
+                if content.startswith(hashes, i + 1):
+                    result[i] = " "
+                    for j in range(i + 1, i + 1 + hash_count):
+                        result[j] = " "
+                    raw_hash_count = None
+                    i += 1 + hash_count
+                    continue
+            result[i] = "\n" if ch == "\n" else " "
+            i += 1
+            continue
+
+        if in_normal_string:
+            if ch == "\\" and i + 1 < length:
+                result[i] = " "
+                result[i + 1] = "\n" if chars[i + 1] == "\n" else " "
+                i += 2
+                continue
+            result[i] = "\n" if ch == "\n" else " "
+            if ch == '"':
+                in_normal_string = False
+            i += 1
+            continue
+
+        raw_prefix = _raw_string_prefix_length(chars, i)
+        if raw_prefix is not None:
+            prefix_len, hashes = raw_prefix
+            for j in range(i, i + prefix_len):
+                result[j] = " "
+            raw_hash_count = hashes
+            i += prefix_len
+            continue
+
+        if ch == '"':
+            result[i] = " "
+            in_normal_string = True
+            i += 1
+            continue
+
+        if ch == "b" and i + 1 < length and chars[i + 1] == '"':
+            result[i] = " "
+            result[i + 1] = " "
+            in_normal_string = True
+            i += 2
+            continue
+
+        i += 1
+    return "".join(result)
+
+
+def _raw_string_prefix_length(chars: list[str], index: int) -> tuple[int, int] | None:
+    """Return (prefix_length, hash_count) for raw string prefixes at index."""
+    length = len(chars)
+    j = index
+    if chars[j] == "b":
+        j += 1
+        if j >= length:
+            return None
+    if chars[j] != "r":
+        return None
+    j += 1
+    hash_count = 0
+    while j < length and chars[j] == "#":
+        hash_count += 1
+        j += 1
+    if j >= length or chars[j] != '"':
+        return None
+    return (j - index + 1, hash_count)
 
 
 def find_manifest_dir(path: Path | str) -> Path | None:
@@ -240,9 +376,16 @@ def _read_manifest_data(manifest_dir: Path) -> dict[str, Any]:
 def build_workspace_package_index(scan_root: Path | None = None) -> dict[str, Path]:
     """Return local crate-name -> Cargo manifest dir for the active project root."""
     root = find_workspace_root(scan_root) if scan_root is not None else get_project_root()
+    return _build_workspace_package_index_cached(root)
+
+
+@functools.lru_cache(maxsize=8)
+def _build_workspace_package_index_cached(root: Path) -> dict[str, Path]:
+    """Cached inner implementation of workspace package index building."""
+    _exclusions = set(RUST_FILE_EXCLUSIONS)
     packages: dict[str, Path] = {}
     for manifest in root.rglob("Cargo.toml"):
-        if any(part in RUST_FILE_EXCLUSIONS for part in manifest.parts):
+        if any(part in _exclusions for part in manifest.relative_to(root).parts[:-1]):
             continue
         manifest_dir = manifest.parent.resolve()
         for name in {
@@ -254,14 +397,21 @@ def build_workspace_package_index(scan_root: Path | None = None) -> dict[str, Pa
     return packages
 
 
-def build_local_dependency_alias_index(
-    manifest_dir: Path,
-    package_index: dict[str, Path] | None = None,
+@functools.lru_cache(maxsize=64)
+def _build_local_dependency_alias_index_cached(
+    normalized_manifest_dir: Path,
+    workspace_root: Path,
+    package_index_items: tuple[tuple[str, str], ...],
 ) -> dict[str, Path]:
-    """Map local dependency aliases usable from one manifest to their crate roots."""
-    normalized_manifest_dir = manifest_dir.resolve()
-    workspace_root = find_workspace_root(normalized_manifest_dir)
-    package_index = package_index or build_workspace_package_index(workspace_root)
+    """Cached implementation of local dependency alias extraction.
+
+    Keying on primitive tuples keeps the cache hashable while preserving exact
+    package_index state for correctness.
+    """
+    package_index: dict[str, Path] = {
+        name: Path(manifest_dir)
+        for name, manifest_dir in package_index_items
+    }
     workspace_aliases = _workspace_dependency_alias_index(workspace_root, package_index)
     aliases: dict[str, Path] = {}
     data = _read_manifest_data(normalized_manifest_dir)
@@ -279,6 +429,24 @@ def build_local_dependency_alias_index(
         if resolved is not None:
             aliases[alias_name] = resolved
     return aliases
+
+
+def build_local_dependency_alias_index(
+    manifest_dir: Path,
+    package_index: dict[str, Path] | None = None,
+) -> dict[str, Path]:
+    """Map local dependency aliases usable from one manifest to their crate roots."""
+    normalized_manifest_dir = manifest_dir.resolve()
+    workspace_root = find_workspace_root(normalized_manifest_dir)
+    package_index = package_index or build_workspace_package_index(workspace_root)
+    package_index_items = tuple(
+        sorted((name, str(path.resolve())) for name, path in package_index.items())
+    )
+    return _build_local_dependency_alias_index_cached(
+        normalized_manifest_dir,
+        workspace_root,
+        package_index_items,
+    )
 
 
 def _workspace_dependency_alias_index(
@@ -471,6 +639,7 @@ def resolve_mod_declaration(
     production_files: set[str],
     *,
     declared_path: str | None = None,
+    production_index: RustProductionFileIndex | None = None,
 ) -> str | None:
     """Resolve `mod foo;` to `foo.rs` or `foo/mod.rs` relative to the file's module dir."""
     source = Path(resolve_path(str(source_file))).resolve()
@@ -484,7 +653,11 @@ def resolve_mod_declaration(
         candidates.append(source.parent / declared_path)
     candidates.extend((base_dir / f"{module_name}.rs", base_dir / module_name / "mod.rs"))
     for candidate in candidates:
-        matched = _candidate_matches(candidate, production_files)
+        matched = _candidate_matches(
+            candidate,
+            production_files,
+            production_index=production_index,
+        )
         if matched:
             return matched
     return None
@@ -497,6 +670,7 @@ def resolve_use_spec(
     package_index: dict[str, Path] | None = None,
     *,
     allow_crate_root_fallback: bool = True,
+    production_index: RustProductionFileIndex | None = None,
 ) -> str | None:
     """Resolve a Rust `use` spec to a local module file when possible."""
     cleaned = _normalize_use_spec(spec)
@@ -521,6 +695,7 @@ def resolve_use_spec(
                 context.root_files,
                 segments[1:],
                 production_files,
+                production_index=production_index,
                 allow_root_fallback=allow_crate_root_fallback,
             )
         )
@@ -532,6 +707,7 @@ def resolve_use_spec(
                 context.root_files,
                 resolved_segments,
                 production_files,
+                production_index=production_index,
                 allow_root_fallback=allow_crate_root_fallback,
             )
         )
@@ -546,6 +722,7 @@ def resolve_use_spec(
                     (manifest_dir / "src" / "lib.rs", manifest_dir / "src" / "main.rs"),
                     segments[1:],
                     production_files,
+                    production_index=production_index,
                     allow_root_fallback=allow_crate_root_fallback,
                 )
             )
@@ -555,6 +732,7 @@ def resolve_use_spec(
                 context.root_files,
                 list(context.module_segments) + segments,
                 production_files,
+                production_index=production_index,
                 allow_root_fallback=False,
             )
         )
@@ -564,6 +742,7 @@ def resolve_use_spec(
                 context.root_files,
                 segments,
                 production_files,
+                production_index=production_index,
                 allow_root_fallback=allow_crate_root_fallback,
             )
         )
@@ -578,6 +757,7 @@ def resolve_barrel_targets(
     filepath: str | Path,
     production_files: set[str],
     package_index: dict[str, Path] | None = None,
+    production_index: RustProductionFileIndex | None = None,
 ) -> set[str]:
     """Resolve `pub use` / `pub mod` targets from a Rust facade file."""
     try:
@@ -594,6 +774,7 @@ def resolve_barrel_targets(
             production_files,
             package_index,
             allow_crate_root_fallback=False,
+            production_index=production_index,
         )
         if resolved:
             targets.add(resolved)
@@ -603,6 +784,7 @@ def resolve_barrel_targets(
             filepath,
             production_files,
             declared_path=declared_path,
+            production_index=production_index,
         )
         if resolved:
             targets.add(resolved)
@@ -643,10 +825,15 @@ def _resolve_from_source_root(
     segments: list[str],
     production_files: set[str],
     *,
+    production_index: RustProductionFileIndex | None,
     allow_root_fallback: bool,
 ) -> str | None:
     if not segments:
-        return _match_root_files(root_files, production_files)
+        return _match_root_files(
+            root_files,
+            production_files,
+            production_index=production_index,
+        )
 
     for width in range(len(segments), 0, -1):
         module_parts = segments[:width]
@@ -655,42 +842,60 @@ def _resolve_from_source_root(
         file_candidate = source_root.joinpath(*module_parts).with_suffix(".rs")
         mod_candidate = source_root.joinpath(*module_parts, "mod.rs")
         for candidate in (file_candidate, mod_candidate):
-            matched = _candidate_matches(candidate, production_files)
+            matched = _candidate_matches(
+                candidate,
+                production_files,
+                production_index=production_index,
+            )
             if matched:
                 return matched
 
     if allow_root_fallback:
-        return _match_root_files(root_files, production_files)
+        return _match_root_files(
+            root_files,
+            production_files,
+            production_index=production_index,
+        )
     return None
 
 
-def _match_root_files(root_files: tuple[Path, ...], production_files: set[str]) -> str | None:
+def _match_root_files(
+    root_files: tuple[Path, ...],
+    production_files: set[str],
+    *,
+    production_index: RustProductionFileIndex | None,
+) -> str | None:
     for root_file in root_files:
-        matched = _candidate_matches(root_file, production_files)
+        matched = _candidate_matches(
+            root_file,
+            production_files,
+            production_index=production_index,
+        )
         if matched:
             return matched
     return None
 
 
-def _candidate_matches(candidate: Path, production_files: set[str]) -> str | None:
+def _candidate_matches(
+    candidate: Path,
+    production_files: set[str],
+    *,
+    production_index: RustProductionFileIndex | None = None,
+) -> str | None:
+    index = production_index or build_production_file_index(production_files)
     resolved_candidate = candidate.resolve()
-    project_root = get_project_root()
     candidate_abs = str(resolved_candidate)
+    absolute_match = index.by_absolute.get(candidate_abs)
+    if absolute_match is not None:
+        return absolute_match
     try:
-        candidate_rel = rel(resolved_candidate, project_root=project_root)
+        candidate_rel = rel(resolved_candidate, project_root=index.project_root)
     except (TypeError, ValueError, OSError):
         candidate_rel = None
-
-    for production_file in production_files:
-        prod_path = Path(production_file)
-        if prod_path.is_absolute():
-            normalized = str(prod_path.resolve())
-        else:
-            normalized = str((project_root / prod_path).resolve())
-        if normalized == candidate_abs:
-            return production_file
-        if candidate_rel is not None and production_file == candidate_rel:
-            return production_file
+    if candidate_rel is not None:
+        relative_match = index.by_relative.get(candidate_rel)
+        if relative_match is not None:
+            return relative_match
     return None
 
 
@@ -804,7 +1009,9 @@ __all__ = [
     "RUST_FILE_EXCLUSIONS",
     "PUB_USE_STATEMENT_RE",
     "RustFileContext",
+    "RustProductionFileIndex",
     "USE_STATEMENT_RE",
+    "build_production_file_index",
     "build_workspace_package_index",
     "build_local_dependency_alias_index",
     "describe_rust_file",

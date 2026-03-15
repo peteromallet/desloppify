@@ -7,6 +7,7 @@ from typing import Any
 
 from desloppify.engine.detectors.graph import finalize_graph
 from desloppify.languages.rust.support import (
+    build_production_file_index,
     build_workspace_package_index,
     find_rust_files,
     iter_mod_targets,
@@ -31,6 +32,7 @@ def build_dep_graph(
         return {}
 
     file_set = set(graph.keys())
+    production_index = build_production_file_index(file_set)
     package_index = build_workspace_package_index()
     for filepath in files:
         content = read_text_or_none(filepath)
@@ -44,6 +46,7 @@ def build_dep_graph(
                     filepath,
                     file_set,
                     declared_path=declared_path,
+                    production_index=production_index,
                 )
                 if resolved and resolved != filepath:
                     graph[filepath]["imports"].add(resolved)
@@ -56,6 +59,7 @@ def build_dep_graph(
                 file_set,
                 package_index,
                 allow_crate_root_fallback=False,
+                production_index=production_index,
             )
             if resolved and resolved != filepath:
                 graph[filepath]["imports"].add(resolved)

@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.languages.rust.support import (
+    build_production_file_index,
     find_workspace_root,
+    iter_use_specs,
+    match_production_candidate,
     read_text_or_none,
     strip_rust_comments,
 )
@@ -80,3 +83,30 @@ def test_find_workspace_root_skips_invalid_nested_manifest(tmp_path):
     source = _write(tmp_path, "app/src/lib.rs", "pub fn run() {}\n")
 
     assert find_workspace_root(source) == tmp_path.resolve()
+
+
+def test_iter_use_specs_ignores_use_text_inside_strings():
+    content = r'''
+fn registry() {
+    let description = r#"
+    use this wording in docs only; still not an import.
+    "#;
+}
+use crate::real::Thing;
+'''
+
+    specs = iter_use_specs(content)
+
+    assert specs == ["crate::real::Thing"]
+
+
+def test_match_production_candidate_uses_relative_index_key(tmp_path):
+    prod = _write(tmp_path, "src/lib.rs", "pub fn run() {}\n")
+    production_files = {"src/lib.rs"}
+
+    from desloppify.base.runtime_state import RuntimeContext, runtime_scope
+
+    with runtime_scope(RuntimeContext(project_root=tmp_path)):
+        index = build_production_file_index(production_files)
+        assert match_production_candidate(prod, production_files) == "src/lib.rs"
+        assert index.by_relative["src/lib.rs"] == "src/lib.rs"
