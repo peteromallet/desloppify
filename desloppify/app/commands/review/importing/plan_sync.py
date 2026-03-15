@@ -27,7 +27,10 @@ from desloppify.engine._plan.sync import (
     reconcile_plan,
 )
 from desloppify.engine._plan.sync.workflow_gates import sync_import_scores_needed
-from desloppify.engine._plan.sync.workflow import clear_score_communicated_sentinel
+from desloppify.engine._plan.sync.workflow import (
+    clear_create_plan_sentinel,
+    clear_score_communicated_sentinel,
+)
 from desloppify.engine._plan.refresh_lifecycle import mark_subjective_review_completed
 from desloppify.engine.plan_triage import (
     TRIAGE_CMD_RUN_STAGES_CLAUDE,
@@ -103,7 +106,7 @@ def _print_new_review_items(state: dict, new_ids: list[str]) -> None:
             "bold",
         )
     )
-    issues = (state.get("work_items") or state.get("issues", {}))
+    issues = state.get("work_items") or state.get("issues", {})
     for finding_id in sorted(new_ids)[:10]:
         finding = issues.get(finding_id, {})
         print(f"    * [{short_issue_id(finding_id)}] {finding.get('summary', '')}")
@@ -140,7 +143,9 @@ def _print_review_import_footer(
     outcome: PlanImportSyncOutcome,
 ) -> None:
     print()
-    status_line = "  Review queue sync completed. Workflow follow-up may be front-loaded."
+    status_line = (
+        "  Review queue sync completed. Workflow follow-up may be front-loaded."
+    )
     status_tone = "dim"
     if outcome.status == "degraded" and outcome.message:
         status_line = f"  Review queue sync degraded: {outcome.message}"
@@ -148,7 +153,9 @@ def _print_review_import_footer(
     print(colorize(status_line, status_tone))
     print()
     print(colorize("  View execution queue:  desloppify plan queue", "dim"))
-    print(colorize("  View newest first:     desloppify plan queue --sort recent", "dim"))
+    print(
+        colorize("  View newest first:     desloppify plan queue --sort recent", "dim")
+    )
     print(colorize("  View broader backlog:  desloppify backlog", "dim"))
     print()
     print(colorize("  NEXT STEP:", "yellow"))
@@ -167,8 +174,7 @@ def _print_review_import_footer(
 
 def _review_delta_present(diff: dict) -> bool:
     return any(
-        int(diff.get(key, 0) or 0) > 0
-        for key in ("new", "reopened", "auto_resolved")
+        int(diff.get(key, 0) or 0) > 0 for key in ("new", "reopened", "auto_resolved")
     )
 
 
@@ -197,8 +203,7 @@ def _build_import_sync_inputs(
         has_review_issue_delta=_review_delta_present(diff),
         assessment_keys=frozenset(assessment_keys),
         covered_ids=tuple(
-            f"subjective::{dim_key}"
-            for dim_key in sorted(assessment_keys)
+            f"subjective::{dim_key}" for dim_key in sorted(assessment_keys)
         ),
     )
 
@@ -232,7 +237,9 @@ def _apply_import_plan_transitions(
     """Apply plan mutations driven by a review import before persistence/output."""
     import_result = _sync_review_delta(plan, state, sync_inputs)
     covered_pruned = (
-        _prune_covered_subjective_ids_from_plan(plan, covered_ids=sync_inputs.covered_ids)
+        _prune_covered_subjective_ids_from_plan(
+            plan, covered_ids=sync_inputs.covered_ids
+        )
         if trusted
         else []
     )
@@ -245,6 +252,7 @@ def _apply_import_plan_transitions(
     )
     if trusted:
         clear_score_communicated_sentinel(plan)
+        clear_create_plan_sentinel(plan)
         if sync_inputs.covered_ids:
             mark_subjective_review_completed(
                 plan,
@@ -346,8 +354,12 @@ def _append_review_import_sync_log(
         actor="system",
         detail={
             "trigger": "review_import",
-            "new_ids": sorted(import_result.new_ids) if import_result is not None else [],
-            "added_to_queue": import_result.added_to_queue if import_result is not None else [],
+            "new_ids": (
+                sorted(import_result.new_ids) if import_result is not None else []
+            ),
+            "added_to_queue": (
+                import_result.added_to_queue if import_result is not None else []
+            ),
             "workflow_injected_ids": pipeline_result.workflow_injected_ids,
             "triage_injected": bool(triage and triage.injected),
             "triage_injected_ids": list(triage.injected) if triage is not None else [],
@@ -356,7 +368,9 @@ def _append_review_import_sync_log(
             "diff_reopened": diff.get("reopened", 0),
             "diff_auto_resolved": diff.get("auto_resolved", 0),
             "stale_pruned_from_queue": (
-                import_result.stale_pruned_from_queue if import_result is not None else []
+                import_result.stale_pruned_from_queue
+                if import_result is not None
+                else []
             ),
             "covered_subjective_pruned_from_queue": (
                 getattr(import_result, "covered_subjective_pruned_from_queue", [])
@@ -364,11 +378,19 @@ def _append_review_import_sync_log(
                 else []
             ),
             "covered_subjective": list(covered_ids),
-            "stale_sync_injected": sorted(subjective.injected) if subjective is not None else [],
-            "stale_sync_pruned": sorted(subjective.pruned) if subjective is not None else [],
+            "stale_sync_injected": (
+                sorted(subjective.injected) if subjective is not None else []
+            ),
+            "stale_sync_pruned": (
+                sorted(subjective.pruned) if subjective is not None else []
+            ),
             "auto_cluster_changes": pipeline_result.auto_cluster_changes,
-            "import_scores_injected": list(getattr(import_scores_result, "injected", []) or []),
-            "import_scores_pruned": list(getattr(import_scores_result, "pruned", []) or []),
+            "import_scores_injected": list(
+                getattr(import_scores_result, "injected", []) or []
+            ),
+            "import_scores_pruned": list(
+                getattr(import_scores_result, "pruned", []) or []
+            ),
             "sync_status": outcome.status,
             "sync_message": outcome.message,
         },
