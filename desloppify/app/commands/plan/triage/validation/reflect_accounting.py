@@ -366,9 +366,121 @@ def validate_reflect_accounting(
     return False, cited, missing, duplicates
 
 
+BacklogDecisionKind = Literal["promote", "skip", "supersede"]
+
+
+@dataclass(frozen=True)
+class BacklogDecision:
+    """One auto-cluster's intended disposition as declared by the reflect stage."""
+
+    cluster_name: str
+    decision: BacklogDecisionKind
+    reason: str = ""
+
+    def to_dict(self) -> dict:
+        """Serialize for JSON persistence."""
+        d: dict = {"cluster_name": self.cluster_name, "decision": self.decision}
+        if self.reason:
+            d["reason"] = self.reason
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict | BacklogDecision) -> BacklogDecision:
+        """Deserialize from persisted plan data, or pass through unchanged."""
+        if isinstance(data, cls):
+            return data
+        return cls(
+            cluster_name=data.get("cluster_name", ""),
+            decision=data.get("decision", "skip"),  # type: ignore[arg-type]
+            reason=data.get("reason", ""),
+        )
+
+
+_BACKLOG_DECISION_RE = re.compile(
+    r"-\s*(\S+)\s*->\s*(promote|skip|supersede)\b\s*(.*)",
+    re.IGNORECASE,
+)
+
+
+def _iter_backlog_decisions_lines(report: str) -> tuple[bool, list[str]]:
+    """Extract lines from the ## Backlog Decisions section of a reflect report."""
+    found_section = False
+    in_section = False
+    lines: list[str] = []
+    for raw_line in report.splitlines():
+        line = raw_line.strip()
+        if re.fullmatch(r"##\s+Backlog Decisions", line, re.IGNORECASE):
+            found_section = True
+            in_section = True
+            continue
+        if in_section and re.match(r"##\s+", line):
+            break
+        if in_section:
+            lines.append(line)
+    return found_section, lines
+
+
+def parse_backlog_decisions(report: str) -> list[BacklogDecision]:
+    """Parse structured backlog decisions from the ## Backlog Decisions section."""
+    _, lines = _iter_backlog_decisions_lines(report)
+    decisions: list[BacklogDecision] = []
+    for line in lines:
+        match = _BACKLOG_DECISION_RE.match(line)
+        if not match:
+            continue
+        cluster_name = match.group(1).strip().strip("`")
+        decision_raw = match.group(2).strip().lower()
+        reason = match.group(3).strip().strip('"\'')
+        if decision_raw in ("promote", "skip", "supersede"):
+            decisions.append(BacklogDecision(
+                cluster_name=cluster_name,
+                decision=decision_raw,  # type: ignore[arg-type]
+                reason=reason,
+            ))
+    return decisions
+
+
+def validate_backlog_decisions(
+    *,
+    report: str,
+    auto_cluster_names: list[str],
+) -> tuple[bool, list[str]]:
+    """Warn when auto-clusters exist but no backlog decisions section is found.
+
+    Returns ``(ok, warnings)`` — always ``ok=True`` (non-blocking), but
+    populates warnings when backlog decisions are missing or incomplete.
+    """
+    if not auto_cluster_names:
+        return True, []
+
+    found_section, _ = _iter_backlog_decisions_lines(report)
+    if not found_section:
+        return True, [
+            f"Reflect report has {len(auto_cluster_names)} auto-cluster(s) in the backlog "
+            "but no `## Backlog Decisions` section. Each auto-cluster should have an "
+            "explicit decision: promote, skip (with reason), or supersede."
+        ]
+
+    decisions = parse_backlog_decisions(report)
+    decided_names = {d.cluster_name for d in decisions}
+    missing = [name for name in auto_cluster_names if name not in decided_names]
+    if missing:
+        missing_str = ", ".join(missing[:10])
+        suffix = f" (and {len(missing) - 10} more)" if len(missing) > 10 else ""
+        return True, [
+            f"Backlog Decisions section is missing decisions for {len(missing)} "
+            f"auto-cluster(s): {missing_str}{suffix}"
+        ]
+
+    return True, []
+
+
 __all__ = [
+    "BacklogDecision",
     "ReflectDisposition",
     "analyze_reflect_issue_accounting",
+    "parse_backlog_decisions",
     "parse_reflect_dispositions",
+    "validate_backlog_decisions",
     "validate_reflect_accounting",
 ]

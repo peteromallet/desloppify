@@ -9,7 +9,7 @@ from desloppify.base.output.terminal import colorize
 
 from ..review_coverage import cluster_issue_ids, manual_clusters_with_issues
 from ..stages.helpers import unclustered_review_issues, unenriched_clusters
-from .reflect_accounting import ReflectDisposition
+from .reflect_accounting import BacklogDecision, ReflectDisposition
 
 
 @dataclass(frozen=True)
@@ -275,6 +275,43 @@ def _validate_organize_against_ledger_or_error(
     return False
 
 
+def validate_backlog_promotions_executed(
+    *,
+    plan: dict,
+    stages: dict,
+) -> list[str]:
+    """Warn when reflect requested backlog promotions that organize didn't execute.
+
+    Returns a list of warning strings (non-blocking). Empty means all good.
+    """
+    reflect_data = stages.get("reflect", {})
+    raw_decisions = reflect_data.get("backlog_decisions", [])
+    if not raw_decisions:
+        return []
+
+    decisions = [BacklogDecision.from_dict(d) for d in raw_decisions]
+    promote_decisions = [d for d in decisions if d.decision == "promote"]
+    if not promote_decisions:
+        return []
+
+    # Check which promoted clusters actually got promoted (are in queue_order
+    # or have execution_status set to active)
+    clusters = plan.get("clusters", {})
+    warnings: list[str] = []
+    for decision in promote_decisions:
+        cluster = clusters.get(decision.cluster_name)
+        if cluster is None:
+            continue
+        # A promoted cluster should have been activated
+        execution_status = cluster.get("execution_status", "")
+        if execution_status not in ("active", "in_progress"):
+            warnings.append(
+                f"Reflect requested promoting {decision.cluster_name} "
+                f"but it was not promoted during organize."
+            )
+    return warnings
+
+
 __all__ = [
     "ActualDisposition",
     "LedgerMismatch",
@@ -283,6 +320,7 @@ __all__ = [
     "_organize_report_or_error",
     "_unclustered_review_issues_or_error",
     "_validate_organize_against_ledger_or_error",
+    "validate_backlog_promotions_executed",
     "validate_organize_against_dispositions",
     "validate_organize_against_reflect_ledger",
 ]

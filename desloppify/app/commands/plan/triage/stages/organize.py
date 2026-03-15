@@ -21,6 +21,7 @@ from ..validation.organize_policy import (
     _organize_report_or_error,
     _unclustered_review_issues_or_error,
     _validate_organize_against_ledger_or_error,
+    validate_backlog_promotions_executed,
 )
 from ..validation.stage_policy import require_prerequisite
 from .records import record_organize_stage
@@ -135,6 +136,12 @@ def _validate_organize_submission(
         plan=plan, stages=stages,
     ):
         return None
+
+    # Warn (non-blocking) when reflect requested backlog promotions that weren't executed
+    backlog_warnings = validate_backlog_promotions_executed(plan=plan, stages=stages)
+    for warning in backlog_warnings:
+        print(colorize(f"  Warning: {warning}", "yellow"))
+
     if not _enforce_cluster_activity_for_organize(
         plan=plan,
         stages=stages,

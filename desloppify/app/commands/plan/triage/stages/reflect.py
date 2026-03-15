@@ -11,8 +11,11 @@ from ..display.dashboard import print_reflect_result
 from ..stage_queue import cascade_clear_dispositions, cascade_clear_later_confirmations, has_triage_in_queue
 from ..services import TriageServices, default_triage_services
 from ..validation.reflect_accounting import (
+    BacklogDecision,
     ReflectDisposition,
+    parse_backlog_decisions,
     parse_reflect_dispositions,
+    validate_backlog_decisions,
     validate_reflect_accounting,
 )
 from ..validation.stage_policy import auto_confirm_observe_if_attested
@@ -55,7 +58,7 @@ def _validate_reflect_submission(
     stages: dict,
     attestation: str | None,
     services: TriageServices,
-) -> tuple[object, int, dict, list[str], set[str], list[str], list[str], list[ReflectDisposition]] | None:
+) -> tuple[object, int, dict, list[str], set[str], list[str], list[str], list[ReflectDisposition], list[BacklogDecision]] | None:
     if "observe" not in stages:
         print(colorize("  Cannot reflect: observe stage not complete.", "red"))
         print(colorize('  Run: desloppify plan triage --stage observe --report "..."', "dim"))
@@ -127,6 +130,18 @@ def _validate_reflect_submission(
     # Parse structured disposition ledger from Coverage Ledger section
     disposition_ledger = parse_reflect_dispositions(report, valid_ids)
 
+    # Validate backlog decisions for auto-clusters (warn, don't block)
+    auto_clusters = getattr(triage_input, "auto_clusters", None) or {}
+    auto_cluster_names = sorted(auto_clusters.keys())
+    _, backlog_warnings = validate_backlog_decisions(
+        report=report,
+        auto_cluster_names=auto_cluster_names,
+    )
+    for warning in backlog_warnings:
+        print(colorize(f"  Warning: {warning}", "yellow"))
+
+    backlog_decisions = parse_backlog_decisions(report)
+
     return (
         triage_input,
         issue_count,
@@ -136,6 +151,7 @@ def _validate_reflect_submission(
         missing_ids,
         duplicate_ids,
         disposition_ledger,
+        backlog_decisions,
     )
 
 
@@ -151,6 +167,7 @@ def _persist_reflect_stage(
     duplicate_ids: list[str],
     recurring_dims: list[str],
     disposition_ledger: list[ReflectDisposition],
+    backlog_decisions: list[BacklogDecision],
     existing_stage: dict | None,
     is_reuse: bool,
     services: TriageServices,
@@ -181,6 +198,9 @@ def _persist_reflect_stage(
             entry["decision"] = decision
             entry["target"] = d.target
             entry["decision_source"] = "reflect"
+
+    if backlog_decisions:
+        reflect_stage["backlog_decisions"] = [d.to_dict() for d in backlog_decisions]
 
     stages["reflect"] = reflect_stage
     if is_reuse and existing_stage and existing_stage.get("confirmed_at"):
@@ -239,6 +259,7 @@ def _cmd_stage_reflect(
     (
         triage_input, issue_count, recurring, recurring_dims,
         cited_ids, missing_ids, duplicate_ids, disposition_ledger,
+        backlog_decisions,
     ) = submission
     reflect_stage, cleared = _persist_reflect_stage(
         plan=plan,
@@ -251,6 +272,7 @@ def _cmd_stage_reflect(
         duplicate_ids=duplicate_ids,
         recurring_dims=recurring_dims,
         disposition_ledger=disposition_ledger,
+        backlog_decisions=backlog_decisions,
         existing_stage=existing_stage,
         is_reuse=is_reuse,
         services=resolved_services,

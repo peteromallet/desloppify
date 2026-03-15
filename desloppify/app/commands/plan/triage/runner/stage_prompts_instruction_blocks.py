@@ -136,11 +136,13 @@ and think the fix has value, cluster them. These are judgment calls, not factual
    another round of fixes.
 7. **Consider mechanical backlog** — the backlog section shows auto-clusters
    (pre-grouped detector findings) and unclustered items. For each auto-cluster:
-   - **promote**: name it in a `## Backlog Promotions` section. Prefer clusters with
+   - **promote**: name it in a `## Backlog Decisions` section. Prefer clusters with
      `[autofix: ...]` hints because they are lower-risk.
-   - **leave**: say nothing. Silence means it stays in backlog.
+   - **skip**: explicitly skip with a reason (e.g., "mostly test noise", "low value").
    - **supersede**: absorb the underlying work into a review cluster when the same files
      or root cause already belong together.
+   You MUST make an explicit decision for every auto-cluster. Include a `## Backlog Decisions`
+   section listing each auto-cluster with: promote, skip (with reason), or supersede.
    For unclustered items: promote individually or group related ones into a manual cluster.
    Mechanical items are NOT part of the Coverage Ledger — that ledger remains review-issues only.
 8. **Account for every issue exactly once** — every open issue hash must appear in exactly one
@@ -159,8 +161,10 @@ This blueprint is what the organize stage will execute. Be specific:
 Cluster "media-lightbox-hooks" (all in src/domains/media-lightbox/)
 Cluster "task-typing" (both touch src/types/database.ts)
 
-## Backlog Promotions
-- Promote auto/unused-imports (overlaps with the files in cluster "task-typing")
+## Backlog Decisions
+- auto/unused-imports -> promote (overlaps with the files in cluster "task-typing")
+- auto/dead-code -> skip "mostly test noise, low value"
+- auto/type-assertions -> supersede "absorbed into cluster task-typing"
 
 ## Skip Decisions
 Skip "false-positive-current-code" (false positive per observe)
@@ -215,9 +219,10 @@ def _organize_instructions(mode: PromptMode = "self_record") -> str:
 3. Create clusters as specified in the blueprint:
    `desloppify plan cluster create <name> --description "..."`
 4. Add issues: `desloppify plan cluster add <name> <patterns...>`
-5. Promote any mechanical backlog items that reflect explicitly selected:
-   - Auto-clusters: `desloppify plan promote auto/<cluster-name>`
-   - Individual items: `desloppify plan promote <issue-id>`
+5. Execute ALL backlog decisions from the reflect stage's `## Backlog Decisions` section:
+   - **promote**: `desloppify plan promote auto/<cluster-name>`
+   - **skip**: no CLI action needed — the cluster stays in backlog, skip is documented
+   - **supersede**: absorb into the named review cluster (already handled by clustering above)
    - With placement: `desloppify plan promote <pattern> before -t <target>`
 6. Add steps that consolidate: one step per file or logical change, NOT one step per issue
 7. Set `--effort` on each step individually (trivial/small/medium/large)
@@ -243,9 +248,10 @@ desloppify plan triage --stage organize --report "<summary of priorities and org
    If reflect skipped additional issues (over-engineering/not-worth-it), include those skip decisions.
 3. Define the clusters exactly as they should be created.
 4. Assign every kept issue to a cluster.
-5. Consolidate steps: one step per file or logical change, NOT one step per issue.
-6. Assign an effort level to each planned step (trivial/small/medium/large).
-7. Call out cross-cluster dependencies when clusters touch overlapping files.
+5. Execute ALL backlog decisions from reflect's `## Backlog Decisions` section (promote/skip/supersede).
+6. Consolidate steps: one step per file or logical change, NOT one step per issue.
+7. Assign an effort level to each planned step (trivial/small/medium/large).
+8. Call out cross-cluster dependencies when clusters touch overlapping files.
 """
         tail = """\
 When done, write a plain-text organize report that names the clusters, their issue membership,
