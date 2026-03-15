@@ -97,6 +97,16 @@ def test_lang_run_does_not_auto_forward_unknown_config_attrs() -> None:
         _ = run.future_runtime_attr
 
 
+def test_make_lang_run_preserves_empty_review_cache_reference() -> None:
+    config = PythonConfig()
+    review_cache: dict[str, object] = {}
+    run = make_lang_run(
+        config,
+        overrides=LangRunOverrides(review_cache=review_cache),
+    )
+    assert run.review_cache is review_cache
+
+
 def test_lang_run_props_threshold_defaults_to_lang_config() -> None:
     config = PythonConfig()
     config.props_threshold = 23

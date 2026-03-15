@@ -150,9 +150,9 @@ class LangRun(LangRunStateAccessors):
 def _coerce_lang_override(field_name: str, value: object) -> object:
     """Normalize override values to LangRuntimeState-compatible payloads."""
     if field_name in _LANG_OVERRIDE_DICT_FIELDS:
-        return value or {}
+        return value if isinstance(value, dict) else {}
     if field_name in _LANG_OVERRIDE_LIST_FIELDS:
-        return value or []
+        return value if isinstance(value, list) else []
     if field_name in _LANG_OVERRIDE_INT_FIELDS:
         return int(value or 0)
     if field_name == "review_max_age_days":

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import desloppify.engine._state.filtering as filtering_mod
 from desloppify.engine._work_queue.core import QueueBuildOptions
 import desloppify.engine.planning.helpers as plan_common_mod
@@ -61,6 +63,60 @@ def test_select_phases_and_run_phases_behavior():
     issues, potentials = plan_scan_mod._run_phases(Path("."), lang, full)
     assert [issue["id"] for issue in issues] == ["f1", "s1", "r1"]
     assert potentials == {"fast": 1, "slow": 2, "review": 3}
+
+
+def test_generate_issues_from_lang_primes_and_clears_review_prefetch(monkeypatch):
+    calls: list[str] = []
+    lang = SimpleNamespace(phases=[], zone_map=None, name="python")
+
+    monkeypatch.setattr(plan_scan_mod, "_build_zone_map", lambda *_a, **_k: None)
+    monkeypatch.setattr(plan_scan_mod, "_select_phases", lambda *_a, **_k: [])
+    monkeypatch.setattr(plan_scan_mod, "_run_phases", lambda *_a, **_k: ([], {}))
+    monkeypatch.setattr(plan_scan_mod, "_stamp_issue_context", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        plan_scan_mod,
+        "prewarm_review_phase_detectors",
+        lambda *_a, **_k: calls.append("prime"),
+    )
+    monkeypatch.setattr(
+        plan_scan_mod,
+        "clear_review_phase_prefetch",
+        lambda *_a, **_k: calls.append("clear"),
+    )
+
+    issues, potentials = plan_scan_mod._generate_issues_from_lang(Path("."), lang)
+
+    assert issues == []
+    assert potentials == {}
+    assert calls == ["prime", "clear"]
+
+
+def test_generate_issues_from_lang_clears_prefetch_on_phase_error(monkeypatch):
+    calls: list[str] = []
+    lang = SimpleNamespace(phases=[], zone_map=None, name="python")
+
+    monkeypatch.setattr(plan_scan_mod, "_build_zone_map", lambda *_a, **_k: None)
+    monkeypatch.setattr(plan_scan_mod, "_select_phases", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        plan_scan_mod,
+        "_run_phases",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(
+        plan_scan_mod,
+        "prewarm_review_phase_detectors",
+        lambda *_a, **_k: calls.append("prime"),
+    )
+    monkeypatch.setattr(
+        plan_scan_mod,
+        "clear_review_phase_prefetch",
+        lambda *_a, **_k: calls.append("clear"),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        plan_scan_mod._generate_issues_from_lang(Path("."), lang)
+
+    assert calls == ["prime", "clear"]
 
 
 def test_resolve_lang_prefers_explicit_and_fallbacks(monkeypatch):

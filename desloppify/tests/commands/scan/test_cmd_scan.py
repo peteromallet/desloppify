@@ -527,6 +527,23 @@ class TestCollectCodebaseMetrics:
         assert result["total_loc"] == 6  # 2 + 1 + 3
         assert result["total_directories"] == 2  # tmp_path and sub
 
+    def test_uses_precomputed_file_list_when_provided(self, tmp_path):
+        file_path = tmp_path / "a.py"
+        file_path.write_text("line1\nline2\n")
+
+        class FakeLang:
+            def file_finder(self, _path):
+                raise AssertionError("file_finder should not run when files are provided")
+
+        result = collect_codebase_metrics(
+            FakeLang(),
+            tmp_path,
+            files=[str(file_path)],
+        )
+        assert result is not None
+        assert result["total_files"] == 1
+        assert result["total_loc"] == 2
+
 
 # ---------------------------------------------------------------------------
 # warn_explicit_lang_with_no_files
@@ -580,5 +597,4 @@ class TestWarnExplicitLangWithNoFiles:
 # ---------------------------------------------------------------------------
 # show_post_scan_analysis
 # ---------------------------------------------------------------------------
-
 

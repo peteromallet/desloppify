@@ -12,6 +12,7 @@ from desloppify.base.discovery.paths import get_project_root
 from desloppify.engine.planning.helpers import is_subjective_phase
 from desloppify.engine.policy.zones import ZONE_POLICIES, FileZoneMap
 from desloppify.languages.framework import (
+    clear_review_phase_prefetch,
     DetectorPhase,
     LangConfig,
     LangRun,
@@ -20,6 +21,7 @@ from desloppify.languages.framework import (
     capability_report,
     get_lang,
     make_lang_run,
+    prewarm_review_phase_detectors,
 )
 from desloppify.state_io import Issue
 
@@ -130,7 +132,11 @@ def _generate_issues_from_lang(
     """Run detector phases from a LangRun."""
     _build_zone_map(path, lang, zone_overrides)
     phases = _select_phases(lang, include_slow=include_slow, profile=profile)
-    issues, all_potentials = _run_phases(path, lang, phases)
+    prewarm_review_phase_detectors(path, lang, phases)
+    try:
+        issues, all_potentials = _run_phases(path, lang, phases)
+    finally:
+        clear_review_phase_prefetch(lang)
     _stamp_issue_context(issues, lang)
     _stderr(f"\n  Total: {len(issues)} issues")
     return issues, all_potentials

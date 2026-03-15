@@ -217,12 +217,52 @@ def prepare_holistic_review_payload(
                 continue
             batch_dims = batch_item.get("dimensions", [])
             if isinstance(batch_dims, list):
-                batch_item["dimension_contexts"] = {
-                    d: dim_contexts[d] for d in batch_dims if d in dim_contexts
-                }
+                compact_contexts = _compact_batch_dimension_contexts(
+                    dimensions=batch_dims,
+                    all_contexts=dim_contexts,
+                )
+                if compact_contexts:
+                    batch_item["dimension_contexts"] = compact_contexts
 
     payload["investigation_batches"] = batches
     return payload
+
+
+def _compact_batch_dimension_contexts(
+    *,
+    dimensions: list[str],
+    all_contexts: dict[str, Any],
+) -> dict[str, dict[str, list[dict[str, object]]]]:
+    """Attach a prompt-facing slice of dimension contexts for each batch.
+
+    Batch prompts only need insight headers and settled/positive flags. Keeping
+    this payload compact avoids duplicating full insight descriptions across all
+    batches while preserving packet-level full context in payload["dimension_contexts"].
+    """
+    compact: dict[str, dict[str, list[dict[str, object]]]] = {}
+    for dimension in dimensions:
+        raw_context = all_contexts.get(dimension)
+        if not isinstance(raw_context, dict):
+            continue
+        raw_insights = raw_context.get("insights")
+        if not isinstance(raw_insights, list):
+            continue
+        insights: list[dict[str, object]] = []
+        for item in raw_insights:
+            if not isinstance(item, dict):
+                continue
+            header = str(item.get("header", "")).strip()
+            if not header:
+                continue
+            insight: dict[str, object] = {"header": header}
+            if bool(item.get("settled", False)):
+                insight["settled"] = True
+            if bool(item.get("positive", False)):
+                insight["positive"] = True
+            insights.append(insight)
+        if insights:
+            compact[dimension] = {"insights": insights}
+    return compact
 
 
 __all__ = ["HolisticPrepareDependencies", "prepare_holistic_review_payload"]

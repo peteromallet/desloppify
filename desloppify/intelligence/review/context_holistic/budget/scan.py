@@ -9,7 +9,6 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.base.discovery.file_paths import rel
-from desloppify.intelligence.review.context import file_excerpt
 
 from .analysis import _count_signature_params, _extract_type_names
 from .axes import _assemble_context, _compute_sub_axes
@@ -55,6 +54,14 @@ _CONFIG_BAG_RE = re.compile(
 )
 
 
+def _excerpt_from_content(content: str, *, max_lines: int = 30) -> str:
+    """Return a short leading excerpt directly from in-memory file content."""
+    lines = content.splitlines(keepends=True)
+    if len(lines) <= max_lines:
+        return content
+    return "".join(lines[:max_lines]) + f"\n... ({len(lines) - max_lines} more lines)"
+
+
 @dataclasses.dataclass
 class _AbstractionsCollector:
     """Accumulated state for the abstractions scan pass."""
@@ -90,7 +97,7 @@ def _scan_file(
     basename = Path(rpath).stem.lower()
     if basename in {"utils", "helpers", "util", "helper", "common", "misc"}:
         col.util_files.append(
-            {"file": rpath, "loc": loc, "excerpt": file_excerpt(filepath) or ""}
+            {"file": rpath, "loc": loc, "excerpt": _excerpt_from_content(content)}
         )
 
     signatures = _DEF_SIGNATURE_RE.findall(content)

@@ -77,16 +77,29 @@ def audit_excluded_dirs(
     return stale_issues
 
 
-def collect_codebase_metrics(lang, path: Path) -> dict | None:
+def collect_codebase_metrics(
+    lang,
+    path: Path,
+    *,
+    files: list[str] | None = None,
+) -> dict | None:
     """Collect LOC/file/directory counts for the configured language."""
-    if not lang or not lang.file_finder:
+    if not lang:
         return None
-    files = lang.file_finder(path)
+    if files is None and not lang.file_finder:
+        return None
+    scan_root = Path(path)
+    files = _resolve_scan_files(lang, scan_root, files=files)
     total_loc = 0
     dirs = set()
     for filepath in files:
         try:
-            total_loc += count_lines(Path(filepath))
+            abs_path = _resolve_scan_file_path(filepath, project_root=scan_root)
+            content = read_file_text(abs_path)
+            if content is not None:
+                total_loc += len(content.splitlines())
+            else:
+                total_loc += count_lines(Path(abs_path))
             dirs.add(str(Path(filepath).parent))
         except (OSError, UnicodeDecodeError) as exc:
             logger.debug(
@@ -99,6 +112,21 @@ def collect_codebase_metrics(lang, path: Path) -> dict | None:
         "total_loc": total_loc,
         "total_directories": len(dirs),
     }
+
+
+def _resolve_scan_files(lang, path: Path, *, files: list[str] | None = None) -> list[str]:
+    """Return discovered source files, preferring an explicit precomputed list."""
+    if files is not None:
+        return files
+    return lang.file_finder(path)
+
+
+def _resolve_scan_file_path(filepath: str, *, project_root: Path) -> str:
+    """Resolve relative scan filepaths against the active scan path."""
+    file_path = Path(filepath)
+    if file_path.is_absolute():
+        return str(file_path)
+    return str((project_root / file_path).resolve())
 
 
 def resolve_scan_profile(profile: str | None, lang) -> str:

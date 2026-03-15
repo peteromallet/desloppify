@@ -2,6 +2,7 @@
 
 import hashlib
 
+import desloppify.engine.detectors.dupes as dupes_mod
 from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.engine.detectors.dupes import detect_duplicates
 
@@ -231,3 +232,68 @@ class TestDetectDuplicates:
         assert total == 4
         assert len(entries) == 2
         assert all(entry["kind"] == "exact" for entry in entries)
+
+    def test_near_duplicate_cache_reuses_pairs_without_matcher(self, monkeypatch):
+        base_lines = [f"    result = compute_value_{i}(x, y, z)" for i in range(20)]
+        body_a = "\n".join(base_lines)
+        changed = base_lines.copy()
+        changed[-1] = "    result = compute_value_19(x, y, w)"
+        body_b = "\n".join(changed)
+        fns = [
+            _make_fn("foo", "a.py", body_a, loc=20),
+            _make_fn("bar", "b.py", body_b, loc=20),
+        ]
+        cache: dict[str, object] = {}
+        first_entries, total = detect_duplicates(fns, threshold=0.8, cache=cache)
+        assert total == 2
+        assert len(first_entries) == 1
+        assert isinstance(cache.get("near_pairs"), list)
+        assert cache.get("near_pairs")
+
+        class _NoMatcher:
+            def __init__(self, *_args, **_kwargs):
+                raise AssertionError("near matcher should not run for unchanged cached pairs")
+
+        monkeypatch.setattr(
+            "desloppify.engine.detectors.dupes.difflib.SequenceMatcher",
+            _NoMatcher,
+        )
+        second_entries, second_total = detect_duplicates(
+            fns,
+            threshold=0.8,
+            cache=cache,
+        )
+        assert second_total == 2
+        assert len(second_entries) == 1
+        assert second_entries[0]["kind"] == "near-duplicate"
+
+    def test_cache_threshold_mismatch_falls_back_to_full_near_pass(self, monkeypatch):
+        base_lines = [f"    result = compute_value_{i}(x, y, z)" for i in range(20)]
+        body_a = "\n".join(base_lines)
+        changed = base_lines.copy()
+        changed[-1] = "    result = compute_value_19(x, y, w)"
+        body_b = "\n".join(changed)
+        fns = [
+            _make_fn("foo", "a.py", body_a, loc=20),
+            _make_fn("bar", "b.py", body_b, loc=20),
+        ]
+        cache: dict[str, object] = {}
+        detect_duplicates(fns, threshold=0.8, cache=cache)
+
+        real_matcher = dupes_mod.difflib.SequenceMatcher
+        calls = {"count": 0}
+
+        class _CountingMatcher(real_matcher):
+            def __init__(self, *args, **kwargs):
+                calls["count"] += 1
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "desloppify.engine.detectors.dupes.difflib.SequenceMatcher",
+            _CountingMatcher,
+        )
+        entries, total = detect_duplicates(fns, threshold=0.95, cache=cache)
+        assert total == 2
+        assert calls["count"] > 0
+        assert len(entries) == 1
+        assert cache["threshold"] == 0.95

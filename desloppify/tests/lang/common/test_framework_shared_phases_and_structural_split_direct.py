@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ import desloppify.languages._framework.base.shared_phases_review as review_mod
 import desloppify.languages._framework.base.shared_phases_structural as structural_mod
 import desloppify.languages._framework.generic_support.structural as generic_structural_mod
 from desloppify.engine.policy.zones import Zone
+from desloppify.languages._framework.base.types import LangSecurityResult
 
 
 def test_phase_dupes_filters_non_production_functions(monkeypatch) -> None:
@@ -21,12 +23,16 @@ def test_phase_dupes_filters_non_production_functions(monkeypatch) -> None:
         zone_map=SimpleNamespace(
             get=lambda file_path: Zone.TEST if "tests/" in str(file_path) else Zone.PRODUCTION
         ),
+        review_cache={},
     )
 
     captured: dict[str, int] = {}
 
-    def _fake_detect(filtered):
+    def _fake_detect(filtered, **kwargs):
         captured["count"] = len(filtered)
+        cache_payload = kwargs.get("cache")
+        assert isinstance(cache_payload, dict)
+        captured["cache_size"] = len(cache_payload)
         return [{"id": "pair"}], len(filtered)
 
     monkeypatch.setattr(review_mod, "detect_duplicates", _fake_detect)
@@ -36,6 +42,8 @@ def test_phase_dupes_filters_non_production_functions(monkeypatch) -> None:
 
     assert len(issues) == 1
     assert captured["count"] == 1
+    assert "detectors" in lang.review_cache
+    assert "dupes" in lang.review_cache["detectors"]
     assert potentials == {"dupes": 1}
 
 
@@ -65,6 +73,96 @@ def test_phase_boilerplate_duplication_handles_none_and_entries(monkeypatch) -> 
 
     assert len(issues) == 1
     assert issues[0]["detector"] == "boilerplate_duplication"
+    assert potentials == {"boilerplate_duplication": 2}
+
+
+def test_phase_boilerplate_duplication_reuses_cached_entries(monkeypatch, tmp_path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("print('a')\n")
+
+    calls = {"count": 0}
+    entries = [
+        {
+            "id": "cluster-1",
+            "distinct_files": 2,
+            "window_size": 6,
+            "sample": ["x = 1"],
+            "locations": [
+                {"file": "src/a.py", "line": 1},
+                {"file": "src/b.py", "line": 2},
+            ],
+        }
+    ]
+    lang = SimpleNamespace(
+        zone_map=None,
+        name="python",
+        review_cache={},
+        file_finder=lambda _path: ["src/a.py"],
+    )
+
+    def _fake_detect(_path):
+        calls["count"] += 1
+        return entries
+
+    monkeypatch.setattr(review_mod, "detect_with_jscpd", _fake_detect)
+    monkeypatch.setattr(review_mod, "_filter_boilerplate_entries_by_zone", lambda items, _zone: items)
+
+    first_issues, first_potentials = review_mod.phase_boilerplate_duplication(tmp_path, lang)
+    second_issues, second_potentials = review_mod.phase_boilerplate_duplication(tmp_path, lang)
+
+    assert calls["count"] == 1
+    assert len(first_issues) == 1
+    assert len(second_issues) == 1
+    assert first_potentials == {"boilerplate_duplication": 2}
+    assert second_potentials == {"boilerplate_duplication": 2}
+
+
+def test_phase_boilerplate_duplication_uses_prefetched_result(monkeypatch, tmp_path) -> None:
+    class _ImmediateExecutor:
+        def submit(self, fn, *args, **kwargs):
+            future: concurrent.futures.Future = concurrent.futures.Future()
+            future.set_result(fn(*args, **kwargs))
+            return future
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("print('a')\n")
+    calls = {"count": 0}
+    entries = [
+        {
+            "id": "cluster-1",
+            "distinct_files": 2,
+            "window_size": 6,
+            "sample": ["x = 1"],
+            "locations": [
+                {"file": "src/a.py", "line": 1},
+                {"file": "src/b.py", "line": 2},
+            ],
+        }
+    ]
+    lang = SimpleNamespace(
+        zone_map=None,
+        name="python",
+        review_cache={},
+        file_finder=lambda _path: ["src/a.py"],
+    )
+
+    monkeypatch.setattr(review_mod, "_PREFETCH_EXECUTOR", _ImmediateExecutor())
+    monkeypatch.setattr(
+        review_mod,
+        "detect_with_jscpd",
+        lambda _path: (calls.__setitem__("count", calls["count"] + 1), entries)[1],
+    )
+    monkeypatch.setattr(review_mod, "_filter_boilerplate_entries_by_zone", lambda items, _zone: items)
+
+    review_mod.prewarm_review_phase_detectors(
+        tmp_path,
+        lang,
+        [SimpleNamespace(label="Boilerplate duplication", run=review_mod.phase_boilerplate_duplication)],
+    )
+    issues, potentials = review_mod.phase_boilerplate_duplication(tmp_path, lang)
+
+    assert calls["count"] == 1
+    assert len(issues) == 1
     assert potentials == {"boilerplate_duplication": 2}
 
 
@@ -117,6 +215,153 @@ def test_phase_security_records_default_coverage_when_missing(monkeypatch) -> No
     assert len(issues) == 2
     assert potentials == {"security": 5}
     assert lang.detector_coverage["security"]["status"] == "full"
+
+
+def test_phase_security_reuses_lang_security_cache(monkeypatch, tmp_path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("print('a')\n")
+
+    calls = {"count": 0}
+    lang = SimpleNamespace(
+        zone_map=None,
+        file_finder=lambda _path: ["src/a.py"],
+        name="python",
+        review_cache={},
+        detector_coverage={},
+        detect_lang_security_detailed=lambda _files, _zones: (
+            calls.__setitem__("count", calls["count"] + 1),
+            LangSecurityResult(
+                entries=[
+                    {
+                        "file": "src/lang.py",
+                        "tier": 2,
+                        "confidence": "medium",
+                        "summary": "lang issue",
+                        "name": "lang",
+                    }
+                ],
+                files_scanned=3,
+            ),
+        )[1],
+    )
+
+    monkeypatch.setattr(review_mod, "filter_entries", lambda _zones, entries, _detector: entries)
+    monkeypatch.setattr(
+        review_mod,
+        "_entries_to_issues",
+        lambda detector, entries, **_kwargs: [{"detector": detector, "file": e["file"]} for e in entries],
+    )
+    monkeypatch.setattr(review_mod, "_log_phase_summary", lambda *_args, **_kwargs: None)
+
+    first_issues, first_potentials = review_mod.phase_security(
+        tmp_path,
+        lang,
+        detect_security_issues=lambda _files, _zones, _name, scan_root: (
+            [
+                {
+                    "file": str(scan_root / "src" / "cross.py"),
+                    "tier": 2,
+                    "confidence": "high",
+                    "summary": "cross issue",
+                    "name": "cross",
+                }
+            ],
+            1,
+        ),
+    )
+    second_issues, second_potentials = review_mod.phase_security(
+        tmp_path,
+        lang,
+        detect_security_issues=lambda _files, _zones, _name, scan_root: (
+            [
+                {
+                    "file": str(scan_root / "src" / "cross.py"),
+                    "tier": 2,
+                    "confidence": "high",
+                    "summary": "cross issue",
+                    "name": "cross",
+                }
+            ],
+            1,
+        ),
+    )
+
+    assert calls["count"] == 1
+    assert len(first_issues) == 2
+    assert len(second_issues) == 2
+    assert first_potentials == {"security": 3}
+    assert second_potentials == {"security": 3}
+
+
+def test_phase_security_uses_prefetched_lang_result(monkeypatch, tmp_path) -> None:
+    class _ImmediateExecutor:
+        def submit(self, fn, *args, **kwargs):
+            future: concurrent.futures.Future = concurrent.futures.Future()
+            future.set_result(fn(*args, **kwargs))
+            return future
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("print('a')\n")
+    calls = {"count": 0}
+    lang = SimpleNamespace(
+        zone_map=None,
+        file_finder=lambda _path: ["src/a.py"],
+        name="python",
+        review_cache={},
+        detector_coverage={},
+        detect_lang_security_detailed=lambda _files, _zones: (
+            calls.__setitem__("count", calls["count"] + 1),
+            LangSecurityResult(
+                entries=[],
+                files_scanned=4,
+            ),
+        )[1],
+    )
+
+    monkeypatch.setattr(review_mod, "_PREFETCH_EXECUTOR", _ImmediateExecutor())
+    monkeypatch.setattr(review_mod, "filter_entries", lambda _zones, entries, _detector: entries)
+    monkeypatch.setattr(review_mod, "_entries_to_issues", lambda *_a, **_k: [])
+    monkeypatch.setattr(review_mod, "_log_phase_summary", lambda *_args, **_kwargs: None)
+
+    review_mod.prewarm_review_phase_detectors(
+        tmp_path,
+        lang,
+        [SimpleNamespace(label="Security", run=review_mod.phase_security)],
+    )
+    issues, potentials = review_mod.phase_security(
+        tmp_path,
+        lang,
+        detect_security_issues=lambda _files, _zones, _name, **_kwargs: ([], 1),
+    )
+
+    assert calls["count"] == 1
+    assert issues == []
+    assert potentials == {"security": 4}
+
+
+def test_review_function_extraction_cached_across_signature_and_dupes(monkeypatch, tmp_path) -> None:
+    calls = {"count": 0}
+    functions = [SimpleNamespace(file="src/a.py", name="foo")]
+    lang = SimpleNamespace(
+        extract_functions=lambda _path: (
+            calls.__setitem__("count", calls["count"] + 1),
+            functions,
+        )[1],
+        zone_map=None,
+        review_cache={},
+    )
+
+    monkeypatch.setattr(
+        "desloppify.engine.detectors.signature.detect_signature_variance",
+        lambda _functions, **_kwargs: ([], 0),
+    )
+    monkeypatch.setattr(review_mod, "detect_duplicates", lambda _functions, **_kwargs: ([], 1))
+    monkeypatch.setattr(review_mod, "make_dupe_issues", lambda *_args, **_kwargs: [])
+
+    review_mod.phase_signature(tmp_path, lang)
+    review_mod.phase_dupes(tmp_path, lang)
+
+    assert calls["count"] == 1
 
 
 def test_phase_test_coverage_and_private_imports_paths(monkeypatch) -> None:

@@ -83,14 +83,24 @@ def test_run_scan_generation_uses_planning_scan_surface(monkeypatch) -> None:
             ([{"id": "open-1"}], {"smells": 1}),
         )[1],
     )
-    monkeypatch.setattr(scan_workflow_mod, "collect_codebase_metrics", lambda _lang, _path: {"loc": 10})
+    monkeypatch.setattr(
+        scan_workflow_mod,
+        "collect_codebase_metrics",
+        lambda _lang, _path, **_kwargs: (
+            calls.setdefault("metrics_kwargs", _kwargs),
+            {"loc": 10},
+        )[1],
+    )
     monkeypatch.setattr(scan_workflow_mod, "warn_explicit_lang_with_no_files", lambda *_a, **_k: None)
     monkeypatch.setattr(scan_workflow_mod, "get_exclusions", lambda: [])
     monkeypatch.setattr(scan_workflow_mod, "_augment_stale_wontfix_impl", lambda issues, **_k: (issues, 0))
 
     runtime = SimpleNamespace(
         path=".",
-        lang=SimpleNamespace(file_finder=None),
+        lang=SimpleNamespace(
+            file_finder=None,
+            zone_map=SimpleNamespace(all_files=lambda: ["src/a.py"]),
+        ),
         effective_include_slow=True,
         zone_overrides={"src": "prod"},
         profile="full",
@@ -110,6 +120,7 @@ def test_run_scan_generation_uses_planning_scan_surface(monkeypatch) -> None:
     assert calls["generate"][2].include_slow is True
     assert calls["generate"][2].zone_overrides == {"src": "prod"}
     assert calls["generate"][2].profile == "full"
+    assert calls["metrics_kwargs"] == {"files": ["src/a.py"]}
     assert calls["file_cache_on"] is True
     assert calls["file_cache_off"] is True
     assert calls["parse_cache_on"] is True

@@ -296,6 +296,78 @@ def test_authorization_collector_includes_with_auth_siblings_same_directory() ->
     ]
 
 
+def test_prepare_holistic_payload_compacts_batch_dimension_contexts() -> None:
+    deps = orchestration_mod.HolisticPrepareDependencies(
+        is_file_cache_enabled_fn=lambda: False,
+        enable_file_cache_fn=lambda: None,
+        disable_file_cache_fn=lambda: None,
+        build_holistic_context_fn=lambda *_args, **_kwargs: {"codebase_stats": {"total_files": 1}},
+        build_review_context_fn=lambda *_args, **_kwargs: SimpleNamespace(),
+        load_dimensions_for_lang_fn=lambda _name: (
+            ["naming_quality"],
+            {"naming_quality": {"prompt": "Assess naming"}},
+            "sys",
+        ),
+        resolve_dimensions_fn=lambda cli_dimensions, default_dimensions: cli_dimensions or default_dimensions,
+        get_lang_guidance_fn=lambda _name: "guide",
+        assemble_holistic_batches_fn=lambda *_args, **_kwargs: [
+            {
+                "name": "Naming",
+                "dimensions": ["naming_quality"],
+                "files_to_read": ["src/a.py"],
+                "why": "seed",
+            }
+        ],
+        holistic_batch_deps=holistic_batches_mod.HolisticBatchAssemblyDependencies(
+            build_investigation_batches_fn=lambda *_args, **_kwargs: [],
+            batch_concerns_fn=lambda *_args, **_kwargs: None,
+            filter_batches_to_dimensions_fn=lambda batches, _dims, **_kwargs: batches,
+            append_full_sweep_batch_fn=lambda **_kwargs: None,
+            log_best_effort_failure_fn=lambda *_args, **_kwargs: None,
+            logger=object(),
+        ),
+        serialize_context_fn=lambda _ctx: {},
+    )
+    payload = orchestration_mod.prepare_holistic_review_payload(
+        Path("."),
+        SimpleNamespace(name="python", file_finder=lambda _path: ["src/a.py"], zone_map=None),
+        state={
+            "dimension_contexts": {
+                "naming_quality": {
+                    "insights": [
+                        {
+                            "header": "Names map to command intent",
+                            "description": "Full rationale should remain packet-level only.",
+                            "settled": True,
+                            "positive": True,
+                        }
+                    ]
+                }
+            }
+        },
+        options=SimpleNamespace(
+            files=["src/a.py"],
+            dimensions=["naming_quality"],
+            include_full_sweep=False,
+            max_files_per_batch=10,
+            include_issue_history=False,
+            issue_history_max_issues=10,
+            issue_history_max_batch_items=5,
+        ),
+        deps=deps,
+    )
+
+    assert payload["dimension_contexts"]["naming_quality"]["insights"][0]["description"]
+    batch_ctx = payload["investigation_batches"][0]["dimension_contexts"]["naming_quality"]
+    assert batch_ctx["insights"] == [
+        {
+            "header": "Names map to command intent",
+            "settled": True,
+            "positive": True,
+        }
+    ]
+
+
 def test_holistic_batch_assembly_skips_concerns_for_inactive_dimension() -> None:
     deps = holistic_batches_mod.HolisticBatchAssemblyDependencies(
         build_investigation_batches_fn=lambda *_args, **_kwargs: [
