@@ -737,6 +737,341 @@ func main() {
         entries = detect_unused_imports([], spec)
         assert entries == []
 
+    def test_js_named_imports_all_used_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import { rateLimit, RateLimitConfig } from "@/lib/rate-limit";
+
+console.log(rateLimit, RateLimitConfig);
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_js_default_import_used_in_jsx_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import ReactMarkdown from "react-markdown";
+
+export function App() {
+  return <ReactMarkdown />;
+}
+"""
+        f = tmp_path / "main.jsx"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_js_aliased_named_import_used_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import { foo as bar } from "x";
+
+console.log(bar);
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_js_namespace_import_used_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import * as ns from "x";
+
+console.log(ns.foo);
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_js_partially_unused_import_line_flags_only_unused_symbol(self, tmp_path):
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import {
+  used,
+  unused,
+} from "x";
+
+console.log(used);
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        names = [e["name"] for e in entries]
+        assert "unused" in names
+        assert "used" not in names
+        assert len(entries) == 1
+
+    def test_js_side_effect_import_only_not_flagged(self, tmp_path):
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import "x";
+
+console.log("hi");
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_js_unused_import_issue_id_includes_line_and_symbol(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.phases import (
+            make_unused_imports_phase,
+        )
+
+        code = """\
+import { used, unused } from "x";
+
+console.log(used);
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        phase = make_unused_imports_phase(JS_SPEC)
+        mock_lang = MagicMock()
+        mock_lang.file_finder.return_value = [str(f)]
+
+        issues, potentials = phase.run(tmp_path, mock_lang)
+
+        assert potentials["unused_imports"] == 1
+        assert len(issues) == 1
+        assert issues[0]["id"].endswith("::unused_import::1::unused")
+        assert issues[0]["summary"] == "Unused import: unused"
+
+    def test_ts_named_imports_all_used_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import { rateLimit, RateLimitConfig } from "@/lib/rate-limit";
+
+export const x: RateLimitConfig = rateLimit();
+"""
+        f = tmp_path / "main.ts"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        assert entries == []
+
+    def test_ts_default_import_used_in_tsx_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import ReactMarkdown from "react-markdown";
+
+export function App() {
+  return <ReactMarkdown />;
+}
+"""
+        f = tmp_path / "main.tsx"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        assert entries == []
+
+    def test_ts_type_only_named_import_used_in_type_position_no_issue(self, tmp_path):
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import type { Foo } from "x";
+
+export type X = Foo;
+"""
+        f = tmp_path / "main.ts"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        assert entries == []
+
+    def test_ts_partially_unused_import_line_flags_only_unused_symbol(self, tmp_path):
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import {
+  used,
+  unused,
+} from "x";
+
+export const y = used;
+"""
+        f = tmp_path / "main.ts"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        names = [e["name"] for e in entries]
+        assert "unused" in names
+        assert "used" not in names
+        assert len(entries) == 1
+
+    def test_ts_side_effect_import_only_not_flagged(self, tmp_path):
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import "x";
+
+export const x = 1;
+"""
+        f = tmp_path / "main.ts"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        assert entries == []
+
+    def test_ts_unused_import_issue_id_includes_line_and_symbol(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.phases import (
+            make_unused_imports_phase,
+        )
+
+        code = """\
+import { used, unused } from "x";
+
+export const z = used;
+"""
+        f = tmp_path / "main.ts"
+        f.write_text(code)
+
+        phase = make_unused_imports_phase(TYPESCRIPT_SPEC)
+        mock_lang = MagicMock()
+        mock_lang.file_finder.return_value = [str(f)]
+
+        issues, potentials = phase.run(tmp_path, mock_lang)
+
+        assert potentials["unused_imports"] == 1
+        assert len(issues) == 1
+        assert issues[0]["id"].endswith("::unused_import::1::unused")
+        assert issues[0]["summary"] == "Unused import: unused"
+
+    def test_js_destructuring_default_value_counts_as_usage(self, tmp_path):
+        """Default values inside destructuring patterns should count as usage."""
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import { imported } from "x";
+
+const { x = imported } = obj;
+console.log(x);
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_js_param_default_value_counts_as_usage(self, tmp_path):
+        """Parameter default values should count as usage (JS grammar)."""
+        from desloppify.languages._framework.treesitter import JS_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import { Bar } from "x";
+
+function f(x = Bar) {
+  return x;
+}
+"""
+        f = tmp_path / "main.js"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], JS_SPEC)
+        assert entries == []
+
+    def test_ts_param_type_annotation_counts_as_usage(self, tmp_path):
+        """Parameter type annotations should count as usage (TSX grammar)."""
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """\
+import type { Foo } from "x";
+
+export function f(x: Foo) {
+  return x;
+}
+"""
+        f = tmp_path / "main.ts"
+        f.write_text(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        assert entries == []
+
+    def test_ts_file_with_nul_byte_does_not_false_positive(self, tmp_path):
+        """Stray NUL bytes should not cause parse-truncation false positives."""
+        from desloppify.languages._framework.treesitter import TYPESCRIPT_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = (
+            b'import { jest } from "@jest/globals";\n'
+            b'jest.spyOn(console, "log");\n'
+            b'\x00\n'
+            b'jest.spyOn(console, "warn");\n'
+        )
+        f = tmp_path / "main.ts"
+        f.write_bytes(code)
+
+        entries = detect_unused_imports([str(f)], TYPESCRIPT_SPEC)
+        assert entries == []
+
 
 # ── Signature variance tests ─────────────────────────────────
 

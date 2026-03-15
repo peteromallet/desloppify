@@ -126,8 +126,10 @@ def make_unused_imports_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
 
         entries = detect_unused_imports(file_list, spec)
         for e in entries:
+            symbol = e.get("symbol")
+            issue_name = f"unused_import::{e['line']}" + (f"::{symbol}" if symbol else "")
             issues.append(make_issue(
-                "unused", e["file"], f"unused_import::{e['line']}",
+                "unused", e["file"], issue_name,
                 tier=3, confidence="medium",
                 summary=f"Unused import: {e['name']}",
             ))
