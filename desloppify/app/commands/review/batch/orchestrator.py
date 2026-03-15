@@ -582,7 +582,7 @@ def do_import_run(
                 lang_name=lang_name,
                 scan_path=scan_path,
                 deps=FollowupScanDeps(
-                    project_root=_runtime_project_root(),
+                    project_root=Path(state_file).parent.parent,
                     timeout_seconds=FOLLOWUP_SCAN_TIMEOUT_SECONDS,
                     python_executable=sys.executable,
                     subprocess_run=subprocess.run,
