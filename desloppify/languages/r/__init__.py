@@ -10,9 +10,7 @@ generic_lang(
         {
             "label": "lintr",
             "cmd": (
-                'Rscript -e \'cat(paste(capture.output('
-                'lintr::lint_dir(".", show_notifications=FALSE)'
-                '), collapse="\\n"))\''
+                "Rscript -e \"lintr::lint_dir('.')\""
             ),
             "fmt": "gnu",
             "id": "lintr_lint",
