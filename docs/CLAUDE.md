@@ -19,7 +19,7 @@ Run `desloppify review --prepare` first to generate review data, then use Claude
   - The codebase path and list of dimensions to score
   - The blind packet path to read
   - Instruction to score from code evidence only, not from targets
-- Each agent writes output to a separate file. Merge assessments (average overlapping dimension scores) and concatenate findings.
+- Each agent writes output to `results/batch-N.raw.txt` (matching the batch index). Merge assessments (average overlapping dimension scores) and concatenate findings.
 
 ### Subagent rules
 

@@ -20,7 +20,7 @@ tools:
 Use the prompt from the "Reviewer agent prompt" section above.
 
 Launch multiple reviewer subagents, each with a subset of dimensions.
-Each agent writes its output to a separate file.
+Each agent writes its output to `results/batch-N.raw.txt` (matching the batch index).
 Merge assessments (average where dimensions overlap) and findings, then import.
 
 <!-- desloppify-overlay: cursor -->

@@ -12,7 +12,7 @@ multiple Cascade panes manually.
    in one, abstraction + error consistency in another).
 3. Each pane scores its assigned dimensions independently, reading
    the codebase and `query.json`'s `dimension_prompts` for context.
-4. Each pane writes output to a separate file.
+4. Each pane writes output to `results/batch-N.raw.txt` (matching the batch index).
 5. In the primary pane, merge assessments and findings, then import.
 
 If the user prefers a single-pane workflow, review all dimensions sequentially

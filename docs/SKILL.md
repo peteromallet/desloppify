@@ -6,7 +6,6 @@ description: >
   duplicate functions, code smells, naming issues, import cycles, or coupling
   problems. Also use when asked for a health score, what to fix next, or to
   create a cleanup plan. Supports 29 languages.
-allowed-tools: Bash(desloppify *)
 ---
 
 <!-- desloppify-begin -->
@@ -275,6 +274,6 @@ If the fix is unclear or the change needs discussion, open an issue at `https://
 
 ## Prerequisite
 
-`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: pip install --upgrade git+https://github.com/peteromallet/desloppify.git"`
+`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: uvx --from git+https://github.com/peteromallet/desloppify.git desloppify"`
 
 <!-- desloppify-end -->
