@@ -141,10 +141,10 @@ def ts_extract_functions(
         for _pattern_idx, captures in matches:
             func_node = _unwrap_node(captures.get("func"))
             name_node = _unwrap_node(captures.get("name"))
-            if not func_node or not name_node:
+            if not func_node:
                 continue
 
-            name_text = _node_text(name_node)
+            name_text = _node_text(name_node) if name_node else "<anonymous>"
 
             line = func_node.start_point[0] + 1  # 1-indexed
             end_line = func_node.end_point[0] + 1
