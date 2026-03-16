@@ -19,11 +19,12 @@ from desloppify.engine._plan.constants import QueueSyncResult
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _runtime(*, state=None, config=None) -> SimpleNamespace:
+def _runtime(*, state=None, config=None, force_rescan=False) -> SimpleNamespace:
     return SimpleNamespace(
         state=state or {},
         state_path=Path("/tmp/fake-state.json"),
         config=config or {},
+        force_rescan=force_rescan,
     )
 
 

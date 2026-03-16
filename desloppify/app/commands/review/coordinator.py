@@ -66,19 +66,22 @@ def git_baseline(
     if head_proc.returncode != 0:
         return None, None
     head = head_proc.stdout.strip() or None
-    status_proc = subprocess_run(
-        [
-            "git",
-            "-C",
-            str(project_root),
-            "status",
-            "--porcelain",
-            "--untracked-files=normal",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        status_proc = subprocess_run(
+            [
+                "git",
+                "-C",
+                str(project_root),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None, None
     status_raw = status_proc.stdout if status_proc.returncode == 0 else ""
     status_hash = _stable_json_sha256(status_raw)
     return head, status_hash
