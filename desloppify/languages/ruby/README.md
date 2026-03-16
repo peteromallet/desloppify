@@ -63,3 +63,4 @@ The following are excluded from analysis by default:
 - `coverage/`
 - `tmp/`
 - `log/`
+- `bin/`
