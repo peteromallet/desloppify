@@ -141,8 +141,13 @@ body #details {
   color: #fff;
 }
 
-.status-soon {
+.status-active {
   background: var(--amber);
+  color: #fff;
+}
+
+.status-soon {
+  background: #999;
   color: #fff;
 }
 

@@ -10,7 +10,7 @@ allowed-tools: Bash(desloppify *)
 ---
 
 <!-- desloppify-begin -->
-<!-- desloppify-skill-version: 6 -->
+<!-- desloppify-skill-version: 5 -->
 
 # Desloppify
 
@@ -203,20 +203,6 @@ desloppify config set commit_tracking_enabled false  # disable guidance
 
 After resolving findings as `fixed`, the tool shows uncommitted work, committed history, and a suggested commit message. After committing externally, run `record` to move findings from uncommitted to committed and auto-update the linked PR description.
 
-### Agent directives
-
-Directives are messages shown to agents at lifecycle phase transitions — use them to switch models, set constraints, or give context-specific instructions.
-
-```bash
-desloppify directives                     # show all configured directives
-desloppify directives set execute "Switch to claude-sonnet-4-6. Focus on speed."
-desloppify directives set triage "Switch to claude-opus-4-6. Read carefully."
-desloppify directives set review "Use blind packet. Do not anchor on previous scores."
-desloppify directives unset execute       # remove a directive
-```
-
-Available phases: `execute`, `review`, `triage`, `workflow`, `scan` (and fine-grained variants like `review_initial`, `triage_postflight`, etc.).
-
 ### Quick reference
 
 ```bash
@@ -277,4 +263,27 @@ If the fix is unclear or the change needs discussion, open an issue at `https://
 
 `command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: pip install --upgrade git+https://github.com/peteromallet/desloppify.git"`
 
+<!-- desloppify-end -->
+
+## Codex Overlay
+
+This is the canonical Codex overlay used by the README install command.
+
+1. Prefer first-class batch runs: `desloppify review --run-batches --runner codex --parallel --scan-after-import`.
+2. The command writes immutable packet snapshots under `.desloppify/review_packets/holistic_packet_*.json`; use those for reproducible retries.
+3. Keep reviewer input scoped to the immutable packet and the source files named in each batch.
+4. If a batch fails, retry only that slice with `desloppify review --run-batches --packet <packet.json> --only-batches <idxs>`.
+5. Manual override is safety-scoped: you cannot combine it with `--allow-partial`, and provisional manual scores expire on the next `scan` unless replaced by trusted internal or attested-external imports.
+
+### Triage workflow
+
+Prefer automated triage: `desloppify plan triage --run-stages --runner codex`
+
+Options: `--only-stages observe,reflect` (subset), `--dry-run` (prompts only), `--stage-timeout-seconds N` (per-stage).
+
+Run artifacts go to `.desloppify/triage_runs/<timestamp>/` — each run gets its own directory with `run.log` (live timestamped events), `run_summary.json`, per-stage `prompts/`, `output/`, and `logs/`. Check `run.log` to diagnose stalls or failures. Re-running resumes from the last confirmed stage.
+
+If automated triage stalls, check `run.log` for the last event, then use `desloppify plan triage --stage-prompt <stage>` to get the full prompt with gate rules.
+
+<!-- desloppify-overlay: codex -->
 <!-- desloppify-end -->
