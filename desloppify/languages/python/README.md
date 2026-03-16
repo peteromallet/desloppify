@@ -1,3 +1,70 @@
+# Python Language Plugin for Desloppify
+
+Provides in-depth static analysis for Python codebases — no external linter required for most checks.
+
+## Supported extensions
+
+`.py`
+
+## Requirements
+
+- Python 3.11+
+- [`ruff`](https://docs.astral.sh/ruff/) on `PATH` — required for the **Unused** phase (unused imports, variables)
+- [`bandit`](https://bandit.readthedocs.io/) on `PATH` — optional; enables the **Security** phase
+
+Install optional tools:
+
+```bash
+pip install ruff bandit
+```
+
+## Project detection
+
+Activates on projects containing any of: `pyproject.toml`, `setup.py`, `setup.cfg`.
+
+## Usage
+
+```bash
+# Scan for issues
+desloppify scan --path <project>
+
+# Full scan with all phases
+desloppify scan --path <project> --profile full
+```
+
+Autofix is **not** supported for Python — all findings are reported only.
+
+## What gets analysed
+
+| Phase | What it finds |
+|-------|--------------|
+| Unused (ruff) | Unused imports and variables |
+| Structural analysis | God classes, large files, complexity hotspots |
+| Responsibility cohesion | Modules/classes that do too many unrelated things |
+| Coupling + cycles + orphaned | Import cycles, tight coupling, unreachable modules |
+| Uncalled functions | Dead code — functions never called within the project |
+| Test coverage | Functions/classes with no corresponding tests |
+| Signature | Overly broad signatures (`*args`, `**kwargs` misuse) |
+| Code smells | Swallowed exceptions, mutable defaults, bare excepts, and more |
+| Mutable state | Mutable class-level defaults and module-level shared state |
+| Security | Common security issues via bandit (requires bandit) |
+| Private imports | Cross-module access to private (`_`-prefixed) internals |
+| Layer violations | Higher-level modules importing from lower-level domains |
+| Dict key flow | Inconsistent dictionary schemas across call sites |
+| Unused enums | Enum members defined but never referenced |
+
+## Exclusions
+
+The following are excluded from analysis by default:
+
+- `__pycache__`
+- `.venv`
+- `node_modules`
+- `.eggs`
+- `*.egg-info`
+
+---
+
 ## Python Plugin Maintainer Notes
 
 ### AST smell detector layout
