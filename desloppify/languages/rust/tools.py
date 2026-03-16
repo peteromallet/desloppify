@@ -560,11 +560,6 @@ def _strip_comments_preserve_lines(text: str) -> str:
     return "".join(result)
 
 
-def _strip_c_style_comments_preserve_lines(text: str) -> str:
-    """Backwards-compatible shim for tests/imports expecting the old helper name."""
-    return _strip_comments_preserve_lines(text)
-
-
 def _line_number(content: str, offset: int) -> int:
     return content.count("\n", 0, offset) + 1
 
