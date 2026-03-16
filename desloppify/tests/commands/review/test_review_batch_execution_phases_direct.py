@@ -222,3 +222,110 @@ def test_merge_and_import_batch_run_calls_all_pipeline_steps() -> None:
         phases_mod.import_and_finalize = original_import
 
     assert calls == ["enforce", "import"]
+
+
+def test_is_partial_batch_retry_detects_subset() -> None:
+    """Selected indexes that are a strict subset of all batches is a partial retry."""
+    ctx = _prepared_context(
+        batches=[{"dimensions": ["a"]}, {"dimensions": ["b"]}, {"dimensions": ["c"]}],
+        selected_indexes=[1],
+    )
+    assert phases_mod._is_partial_batch_retry(ctx) is True
+
+
+def test_is_partial_batch_retry_false_for_full_run() -> None:
+    ctx = _prepared_context(
+        batches=[{"dimensions": ["a"]}, {"dimensions": ["b"]}],
+        selected_indexes=[0, 1],
+    )
+    assert phases_mod._is_partial_batch_retry(ctx) is False
+
+
+def test_partial_retry_bypasses_coverage_gate() -> None:
+    """When --only-batches selects a subset, the coverage gate gets allow_partial=True."""
+    captured_kwargs: dict = {}
+    original_merge = phases_mod.merge_and_write_results
+    original_enforce = phases_mod.enforce_import_coverage
+    original_import = phases_mod.import_and_finalize
+
+    # Return missing dims so the gate would normally block.
+    phases_mod.merge_and_write_results = lambda **_k: (Path("merged.json"), ["missing_dim"])
+
+    def capture_enforce(**kwargs):
+        captured_kwargs.update(kwargs)
+
+    phases_mod.enforce_import_coverage = capture_enforce
+    phases_mod.import_and_finalize = lambda **_k: None
+    try:
+        # 3 batches but only batch 1 selected => partial retry
+        phases_mod.merge_and_import_batch_run(
+            prepared=_prepared_context(
+                allow_partial=False,
+                batches=[{"dimensions": ["a"]}, {"dimensions": ["b"]}, {"dimensions": ["c"]}],
+                selected_indexes=[1],
+                append_run_log=lambda *_a, **_k: None,
+                args=SimpleNamespace(),
+            ),
+            executed=_executed_context(),
+            state_file=Path("state.json"),
+            deps=SimpleNamespace(
+                merge_batch_results_fn=lambda *_a, **_k: {"issues": []},
+                build_import_provenance_fn=lambda **_k: {},
+                safe_write_text_fn=lambda *_a, **_k: None,
+                colorize_fn=lambda text, _tone=None: text,
+                do_import_fn=lambda *_a, **_k: None,
+                run_followup_scan_fn=lambda **_k: 0,
+            ),
+        )
+    finally:
+        phases_mod.merge_and_write_results = original_merge
+        phases_mod.enforce_import_coverage = original_enforce
+        phases_mod.import_and_finalize = original_import
+
+    # The gate should have been called with allow_partial=True despite
+    # the prepared context having allow_partial=False.
+    assert captured_kwargs["allow_partial"] is True
+
+
+def test_full_run_does_not_bypass_coverage_gate() -> None:
+    """A full run (all batches selected) should NOT override allow_partial."""
+    captured_kwargs: dict = {}
+    original_merge = phases_mod.merge_and_write_results
+    original_enforce = phases_mod.enforce_import_coverage
+    original_import = phases_mod.import_and_finalize
+
+    phases_mod.merge_and_write_results = lambda **_k: (Path("merged.json"), ["missing_dim"])
+
+    def capture_enforce(**kwargs):
+        captured_kwargs.update(kwargs)
+
+    phases_mod.enforce_import_coverage = capture_enforce
+    phases_mod.import_and_finalize = lambda **_k: None
+    try:
+        # All 2 batches selected => full run
+        phases_mod.merge_and_import_batch_run(
+            prepared=_prepared_context(
+                allow_partial=False,
+                batches=[{"dimensions": ["a"]}, {"dimensions": ["b"]}],
+                selected_indexes=[0, 1],
+                append_run_log=lambda *_a, **_k: None,
+                args=SimpleNamespace(),
+            ),
+            executed=_executed_context(),
+            state_file=Path("state.json"),
+            deps=SimpleNamespace(
+                merge_batch_results_fn=lambda *_a, **_k: {"issues": []},
+                build_import_provenance_fn=lambda **_k: {},
+                safe_write_text_fn=lambda *_a, **_k: None,
+                colorize_fn=lambda text, _tone=None: text,
+                do_import_fn=lambda *_a, **_k: None,
+                run_followup_scan_fn=lambda **_k: 0,
+            ),
+        )
+    finally:
+        phases_mod.merge_and_write_results = original_merge
+        phases_mod.enforce_import_coverage = original_enforce
+        phases_mod.import_and_finalize = original_import
+
+    # Full run should preserve the original allow_partial=False.
+    assert captured_kwargs["allow_partial"] is False
