@@ -120,6 +120,8 @@ Four paths to get subjective scores:
 - **Cloud/external**: `desloppify review --external-start --external-runner claude` → follow session template → `--external-submit`.
 - **Manual path**: `desloppify review --prepare` → review per dimension → `desloppify review --import file.json`.
 
+**Batch output vs import filenames:** Individual batch outputs from subagents must be named `batch-N.raw.txt` (plain text/JSON content, `.raw.txt` extension). The `.json` filenames in `--import merged.json` or `--import findings.json` refer to the final merged import file, not individual batch outputs. Do not name batch outputs with a `.json` extension.
+
 - Import first, fix after — import creates tracked state entries for correlation.
 - Target-matching scores trigger auto-reset to prevent gaming. Use the blind-review workflow described in your agent overlay doc (e.g. `docs/CLAUDE.md`, `docs/HERMES.md`).
 - Even moderate scores (60-80) dramatically improve overall health.
@@ -275,5 +277,7 @@ If the fix is unclear or the change needs discussion, open an issue at `https://
 ## Prerequisite
 
 `command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: uvx --from git+https://github.com/peteromallet/desloppify.git desloppify"`
+
+If `uvx` is not available: `pip install desloppify[full]`
 
 <!-- desloppify-end -->

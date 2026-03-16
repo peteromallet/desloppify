@@ -6,11 +6,10 @@ description: >
   duplicate functions, code smells, naming issues, import cycles, or coupling
   problems. Also use when asked for a health score, what to fix next, or to
   create a cleanup plan. Supports 29 languages.
-allowed-tools: Bash(desloppify *)
 ---
 
 <!-- desloppify-begin -->
-<!-- desloppify-skill-version: 5 -->
+<!-- desloppify-skill-version: 6 -->
 
 # Desloppify
 
@@ -121,6 +120,8 @@ Four paths to get subjective scores:
 - **Cloud/external**: `desloppify review --external-start --external-runner claude` → follow session template → `--external-submit`.
 - **Manual path**: `desloppify review --prepare` → review per dimension → `desloppify review --import file.json`.
 
+**Batch output vs import filenames:** Individual batch outputs from subagents must be named `batch-N.raw.txt` (plain text/JSON content, `.raw.txt` extension). The `.json` filenames in `--import merged.json` or `--import findings.json` refer to the final merged import file, not individual batch outputs. Do not name batch outputs with a `.json` extension.
+
 - Import first, fix after — import creates tracked state entries for correlation.
 - Target-matching scores trigger auto-reset to prevent gaming. Use the blind-review workflow described in your agent overlay doc (e.g. `docs/CLAUDE.md`, `docs/HERMES.md`).
 - Even moderate scores (60-80) dramatically improve overall health.
@@ -203,6 +204,20 @@ desloppify config set commit_tracking_enabled false  # disable guidance
 
 After resolving findings as `fixed`, the tool shows uncommitted work, committed history, and a suggested commit message. After committing externally, run `record` to move findings from uncommitted to committed and auto-update the linked PR description.
 
+### Agent directives
+
+Directives are messages shown to agents at lifecycle phase transitions — use them to switch models, set constraints, or give context-specific instructions.
+
+```bash
+desloppify directives                     # show all configured directives
+desloppify directives set execute "Switch to claude-sonnet-4-6. Focus on speed."
+desloppify directives set triage "Switch to claude-opus-4-6. Read carefully."
+desloppify directives set review "Use blind packet. Do not anchor on previous scores."
+desloppify directives unset execute       # remove a directive
+```
+
+Available phases: `execute`, `review`, `triage`, `workflow`, `scan` (and fine-grained variants like `review_initial`, `triage_postflight`, etc.).
+
 ### Quick reference
 
 ```bash
@@ -261,7 +276,9 @@ If the fix is unclear or the change needs discussion, open an issue at `https://
 
 ## Prerequisite
 
-`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: pip install --upgrade git+https://github.com/peteromallet/desloppify.git"`
+`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: uvx --from git+https://github.com/peteromallet/desloppify.git desloppify"`
+
+If `uvx` is not available: `pip install desloppify[full]`
 
 <!-- desloppify-end -->
 
