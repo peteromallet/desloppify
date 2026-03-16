@@ -195,6 +195,6 @@ def _add_update_skill_parser(sub) -> None:
         "interface",
         nargs="?",
         default=None,
-        help="Agent interface (amp, claude, codex, cursor, copilot, windsurf, gemini, opencode). "
+        help="Agent interface (amp, claude, codex, cursor, copilot, windsurf, gemini, hermes, droid, opencode). "
         "Auto-detected on updates if omitted.",
     )
