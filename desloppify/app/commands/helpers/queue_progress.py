@@ -106,6 +106,8 @@ def score_display_mode(
         return ScoreDisplayMode.LIVE
     if breakdown is None:
         return ScoreDisplayMode.LIVE
+    if breakdown.queue_total == 0:
+        return ScoreDisplayMode.LIVE  # Queue fully drained — always live (#441)
     if breakdown.lifecycle_phase == LIFECYCLE_PHASE_SCAN:
         return ScoreDisplayMode.LIVE
     if breakdown.lifecycle_phase == LIFECYCLE_PHASE_EXECUTE:

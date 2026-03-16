@@ -162,6 +162,13 @@ def test_score_display_mode_live_when_queue_empty():
     assert score_display_mode(b, 80.0) is ScoreDisplayMode.LIVE
 
 
+@pytest.mark.parametrize("phase", ["review", "execute", "workflow"])
+def test_score_display_mode_live_when_queue_drained_any_lifecycle(phase: str):
+    """queue_total=0 always returns LIVE regardless of lifecycle phase (#441)."""
+    b = QueueBreakdown(queue_total=0, lifecycle_phase=phase)
+    assert score_display_mode(b, 80.0) is ScoreDisplayMode.LIVE
+
+
 # ── format_queue_headline ────────────────────────────────────
 
 

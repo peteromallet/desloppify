@@ -94,8 +94,6 @@ def scan_queue_preflight(args: object) -> None:
     except OSError:
         _logger.debug("scan preflight queue breakdown skipped", exc_info=True)
         return
-    if breakdown.queue_total == 0:
-        return  # Queue fully drained — scan always allowed (#441)
     if mode is ScoreDisplayMode.LIVE:
         return  # Queue fully clear or no active cycle — scan allowed
     if (
