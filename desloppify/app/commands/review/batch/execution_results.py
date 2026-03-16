@@ -19,6 +19,126 @@ from .scope import (
 )
 
 
+def find_prior_run_merged_results(
+    *,
+    subagent_runs_dir: Path,
+    immutable_packet_path: Path,
+    current_run_dir: Path,
+) -> dict | None:
+    """Find the most recent prior run's merged results for the same packet.
+
+    Searches run directories under ``subagent_runs_dir`` for a prior run that
+    used the same immutable packet and produced a ``holistic_issues_merged.json``.
+    Skips the current run directory.  Returns the parsed merged results dict or
+    ``None`` if no matching prior run is found.
+    """
+    if not subagent_runs_dir.is_dir():
+        return None
+
+    immutable_packet_str = str(immutable_packet_path)
+    best_merged: dict | None = None
+    best_stamp: str = ""
+
+    for run_dir in sorted(subagent_runs_dir.iterdir(), reverse=True):
+        if not run_dir.is_dir():
+            continue
+        if run_dir == current_run_dir:
+            continue
+        summary_path = run_dir / "run_summary.json"
+        merged_path = run_dir / "holistic_issues_merged.json"
+        if not summary_path.exists() or not merged_path.exists():
+            continue
+        try:
+            summary = json.loads(summary_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if str(summary.get("immutable_packet", "")) != immutable_packet_str:
+            continue
+        stamp = str(summary.get("run_stamp", run_dir.name))
+        if stamp <= best_stamp:
+            continue
+        try:
+            merged = json.loads(merged_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(merged, dict) and merged.get("assessments"):
+            best_merged = merged
+            best_stamp = stamp
+
+    return best_merged
+
+
+def overlay_retry_results_on_prior(
+    *,
+    prior_merged: dict,
+    retry_merged: dict,
+    retry_dims: set[str],
+) -> dict:
+    """Combine prior run results with retry results for retried dimensions.
+
+    For dimensions in ``retry_dims``, the retry's assessments/issues/notes take
+    precedence.  For all other dimensions, the prior run's data is preserved.
+    The result is a new merged dict suitable for the standard coverage gate.
+    """
+    combined = dict(retry_merged)
+
+    # --- assessments: prior non-retried dims + retry dims ---
+    prior_assessments = prior_merged.get("assessments") or {}
+    retry_assessments = retry_merged.get("assessments") or {}
+    merged_assessments: dict[str, object] = {}
+    for dim, value in prior_assessments.items():
+        if dim not in retry_dims:
+            merged_assessments[dim] = value
+    for dim, value in retry_assessments.items():
+        merged_assessments[dim] = value
+    combined["assessments"] = merged_assessments
+
+    # --- issues: prior non-retried dim issues + all retry issues ---
+    prior_issues = prior_merged.get("issues") or []
+    retry_issues = retry_merged.get("issues") or []
+    kept_prior_issues = [
+        issue for issue in prior_issues
+        if isinstance(issue, dict) and str(issue.get("dimension", "")) not in retry_dims
+    ]
+    combined["issues"] = kept_prior_issues + list(retry_issues)
+
+    # --- dimension_notes: merge similarly ---
+    prior_notes = prior_merged.get("dimension_notes") or {}
+    retry_notes = retry_merged.get("dimension_notes") or {}
+    merged_notes: dict[str, object] = {}
+    for dim, value in prior_notes.items():
+        if dim not in retry_dims:
+            merged_notes[dim] = value
+    for dim, value in retry_notes.items():
+        merged_notes[dim] = value
+    combined["dimension_notes"] = merged_notes
+
+    # --- dimension_judgment: merge similarly ---
+    prior_judgment = prior_merged.get("dimension_judgment") or {}
+    retry_judgment = retry_merged.get("dimension_judgment") or {}
+    merged_judgment: dict[str, object] = {}
+    for dim, value in prior_judgment.items():
+        if dim not in retry_dims:
+            merged_judgment[dim] = value
+    for dim, value in retry_judgment.items():
+        merged_judgment[dim] = value
+    combined["dimension_judgment"] = merged_judgment
+
+    # --- context_updates: merge similarly ---
+    prior_ctx = prior_merged.get("context_updates") or {}
+    retry_ctx = retry_merged.get("context_updates") or {}
+    if prior_ctx or retry_ctx:
+        merged_ctx: dict[str, object] = {}
+        for dim, value in prior_ctx.items():
+            if dim not in retry_dims:
+                merged_ctx[dim] = value
+        for dim, value in retry_ctx.items():
+            merged_ctx[dim] = value
+        combined["context_updates"] = merged_ctx
+
+    return combined
+
+
 def collect_and_reconcile_results(
     *,
     collect_batch_results_fn,
@@ -272,7 +392,9 @@ def log_run_start(
 __all__ = [
     "collect_and_reconcile_results",
     "enforce_import_coverage",
+    "find_prior_run_merged_results",
     "log_run_start",
     "import_and_finalize",
     "merge_and_write_results",
+    "overlay_retry_results_on_prior",
 ]

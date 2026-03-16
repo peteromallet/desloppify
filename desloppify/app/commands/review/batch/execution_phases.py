@@ -553,6 +553,25 @@ def execute_batch_run(*, prepared: PreparedBatchRunContext, deps: BatchRunDeps) 
     )
 
 
+def _is_partial_batch_retry(prepared: PreparedBatchRunContext) -> bool:
+    """Return True when the current run targets a subset of the packet's batches."""
+    all_indexes = set(range(len(prepared.batches)))
+    return set(prepared.selected_indexes) != all_indexes
+
+
+def _retry_dimension_set(prepared: PreparedBatchRunContext) -> set[str]:
+    """Return the set of dimensions covered by the selected (retried) batches."""
+    dims: set[str] = set()
+    for idx in prepared.selected_indexes:
+        if 0 <= idx < len(prepared.batches):
+            batch = prepared.batches[idx]
+            if isinstance(batch, dict):
+                for dim in batch.get("dimensions", []):
+                    if isinstance(dim, str) and dim.strip():
+                        dims.add(dim.strip())
+    return dims
+
+
 def merge_and_import_batch_run(
     *,
     prepared: PreparedBatchRunContext,
@@ -578,6 +597,57 @@ def merge_and_import_batch_run(
         safe_write_text_fn=deps.safe_write_text_fn,
         colorize_fn=deps.colorize_fn,
     )
+
+    # When retrying a subset of batches (--only-batches), look for a prior
+    # run's merged results to fill in the non-retried dimensions.  This
+    # prevents the coverage gate from rejecting a valid retry that only
+    # re-ran a few failed slices.
+    if missing_after_import and _is_partial_batch_retry(prepared):
+        from .execution_results import (
+            find_prior_run_merged_results,
+            overlay_retry_results_on_prior,
+        )
+
+        subagent_runs_dir = prepared.run_dir.parent
+        prior_merged = find_prior_run_merged_results(
+            subagent_runs_dir=subagent_runs_dir,
+            immutable_packet_path=prepared.immutable_packet_path,
+            current_run_dir=prepared.run_dir,
+        )
+        if prior_merged is not None:
+            retry_dims = _retry_dimension_set(prepared)
+            import json as _json
+
+            retry_merged = _json.loads(merged_path.read_text())
+            combined = overlay_retry_results_on_prior(
+                prior_merged=prior_merged,
+                retry_merged=retry_merged,
+                retry_dims=retry_dims,
+            )
+            deps.safe_write_text_fn(
+                merged_path,
+                _json.dumps(combined, indent=2) + "\n",
+            )
+            # Recompute coverage from the combined result.
+            combined_assessment_dims = normalize_dimension_list(
+                list((combined.get("assessments") or {}).keys())
+            )
+            from .scope import missing_scored_dimensions
+
+            missing_after_import = missing_scored_dimensions(
+                selected_dims=combined_assessment_dims,
+                scored_dims=prepared.scored_dimensions,
+            )
+            prior_dims = set((prior_merged.get("assessments") or {}).keys())
+            inherited_count = len(prior_dims - retry_dims)
+            print(
+                deps.colorize_fn(
+                    f"  Merged retry with prior run: inherited {inherited_count} "
+                    f"dimension(s) from original run, retried {len(retry_dims)}.",
+                    "green",
+                )
+            )
+
     enforce_import_coverage(
         missing_after_import=missing_after_import,
         packet_dimensions=prepared.packet_dimensions,
@@ -606,10 +676,12 @@ __all__ = [
     "PreparedPacketScope",
     "PreparedBatchRunContext",
     "PreparedRunArtifacts",
+    "_is_partial_batch_retry",
     "_prepare_packet_scope",
     "_prepare_run_runtime",
     "_print_runtime_expectation",
     "_resolve_runtime_policy",
+    "_retry_dimension_set",
     "execute_batch_run",
     "merge_and_import_batch_run",
     "prepare_batch_run",
