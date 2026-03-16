@@ -30,12 +30,15 @@ generic_lang(
         "coverage",  # SimpleCov / test coverage output
         "tmp",       # Rails/Rack temp files (cache, pids, sockets)
         "log",       # Application log files
+        "bin",       # Binstubs and shims
     ],
     # "shallow" depth is upgraded to "standard" automatically when tree-sitter
     # is available (generic_support/core.py:131).  No need to set "full" here.
     depth="shallow",
     # Ruby convention: library source lives in lib/, not the project root.
     default_src="lib",
+    # Ruby convention: tests live in spec/ (RSpec) or test/ (Minitest).
+    external_test_dirs=["spec", "test"],
     detect_markers=[
         "Gemfile",       # Bundler dependency manifest — most Ruby projects
         "Rakefile",      # Build/task file — present even without Bundler

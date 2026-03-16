@@ -57,6 +57,8 @@ def generic_lang(
     zone_rules: list[ZoneRule] | None = None,
     test_coverage_module: Any | None = None,
     entry_patterns: list[str] | None = None,
+    external_test_dirs: list[str] | None = None,
+    test_file_extensions: list[str] | None = None,
 ) -> LangConfig:
     """Build and register a generic language plugin from tool specs.
 
@@ -81,6 +83,8 @@ def generic_lang(
         zone_rules=zone_rules,
         test_coverage_module=test_coverage_module,
         entry_patterns=entry_patterns,
+        external_test_dirs=external_test_dirs,
+        test_file_extensions=test_file_extensions,
     )
 
     from desloppify.languages import register_generic_lang
@@ -122,8 +126,8 @@ def generic_lang(
         complexity_threshold=15,
         default_scan_profile="objective",
         detect_markers=opts.detect_markers or [],
-        external_test_dirs=["tests", "test"],
-        test_file_extensions=extensions,
+        external_test_dirs=opts.external_test_dirs if opts.external_test_dirs is not None else ["tests", "test"],
+        test_file_extensions=opts.test_file_extensions if opts.test_file_extensions is not None else extensions,
         zone_rules=opts.zone_rules if opts.zone_rules is not None else generic_zone_rules(extensions),
     )
 

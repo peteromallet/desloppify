@@ -82,7 +82,7 @@ def test_has_required_phases(ruby_cfg, label):
 # File finder exclusions
 # ---------------------------------------------------------------------------
 
-_EXCLUDED_DIRS = [".bundle", "coverage", "tmp", "log", "vendor"]
+_EXCLUDED_DIRS = [".bundle", "coverage", "tmp", "log", "vendor", "bin"]
 
 
 def test_file_finder_skips_excluded_dirs(tmp_path, ruby_cfg):
@@ -94,7 +94,7 @@ def test_file_finder_skips_excluded_dirs(tmp_path, ruby_cfg):
     # Create an .rb file inside each excluded directory.
     for name in _EXCLUDED_DIRS:
         d = tmp_path / name
-        d.mkdir()
+        d.mkdir(exist_ok=True)
         (d / "noise.rb").write_text("# should be ignored\n")
 
     from desloppify.base.runtime_state import RuntimeContext, runtime_scope
@@ -108,3 +108,9 @@ def test_file_finder_skips_excluded_dirs(tmp_path, ruby_cfg):
     assert files == ["lib/app.rb"], (
         f"Expected only lib/app.rb but got: {files}"
     )
+
+
+def test_external_test_dirs_includes_spec(ruby_cfg):
+    """Ruby projects frequently use spec/ for RSpec tests."""
+    assert "spec" in ruby_cfg.external_test_dirs
+    assert "test" in ruby_cfg.external_test_dirs
