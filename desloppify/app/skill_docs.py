@@ -19,6 +19,7 @@ SKILL_END = "<!-- desloppify-end -->"
 
 # Locations where the skill doc might be installed, relative to project root.
 SKILL_SEARCH_PATHS = (
+    ".factory/skills/desloppify/SKILL.md",
     ".agents/skills/desloppify/SKILL.md",
     ".claude/skills/desloppify/SKILL.md",
     ".opencode/skills/desloppify/SKILL.md",
@@ -38,6 +39,7 @@ SKILL_TARGETS: dict[str, tuple[str, str, bool]] = {
     "codex": (".agents/skills/desloppify/SKILL.md", "CODEX", True),
     "cursor": (".cursor/rules/desloppify.md", "CURSOR", True),
     "copilot": (".github/copilot-instructions.md", "COPILOT", False),
+    "droid": (".factory/skills/desloppify/SKILL.md", "DROID", True),
     "windsurf": ("AGENTS.md", "WINDSURF", False),
     "gemini": ("AGENTS.md", "GEMINI", False),
     "hermes": ("AGENTS.md", "HERMES", False),
