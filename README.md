@@ -23,7 +23,7 @@ I want you to improve the quality of this codebase. To do this, install and run 
 Run ALL of the following (requires Python 3.11+):
 
 pip install --upgrade "desloppify[full]"
-desloppify update-skill claude    # installs the full workflow guide — pick yours: claude, cursor, codex, copilot, windsurf, gemini
+desloppify update-skill claude    # installs the full workflow guide — pick yours: claude, cursor, codex, copilot, droid, windsurf, gemini
 
 Add .desloppify/ to your .gitignore — it contains local state that shouldn't be committed.
 
