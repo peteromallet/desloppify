@@ -35,10 +35,14 @@ def _resolve_executable(name: str) -> list[str]:
     """
     resolved = shutil.which(name)
     if sys.platform == "win32":
+        target = resolved or name
+        # Quote the target for cmd /c when the path contains spaces.
+        if " " in target:
+            target = f'"{target}"'
         if resolved is not None and resolved.lower().endswith((".cmd", ".bat")):
-            return ["cmd", "/c", resolved]
+            return ["cmd", "/c", target]
         # shutil.which may miss .cmd/.bat wrappers — let cmd.exe resolve it
-        return ["cmd", "/c", resolved or name]
+        return ["cmd", "/c", target]
     return [resolved or name]
 
 
