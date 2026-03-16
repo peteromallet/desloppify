@@ -33,7 +33,7 @@ desloppify scan --path <project>
 desloppify scan --path <project> --profile full
 
 # Auto-correct RuboCop offenses
-desloppify fix --path <project>
+desloppify autofix --path <project>
 ```
 
 ## What gets analysed
@@ -51,7 +51,7 @@ desloppify fix --path <project>
 
 ## Autofix
 
-RuboCop's `--auto-correct` is wired to `desloppify fix`. Only offenses that
+RuboCop's `--auto-correct` is wired to `desloppify autofix`. Only offenses that
 RuboCop marks as safe to auto-correct will be changed.
 
 ## Exclusions

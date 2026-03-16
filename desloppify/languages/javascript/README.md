@@ -21,11 +21,11 @@ Activates on projects containing a `package.json` file.
 # Scan for issues
 desloppify scan --path <project>
 
-# Scan and auto-fix
-desloppify scan --path <project> --fix
+# Auto-fix ESLint issues
+desloppify autofix --path <project>
 ```
 
-Autofix is supported — ESLint's `--fix` flag is used to apply safe automatic corrections.
+Autofix is supported — ESLint's `--fix` flag is used via `desloppify autofix` to apply safe automatic corrections.
 
 ## Exclusions
 
