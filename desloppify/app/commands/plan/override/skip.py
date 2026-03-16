@@ -22,7 +22,11 @@ from desloppify.app.commands.plan.shared.patterns import resolve_ids_from_patter
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
-from desloppify.engine._plan.refresh_lifecycle import clear_postflight_scan_completion
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
+from desloppify.engine._plan.refresh_lifecycle import (
+    LIFECYCLE_PHASE_EXECUTE,
+    clear_postflight_scan_completion,
+)
 from desloppify.engine.plan_ops import (
     SKIP_KIND_LABELS,
     append_log_entry,
@@ -245,7 +249,9 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
         note=note,
         detail={"kind": kind, "reason": reason},
     )
-    clear_postflight_scan_completion(plan, issue_ids=issue_ids, state=state)
+    transition_phase: str | None = None
+    if clear_postflight_scan_completion(plan, issue_ids=issue_ids, state=state):
+        transition_phase = LIFECYCLE_PHASE_EXECUTE
     _save_skip_plan_state(
         plan=plan,
         plan_file=plan_file,
@@ -271,6 +277,8 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
         " plan --help` to see all available plan tools. Otherwise"
         " no need to reply, just keep going."
     )
+    if transition_phase:
+        emit_transition_message(transition_phase)
 
 
 def cmd_plan_unskip(args: argparse.Namespace) -> None:
@@ -304,7 +312,9 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
         actor="user",
         detail={"need_reopen": need_reopen},
     )
-    clear_postflight_scan_completion(plan, issue_ids=unskipped_ids, state=state)
+    transition_phase: str | None = None
+    if clear_postflight_scan_completion(plan, issue_ids=unskipped_ids, state=state):
+        transition_phase = LIFECYCLE_PHASE_EXECUTE
 
     reopened: list[str] = []
     if need_reopen:
@@ -330,6 +340,8 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
                 "yellow",
             )
         )
+    if transition_phase:
+        emit_transition_message(transition_phase)
 
 
 def cmd_plan_backlog(args: argparse.Namespace) -> None:
@@ -374,7 +386,9 @@ def cmd_plan_backlog(args: argparse.Namespace) -> None:
         issue_ids=removed,
         actor="user",
     )
-    clear_postflight_scan_completion(plan, issue_ids=removed, state=state_data)
+    transition_phase: str | None = None
+    if clear_postflight_scan_completion(plan, issue_ids=removed, state=state_data):
+        transition_phase = LIFECYCLE_PHASE_EXECUTE
 
     if reopen_ids:
         save_plan_state_transactional(
@@ -389,6 +403,8 @@ def cmd_plan_backlog(args: argparse.Namespace) -> None:
     print(colorize(f"  Moved {len(removed)} item(s) to backlog.", "green"))
     if reopen_ids:
         print(colorize(f"  Reopened {len(reopen_ids)} deferred/triaged-out issue(s) in state.", "dim"))
+    if transition_phase:
+        emit_transition_message(transition_phase)
 
 
 __all__ = [

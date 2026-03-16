@@ -7,6 +7,7 @@ import argparse
 from desloppify.app.cli_support.parser_groups_admin import (  # noqa: F401 (re-exports)
     _add_config_parser,
     _add_detect_parser,
+    _add_directives_parser,
     _add_dev_parser,
     _add_autofix_parser,
     _add_langs_parser,
@@ -25,6 +26,7 @@ __all__ = [
     "_add_backlog_parser",
     "_add_config_parser",
     "_add_detect_parser",
+    "_add_directives_parser",
     "_add_dev_parser",
     "_add_exclude_parser",
     "_add_autofix_parser",

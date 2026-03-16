@@ -10,6 +10,7 @@ from desloppify.app.cli_support.parser_groups import (
     _add_backlog_parser,
     _add_config_parser,
     _add_detect_parser,
+    _add_directives_parser,
     _add_dev_parser,
     _add_exclude_parser,
     _add_autofix_parser,
@@ -139,6 +140,7 @@ def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.Ar
     # configure
     _add_zone_parser(sub)
     _add_config_parser(sub)
+    _add_directives_parser(sub)
     _add_langs_parser(sub)
     _add_dev_parser(sub)
     _add_update_skill_parser(sub)

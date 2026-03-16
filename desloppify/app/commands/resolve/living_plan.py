@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import NamedTuple
 
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.terminal import colorize
@@ -17,7 +18,10 @@ from desloppify.engine.plan_ops import (
     auto_complete_steps,
     purge_ids,
 )
-from desloppify.engine._plan.refresh_lifecycle import clear_postflight_scan_completion
+from desloppify.engine._plan.refresh_lifecycle import (
+    LIFECYCLE_PHASE_EXECUTE,
+    clear_postflight_scan_completion,
+)
 from desloppify.engine.plan_state import (
     add_uncommitted_issues,
     has_living_plan,
@@ -36,12 +40,19 @@ class ClusterContext(NamedTuple):
     cluster_remaining: int
 
 
-def _reconcile_if_queue_drained(plan: dict, state: dict | None) -> None:
-    """Advance the living plan when a resolve drains the explicit live queue."""
+def _reconcile_if_queue_drained(plan: dict, state: dict | None) -> str | None:
+    """Advance the living plan when a resolve drains the explicit live queue.
+
+    Returns the new lifecycle phase if a transition occurred, so the caller
+    can emit the directive after all other output.
+    """
     if state is None or not live_planned_queue_empty(plan):
-        return
+        return None
     target_strict = target_strict_score_from_config(state.get("config"))
-    reconcile_plan(plan, state, target_strict=target_strict)
+    result = reconcile_plan(plan, state, target_strict=target_strict)
+    if result is not None and result.lifecycle_phase_changed:
+        return result.lifecycle_phase
+    return None
 
 
 def capture_cluster_context(plan: dict, resolved_ids: list[str]) -> ClusterContext:
@@ -102,15 +113,27 @@ def update_living_plan_after_resolve(
                 cluster_name=ctx.cluster_name,
                 actor="user",
             )
+            # Clear focus when cluster is done
+            if plan.get("active_cluster") == ctx.cluster_name:
+                plan["active_cluster"] = None
+        elif ctx.cluster_name and ctx.cluster_remaining > 0:
+            # Auto-focus on the cluster while there's still work in it
+            plan["active_cluster"] = ctx.cluster_name
         if args.status == "fixed":
             add_uncommitted_issues(plan, all_resolved)
         elif args.status == "open":
             purge_uncommitted_ids(plan, all_resolved)
-        clear_postflight_scan_completion(plan, issue_ids=all_resolved, state=state)
-        _reconcile_if_queue_drained(plan, state)
+        transition_phase: str | None = None
+        if clear_postflight_scan_completion(plan, issue_ids=all_resolved, state=state):
+            transition_phase = LIFECYCLE_PHASE_EXECUTE
+        reconcile_phase = _reconcile_if_queue_drained(plan, state)
+        if reconcile_phase:
+            transition_phase = reconcile_phase
         save_plan(plan, plan_path)
         if purged:
             print(colorize(f"  Plan updated: {purged} item(s) removed from queue.", "dim"))
+        if transition_phase:
+            emit_transition_message(transition_phase)
     except PLAN_LOAD_EXCEPTIONS as exc:
         _logger.debug("plan update failed after resolve", exc_info=True)
         warn_plan_load_degraded_once(

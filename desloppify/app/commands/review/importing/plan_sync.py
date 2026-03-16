@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from desloppify.app.commands.helpers.issue_id_display import short_issue_id
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.app.commands.review.importing.flags import imported_assessment_keys
 from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
@@ -69,6 +70,7 @@ class _ImportPlanTransition:
     covered_pruned: list[str]
     import_scores_result: object
     reconcile_result: ReconcileResult
+    transition_phase: str | None = None
 
 
 def _print_review_import_sync(
@@ -270,11 +272,17 @@ def _apply_import_plan_transitions(
             triage_deferred=import_result.triage_deferred,
         )
 
+    transition_phase = (
+        reconcile_result.lifecycle_phase
+        if reconcile_result.lifecycle_phase_changed
+        else None
+    )
     return _ImportPlanTransition(
         import_result=import_result,
         covered_pruned=covered_pruned,
         import_scores_result=import_scores_result,
         reconcile_result=reconcile_result,
+        transition_phase=transition_phase,
     )
 
 
@@ -445,6 +453,8 @@ def sync_plan_after_import(
                 outcome=outcome,
             )
         _print_workflow_injected_message(result.workflow_injected_ids)
+        if transition.transition_phase:
+            emit_transition_message(transition.transition_phase)
         return outcome
     except PLAN_LOAD_EXCEPTIONS as exc:
         message = f"skipped plan sync after review import ({exc})"

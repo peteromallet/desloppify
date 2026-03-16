@@ -90,6 +90,17 @@ def _add_config_parser(sub) -> None:
     c_unset.add_argument("config_key", type=str, help="Config key name")
 
 
+def _add_directives_parser(sub) -> None:
+    p = sub.add_parser("directives", help="View/set agent directives for phase transitions")
+    d_sub = p.add_subparsers(dest="directives_action")
+    d_sub.add_parser("show", help="Show all configured directives")
+    d_set = d_sub.add_parser("set", help="Set a directive for a lifecycle phase")
+    d_set.add_argument("phase", type=str, help="Lifecycle phase name")
+    d_set.add_argument("message", type=str, help="Message to show at this transition")
+    d_unset = d_sub.add_parser("unset", help="Remove a directive for a lifecycle phase")
+    d_unset.add_argument("phase", type=str, help="Lifecycle phase name")
+
+
 def _fixer_help_lines(langs: list[str]) -> list[str]:
     fixer_help_lines: list[str] = []
     for lang_name in langs:
@@ -167,6 +178,8 @@ def _add_dev_parser(sub) -> None:
         help="Do not edit pyproject.toml testpaths array",
     )
     d_scaffold.set_defaults(wire_pyproject=True)
+
+    dev_sub.add_parser("test-hermes", help="Test Hermes model switching (switch and switch back)")
 
 
 def _add_langs_parser(sub) -> None:

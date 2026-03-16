@@ -100,6 +100,24 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         False,
         "Allow loading user plugins from .desloppify/plugins/ (security opt-in)",
     ),
+    "transition_messages": ConfigKey(
+        dict,
+        {},
+        "Messages shown to agents at lifecycle phase transitions {phase: message}",
+    ),
+    "hermes_enabled": ConfigKey(
+        bool,
+        False,
+        "Enable Hermes agent integration (model switching, autoreply, task handoff)",
+    ),
+    "hermes_models": ConfigKey(
+        dict,
+        {
+            "execute": "openrouter:x-ai/grok-4.20-beta",
+            "review": "openrouter:google/gemini-3.1-pro-preview",
+        },
+        "Phase → provider:model mapping for Hermes model switching",
+    ),
 }
 
 

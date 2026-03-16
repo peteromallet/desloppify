@@ -12,6 +12,7 @@ from desloppify.app.commands.plan.triage.review_coverage import (
     ensure_active_triage_issue_ids,
     has_open_review_issues,
 )
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.base.config import target_strict_score_from_config
 from .resolve_helpers import blocked_triage_stages
 from desloppify.app.commands.plan.triage.stage_queue import (
@@ -350,15 +351,19 @@ def _reconcile_if_queue_drained(
     if WORKFLOW_CREATE_PLAN_ID in synthetic_ids and has_open_review_issues(state_data):
         ensure_active_triage_issue_ids(plan, state_data)
         inject_triage_stages(plan)
-        set_lifecycle_phase(plan, LIFECYCLE_PHASE_TRIAGE_POSTFLIGHT)
+        changed = set_lifecycle_phase(plan, LIFECYCLE_PHASE_TRIAGE_POSTFLIGHT)
         save_plan(plan)
+        if changed:
+            emit_transition_message(LIFECYCLE_PHASE_TRIAGE_POSTFLIGHT)
         return
-    reconcile_plan(
+    result = reconcile_plan(
         plan,
         state_data,
         target_strict=target_strict_score_from_config(state_data.get("config")),
     )
     save_plan(plan)
+    if result.lifecycle_phase_changed:
+        emit_transition_message(result.lifecycle_phase)
 
 
 def resolve_workflow_patterns(
