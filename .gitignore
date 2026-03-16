@@ -38,6 +38,7 @@ pytest-full.xml
 
 # Local agent-generated skills (keep canonical copies under docs/)
 .claude/
+.agents/
 /skills/
 CLAUDE.md
 AGENTS.md
