@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from desloppify.base.discovery.source import find_source_files
 from .smells_catalog import R_SMELL_CHECKS, SEVERITY_ORDER
 
+_R_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
 _R_COMMENT_RE = re.compile(r"#[^\n]*")
 _FUNCTION_DEF_RE = re.compile(
     r"(?m)^\s*\w+\s*<-\s*function\s*\(",
@@ -18,8 +20,23 @@ _LIBRARY_IN_FN_CHECK_ID = "library_in_function"
 
 
 def _strip_r_comments(content: str) -> str:
-    """Remove R comments while preserving string literals."""
-    return _R_COMMENT_RE.sub("", content)
+    """Remove R comments while preserving string literals.
+    
+    Replaces string contents with placeholders, strips comments, then restores strings.
+    """
+    strings: list[str] = []
+    
+    def replace_string(match: re.Match) -> str:
+        strings.append(match.group(0))
+        return f"__STRING_{len(strings) - 1}__"
+    
+    content = _R_STRING_RE.sub(replace_string, content)
+    content = _R_COMMENT_RE.sub("", content)
+    
+    for i, s in enumerate(strings):
+        content = content.replace(f"__STRING_{i}__", s)
+    
+    return content
 
 
 def _line_number(content: str, offset: int) -> int:
@@ -104,39 +121,62 @@ def _detect_library_in_function(
     stripped_content: str,
     smell_counts: dict[str, list[dict]],
 ) -> None:
-    """Detect library()/require() calls inside function bodies."""
+    """Detect library()/require() calls inside function bodies.
+    
+    Uses a simple heuristic: track function definitions and their brace depth.
+    Only braces that appear after 'function(' on the same line or shortly after
+    are considered function body braces.
+    """
     if _LIBRARY_IN_FN_CHECK_ID not in smell_counts:
         return
 
-    lines = stripped_content.splitlines()
-    fn_depth = 0
-    for i, line in enumerate(lines):
-        opens = line.count("{") - line.count("}")
-        for _ in range(line.count("{")):
-            fn_depth += 1
-        for _ in range(line.count("}")):
-            fn_depth = max(0, fn_depth - 1)
-
-        if fn_depth > 0 and _LIBRARY_IN_FN_RE.search(line):
-            smell_counts[_LIBRARY_IN_FN_CHECK_ID].append(
-                {
-                    "file": filepath,
-                    "line": i + 1,
-                    "content": _line_preview(raw_content, i + 1),
-                }
-            )
+    # Join content to handle multi-line function definitions
+    content = stripped_content
+    
+    # Find all function definitions and their brace scopes
+    fn_ranges: list[tuple[int, int]] = []  # (start_pos, end_pos) in content
+    
+    for match in _FUNCTION_DEF_RE.finditer(content):
+        start = match.start()
+        # Find the opening brace of the function body
+        brace_start = content.find("{", start)
+        if brace_start == -1:
+            continue
+        
+        # Find matching closing brace
+        depth = 1
+        pos = brace_start + 1
+        while pos < len(content) and depth > 0:
+            if content[pos] == "{":
+                depth += 1
+            elif content[pos] == "}":
+                depth -= 1
+            pos += 1
+        
+        fn_ranges.append((brace_start, pos))
+    
+    # Check each library/require call to see if it's inside a function
+    for match in _LIBRARY_IN_FN_RE.finditer(content):
+        pos = match.start()
+        for start, end in fn_ranges:
+            if start < pos < end:
+                line = content[:pos].count("\n") + 1
+                smell_counts[_LIBRARY_IN_FN_CHECK_ID].append(
+                    {
+                        "file": filepath,
+                        "line": line,
+                        "content": _line_preview(raw_content, line),
+                    }
+                )
+                break
 
 
 def _find_r_files(path: Path) -> list[str]:
-    """Find R source files, skipping excluded directories."""
-    excludes = {".Rhistory", ".RData", ".Rproj.user", "renv", "packrat"}
-    files: list[str] = []
-    for root, dirs, filenames in path.walk():
-        dirs[:] = [d for d in dirs if d not in excludes]
-        for fn in sorted(filenames):
-            if fn.endswith((".R", ".r")) and not fn.startswith("."):
-                files.append(str(root / fn))
-    return files
+    """Find R source files using the framework's discovery system.
+    
+    Respects project-configured exclusion patterns.
+    """
+    return find_source_files(str(path), [".R", ".r"])
 
 
 def _read_file(filepath: str) -> str | None:

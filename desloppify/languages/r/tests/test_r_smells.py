@@ -127,10 +127,20 @@ def test_no_smells_in_clean_code(tmp_path):
 
 
 def test_skips_excluded_dirs(tmp_path):
+    """Test that exclusions work via framework's discovery system."""
     _write(tmp_path, "renv/library/script.R", "setwd('.')\n")
     _write(tmp_path, "R/clean.R", "x <- 1\n")
-    entries, total_files = detect_smells(tmp_path)
-    assert total_files == 1
+    
+    # With framework discovery, we need to set exclusions via runtime context
+    from desloppify.base.discovery.source import set_exclusions
+    set_exclusions(["renv/**"])
+    
+    try:
+        entries, total_files = detect_smells(tmp_path)
+        assert total_files == 1
+    finally:
+        # Reset exclusions
+        set_exclusions([])
 
 
 def test_strips_comments_before_matching(tmp_path):
@@ -159,3 +169,47 @@ def test_handles_nonexistent_files_gracefully(tmp_path):
     entries, total_files = detect_smells(tmp_path)
     assert total_files == 0
     assert entries == []
+
+
+def test_hash_in_string_not_stripped(tmp_path):
+    """Ensure # inside string literals is not treated as comment."""
+    _write(tmp_path, "R/script.R", 'x <- "value #1"\n')
+    entries, _ = detect_smells(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "setwd" not in ids
+
+
+def test_library_in_if_block_at_top_level_not_flagged(tmp_path):
+    """Ensure library() in non-function braces at top level is not flagged."""
+    _write(
+        tmp_path,
+        "R/script.R",
+        "if (TRUE) {\n  library(dplyr)\n}\n",
+    )
+    entries, _ = detect_smells(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "library_in_function" not in ids
+
+
+def test_library_in_for_loop_at_top_level_not_flagged(tmp_path):
+    """Ensure library() in for/while at top level is not flagged."""
+    _write(
+        tmp_path,
+        "R/script.R",
+        "for (i in 1:10) {\n  library(dplyr)\n}\n",
+    )
+    entries, _ = detect_smells(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "library_in_function" not in ids
+
+
+def test_nested_function_with_library(tmp_path):
+    """Ensure library() in nested function is detected."""
+    _write(
+        tmp_path,
+        "R/script.R",
+        "outer <- function() {\n  inner <- function() {\n    library(dplyr)\n  }\n}\n",
+    )
+    entries, _ = detect_smells(tmp_path)
+    smell = _entry(entries, "library_in_function")
+    assert smell["count"] == 1
