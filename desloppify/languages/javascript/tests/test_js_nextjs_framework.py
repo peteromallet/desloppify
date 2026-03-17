@@ -54,11 +54,24 @@ def test_nextjs_smells_phase_emits_smells_when_next_is_present(tmp_path: Path):
 
     cfg = get_lang("javascript")
     phase = next(p for p in cfg.phases if getattr(p, "label", "") == "Next.js framework smells")
-    issues, potentials = phase.run(tmp_path, _FakeLang())
+    lang = _FakeLang()
+    issues, potentials = phase.run(tmp_path, lang)
     detectors = {issue.get("detector") for issue in issues}
     assert "nextjs" in detectors
     assert potentials.get("nextjs", 0) >= 1
     assert any("server_import_in_client" in str(issue.get("id", "")) for issue in issues)
+
+    framework_cache = {
+        k: v for k, v in lang.review_cache.items() if str(k).startswith("frameworks.ecosystem.present:")
+    }
+    assert framework_cache
+    assert all(isinstance(value, dict) for value in framework_cache.values())
+
+    info_cache = {
+        k: v for k, v in lang.review_cache.items() if str(k).startswith("framework.nextjs.info:")
+    }
+    assert info_cache
+    assert all(isinstance(value, dict) for value in info_cache.values())
 
 
 def test_nextjs_smells_phase_scans_jsx_error_and_js_middleware(tmp_path: Path):

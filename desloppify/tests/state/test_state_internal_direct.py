@@ -161,6 +161,41 @@ def test_state_persistence_honors_monkeypatched_state_file(monkeypatch, tmp_path
     assert loaded["issues"] == {}
 
 
+def test_state_persistence_serializes_dataclass_values_in_review_cache(tmp_path):
+    from desloppify.languages._framework.frameworks.types import EcosystemFrameworkDetection
+
+    state_path = tmp_path / "state.json"
+    state = schema_mod.empty_state()
+    state["review_cache"] = {
+        "holistic": {
+            "ecosystems": {
+                "framework_detections": [
+                    EcosystemFrameworkDetection(
+                        ecosystem="node",
+                        package_root=tmp_path,
+                        package_json_relpath=None,
+                        present={"nextjs": {"deps": ["next"]}},
+                    )
+                ]
+            }
+        }
+    }
+
+    persistence_mod.save_state(state, state_path)
+
+    loaded = persistence_mod.load_state(state_path)
+    detections = (
+        loaded.get("review_cache", {})
+        .get("holistic", {})
+        .get("ecosystems", {})
+        .get("framework_detections", [])
+    )
+    assert isinstance(detections, list)
+    assert detections
+    assert isinstance(detections[0], dict)
+    assert detections[0]["ecosystem"] == "node"
+
+
 def test_match_and_resolve_issues_updates_state():
     state = schema_mod.empty_state()
     open_issue = filtering_mod.make_issue(

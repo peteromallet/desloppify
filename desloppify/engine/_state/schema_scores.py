@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 
 def json_default(obj: Any) -> Any:
     """JSON serializer fallback for known non-JSON-native state values."""
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return asdict(obj)
+    if isinstance(obj, Enum):
+        value = obj.value
+        return value if isinstance(value, str | int | float | bool | None) else obj.name
     if isinstance(obj, set):
         return sorted(obj)
     if isinstance(obj, Path):

@@ -16,6 +16,32 @@ from .types import DetectionConfig, EcosystemFrameworkDetection, FrameworkEviden
 _CACHE_PREFIX = "frameworks.ecosystem.present"
 
 
+def _encode_detection(result: EcosystemFrameworkDetection) -> dict[str, Any]:
+    return {
+        "ecosystem": result.ecosystem,
+        "package_root": str(result.package_root).replace("\\", "/"),
+        "package_json_relpath": result.package_json_relpath,
+        "present": result.present,
+    }
+
+
+def _decode_detection(payload: object) -> EcosystemFrameworkDetection | None:
+    if not isinstance(payload, dict):
+        return None
+    eco = payload.get("ecosystem")
+    package_root = payload.get("package_root")
+    present = payload.get("present")
+    package_json_relpath = payload.get("package_json_relpath")
+    if not isinstance(eco, str) or not isinstance(package_root, str) or not isinstance(present, dict):
+        return None
+    return EcosystemFrameworkDetection(
+        ecosystem=eco,
+        package_root=Path(package_root),
+        package_json_relpath=(str(package_json_relpath) if package_json_relpath is not None else None),
+        present=present,
+    )
+
+
 def _find_nearest_package_json(scan_path: Path, project_root: Path) -> Path | None:
     resolved = scan_path if scan_path.is_absolute() else (project_root / scan_path)
     resolved = resolved.resolve()
@@ -140,6 +166,9 @@ def detect_ecosystem_frameworks(
             cached = cache.get(cache_key)
             if isinstance(cached, EcosystemFrameworkDetection):
                 return cached
+            decoded = _decode_detection(cached)
+            if decoded is not None:
+                return decoded
 
     project_root = get_project_root()
 
@@ -151,7 +180,7 @@ def detect_ecosystem_frameworks(
             present={},
         )
         if lang is not None and isinstance(getattr(lang, "review_cache", None), dict):
-            lang.review_cache[cache_key] = result
+            lang.review_cache[cache_key] = _encode_detection(result)
         return result
 
     package_json = _find_nearest_package_json(resolved_scan_path, project_root)
@@ -204,7 +233,7 @@ def detect_ecosystem_frameworks(
     if lang is not None:
         cache = getattr(lang, "review_cache", None)
         if isinstance(cache, dict):
-            cache[cache_key] = result
+            cache[cache_key] = _encode_detection(result)
 
     return result
 

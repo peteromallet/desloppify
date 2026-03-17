@@ -44,6 +44,32 @@ from ..types import DetectionConfig, FrameworkSpec, ScannerRule, ToolIntegration
 _NEXTJS_INFO_CACHE_PREFIX = "framework.nextjs.info"
 
 
+def _encode_nextjs_info(info: NextjsFrameworkInfo) -> dict[str, object]:
+    return {
+        "package_root": str(info.package_root).replace("\\", "/"),
+        "package_json_relpath": info.package_json_relpath,
+        "app_roots": list(info.app_roots),
+        "pages_roots": list(info.pages_roots),
+    }
+
+
+def _decode_nextjs_info(payload: object) -> NextjsFrameworkInfo | None:
+    if not isinstance(payload, dict):
+        return None
+    package_root = payload.get("package_root")
+    package_json_relpath = payload.get("package_json_relpath")
+    app_roots = payload.get("app_roots")
+    pages_roots = payload.get("pages_roots")
+    if not isinstance(package_root, str) or not isinstance(app_roots, list) or not isinstance(pages_roots, list):
+        return None
+    return NextjsFrameworkInfo(
+        package_root=Path(package_root),
+        package_json_relpath=str(package_json_relpath) if package_json_relpath is not None else None,
+        app_roots=tuple(str(v) for v in app_roots if isinstance(v, str)),
+        pages_roots=tuple(str(v) for v in pages_roots if isinstance(v, str)),
+    )
+
+
 def _nextjs_info(scan_root: Path, lang: LangRuntimeContract) -> NextjsFrameworkInfo:
     key = f"{_NEXTJS_INFO_CACHE_PREFIX}:{scan_root.resolve().as_posix()}"
     cache = getattr(lang, "review_cache", None)
@@ -51,6 +77,9 @@ def _nextjs_info(scan_root: Path, lang: LangRuntimeContract) -> NextjsFrameworkI
         cached = cache.get(key)
         if isinstance(cached, NextjsFrameworkInfo):
             return cached
+        decoded = _decode_nextjs_info(cached)
+        if decoded is not None:
+            return decoded
 
     from desloppify.languages._framework.frameworks.detection import (
         detect_ecosystem_frameworks,
@@ -65,7 +94,7 @@ def _nextjs_info(scan_root: Path, lang: LangRuntimeContract) -> NextjsFrameworkI
     )
 
     if isinstance(cache, dict):
-        cache[key] = info
+        cache[key] = _encode_nextjs_info(info)
     return info
 
 
