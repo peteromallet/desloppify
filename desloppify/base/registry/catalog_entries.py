@@ -522,6 +522,15 @@ DETECTORS: dict[str, DetectorMeta] = {
         "transmission to external APIs, and ag-gag compliance risks",
         tier=2,
     ),
+    # ── Persona-based browser QA ────────────────────────
+    "persona_qa": DetectorMeta(
+        "persona_qa",
+        "Persona QA",
+        "Persona QA",
+        "manual_fix",
+        "Fix browser-facing issues found by persona-based testing",
+        tier=3,
+    ),
 }
 
 

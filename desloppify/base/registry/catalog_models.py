@@ -49,6 +49,7 @@ DISPLAY_ORDER = [
     "security",
     "advocacy_language",
     "advocacy_security",
+    "persona_qa",
     "concerns",
     "review",
     "subjective_review",

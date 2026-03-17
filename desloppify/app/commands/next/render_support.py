@@ -268,8 +268,10 @@ def render_compact_item(item: dict, idx: int, total: int) -> None:
         tag_str += " [plan]"
     fid = item.get("id", "")
     short = fid.rsplit("::", 1)[-1][:8] if "::" in fid else fid
+    detail = item.get("detail", {})
+    location = detail.get("route") or item.get("file", "")
     print(f"  [{idx + 1}/{total}] [{confidence}]{tag_str} {item.get('summary', '')}")
-    print(colorize(f"         {item.get('file', '')}  [{short}]", "dim"))
+    print(colorize(f"         {location}  [{short}]", "dim"))
 
 
 __all__ = [

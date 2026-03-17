@@ -186,6 +186,26 @@ def _add_langs_parser(sub) -> None:
     sub.add_parser("langs", help="List all available language plugins with depth and tools")
 
 
+def _add_persona_qa_parser(sub) -> None:
+    p = sub.add_parser(
+        "persona-qa",
+        help="Persona-based browser QA testing",
+        epilog="""\
+examples:
+  desloppify persona-qa --url http://localhost:3000
+  desloppify persona-qa --prepare --url http://localhost:3000 --persona new-visitor
+  desloppify persona-qa --import findings.json
+  desloppify persona-qa --status
+  desloppify persona-qa --clear""",
+    )
+    p.add_argument("--url", type=str, default=None, help="Base URL to test against")
+    p.add_argument("--persona", type=str, default=None, help="Run only a specific persona (by name or filename)")
+    p.add_argument("--prepare", action="store_true", help="Print structured agent instructions (default when --url given)")
+    p.add_argument("--import", dest="import_file", type=str, default=None, help="Import findings JSON into state")
+    p.add_argument("--status", action="store_true", help="Show per-persona pass/fail summary")
+    p.add_argument("--clear", action="store_true", help="Remove all persona QA findings from state")
+
+
 def _add_update_skill_parser(sub) -> None:
     p = sub.add_parser(
         "update-skill",

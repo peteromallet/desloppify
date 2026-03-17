@@ -27,6 +27,7 @@ def _build_handlers() -> dict[str, CommandHandler]:
     from desloppify.app.commands.scan import cmd_scan
     from desloppify.app.commands.show import cmd_show
     from desloppify.app.commands.status import cmd_status
+    from desloppify.app.commands.persona_qa import cmd_persona_qa
     from desloppify.app.commands.update_skill import cmd_update_skill
     from desloppify.app.commands.viz import cmd_tree, cmd_viz
     from desloppify.app.commands.zone import cmd_zone
@@ -52,6 +53,7 @@ def _build_handlers() -> dict[str, CommandHandler]:
         "dev": cmd_dev,
         "langs": cmd_langs,
         "update-skill": cmd_update_skill,
+        "persona-qa": cmd_persona_qa,
     }
 
 

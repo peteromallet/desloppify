@@ -142,7 +142,13 @@ def _render_plan_cluster_detail(
 
 def _render_issue_metadata(item: dict, detail: dict) -> None:
     file_val = item.get("file", "")
-    if file_val and file_val != ".":
+    if detail.get("route"):
+        print(f"  Route: {detail['route']}")
+        if detail.get("persona"):
+            print(f"  Persona: {detail['persona']}")
+        if detail.get("scenario"):
+            print(f"  Scenario: {detail['scenario']}")
+    elif file_val and file_val != ".":
         print(f"  File: {file_val}")
     print(colorize(f"  ID:   {item.get('id', '')}", "dim"))
 

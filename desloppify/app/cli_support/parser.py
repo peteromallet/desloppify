@@ -17,6 +17,7 @@ from desloppify.app.cli_support.parser_groups import (
     _add_langs_parser,
     _add_move_parser,
     _add_next_parser,
+    _add_persona_qa_parser,
     _add_review_parser,
     _add_scan_parser,
     _add_show_parser,
@@ -49,6 +50,7 @@ improve:
   exclude    Exclude path pattern from scanning
   move       Move file/dir and update import references
   review     Holistic subjective review (LLM-based)
+  persona-qa Persona-based browser QA testing
 
 configure:
   zone       Show/set zone classifications
@@ -137,6 +139,7 @@ def create_parser(*, langs: list[str], detector_names: list[str]) -> argparse.Ar
     _add_exclude_parser(sub)
     _add_move_parser(sub)
     _add_review_parser(sub)
+    _add_persona_qa_parser(sub)
     # configure
     _add_zone_parser(sub)
     _add_config_parser(sub)
