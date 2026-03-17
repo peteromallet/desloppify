@@ -19,10 +19,10 @@ DART_FILE_EXCLUSIONS = ["build", ".dart_tool", ".fvm", ".git", "node_modules"]
 
 _FUNC_DECL_RE = re.compile(
     r"(?m)^\s*"
-    r"(?:(?:@[\w\.\(\),<>\s]+)\s*)*"
-    r"(?:(?:external|static|final|const|factory|late|required|covariant)\s+)*"
-    r"(?:[A-Za-z_]\w*(?:<[^>{}]+>)?\??\s+)?"
-    r"([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:async\s*)?(=>|\{)"
+    r"(?:(?:@[\w\.\(\),<>\s]++)\s*+)*"
+    r"(?:(?:external|static|final|const|factory|late|required|covariant)\s++)*"
+    r"(?:[A-Za-z_]\w*(?:<[^>{}]+>)?\??\s++)?"
+    r"([A-Za-z_]\w*)\s*+\(([^)]*)\)\s*+(?:async\s*+)?(=>|\{)"
 )
 _KEYWORDS = {"if", "for", "while", "switch", "catch", "return"}
 
