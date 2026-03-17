@@ -1,0 +1,20 @@
+description: >
+  Reduce confidence (but do not fully suppress) when the matched term
+  appears inside quoted text. Quoted text should be flagged for review
+  but not auto-replaced.
+
+rules:
+  - name: "in_blockquote"
+    description: "Term appears in a markdown blockquote"
+    pattern: "^\\s*>"
+    applies_to: ["language"]
+
+  - name: "in_inline_quote"
+    description: "Term appears between quotation marks (not contractions like don't/won't)"
+    pattern: "(?:^|\\s)[\"'][^\"']+[\"']"
+    applies_to: ["language"]
+
+  - name: "in_citation"
+    description: "Term appears in a citation or reference"
+    pattern: "\\b(according to|as .+ (said|wrote|stated)|quoted from|citation|reference)\\b"
+    applies_to: ["language"]

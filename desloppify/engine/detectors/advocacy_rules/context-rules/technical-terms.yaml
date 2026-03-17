@@ -1,0 +1,39 @@
+description: >
+  Suppress findings when the matched term appears in a technical context
+  where it has a legitimate non-violent meaning.
+
+rules:
+  - name: "code_identifier"
+    description: "Term appears inside a code identifier (variable, function, class name)"
+    pattern: "[a-z]\\w*(?:bug|kill|master|slave|abort)\\w*\\s*[=(]|def\\s+\\w*(?:bug|kill)\\w*|class\\s+\\w*(?:bug|kill)\\w*|function\\s+\\w*(?:bug|kill)\\w*"
+    applies_to: ["language"]
+
+  - name: "bug_in_code"
+    description: "'bug' is a standard technical term in software development"
+    pattern: "\\b(bug|bugs|bugfix|bug-fix|buggy|debug|debugging)\\b"
+    applies_to: ["language"]
+
+  - name: "posix_kill"
+    description: "'kill' is a POSIX signal command — do not flag in shell/system contexts"
+    pattern: "\\b(kill\\s+-\\d|kill\\s+-[A-Z]+|SIGKILL|SIGTERM|kill\\s+%|kill\\s+\\$)\\b"
+    applies_to: ["language"]
+
+  - name: "git_master_branch"
+    description: "'master' as a git branch name — flag separately under terminology, not idioms"
+    pattern: "\\b(git\\s+.*(master|main)|branch\\s+(master|main)|origin/master)\\b"
+    applies_to: ["language"]
+
+  - name: "import_statement"
+    description: "Term appears in an import/require/include statement"
+    pattern: "^\\s*(import|from|require|include|use)\\s+"
+    applies_to: ["language"]
+
+  - name: "url_or_path"
+    description: "Term appears inside a URL or file path"
+    pattern: "(https?://|/[a-z]+/|\\\\[a-z]+\\\\)"
+    applies_to: ["language"]
+
+  - name: "graphics_culling"
+    description: "'cull' is standard terminology in 3D graphics rendering pipelines"
+    pattern: "\\b(frustum|backface|back-face|occlusion|face|view|visibility)\\s+cull"
+    applies_to: ["language"]

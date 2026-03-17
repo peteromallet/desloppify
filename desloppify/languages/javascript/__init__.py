@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from desloppify.languages._framework.generic_support.core import generic_lang
+from desloppify.languages._framework.phases_advocacy import (
+    detector_phase_advocacy_language,
+    detector_phase_advocacy_security,
+)
 from desloppify.languages._framework.treesitter import JS_SPEC
 
 
@@ -26,6 +30,10 @@ cfg = generic_lang(
     treesitter_spec=JS_SPEC,
     frameworks=True,
 )
+
+# Append Open Paws advocacy phases to the generic config.
+cfg.phases.append(detector_phase_advocacy_language())
+cfg.phases.append(detector_phase_advocacy_security())
 
 __all__ = [
     "generic_lang",

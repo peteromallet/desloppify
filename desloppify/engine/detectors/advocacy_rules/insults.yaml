@@ -1,0 +1,60 @@
+category: insults
+description: >
+  Animal names used as insults or derogatory terms in code comments
+  and documentation. MEDIUM severity — unprofessional regardless of
+  animal violence angle.
+
+entries:
+  - term: "don't be a chicken"
+    severity: medium
+    pattern: "\\bdon'?t\\s+be\\s+a\\s+chicken\\b"
+    alternatives:
+      - "don't hesitate"
+      - "be brave"
+      - "go for it"
+    description: "Animal-as-coward insult in comments"
+
+  - term: "pig"
+    severity: medium
+    pattern: "\\b(code|memory|resource)\\s+pig\\b"
+    alternatives:
+      - "resource-intensive"
+      - "bloated"
+      - "heavy consumer"
+    description: "Animal-as-insult for resource consumption"
+
+  - term: "cowboy coding"
+    severity: low
+    pattern: "\\bcowboy\\s+cod(ing|er)\\b"
+    alternatives:
+      - "undisciplined coding"
+      - "ad-hoc development"
+      - "code without process"
+    description: "Not directly animal-related but reinforces animal industry terminology"
+
+  - term: "code monkey"
+    severity: medium
+    pattern: "\\bcode\\s+monkeys?\\b"
+    alternatives:
+      - "developer"
+      - "programmer"
+      - "engineer"
+    description: "Animal-as-insult for programmers — dehumanizing and unprofessional"
+
+  - term: "badger someone"
+    severity: low
+    pattern: "\\bbadger(ed|ing|s)?\\b"
+    alternatives:
+      - "pester"
+      - "pressure"
+      - "harass"
+    description: "From badger-baiting — a blood sport where dogs attack captive badgers"
+
+  - term: "ferret out"
+    severity: low
+    pattern: "\\bferret(ed|ing)?\\s+out\\b"
+    alternatives:
+      - "uncover"
+      - "discover"
+      - "dig up"
+    description: "From using ferrets to hunt rabbits out of burrows"

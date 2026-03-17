@@ -12,6 +12,10 @@ from desloppify.languages._framework.base.phase_builders import (
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
+from desloppify.languages._framework.phases_advocacy import (
+    detector_phase_advocacy_language,
+    detector_phase_advocacy_security,
+)
 from desloppify.languages._framework.registry.registration import register_full_plugin
 from desloppify.languages._framework.registry.state import register_lang_hooks
 from desloppify.languages._framework.base.shared_phases import phase_private_imports
@@ -109,6 +113,8 @@ class PythonConfig(LangConfig):
                 DetectorPhase("Layer violations", phase_layer_violation),
                 DetectorPhase("Dict key flow", phase_dict_keys),
                 DetectorPhase("Unused enums", phase_unused_enums),
+                detector_phase_advocacy_language(),
+                detector_phase_advocacy_security(),
                 *shared_subjective_duplicates_tail(),
             ],
             fixers={},

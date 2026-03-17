@@ -47,6 +47,8 @@ DISPLAY_ORDER = [
     "layer_violation",
     "test_coverage",
     "security",
+    "advocacy_language",
+    "advocacy_security",
     "concerns",
     "review",
     "subjective_review",

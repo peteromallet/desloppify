@@ -503,6 +503,25 @@ DETECTORS: dict[str, DetectorMeta] = {
         "run `desloppify review --prepare` to evaluate files against quality dimensions",
         tier=4,
     ),
+    # ── Open Paws advocacy detectors ──────────────────────
+    "advocacy_language": DetectorMeta(
+        "advocacy_language",
+        "advocacy language",
+        "Advocacy language",
+        "manual_fix",
+        "replace speciesist language with inclusive alternatives — "
+        "see the replacement suggestions in the issue summary",
+        tier=3,
+    ),
+    "advocacy_security": DetectorMeta(
+        "advocacy_security",
+        "advocacy security",
+        "Advocacy security",
+        "manual_fix",
+        "review for activist identity exposure, sensitive data "
+        "transmission to external APIs, and ag-gag compliance risks",
+        tier=2,
+    ),
 }
 
 

@@ -9,6 +9,10 @@ from desloppify.languages._framework.base.phase_builders import (
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
+from desloppify.languages._framework.phases_advocacy import (
+    detector_phase_advocacy_language,
+    detector_phase_advocacy_security,
+)
 from desloppify.languages._framework.base.types import (
     BoundaryRule,
     DetectorPhase,
@@ -121,6 +125,8 @@ class TypeScriptConfig(LangConfig):
                 DetectorPhase("Code smells", phase_smells),
                 *framework_phases("typescript"),
                 detector_phase_security(),
+                detector_phase_advocacy_language(),
+                detector_phase_advocacy_security(),
                 *shared_subjective_duplicates_tail(),
             ],
             fixers=get_ts_fixers(),

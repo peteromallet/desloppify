@@ -13,6 +13,10 @@ from desloppify.languages._framework.base.phase_builders import (
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
+from desloppify.languages._framework.phases_advocacy import (
+    detector_phase_advocacy_language,
+    detector_phase_advocacy_security,
+)
 from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages._framework.generic_support.core import make_tool_phase
 from desloppify.languages._framework.registry.registration import register_full_plugin
@@ -69,6 +73,8 @@ class GoConfig(LangConfig):
                 detector_phase_signature(),
                 detector_phase_test_coverage(),
                 detector_phase_security(),
+                detector_phase_advocacy_language(),
+                detector_phase_advocacy_security(),
                 *shared_subjective_duplicates_tail(),
             ],
             fixers={},

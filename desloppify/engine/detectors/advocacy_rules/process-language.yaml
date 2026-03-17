@@ -1,0 +1,71 @@
+category: process-language
+description: >
+  Process management and system terminology with violence connotations.
+  These are context-sensitive — "kill" in POSIX process management is
+  a technical term that should NOT be flagged. Only flag in documentation
+  and comments where non-violent alternatives exist.
+
+entries:
+  - term: "kill process"
+    severity: low
+    pattern: "\\bkill\\s+(the\\s+)?process\\b"
+    alternatives:
+      - "terminate the process"
+      - "stop the process"
+      - "end the process"
+    description: "Process language — in POSIX context this is standard, in docs alternatives may be clearer"
+    renameable: false
+    upstream_contexts:
+      - "POSIX kill() system call"
+      - "Unix signals (SIGKILL, SIGTERM)"
+      - "shell kill command"
+
+  - term: "kill the server"
+    severity: low
+    pattern: "\\bkill\\s+(the\\s+)?server\\b"
+    alternatives:
+      - "stop the server"
+      - "shut down the server"
+      - "terminate the server"
+    description: "Process language — alternatives are equally clear"
+    renameable: false
+    upstream_contexts:
+      - "POSIX kill() system call"
+      - "process management tools (systemctl, supervisord)"
+
+  - term: "nuke"
+    severity: medium
+    pattern: "\\bnuke\\s+(it|the|this|that|everything)\\b"
+    alternatives:
+      - "delete completely"
+      - "wipe clean"
+      - "remove entirely"
+    description: "Violent metaphor in technical context — alternatives are more professional"
+
+  - term: "abort"
+    severity: info
+    pattern: "\\babort(ed|ing)?\\b"
+    alternatives:
+      - "cancel"
+      - "stop"
+      - "halt"
+    description: "Standard technical term — flag for awareness only in non-technical contexts"
+    renameable: false
+    upstream_contexts:
+      - "C stdlib abort()"
+      - "HTTP request abort"
+      - "SMTP RSET/abort"
+      - "git merge --abort"
+
+  - term: "cull"
+    severity: medium
+    pattern: "\\bcull(ed|ing|s)?\\b"
+    alternatives:
+      - "remove"
+      - "prune"
+      - "trim"
+      - "filter out"
+    description: "Euphemism for mass killing of animals — used in wildlife management and farming"
+    renameable: false
+    upstream_contexts:
+      - "3D graphics frustum/backface/occlusion culling"

@@ -1,0 +1,45 @@
+category: terminology
+description: >
+  Legacy technical terms with animal-derived origins where modern
+  alternatives exist and are increasingly standard. LOW severity
+  unless the term has an active replacement movement.
+
+entries:
+  - term: "master/slave"
+    severity: high
+    pattern: "\\b(master|slave)\\b"
+    alternatives:
+      - "primary/replica"
+      - "leader/follower"
+      - "controller/worker"
+    description: "Actively being replaced across the industry — follows existing inclusive naming initiatives"
+    renameable: false
+    upstream_contexts:
+      - "git branch names (.gitconfig, refs/heads/master)"
+      - "I2C bus standard (hardware protocol)"
+      - "MySQL/MariaDB replication"
+      - "DNS zone transfers (AXFR)"
+      - "Redis SLAVEOF/REPLICAOF command"
+
+  - term: "whitelist/blacklist"
+    severity: high
+    pattern: "\\b(white|black)list\\b"
+    alternatives:
+      - "allowlist/denylist"
+      - "permit list/block list"
+      - "inclusion list/exclusion list"
+    description: "Actively being replaced — Google, Twitter, IETF have adopted alternatives"
+    renameable: false
+    upstream_contexts:
+      - "iptables/firewall configurations"
+      - "email filtering (SPF, DKIM)"
+      - "package manager security settings"
+
+  - term: "grandfathered"
+    severity: low
+    pattern: "\\bgrandfather(ed|ing)?\\b"
+    alternatives:
+      - "legacy"
+      - "exempt"
+      - "pre-existing"
+    description: "Historically exclusionary origin — alternatives are equally clear"

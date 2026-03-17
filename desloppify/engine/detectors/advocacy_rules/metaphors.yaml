@@ -1,0 +1,197 @@
+category: metaphors
+description: >
+  Infrastructure and organizational metaphors that use animals.
+  HIGH severity when clear technical alternatives exist.
+
+entries:
+  - term: "cattle vs. pets"
+    severity: high
+    pattern: "\\bcattle\\s+(vs?\\.?|versus)\\s+pets?\\b"
+    alternatives:
+      - "ephemeral vs. persistent"
+      - "disposable vs. unique"
+      - "numbered vs. named"
+    description: "Infrastructure metaphor — alternatives are technically more precise"
+
+  - term: "pet project"
+    severity: info
+    pattern: "\\bpet\\s+project\\b"
+    alternatives:
+      - "side project"
+      - "passion project"
+    description: "Common idiom — flag for awareness only"
+
+  - term: "canary in a coal mine"
+    severity: low
+    pattern: "\\bcanary\\s+in\\s+(a|the)\\s+coal\\s+mine\\b"
+    alternatives:
+      - "early warning signal"
+      - "leading indicator"
+      - "sentinel"
+    description: "Animal metaphor — alternatives are more technical"
+
+  - term: "canary deployment"
+    severity: info
+    pattern: "\\bcanary\\s+deploy(ment)?\\b"
+    alternatives: []
+    description: "Established technical term — do not flag"
+    renameable: false
+    upstream_contexts:
+      - "Kubernetes canary deployment strategy"
+      - "cloud deployment patterns (AWS, GCP)"
+
+  - term: "duck typing"
+    severity: info
+    pattern: "\\bduck\\s+typing\\b"
+    alternatives: []
+    description: "Established technical term — do not flag"
+    renameable: false
+    upstream_contexts:
+      - "Python type system concept"
+      - "dynamic language design pattern"
+
+  - term: "monkey patching"
+    severity: info
+    pattern: "\\bmonkey\\s+patch(ing|ed)?\\b"
+    alternatives: []
+    description: "Established technical term — debatable etymology, do not flag"
+    renameable: false
+    upstream_contexts:
+      - "Python runtime modification pattern"
+      - "Ruby open classes"
+      - "JavaScript prototype extension"
+
+  - term: "dogfooding"
+    severity: info
+    pattern: "\\bdog\\s?food(ing)?\\b"
+    alternatives:
+      - "self-hosting"
+      - "eating your own cooking"
+      - "using internally"
+    description: "Common tech term — flag for awareness only"
+
+  - term: "herding cats"
+    severity: medium
+    pattern: "\\bherding\\s+cats\\b"
+    alternatives:
+      - "coordinating independent contributors"
+      - "managing a distributed effort"
+      - "organizing chaos"
+    description: "Animal metaphor — alternatives are more descriptive"
+
+  - term: "go on a fishing expedition"
+    severity: medium
+    pattern: "\\bfishing\\s+expedition\\b"
+    alternatives:
+      - "exploratory investigation"
+      - "unfocused search"
+      - "speculative inquiry"
+    description: "Animal metaphor — alternatives are more precise"
+
+  - term: "sacred cow"
+    severity: high
+    pattern: "\\bsacred\\s+cows?\\b"
+    alternatives:
+      - "unquestioned belief"
+      - "untouchable topic"
+      - "protected assumption"
+    description: "Animal objectification with cultural insensitivity — trivializes Hindu beliefs while treating cattle as objects"
+
+  - term: "scapegoat"
+    severity: medium
+    pattern: "\\bscapegoat(ed|ing|s)?\\b"
+    alternatives:
+      - "blame target"
+      - "fall person"
+      - "wrongly blamed"
+    description: "Originates from ritual sacrifice of goats — alternatives are more precise"
+
+  - term: "rat race"
+    severity: low
+    pattern: "\\brat\\s+race\\b"
+    alternatives:
+      - "daily grind"
+      - "competitive treadmill"
+      - "endless hustle"
+    description: "Derogatory animal metaphor for futility — alternatives are more descriptive"
+
+  - term: "dead cat bounce"
+    severity: high
+    pattern: "\\bdead[\\s_-]?cat[\\s_-]?bounce\\b"
+    alternatives:
+      - "temporary rebound"
+      - "false recovery"
+      - "brief uptick"
+    description: "Financial/tech term depicting animal death — alternatives are more professional"
+
+  - term: "dog-eat-dog"
+    severity: low
+    pattern: "\\bdog[\\s-]eat[\\s-]dog\\b"
+    alternatives:
+      - "ruthlessly competitive"
+      - "cutthroat"
+      - "fiercely competitive"
+    description: "Characterizes animals as violent — alternatives convey meaning more precisely"
+
+  - term: "whack-a-mole"
+    severity: low
+    pattern: "\\bwhack[\\s-]a[\\s-]mole\\b"
+    alternatives:
+      - "recurring problem"
+      - "endless loop"
+      - "unwinnable game"
+    description: "References a game based on hitting animals — alternatives describe the pattern more precisely"
+
+  - term: "cash cow"
+    severity: high
+    pattern: "\\bcash\\s+cows?\\b"
+    alternatives:
+      - "profit center"
+      - "reliable revenue source"
+      - "money maker"
+    description: "Commodifies cows — treats living beings as profit generators"
+
+  - term: "sacrificial lamb"
+    severity: high
+    pattern: "\\bsacrificial\\s+lambs?\\b"
+    alternatives:
+      - "expendable person"
+      - "person set up to fail"
+      - "someone sacrificed for others"
+    description: "References ritual slaughter of lambs"
+
+  - term: "sitting duck"
+    severity: medium
+    pattern: "\\bsitting\\s+ducks?\\b"
+    alternatives:
+      - "easy target"
+      - "vulnerable target"
+      - "exposed"
+    description: "References a duck in the open, easy to shoot — hunting imagery"
+
+  - term: "open season"
+    severity: high
+    pattern: "\\bopen\\s+season\\b"
+    alternatives:
+      - "free-for-all"
+      - "unrestricted criticism"
+      - "no holds barred"
+    description: "References hunting season — the legal period for killing animals"
+
+  - term: "put out to pasture"
+    severity: medium
+    pattern: "\\bput(ting)?\\s+(\\w+\\s+)?out\\s+to\\s+pasture\\b"
+    alternatives:
+      - "retire"
+      - "phase out"
+      - "sunset"
+    description: "References disposing of farm animals when no longer productive"
+
+  - term: "dead duck"
+    severity: low
+    pattern: "\\bdead\\s+ducks?\\b"
+    alternatives:
+      - "lost cause"
+      - "doomed effort"
+      - "foregone conclusion"
+    description: "References a duck that has been shot and killed — hunting"

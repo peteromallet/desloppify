@@ -157,6 +157,9 @@ MECHANICAL_DIMENSION_WEIGHTS: dict[str, float] = {
     "duplication": 1.0,
     "test health": 1.0,
     "security": 1.0,
+    # Open Paws advocacy dimensions
+    "advocacy language": 1.0,
+    "advocacy security": 1.0,
 }
 
 # Per-dimension weighting within the subjective pool.

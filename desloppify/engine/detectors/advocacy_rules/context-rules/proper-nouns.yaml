@@ -1,0 +1,19 @@
+description: >
+  Suppress findings when the matched term is part of a proper noun,
+  project name, or mascot reference.
+
+rules:
+  - name: "project_mascot"
+    description: "Animal references that are project mascots or branding"
+    pattern: "\\b(Go(lang)?\\s+gopher|Linux\\s+penguin|Tux|Docker\\s+whale|Moby|Python\\s+snake|Ferris\\s+(the\\s+)?crab|Octocat|Firefox\\s+fox|Thunderbird|PostgreSQL\\s+elephant|Slonik|PHP\\s+elephant|ElePHPant|Apache\\s+feather|Swift\\s+bird|Rust\\s+crab)\\b"
+    applies_to: ["language"]
+
+  - name: "organization_name"
+    description: "Animal words that are part of organization or product names"
+    pattern: "\\b(Apache|Mongoose|Cobra|Viper|Falcon|Eagle|Hawk|Puma|Jaguar|Mustang|Anaconda|Panda(s)?|Penguin|Dolphin|Camel)\\s*(\\.|::|->|/)"
+    applies_to: ["language"]
+
+  - name: "capitalized_animal_name"
+    description: "Capitalized animal reference likely a proper noun or title"
+    pattern: "\\b[A-Z][a-z]+\\s+(the\\s+)?(Bug|Cat|Dog|Fish|Bird|Bear|Wolf|Fox|Hawk|Eagle)\\b"
+    applies_to: ["language"]

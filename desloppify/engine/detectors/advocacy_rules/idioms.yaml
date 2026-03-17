@@ -1,0 +1,274 @@
+category: idioms
+description: >
+  Violent animal idioms with clear, more direct alternatives.
+  These are CRITICAL severity — the alternatives genuinely communicate
+  the idea more clearly, especially for non-native English speakers.
+
+entries:
+  - term: "kill two birds with one stone"
+    severity: critical
+    pattern: "\\bkill\\s+two\\s+birds\\s+with\\s+one\\s+stone\\b"
+    alternatives:
+      - "accomplish two things at once"
+      - "solve two problems with one action"
+      - "hit two targets with one shot"
+    description: "Violent animal idiom with universally clearer alternatives"
+
+  - term: "beat a dead horse"
+    severity: critical
+    pattern: "\\bbeat(ing)?\\s+a\\s+dead\\s+horse\\b"
+    alternatives:
+      - "belabor the point"
+      - "go over old ground"
+      - "repeat unnecessarily"
+    description: "Violent animal idiom — alternatives are more direct"
+
+  - term: "more than one way to skin a cat"
+    severity: critical
+    pattern: "\\bmore\\s+than\\s+one\\s+way\\s+to\\s+skin\\s+a\\s+cat\\b"
+    alternatives:
+      - "more than one way to solve this"
+      - "multiple approaches available"
+      - "several ways to accomplish this"
+    description: "Violent animal idiom — alternatives are shorter and clearer"
+
+  - term: "let the cat out of the bag"
+    severity: low
+    pattern: "\\blet\\s+the\\s+cat\\s+out\\s+of\\s+the\\s+bag\\b"
+    alternatives:
+      - "reveal the secret"
+      - "disclose prematurely"
+      - "let it slip"
+    description: "Animal idiom — alternatives are more precise"
+
+  - term: "open a can of worms"
+    severity: low
+    pattern: "\\bopen(ing)?\\s+a\\s+can\\s+of\\s+worms\\b"
+    alternatives:
+      - "create a complicated situation"
+      - "uncover hidden problems"
+      - "open Pandora's box"
+    description: "Animal idiom — alternatives communicate the idea more directly"
+
+  - term: "wild goose chase"
+    severity: low
+    pattern: "\\bwild\\s+goose\\s+chase\\b"
+    alternatives:
+      - "futile search"
+      - "pointless pursuit"
+      - "fool's errand"
+    description: "Animal idiom — alternatives are more universally understood"
+
+  - term: "like shooting fish in a barrel"
+    severity: critical
+    pattern: "\\blike\\s+shooting\\s+fish\\s+in\\s+a\\s+barrel\\b"
+    alternatives:
+      - "trivially easy"
+      - "like taking candy from a baby"
+      - "effortless"
+    description: "Violent animal idiom with shorter alternatives"
+
+  - term: "flog a dead horse"
+    severity: critical
+    pattern: "\\bflog(ging)?\\s+a\\s+dead\\s+horse\\b"
+    alternatives:
+      - "belabor the point"
+      - "waste effort on a settled matter"
+      - "repeat unnecessarily"
+    description: "Violent animal idiom — same as 'beat a dead horse'"
+
+  - term: "there are bigger fish to fry"
+    severity: low
+    pattern: "\\bbigger\\s+fish\\s+to\\s+fry\\b"
+    alternatives:
+      - "more important matters to address"
+      - "higher priorities"
+      - "bigger issues at hand"
+    description: "Animal idiom — alternatives are more professional"
+
+  - term: "guinea pig"
+    severity: medium
+    pattern: "\\bguinea\\s+pig\\b"
+    alternatives:
+      - "test subject"
+      - "first to try"
+      - "early adopter"
+    description: "Animal-as-experiment metaphor — alternatives are more precise in technical contexts"
+
+  - term: "hold your horses"
+    severity: low
+    pattern: "\\bhold\\s+your\\s+horses\\b"
+    alternatives:
+      - "wait a moment"
+      - "slow down"
+      - "be patient"
+    description: "Animal idiom — alternatives are more direct"
+
+  - term: "the elephant in the room"
+    severity: info
+    pattern: "\\bthe\\s+elephant\\s+in\\s+the\\s+room\\b"
+    alternatives:
+      - "the obvious issue"
+      - "the unaddressed problem"
+    description: "Well-understood idiom — flag for awareness only"
+
+  - term: "straight from the horse's mouth"
+    severity: low
+    pattern: "\\bstraight\\s+from\\s+the\\s+horse'?s\\s+mouth\\b"
+    alternatives:
+      - "directly from the source"
+      - "firsthand"
+      - "from the authority"
+    description: "Animal idiom — alternatives are clearer for international audiences"
+
+  - term: "bring home the bacon"
+    severity: critical
+    pattern: "\\bbring(ing)?\\s+home\\s+the\\s+bacon\\b"
+    alternatives:
+      - "bring home the results"
+      - "earn a living"
+      - "win the prize"
+    description: "Animal slaughter idiom — alternatives are equally expressive"
+
+  - term: "take the bull by the horns"
+    severity: medium
+    pattern: "\\btake?(ing|ook)?\\s+the\\s+bull\\s+by\\s+the\\s+horns\\b"
+    alternatives:
+      - "face the challenge head-on"
+      - "tackle the problem directly"
+      - "seize the opportunity"
+    description: "Bullfighting idiom — alternatives convey the same assertiveness"
+
+  - term: "like lambs to the slaughter"
+    severity: critical
+    pattern: "\\blike\\s+lambs?\\s+to\\s+(the\\s+)?slaughter\\b"
+    alternatives:
+      - "without resistance"
+      - "blindly following"
+      - "unknowingly walking into danger"
+    description: "Violent animal idiom referencing slaughter — alternatives are more descriptive"
+
+  - term: "no room to swing a cat"
+    severity: medium
+    pattern: "\\bno\\s+room\\s+to\\s+swing\\s+a\\s+cat\\b"
+    alternatives:
+      - "very cramped"
+      - "extremely tight space"
+      - "barely any room"
+    description: "Violent animal idiom — alternatives are shorter and clearer"
+
+  - term: "red herring"
+    severity: info
+    pattern: "\\bred\\s+herring\\b"
+    alternatives:
+      - "distraction"
+      - "false lead"
+      - "misleading clue"
+    description: "Animal-origin idiom — flag for awareness only"
+
+  - term: "curiosity killed the cat"
+    severity: critical
+    pattern: "\\bcuriosity\\s+killed\\s+the\\s+cat\\b"
+    alternatives:
+      - "curiosity backfired"
+      - "being nosy caused trouble"
+      - "curiosity led to trouble"
+    description: "Directly references killing a cat"
+
+  - term: "like a chicken with its head cut off"
+    severity: critical
+    pattern: "\\blike\\s+a\\s+chicken\\s+with\\s+(its|their)\\s+head\\s+cut\\s+off\\b"
+    alternatives:
+      - "in a panic"
+      - "running around chaotically"
+      - "in complete disarray"
+    description: "Graphic slaughter imagery — decapitating a chicken"
+
+  - term: "your goose is cooked"
+    severity: critical
+    pattern: "\\b(your|their|his|her)\\s+goose\\s+is\\s+cooked\\b"
+    alternatives:
+      - "you're in trouble"
+      - "your fate is sealed"
+      - "it's over for you"
+    description: "References killing and cooking a goose"
+
+  - term: "throw someone to the wolves"
+    severity: critical
+    pattern: "\\bthrow(ing|n)?\\s+\\w+\\s+to\\s+the\\s+wolves\\b"
+    alternatives:
+      - "abandon to criticism"
+      - "leave to face hostility alone"
+      - "sacrifice someone"
+    description: "References feeding a person to wolves"
+
+  - term: "hook, line, and sinker"
+    severity: medium
+    pattern: "\\bhook,?\\s+line,?\\s+and\\s+sinker\\b"
+    alternatives:
+      - "completely"
+      - "without question"
+      - "fell for it entirely"
+    description: "References hooking fish — fishing kills fish"
+
+  - term: "clip someone's wings"
+    severity: medium
+    pattern: "\\bclip(ping|ped)?\\s+(\\w+('s)?\\s+)?wings\\b"
+    alternatives:
+      - "restrict someone's freedom"
+      - "limit someone's options"
+      - "hold someone back"
+    description: "References wing-clipping — physical mutilation done to farmed birds"
+
+  - term: "the straw that broke the camel's back"
+    severity: medium
+    pattern: "\\b(the\\s+)?straw\\s+that\\s+broke\\s+the\\s+camel'?s\\s+back\\b"
+    alternatives:
+      - "the tipping point"
+      - "the breaking point"
+      - "the final provocation"
+    description: "References overloading a pack animal until injury"
+
+  - term: "a bird in the hand is worth two in the bush"
+    severity: low
+    pattern: "\\bbird\\s+in\\s+(the|a)\\s+hand\\s+(is\\s+)?worth\\s+two\\s+in\\s+the\\s+bush\\b"
+    alternatives:
+      - "a sure thing beats a possibility"
+      - "certainty over speculation"
+    description: "References trapping and catching wild birds"
+
+  - term: "eat crow"
+    severity: medium
+    pattern: "\\beat(ing)?\\s+crow\\b"
+    alternatives:
+      - "admit being wrong"
+      - "swallow one's pride"
+      - "accept humiliation"
+    description: "References eating a killed bird as punishment"
+
+  - term: "fight like cats and dogs"
+    severity: medium
+    pattern: "\\bfight(ing)?\\s+like\\s+cats\\s+and\\s+dogs\\b"
+    alternatives:
+      - "constantly argue"
+      - "clash frequently"
+      - "have constant conflict"
+    description: "References animal fighting"
+
+  - term: "take the bait"
+    severity: low
+    pattern: "\\btake?(ing|ook)?\\s+the\\s+bait\\b"
+    alternatives:
+      - "fall for it"
+      - "be lured in"
+      - "be deceived"
+    description: "References baiting hooks to catch and kill fish"
+
+  - term: "don't count your chickens before they hatch"
+    severity: low
+    pattern: "\\bdon'?t\\s+count\\s+your\\s+chickens\\b"
+    alternatives:
+      - "don't assume success prematurely"
+      - "wait for confirmed results"
+      - "don't get ahead of yourself"
+    description: "References farming chickens as commodity and property"
