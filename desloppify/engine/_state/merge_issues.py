@@ -155,6 +155,24 @@ def verify_disappeared(
             resolved += 1
             continue
 
+        # Wontfix items from clippy/cargo that disappeared after inline-test
+        # filtering was introduced should be auto-resolved: the filter now
+        # correctly excludes test-only diagnostics, so the wontfix decision
+        # is obsolete.
+        if previous_status == "wontfix" and previous.get("detector", "") in (
+            "clippy_warning",
+            "cargo_error",
+        ):
+            previous["status"] = "auto_resolved"
+            previous["resolved_at"] = now
+            previous["note"] = (
+                "Auto-resolved: absent from scan after inline cfg(test) "
+                "filtering was introduced"
+            )
+            resolved_detectors.add(previous.get("detector", "unknown"))
+            resolved += 1
+            continue
+
         verification_note = (
             "Still absent from scan after manual wontfix"
             if previous_status == "wontfix"
