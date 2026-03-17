@@ -97,6 +97,10 @@ def cmd_logs(args: argparse.Namespace) -> None:
 
     if args.fix:
         print(colorize(f"\n--fix: Will remove {len(entries)} tagged log lines.", "yellow"))
+        if not sys.stdin.isatty():
+            print("Non-interactive environment detected — skipping confirmation. "
+                  "Use an interactive terminal to confirm log removal.")
+            return
         confirm = input("Proceed? [y/N] ").strip().lower()
         if confirm == "y":
             _fix_logs(by_file)
