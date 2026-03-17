@@ -443,6 +443,7 @@ def merge_scan_results(
 
     if runtime.lang and runtime.lang.zone_map is not None:
         runtime.state["zone_distribution"] = runtime.lang.zone_map.counts()
+    zone_lookup = runtime.lang.zone_map.get if runtime.lang and runtime.lang.zone_map is not None else None
     _persist_scan_coverage(runtime.state, runtime.lang)
 
     target_score = target_strict_score_from_config(runtime.config)
@@ -461,6 +462,7 @@ def merge_scan_results(
             ignore=runtime.config.get("ignore", []),
             subjective_integrity_target=target_score,
             project_root=str(get_project_root()),
+            zone_lookup=zone_lookup,
         ),
     )
 

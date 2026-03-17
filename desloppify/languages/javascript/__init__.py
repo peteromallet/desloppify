@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from desloppify.languages._framework.generic_support.core import generic_lang
 from desloppify.languages._framework.treesitter import JS_SPEC
+from desloppify.languages.javascript._zones import JS_ZONE_RULES
 
 
 cfg = generic_lang(
@@ -24,10 +25,12 @@ cfg = generic_lang(
     detect_markers=["package.json"],
     default_src="src",
     treesitter_spec=JS_SPEC,
+    zone_rules=JS_ZONE_RULES,
     frameworks=True,
 )
 
 __all__ = [
     "generic_lang",
     "JS_SPEC",
+    "JS_ZONE_RULES",
 ]

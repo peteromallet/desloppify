@@ -11,6 +11,22 @@ from desloppify.engine._state.issue_semantics import (
     is_assessment_request,
 )
 
+_NON_PRODUCTION_ZONES = {"test", "config", "generated", "vendor"}
+
+
+def _normalized_zone_value(zone_lookup, file_path: str) -> str | None:
+    """Best-effort normalization for zone lookup values."""
+    if zone_lookup is None or not file_path:
+        return None
+    try:
+        value = zone_lookup(file_path)
+    except Exception:
+        return None
+    raw = getattr(value, "value", value)
+    if raw is None:
+        return None
+    return str(raw).strip().lower() or None
+
 
 def find_suspect_detectors(
     existing: dict,
@@ -83,6 +99,7 @@ def verify_disappeared(
     scan_path: str | None,
     exclude: tuple[str, ...] = (),
     project_root: str | None = None,
+    zone_lookup=None,
 ) -> tuple[int, int, int, set[str]]:
     """Update scan corroboration for issues absent from scan.
 
@@ -146,6 +163,19 @@ def verify_disappeared(
                 file_deleted = not os.path.exists(
                     os.path.join(project_root, file_path)
                 )
+            # test_coverage findings should disappear automatically when files
+            # are now explicitly non-production by current zone policy.
+            if previous.get("detector") == "test_coverage":
+                zone_value = _normalized_zone_value(zone_lookup, file_path)
+                if zone_value in _NON_PRODUCTION_ZONES:
+                    previous["status"] = "auto_resolved"
+                    previous["resolved_at"] = now
+                    previous["note"] = (
+                        f"Auto-resolved: test_coverage file reclassified to {zone_value} zone"
+                    )
+                    resolved_detectors.add(previous.get("detector", "unknown"))
+                    resolved += 1
+                    continue
             if not file_deleted:
                 continue
             previous["status"] = "auto_resolved"

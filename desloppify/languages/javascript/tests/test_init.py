@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages import get_lang
 from desloppify.languages._framework.generic_parts.parsers import parse_eslint
 
@@ -83,6 +84,21 @@ def test_command_has_no_placeholder(cfg):
 def test_fix_cmd_registered(cfg):
     """JavaScript supports autofix — at least one fixer must be registered."""
     assert cfg.fixers, "expected at least one fixer (fix_cmd) to be registered for JavaScript"
+
+
+def test_zone_rules_classify_test_markers(cfg):
+    """JS plugin should classify common test markers into the test zone."""
+    files = [
+        "src/foo.test.js",
+        "src/bar.spec.jsx",
+        "src/__tests__/baz.js",
+        "src/app.js",
+    ]
+    zone_map = FileZoneMap(files, cfg.zone_rules)
+    assert zone_map.get("src/foo.test.js") == Zone.TEST
+    assert zone_map.get("src/bar.spec.jsx") == Zone.TEST
+    assert zone_map.get("src/__tests__/baz.js") == Zone.TEST
+    assert zone_map.get("src/app.js") == Zone.PRODUCTION
 
 
 def test_parsing_eslint_format():

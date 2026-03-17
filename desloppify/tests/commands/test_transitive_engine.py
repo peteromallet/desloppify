@@ -55,6 +55,7 @@ class TestMergeScanOptions:
         assert opts.include_slow is True
         assert opts.ignore is None
         assert opts.subjective_integrity_target is None
+        assert opts.zone_lookup is None
 
     def test_override_values(self):
         opts = MergeScanOptions(
@@ -68,6 +69,7 @@ class TestMergeScanOptions:
             include_slow=False,
             ignore=["secret_*"],
             subjective_integrity_target=0.8,
+            zone_lookup=lambda _path: "test",
         )
         assert opts.lang == "python"
         assert opts.scan_path == "src"
@@ -79,6 +81,7 @@ class TestMergeScanOptions:
         assert opts.include_slow is False
         assert opts.ignore == ["secret_*"]
         assert opts.subjective_integrity_target == 0.8
+        assert callable(opts.zone_lookup)
 
 
 class TestMergeScan:

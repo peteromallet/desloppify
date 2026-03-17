@@ -171,6 +171,55 @@ class TestAutoResolveOutOfScope:
         )
         assert "smells" in detectors
 
+    def test_open_test_coverage_issue_auto_resolves_when_file_now_in_test_zone(self):
+        """Stale open coverage findings should clear once the file is non-production."""
+        existing = {
+            "f1": {
+                "id": "f1",
+                "status": "open",
+                "file": "src/foo.test.ts",
+                "detector": "test_coverage",
+            },
+        }
+        resolved, _lang, out_of_scope, detectors = verify_disappeared(
+            existing,
+            current_ids=set(),
+            suspect_detectors=set(),
+            now="2026-04-01T00:00:00+00:00",
+            lang=None,
+            scan_path=".",
+            zone_lookup=lambda _file: "test",
+        )
+        assert existing["f1"]["status"] == "auto_resolved"
+        assert "reclassified to test zone" in existing["f1"]["note"]
+        assert out_of_scope == 0
+        assert resolved == 1
+        assert detectors == {"test_coverage"}
+
+    def test_open_non_coverage_issue_does_not_auto_resolve_from_zone_lookup(self):
+        """Manual authority remains for non-test_coverage open findings."""
+        existing = {
+            "f1": {
+                "id": "f1",
+                "status": "open",
+                "file": "src/foo.test.ts",
+                "detector": "unused",
+            },
+        }
+        resolved, _lang, out_of_scope, detectors = verify_disappeared(
+            existing,
+            current_ids=set(),
+            suspect_detectors=set(),
+            now="2026-04-01T00:00:00+00:00",
+            lang=None,
+            scan_path=".",
+            zone_lookup=lambda _file: "test",
+        )
+        assert existing["f1"]["status"] == "open"
+        assert out_of_scope == 0
+        assert resolved == 0
+        assert detectors == set()
+
 
 # ---------------------------------------------------------------------------
 # Fix 2: queue counting functions pass scan_path
