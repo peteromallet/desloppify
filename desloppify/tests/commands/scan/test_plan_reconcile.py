@@ -124,6 +124,21 @@ class TestSeedPlanStartScores:
             "objective": 88.0, "verified": 80.0,
         }
 
+    def test_seeding_clears_workflow_cycle_sentinels(self):
+        plan = empty_plan()
+        plan["previous_plan_start_scores"] = {"strict": 70.0}
+        plan["create_plan_resolved_this_cycle"] = True
+        plan["communicate_score_resolved_this_cycle"] = True
+        state = _make_state(
+            strict_score=85.0, overall_score=90.0,
+            objective_score=88.0, verified_strict_score=80.0,
+        )
+
+        assert reconcile_mod._seed_plan_start_scores(plan, state) is True
+        assert "previous_plan_start_scores" not in plan
+        assert "create_plan_resolved_this_cycle" not in plan
+        assert "communicate_score_resolved_this_cycle" not in plan
+
     def test_does_not_reseed_when_scores_exist(self):
         plan = empty_plan()
         plan["plan_start_scores"] = {
@@ -162,6 +177,22 @@ class TestSeedPlanStartScores:
         state = _make_state(strict_score=85.0, overall_score=90.0,
                             objective_score=88.0, verified_strict_score=80.0)
         assert reconcile_mod._seed_plan_start_scores(plan, state) is False
+
+
+class TestResetCycleForForceRescan:
+
+    def test_force_rescan_clears_workflow_cycle_sentinels(self):
+        plan = empty_plan()
+        plan["queue_order"] = ["workflow::communicate-score", "workflow::create-plan"]
+        plan["plan_start_scores"] = {"strict": 80.0}
+        plan["previous_plan_start_scores"] = {"strict": 70.0}
+        plan["create_plan_resolved_this_cycle"] = True
+        plan["communicate_score_resolved_this_cycle"] = True
+
+        assert reconcile_mod._reset_cycle_for_force_rescan(plan) is True
+        assert "previous_plan_start_scores" not in plan
+        assert "create_plan_resolved_this_cycle" not in plan
+        assert "communicate_score_resolved_this_cycle" not in plan
 
 
 # ---------------------------------------------------------------------------

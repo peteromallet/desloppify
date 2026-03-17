@@ -18,7 +18,7 @@ from desloppify.engine._plan.constants import (
 )
 from desloppify.engine._plan.schema import empty_plan
 from desloppify.engine._plan.sync import live_planned_queue_empty, reconcile_plan
-from desloppify.engine._plan.sync.workflow import clear_score_communicated_sentinel
+from desloppify.engine._plan.sync.workflow import clear_communicate_score_sentinel, clear_score_communicated_sentinel
 from desloppify.engine._work_queue.snapshot import (
     PHASE_ASSESSMENT_POSTFLIGHT,
     PHASE_EXECUTE,
@@ -465,6 +465,18 @@ def test_clear_score_communicated_sentinel() -> None:
     # Second call is a no-op (no KeyError)
     clear_score_communicated_sentinel(plan)
     assert "previous_plan_start_scores" not in plan
+
+
+def test_clear_communicate_score_sentinel() -> None:
+    """Helper removes the resolved-this-cycle sentinel; missing key is a no-op."""
+    plan = empty_plan()
+    plan["communicate_score_resolved_this_cycle"] = True
+
+    clear_communicate_score_sentinel(plan)
+    assert "communicate_score_resolved_this_cycle" not in plan
+
+    clear_communicate_score_sentinel(plan)
+    assert "communicate_score_resolved_this_cycle" not in plan
 
 
 def test_sentinel_blocks_communicate_score_reinjection() -> None:

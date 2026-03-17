@@ -313,6 +313,16 @@ def clear_create_plan_sentinel(plan: PlanModel) -> None:
     plan.pop("create_plan_resolved_this_cycle", None)
 
 
+def clear_communicate_score_sentinel(plan: PlanModel) -> None:
+    """Clear the ``communicate_score_resolved_this_cycle`` sentinel.
+
+    Call this at the same cycle-boundary points as the other workflow
+    sentinels so that ``sync_communicate_score_needed`` can re-inject
+    ``workflow::communicate-score`` in the next cycle.
+    """
+    plan.pop("communicate_score_resolved_this_cycle", None)
+
+
 _EMPTY = QueueSyncResult
 
 
@@ -485,6 +495,12 @@ def sync_communicate_score_needed(
     # at injection time and cleared at cycle boundaries.
     if "previous_plan_start_scores" in plan:
         return _EMPTY()
+    # Already resolved this cycle — sentinel is set when injected and
+    # cleared at cycle boundaries (force-rescan, score seeding, queue
+    # drain, trusted import).  This prevents re-injection after the
+    # rescan that follows a resolve clears previous_plan_start_scores.
+    if plan.get("communicate_score_resolved_this_cycle"):
+        return _EMPTY()
     if not _subjective_review_current_for_cycle(plan, state, policy=policy):
         return _EMPTY()
 
@@ -494,6 +510,7 @@ def sync_communicate_score_needed(
     # to rebaseline) so mid-cycle scans don't re-inject.
     if not plan.get("previous_plan_start_scores"):
         plan["previous_plan_start_scores"] = {}
+    plan["communicate_score_resolved_this_cycle"] = True
     return _inject(plan, WORKFLOW_COMMUNICATE_SCORE_ID)
 
 
@@ -520,6 +537,7 @@ def _rebaseline_plan_start_scores(
 __all__ = [
     "PendingImportScoresMeta",
     "ScoreSnapshot",
+    "clear_communicate_score_sentinel",
     "clear_create_plan_sentinel",
     "clear_score_communicated_sentinel",
     "import_scores_meta_matches",

@@ -31,6 +31,9 @@ class TestClearPlanStartScoresIfQueueEmpty:
             "strict": 80.0, "overall": 85.0,
             "objective": 82.0, "verified": 78.0,
         }
+        plan["previous_plan_start_scores"] = {"strict": 70.0}
+        plan["create_plan_resolved_this_cycle"] = True
+        plan["communicate_score_resolved_this_cycle"] = True
         state = _make_state()
 
         monkeypatch.setattr(
@@ -41,6 +44,12 @@ class TestClearPlanStartScoresIfQueueEmpty:
         assert result is True
         assert plan["plan_start_scores"] == {}
         assert state["_plan_start_scores_for_reveal"]["strict"] == 80.0
+        assert "previous_plan_start_scores" not in plan
+        assert "create_plan_resolved_this_cycle" not in plan
+        # communicate_score_resolved_this_cycle must survive queue-drain so
+        # the post-drain rescan doesn't re-inject workflow::communicate-score.
+        # It is cleared by _seed_plan_start_scores at the next cycle start.
+        assert plan.get("communicate_score_resolved_this_cycle") is True
 
     def test_does_not_clear_when_queue_has_items(self, monkeypatch):
         plan = empty_plan()
@@ -388,3 +397,70 @@ class TestReconcilePlanPostScan:
         assert "a" not in saved[0]["queue_order"]
         assert "b" not in saved[0]["queue_order"]
         assert "c" in saved[0]["queue_order"]
+
+# ---------------------------------------------------------------------------
+# Regression: communicate-score re-injection after resolve
+# ---------------------------------------------------------------------------
+
+
+def test_communicate_score_not_reinjected_after_resolve(monkeypatch):
+    """communicate_score_resolved_this_cycle survives queue-drain so post-drain rescan doesn't re-inject.
+
+    Scenario: agent resolves workflow::communicate-score, then rescans twice.
+    The sentinel must block re-injection on both subsequent scans until a new
+    cycle starts (_seed_plan_start_scores clears it).
+    """
+    from desloppify.engine._plan.constants import WORKFLOW_COMMUNICATE_SCORE_ID
+
+    # State after agent resolves communicate-score:
+    # - communicate_score_resolved_this_cycle is True (set at injection time)
+    # - previous_plan_start_scores is set (set at injection time)
+    # - plan_start_scores has the rebaselined score
+    # - queue_order is empty (communicate-score was purged on resolve)
+    plan = empty_plan()
+    plan["plan_start_scores"] = {
+        "strict": 90.0,
+        "overall": 90.0,
+        "objective": 90.0,
+        "verified": 30.0,
+    }
+    plan["previous_plan_start_scores"] = {"strict": 30.0}
+    plan["communicate_score_resolved_this_cycle"] = True
+
+    state = _make_state(
+        strict_score=90.0,
+        overall_score=90.0,
+        objective_score=90.0,
+        verified_strict_score=30.0,
+    )
+
+    saved: list[dict] = []
+
+    def _capture_save(p, _path=None):
+        import copy
+
+        saved.append(copy.deepcopy(p))
+
+    monkeypatch.setattr(reconcile_mod, "load_plan", lambda _path=None: plan)
+    monkeypatch.setattr(reconcile_mod, "save_plan", _capture_save)
+
+    # Scan 1 (post-resolve rescan): queue drains, plan_start_scores cleared,
+    # but communicate_score_resolved_this_cycle must survive.
+    reconcile_mod.reconcile_plan_post_scan(_runtime(state=state))
+    assert saved, "plan should have been saved"
+    scan1_plan = saved[-1]
+    assert WORKFLOW_COMMUNICATE_SCORE_ID not in scan1_plan.get(
+        "queue_order", []
+    ), "communicate-score must not be re-injected on scan 1"
+    assert (
+        scan1_plan.get("communicate_score_resolved_this_cycle") is True
+    ), "sentinel must survive queue-drain so scan 2 is also protected"
+
+    # Scan 2: sentinel still present — must still block re-injection.
+    saved.clear()
+    reconcile_mod.reconcile_plan_post_scan(_runtime(state=state))
+    if saved:
+        scan2_plan = saved[-1]
+        assert WORKFLOW_COMMUNICATE_SCORE_ID not in scan2_plan.get(
+            "queue_order", []
+        ), "communicate-score must not be re-injected on scan 2"

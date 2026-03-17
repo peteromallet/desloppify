@@ -29,6 +29,7 @@ from desloppify.engine._plan.sync import (
 )
 from desloppify.engine._plan.sync.workflow_gates import sync_import_scores_needed
 from desloppify.engine._plan.sync.workflow import (
+    clear_communicate_score_sentinel,
     clear_create_plan_sentinel,
     clear_score_communicated_sentinel,
 )
@@ -251,6 +252,7 @@ def _apply_import_plan_transitions(
     if trusted:
         clear_score_communicated_sentinel(plan)
         clear_create_plan_sentinel(plan)
+        clear_communicate_score_sentinel(plan)
         if sync_inputs.covered_ids:
             mark_subjective_review_completed(
                 plan,

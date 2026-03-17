@@ -416,6 +416,30 @@ def test_sync_plan_after_import_keeps_workflow_before_triage(monkeypatch) -> Non
     ]
 
 
+def test_sync_plan_after_import_trusted_internal_clears_workflow_cycle_sentinels(
+    monkeypatch,
+) -> None:
+    plan: dict = {
+        "queue_order": [],
+        "previous_plan_start_scores": {"strict": 70.0},
+        "create_plan_resolved_this_cycle": True,
+        "communicate_score_resolved_this_cycle": True,
+    }
+
+    _patch_basic_plan_sync_runtime(monkeypatch, plan=plan)
+
+    plan_sync_mod.sync_plan_after_import(
+        state={},
+        diff={"new": 0, "reopened": 0, "auto_resolved": 0},
+        assessment_mode="trusted_internal",
+        request=_sync_request(import_payload={"assessments": {"Naming Quality": 82}}),
+    )
+
+    assert "previous_plan_start_scores" not in plan
+    assert "create_plan_resolved_this_cycle" not in plan
+    assert "communicate_score_resolved_this_cycle" not in plan
+
+
 def test_sync_plan_after_import_reuses_plan_aware_policy(monkeypatch) -> None:
     plan: dict = {"queue_order": []}
     seen: dict[str, object] = {}

@@ -29,6 +29,7 @@ from desloppify.engine._plan.sync import (
 from desloppify.engine._plan.sync.dimensions import current_unscored_ids
 from desloppify.engine._plan.sync.context import is_mid_cycle
 from desloppify.engine._plan.sync.workflow import (
+    clear_communicate_score_sentinel,
     clear_create_plan_sentinel,
     clear_score_communicated_sentinel,
 )
@@ -52,6 +53,8 @@ def _reset_cycle_for_force_rescan(plan: dict[str, object]) -> bool:
         order.remove(item)
     clear_score_communicated_sentinel(plan)
     clear_create_plan_sentinel(plan)
+    clear_communicate_score_sentinel(plan)
+    plan.pop("scan_count_at_plan_start", None)
     meta = plan.get("epic_triage_meta", {})
     if isinstance(meta, dict):
         meta.pop("triage_recommended", None)
@@ -108,6 +111,7 @@ def _seed_plan_start_scores(plan: dict[str, object], state: state_mod.StateModel
     }
     clear_score_communicated_sentinel(plan)
     clear_create_plan_sentinel(plan)
+    clear_communicate_score_sentinel(plan)
     plan["scan_count_at_plan_start"] = int(state.get("scan_count", 0) or 0)
     return True
 
@@ -155,6 +159,12 @@ def _clear_plan_start_scores_if_queue_empty(
     plan["plan_start_scores"] = {}
     clear_score_communicated_sentinel(plan)
     clear_create_plan_sentinel(plan)
+    # NOTE: do NOT clear communicate_score_resolved_this_cycle here.
+    # This sentinel must survive until the next cycle starts (when
+    # _seed_plan_start_scores runs), otherwise the post-queue-drain rescan
+    # re-injects workflow::communicate-score because both guards
+    # (previous_plan_start_scores and communicate_score_resolved_this_cycle)
+    # have been cleared before reconcile_plan runs on the next scan.
     return True
 
 
