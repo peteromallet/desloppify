@@ -111,7 +111,7 @@ class AutoClusterDecision:
     """A triage decision for an auto-cluster."""
 
     cluster: str
-    action: str  # "promote", "skip", or "break_up"
+    action: str  # "promote", "skip", "defer", or "break_up"
     reason: str = ""
     priority: str = ""  # e.g. "after dead-code-fixes", "last", "first"
     sub_clusters: list[str] = field(default_factory=list)  # for break_up action
@@ -314,7 +314,7 @@ Respond with a single JSON object matching this schema:
   "auto_cluster_decisions": [
     {"cluster": "auto/security", "action": "promote", "priority": "first", "reason": "high-value security fixes"},
     {"cluster": "auto/unused", "action": "skip", "reason": "mostly test assert noise"},
-    {"cluster": "auto/test_coverage", "action": "break_up", "reason": "split by module", "sub_clusters": ["auto/test_coverage_api", "auto/test_coverage_core"]}
+    {"cluster": "auto/test_coverage", "action": "defer", "reason": "clean up code quality issues first — tests lock in current patterns"}
   ]
 }
 """
@@ -498,8 +498,13 @@ def _append_mechanical_backlog_section(
         "You MUST make an explicit decision for each auto-cluster listed below. "
         "Include every auto-cluster in your `auto_cluster_decisions` output with one of: "
         "promote (add to active queue with a priority position), "
-        "skip (with a specific reason — e.g. 'mostly false positives per sampling'), or "
-        "break_up (split into smaller sub-clusters with a reason)."
+        "skip (with a specific reason — e.g. 'mostly false positives per sampling'), "
+        "defer (keep in backlog — revisit after higher-impact work is done), or "
+        "break_up (split into smaller sub-clusters with a reason).\n\n"
+        "IMPORTANT: Prioritize code quality fixes (dead code, naming, smells, duplication, "
+        "structural issues) BEFORE test coverage. Writing tests for sloppy code locks in the "
+        "slop. Clean up the code first, then add tests to protect the clean version. "
+        "Defer test_coverage clusters unless code quality dimensions are already above 80%."
     )
 
     rendered_clusters: list[tuple[str, dict, int]] = []

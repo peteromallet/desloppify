@@ -265,6 +265,16 @@ def _apply_auto_cluster_decisions(
             cluster["updated_at"] = now
             result.auto_clusters_skipped += 1
 
+        elif action == "defer":
+            cluster["triage_defer"] = {
+                "reason": decision.reason,
+                "decided_at": now,
+                "triage_version": version,
+            }
+            cluster["execution_status"] = "deferred"
+            cluster["updated_at"] = now
+            result.auto_clusters_skipped += 1
+
         elif action == "break_up":
             cluster["triage_break_up"] = {
                 "reason": decision.reason,

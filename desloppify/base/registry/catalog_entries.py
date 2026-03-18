@@ -251,7 +251,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "test coverage",
         "Test health",
         "refactor",
-        "add tests for untested production modules — prioritize by import count",
+        "review test coverage gaps — focus on critical modules with many importers first; defer test writing until code quality issues are resolved",
         tier=4,
         subjective_dimensions=("test_strategy",),
     ),

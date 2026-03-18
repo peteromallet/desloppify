@@ -284,7 +284,7 @@ def show_low_dimension_hints(
         "File health": "run `desloppify show structural` — split large files",
         "Code quality": "run `desloppify show smells` — fix code smells",
         "Duplication": "run `desloppify show dupes` — deduplicate functions",
-        "Test health": "add tests for uncovered files: `desloppify show test_coverage`",
+        "Test health": "run `desloppify show test_coverage` — review coverage gaps (fix code issues first, tests later)",
         "Security": "run `desloppify show security` — fix security issues",
     }
 
