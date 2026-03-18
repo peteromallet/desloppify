@@ -8,6 +8,7 @@ from desloppify.languages._framework.phases_advocacy import (
     detector_phase_advocacy_security,
 )
 from desloppify.languages._framework.treesitter import JS_SPEC
+from desloppify.languages.javascript._zones import JS_ZONE_RULES
 
 
 cfg = generic_lang(
@@ -28,6 +29,7 @@ cfg = generic_lang(
     detect_markers=["package.json"],
     default_src="src",
     treesitter_spec=JS_SPEC,
+    zone_rules=JS_ZONE_RULES,
     frameworks=True,
 )
 
@@ -38,4 +40,5 @@ cfg.phases.append(detector_phase_advocacy_security())
 __all__ = [
     "generic_lang",
     "JS_SPEC",
+    "JS_ZONE_RULES",
 ]

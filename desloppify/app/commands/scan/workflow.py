@@ -461,6 +461,7 @@ def merge_scan_results(
             ignore=runtime.config.get("ignore", []),
             subjective_integrity_target=target_score,
             project_root=str(get_project_root()),
+            zone_map=runtime.lang.zone_map if runtime.lang else None,
         ),
     )
 
