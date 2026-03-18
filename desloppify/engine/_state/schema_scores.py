@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ def json_default(obj: Any) -> Any:
         return str(obj).replace("\\", "/")
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return dataclasses.asdict(obj)
     raise TypeError(
         f"Object of type {type(obj).__name__} is not JSON serializable: {obj!r}"
     )
