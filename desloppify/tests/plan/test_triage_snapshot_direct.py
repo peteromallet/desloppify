@@ -13,7 +13,7 @@ def test_normalized_issue_id_list_filters_invalid_values() -> None:
     assert result == ["review::a", "review::b"]
 
 
-def test_cluster_issue_ids_merges_cluster_and_action_steps() -> None:
+def test_cluster_issue_ids_uses_issue_ids_only() -> None:
     cluster = {
         "issue_ids": ["review::a", "review::b", "review::a", ""],
         "action_steps": [
@@ -23,10 +23,10 @@ def test_cluster_issue_ids_merges_cluster_and_action_steps() -> None:
         ],
     }
 
+    # action_steps issue_refs are traceability metadata, not membership
     assert snapshot_mod._cluster_issue_ids(cluster) == [
         "review::a",
         "review::b",
-        "review::c",
     ]
 
 

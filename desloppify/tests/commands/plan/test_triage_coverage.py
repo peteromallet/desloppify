@@ -128,8 +128,8 @@ class TestTriageCoverage:
         assert total == 1
         assert organized == 1
 
-    def test_coverage_counts_issue_refs_when_issue_ids_missing(self):
-        """Cluster membership should recover from action_steps.issue_refs."""
+    def test_coverage_ignores_issue_refs_without_issue_ids(self):
+        """Step refs are traceability metadata, not membership."""
         plan = empty_plan()
         plan["queue_order"] = [
             *TRIAGE_STAGE_IDS,
@@ -155,4 +155,4 @@ class TestTriageCoverage:
         organized, total, _ = triage_coverage(plan)
 
         assert total == 2
-        assert organized == 2
+        assert organized == 0

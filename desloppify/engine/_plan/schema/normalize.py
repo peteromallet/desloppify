@@ -234,9 +234,6 @@ def _iter_cluster_raw_issue_ids(
     override_members: dict[str, list[str]],
 ) -> list[object]:
     raw_issue_ids: list[object] = list(cluster.get("issue_ids", []))
-    for step in cluster.get("action_steps", []):
-        if isinstance(step, dict):
-            raw_issue_ids.extend(step.get("issue_refs", []))
 
     cluster_name = cluster.get("name")
     if isinstance(cluster_name, str):

@@ -24,13 +24,6 @@ def cluster_issue_ids(cluster: Cluster | dict[str, object]) -> list[str]:
 
     _append(cluster.get("issue_ids"))
 
-    steps = cluster.get("action_steps")
-    if isinstance(steps, list):
-        for step in steps:
-            if not isinstance(step, dict):
-                continue
-            _append(step.get("issue_refs"))
-
     return ordered
 
 

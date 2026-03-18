@@ -45,6 +45,7 @@ def test_cluster_display_helpers_and_renderers(monkeypatch, capsys) -> None:
                 "description": "Primary",
                 "action": "desloppify plan resolve alpha",
                 "priority": 1,
+                "issue_ids": ["i1"],
                 "action_steps": [{"title": "Do work", "issue_refs": ["i1"]}],
             },
             "beta": {"issue_ids": ["i2"], "description": "Secondary", "priority": 2, "auto": True},

@@ -50,8 +50,8 @@ def test_resolve_cluster_name_to_member_ids():
     assert result == ["a", "b"]
 
 
-def test_resolve_cluster_name_to_step_refs_when_issue_ids_missing():
-    """Pattern fallback uses step refs for step-only clusters."""
+def test_resolve_cluster_name_with_only_step_refs_returns_empty():
+    """Step refs are traceability metadata, not membership — cluster resolves empty."""
     plan = _plan_with_queue("a", "b", "c")
     plan["clusters"] = {
         "my-cluster": {
@@ -64,7 +64,7 @@ def test_resolve_cluster_name_to_step_refs_when_issue_ids_missing():
     state = _state_with_issues("a", "b", "c")
 
     result = resolve_ids_from_patterns(state, ["my-cluster"], plan=plan)
-    assert result == ["a", "b", "c"]
+    assert result == []
 
 
 def test_resolve_mix_of_cluster_and_issue():
@@ -155,8 +155,8 @@ def testresolve_target_empty_cluster():
     assert resolve_target(plan, "empty", "before") == "empty"
 
 
-def testresolve_target_uses_step_refs_when_issue_ids_missing():
-    """Cluster targets use effective membership, not only stored issue_ids."""
+def testresolve_target_with_only_step_refs_falls_back_to_cluster_name():
+    """Step refs are not membership — empty cluster falls back to cluster name."""
     plan = _plan_with_queue("x", "a", "b", "y")
     plan["clusters"] = {
         "steps-only": {
@@ -164,8 +164,8 @@ def testresolve_target_uses_step_refs_when_issue_ids_missing():
         }
     }
 
-    assert resolve_target(plan, "steps-only", "before") == "a"
-    assert resolve_target(plan, "steps-only", "after") == "b"
+    assert resolve_target(plan, "steps-only", "before") == "steps-only"
+    assert resolve_target(plan, "steps-only", "after") == "steps-only"
 
 
 # ---------------------------------------------------------------------------

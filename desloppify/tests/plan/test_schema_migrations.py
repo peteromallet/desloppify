@@ -77,7 +77,7 @@ def test_upgrade_plan_to_v7_runs_legacy_cleanup() -> None:
     assert "deferred" in plan and plan["deferred"] == []
 
 
-def test_normalize_cluster_defaults_restores_issue_ids_from_step_refs_and_log() -> None:
+def test_normalize_cluster_defaults_restores_issue_ids_from_execution_log() -> None:
     plan = {
         "clusters": {
             "manual": {
