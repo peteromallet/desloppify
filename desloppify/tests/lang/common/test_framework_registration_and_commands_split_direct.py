@@ -476,6 +476,7 @@ class _AccessorHarness(accessors_mod.LangRunStateAccessors):
             zone_map=None,
             dep_graph=None,
             complexity_map={},
+            runtime_cache={},
             review_cache={},
             review_max_age_days=30,
             runtime_settings={},
@@ -499,6 +500,7 @@ def test_runtime_accessors_cover_state_and_default_resolution() -> None:
     run.zone_map = {"src/a.py": "production"}
     run.dep_graph = {"src/a.py": {"imports": set(), "importers": set()}}
     run.complexity_map = {"src/a.py": 4.2}
+    run.runtime_cache = {"framework": {"present": True}}
     run.review_cache = {"src/a.py": {"score": 92}}
     run.review_max_age_days = "60"
     run.runtime_settings = {"flag": {"x": 9}}
@@ -511,6 +513,7 @@ def test_runtime_accessors_cover_state_and_default_resolution() -> None:
     assert run.zone_map["src/a.py"] == "production"
     assert run.dep_graph["src/a.py"]["imports"] == set()
     assert run.complexity_map["src/a.py"] == 4.2
+    assert run.runtime_cache["framework"]["present"] is True
     assert run.review_cache["src/a.py"]["score"] == 92
     assert run.review_max_age_days == 60
     assert run.runtime_settings["flag"] == {"x": 9}

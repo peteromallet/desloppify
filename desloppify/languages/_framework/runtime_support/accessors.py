@@ -39,6 +39,14 @@ class LangRunStateAccessors:
         self.state.complexity_map = value
 
     @property
+    def runtime_cache(self) -> dict[str, Any]:
+        return self.state.runtime_cache
+
+    @runtime_cache.setter
+    def runtime_cache(self, value: dict[str, Any]) -> None:
+        self.state.runtime_cache = value
+
+    @property
     def review_cache(self) -> dict[str, Any]:
         return self.state.review_cache
 

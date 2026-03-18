@@ -46,7 +46,7 @@ _NEXTJS_INFO_CACHE_PREFIX = "framework.nextjs.info"
 
 def _nextjs_info(scan_root: Path, lang: LangRuntimeContract) -> NextjsFrameworkInfo:
     key = f"{_NEXTJS_INFO_CACHE_PREFIX}:{scan_root.resolve().as_posix()}"
-    cache = getattr(lang, "review_cache", None)
+    cache = getattr(lang, "runtime_cache", None)
     if isinstance(cache, dict):
         cached = cache.get(key)
         if isinstance(cached, NextjsFrameworkInfo):

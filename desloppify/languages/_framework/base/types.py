@@ -82,6 +82,7 @@ class LangRuntimeContract(Protocol):
     zone_map: FileZoneMap | None
     dep_graph: dict[str, dict[str, Any]] | None
     complexity_map: dict[str, float]
+    runtime_cache: dict[str, Any]
     review_cache: dict[str, Any]
     review_max_age_days: int
     subjective_assessments: dict[str, Any]

@@ -26,6 +26,7 @@ class LangRuntimeState:
     zone_map: FileZoneMap | None = None
     dep_graph: dict[str, dict[str, Any]] | None = None
     complexity_map: dict[str, float] = field(default_factory=dict)
+    runtime_cache: dict[str, Any] = field(default_factory=dict)
     review_cache: dict[str, Any] = field(default_factory=dict)
     review_max_age_days: int = 30
     subjective_assessments: dict[str, Any] = field(default_factory=dict)
@@ -44,6 +45,7 @@ class LangRunOverrides:
     zone_map: FileZoneMap | None = _UNSET
     dep_graph: dict[str, dict[str, Any]] | None = _UNSET
     complexity_map: dict[str, float] | None = _UNSET
+    runtime_cache: dict[str, Any] | None = _UNSET
     review_cache: dict[str, Any] | None = _UNSET
     review_max_age_days: int | None = _UNSET
     subjective_assessments: dict[str, Any] | None = _UNSET
@@ -60,6 +62,7 @@ _LANG_OVERRIDE_FIELDS = tuple(f.name for f in fields(LangRunOverrides))
 _LANG_OVERRIDE_DICT_FIELDS = frozenset(
     {
         "complexity_map",
+        "runtime_cache",
         "review_cache",
         "subjective_assessments",
         "runtime_settings",

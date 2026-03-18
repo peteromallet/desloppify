@@ -16,6 +16,14 @@ from .types import DetectionConfig, EcosystemFrameworkDetection, FrameworkEviden
 _CACHE_PREFIX = "frameworks.ecosystem.present"
 
 
+def _framework_runtime_cache(lang: LangRuntimeContract | None) -> dict[str, Any] | None:
+    """Return scan-scoped framework cache storage."""
+    if lang is None:
+        return None
+    cache = getattr(lang, "runtime_cache", None)
+    return cache if isinstance(cache, dict) else None
+
+
 def _find_nearest_package_json(scan_path: Path, project_root: Path) -> Path | None:
     resolved = scan_path if scan_path.is_absolute() else (project_root / scan_path)
     resolved = resolved.resolve()
@@ -133,13 +141,12 @@ def detect_ecosystem_frameworks(
     eco = str(ecosystem or "").strip().lower()
     resolved_scan_path = Path(scan_path).resolve()
     cache_key = f"{_CACHE_PREFIX}:{eco}:{resolved_scan_path.as_posix()}"
+    cache = _framework_runtime_cache(lang)
 
-    if lang is not None:
-        cache = getattr(lang, "review_cache", None)
-        if isinstance(cache, dict):
-            cached = cache.get(cache_key)
-            if isinstance(cached, EcosystemFrameworkDetection):
-                return cached
+    if cache is not None:
+        cached = cache.get(cache_key)
+        if isinstance(cached, EcosystemFrameworkDetection):
+            return cached
 
     project_root = get_project_root()
 
@@ -150,8 +157,8 @@ def detect_ecosystem_frameworks(
             package_json_relpath=None,
             present={},
         )
-        if lang is not None and isinstance(getattr(lang, "review_cache", None), dict):
-            lang.review_cache[cache_key] = result
+        if cache is not None:
+            cache[cache_key] = result
         return result
 
     package_json = _find_nearest_package_json(resolved_scan_path, project_root)
@@ -201,10 +208,8 @@ def detect_ecosystem_frameworks(
         present=present,
     )
 
-    if lang is not None:
-        cache = getattr(lang, "review_cache", None)
-        if isinstance(cache, dict):
-            cache[cache_key] = result
+    if cache is not None:
+        cache[cache_key] = result
 
     return result
 
