@@ -12,6 +12,7 @@ from desloppify.engine._plan.constants import (
     WORKFLOW_IMPORT_SCORES_ID,
     WORKFLOW_RUN_SCAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
+    is_synthetic_id,
 )
 from desloppify.engine._plan.refresh_lifecycle import (
     postflight_scan_pending,
@@ -269,7 +270,12 @@ def _temporary_skipped_ids(plan: dict) -> list[str]:
         if not isinstance(entry, dict):
             continue
         if str(entry.get("kind", "temporary")) == "temporary":
-            deferred.append(str(issue_id))
+            candidate = str(issue_id)
+            # Synthetic queue IDs (workflow/triage/subjective) are not real
+            # deferred issue work and can create phantom deferred loops.
+            if is_synthetic_id(candidate):
+                continue
+            deferred.append(candidate)
     deferred.sort()
     return deferred
 

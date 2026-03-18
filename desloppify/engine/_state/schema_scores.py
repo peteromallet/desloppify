@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ def json_default(obj: Any) -> Any:
         return sorted(obj)
     if isinstance(obj, Path):
         return str(obj).replace("\\", "/")
+    if is_dataclass(obj):
+        return asdict(obj)
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
     raise TypeError(

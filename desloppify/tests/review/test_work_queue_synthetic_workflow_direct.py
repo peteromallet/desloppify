@@ -232,3 +232,16 @@ def test_build_deferred_disposition_item_counts_clusters_and_individuals() -> No
     assert "2 clusters + 1 individual item" in item["summary"]
     assert item["detail"]["deferred_cluster_count"] == 2
     assert item["detail"]["deferred_individual_count"] == 1
+
+
+def test_build_deferred_disposition_item_ignores_synthetic_skip_ids() -> None:
+    item = workflow_mod.build_deferred_disposition_item(
+        {
+            "skipped": {
+                "workflow::deferred-disposition": {"kind": "temporary"},
+                "triage::observe": {"kind": "temporary"},
+            }
+        }
+    )
+
+    assert item is None
