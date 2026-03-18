@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from desloppify.base.discovery.file_paths import matches_exclusion
+from desloppify.engine.policy.zones import should_skip_issue
 from desloppify.engine._state.filtering import matched_ignore_pattern
 from desloppify.engine._state.issue_semantics import (
     is_import_only_issue,
@@ -83,6 +84,7 @@ def verify_disappeared(
     scan_path: str | None,
     exclude: tuple[str, ...] = (),
     project_root: str | None = None,
+    zone_map=None,
 ) -> tuple[int, int, int, set[str]]:
     """Update scan corroboration for issues absent from scan.
 
@@ -146,6 +148,17 @@ def verify_disappeared(
                 file_deleted = not os.path.exists(
                     os.path.join(project_root, file_path)
                 )
+            # Auto-resolve if zone policy now says this detector should be
+            # skipped for this file's zone (e.g. test_coverage on test files).
+            # Bug reported by @claytona500 in PR #478.
+            detector = previous.get("detector", "")
+            if zone_map and file_path and should_skip_issue(zone_map, file_path, detector):
+                previous["status"] = "auto_resolved"
+                previous["resolved_at"] = now
+                previous["note"] = f"Auto-resolved: zone policy now skips {detector} for this file"
+                resolved_detectors.add(detector or "unknown")
+                resolved += 1
+                continue
             if not file_deleted:
                 continue
             previous["status"] = "auto_resolved"
