@@ -44,35 +44,60 @@ def load_font(
     candidates = []
     if mono:
         candidates = [
+            # macOS
             "/System/Library/Fonts/SFNSMono.ttf",
+            # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+            # Windows
+            "C:/Windows/Fonts/consola.ttf",
+            "C:/Windows/Fonts/cour.ttf",
         ]
     elif serif and bold:
         candidates = [
+            # macOS
             "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
             "/System/Library/Fonts/NewYork.ttf",
+            # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+            # Windows
+            "C:/Windows/Fonts/georgiab.ttf",
+            "C:/Windows/Fonts/timesbd.ttf",
         ]
     elif serif:
         candidates = [
+            # macOS
             "/System/Library/Fonts/Supplemental/Georgia.ttf",
             "/System/Library/Fonts/NewYork.ttf",
+            # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            # Windows
+            "C:/Windows/Fonts/georgia.ttf",
+            "C:/Windows/Fonts/times.ttf",
         ]
     elif bold:
         candidates = [
+            # macOS
             "/System/Library/Fonts/SFCompact.ttf",
             "/System/Library/Fonts/HelveticaNeue.ttc",
+            # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            # Windows
+            "C:/Windows/Fonts/segoeuib.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
         ]
     else:
         candidates = [
+            # macOS
             "/System/Library/Fonts/SFCompact.ttf",
             "/System/Library/Fonts/HelveticaNeue.ttc",
+            # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            # Windows
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
         ]
     for path in candidates:
         try:
