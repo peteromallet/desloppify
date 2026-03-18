@@ -137,7 +137,7 @@ Return machine-readable JSON for review imports. For `--external-submit`, includ
 {
   "session": {
     "id": "<session_id_from_template>",
-    "token": "<session_token_from_template>"
+    "token": "<session_hmac_from_template>"
   },
   "assessments": {
     "<dimension_from_query>": 0
