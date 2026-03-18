@@ -59,9 +59,13 @@ def _print_fix_summary(
         )
     )
     for result in results[:30]:
-        symbols = ", ".join(result["removed"][:5])
-        if len(result["removed"]) > 5:
-            symbols += f" (+{len(result['removed']) - 5})"
+        removed = result.get("removed", [])
+        if removed:
+            symbols = ", ".join(removed[:5])
+            if len(removed) > 5:
+                symbols += f" (+{len(removed) - 5})"
+        else:
+            symbols = result.get("summary", "fixed")
         extra = f"  ({result['lines_removed']} lines)" if result.get("lines_removed") else ""
         print(f"  {rel(result['file'])}{extra}  →  {symbols}")
     if len(results) > 30:

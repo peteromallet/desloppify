@@ -25,7 +25,7 @@ def _resolve_fixer_results(
     resolved_ids = []
     for result in results:
         result_file = rel(result["file"])
-        for symbol in result["removed"]:
+        for symbol in result.get("removed", []):
             issue_id = f"{detector}::{result_file}::{symbol}"
             if issue_id in work_items and work_items[issue_id]["status"] == "open":
                 work_items[issue_id]["status"] = "fixed"
@@ -91,8 +91,8 @@ def _cascade_unused_import_cleanup(
         print(colorize("  Cascade: no orphaned imports found", "dim"))
         return
 
-    removed_count = sum(len(result["removed"]) for result in results)
-    removed_lines = sum(result["lines_removed"] for result in results)
+    removed_count = sum(len(result["removed"]) if "removed" in result else 1 for result in results)
+    removed_lines = sum(result.get("lines_removed", 0) for result in results)
     print(
         colorize(
             f"  Cascade: removed {removed_count} now-orphaned imports "

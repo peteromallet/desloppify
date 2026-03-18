@@ -37,7 +37,7 @@ def cmd_autofix(args: argparse.Namespace) -> None:
     raw = fixer.fix(entries, dry_run=dry_run)
     results = raw.entries
     skip_reasons = raw.skip_reasons
-    total_items = sum(len(r["removed"]) for r in results)
+    total_items = sum(len(r["removed"]) if "removed" in r else 1 for r in results)
     total_lines = sum(r.get("lines_removed", 0) for r in results)
     _print_fix_summary(fixer, results, total_items, total_lines, dry_run)
 

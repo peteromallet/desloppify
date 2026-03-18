@@ -16,14 +16,14 @@ def show_fix_dry_run_samples(entries: list[dict], results: list[dict]) -> None:
     print(colorize("\n  ── Sample changes (before → after) ──", "cyan"))
     for result in results[:5]:
         _print_fix_file_sample(result, entries)
-    removed_count = sum(len(r["removed"]) for r in results)
+    removed_count = sum(len(r["removed"]) if "removed" in r else 1 for r in results)
     if len(entries) > removed_count:
         print(colorize(f"\n  Note: {len(entries) - removed_count} of {len(entries)} entries were skipped (complex patterns, rest elements, etc.)", "dim"))
     print()
 
 
 def _print_fix_file_sample(result: dict, entries: list[dict]) -> None:
-    filepath, removed_set = result["file"], set(result["removed"])
+    filepath, removed_set = result["file"], set(result.get("removed", []))
     try:
         path = Path(filepath) if Path(filepath).is_absolute() else Path(".") / filepath
         lines = path.read_text().splitlines()
