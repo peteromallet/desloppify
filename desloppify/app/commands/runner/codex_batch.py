@@ -30,22 +30,22 @@ def _resolve_executable(name: str) -> list[str]:
     executed directly by ``subprocess`` without ``shell=True``.  Prefixing
     with ``cmd /c`` avoids needing ``shell=True`` while still resolving them.
 
-    When ``shutil.which()`` cannot locate the executable on Windows, we still
-    route through ``cmd /c`` so the shell's own PATH resolution can find
-    ``.cmd``/``.bat`` wrappers that Python's ``which`` missed.
+    However, ``.exe`` binaries can be invoked directly — wrapping them in
+    ``cmd /c`` causes double-quoting issues when arguments contain spaces
+    (cmd.exe re-parses the command with its own tokeniser, breaking prompts).
 
-    Returns the command prefix tokens.  On Windows, this will be
-    ``["cmd", "/c", executable]``; the caller should pass the final
-    assembled command through :func:`_wrap_cmd_c` to collapse everything
-    after ``/c`` into a single properly-quoted string.
+    Only uses ``cmd /c`` for ``.cmd``/``.bat`` shims or when the executable
+    cannot be resolved (so cmd.exe's own PATH lookup can find it).
     """
     resolved = shutil.which(name)
     if sys.platform == "win32":
-        target = resolved or name
-        if resolved is not None and resolved.lower().endswith((".cmd", ".bat")):
-            return ["cmd", "/c", target]
-        # shutil.which may miss .cmd/.bat wrappers — let cmd.exe resolve it
-        return ["cmd", "/c", target]
+        if resolved is not None:
+            if resolved.lower().endswith((".cmd", ".bat")):
+                return ["cmd", "/c", resolved]
+            # .exe or extensionless — invoke directly, no cmd /c wrapper
+            return [resolved]
+        # shutil.which missed it — let cmd.exe resolve .cmd/.bat wrappers
+        return ["cmd", "/c", name]
     return [resolved or name]
 
 

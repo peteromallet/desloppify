@@ -60,6 +60,55 @@ def test_codex_batch_command_on_windows_collapses_cmd_c(monkeypatch, tmp_path: P
     assert "--ephemeral" in inner
 
 
+def test_resolve_executable_skips_cmd_c_for_exe_on_windows(monkeypatch) -> None:
+    """On Windows, .exe binaries should be invoked directly without cmd /c wrapping."""
+    resolve = codex_batch_mod._resolve_executable
+
+    # .exe resolved — no cmd /c
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("shutil.which", lambda _name: "C:\\Users\\me\\codex.exe")
+    result = resolve("codex")
+    assert result == ["C:\\Users\\me\\codex.exe"]
+
+    # .cmd resolved — gets cmd /c
+    monkeypatch.setattr("shutil.which", lambda _name: "C:\\npm\\codex.CMD")
+    result = resolve("codex")
+    assert result == ["cmd", "/c", "C:\\npm\\codex.CMD"]
+
+    # .bat resolved — gets cmd /c
+    monkeypatch.setattr("shutil.which", lambda _name: "C:\\npm\\codex.bat")
+    result = resolve("codex")
+    assert result == ["cmd", "/c", "C:\\npm\\codex.bat"]
+
+    # not found — fallback through cmd /c with bare name
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    result = resolve("codex")
+    assert result == ["cmd", "/c", "codex"]
+
+    # non-Windows — direct invocation always
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/local/bin/codex")
+    result = resolve("codex")
+    assert result == ["/usr/local/bin/codex"]
+
+
+def test_codex_batch_command_exe_on_windows_no_cmd_c(monkeypatch, tmp_path: Path) -> None:
+    """On Windows with a .exe binary, prompts with spaces must not be wrapped in cmd /c."""
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("shutil.which", lambda _name: "C:\\Users\\me\\codex.exe")
+
+    cmd = codex_batch_mod.codex_batch_command(
+        prompt="You are hello",
+        repo_root=tmp_path,
+        output_file=tmp_path / "out.json",
+    )
+    # Should NOT go through cmd /c
+    assert cmd[0] == "C:\\Users\\me\\codex.exe"
+    assert "cmd" not in cmd
+    # Prompt should be a standalone argument, not collapsed into a string
+    assert "You are hello" in cmd
+
+
 def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DESLOPPIFY_CODEX_REASONING_EFFORT", "HIGH")
 
