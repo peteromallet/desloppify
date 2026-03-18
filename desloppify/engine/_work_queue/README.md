@@ -25,8 +25,25 @@ The execution queue operates differently depending on whether triage has run:
 
 ### Pre-triage (no plan or empty `queue_order`)
 
-ALL mechanical defect issues are executable. Every open issue from every detector
-(test_coverage, dead_code, naming, smells, etc.) goes into the queue. Sorted by:
+ALL mechanical defect issues that pass these filters are executable:
+
+```
+Filter chain (ranking.py → snapshot.py → schema/__init__.py):
+  1. status == "open"                           (ranking.py:141)
+  2. not suppressed                             (ranking.py:139)
+  3. above standalone confidence threshold      (ranking.py:151-155)
+  4. scoped to scan_path                        (ranking.py:133)
+  5. work_item_kind == "mechanical_defect"      (snapshot.py:140, issue_semantics.py:152)
+  6. not in plan's skipped set                  (snapshot.py:141)
+```
+
+This includes: test_coverage, dead_code, naming, smells, coupling, security,
+unused imports/vars/enums, duplication, and all other mechanical detectors.
+
+This does NOT include: review defects (subjective), review concerns, assessment
+requests, or synthetic workflow items — those go through separate partitions.
+
+Sorted by:
 
 1. **Impact** (`per_point × headroom`) — issues in low-scoring dimensions sort first
    because they have the most headroom to improve
