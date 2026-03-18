@@ -2,9 +2,26 @@
 
 How items get from scan results into the execution queue that `desloppify next` returns.
 
-## The two modes
+## Lifecycle phases
 
-The queue operates in two modes depending on whether triage has run:
+The queue shows different items depending on which lifecycle phase the plan is in.
+Phase is determined by `_phase_for_snapshot()` and `_legacy_phase_inference()`.
+
+1. **PHASE_REVIEW_INITIAL** — fresh boundary (first scan or cycle reset), no scores yet.
+   Shows subjective review items ("review these dimensions"). Objective items are NOT
+   visible. Users must complete initial review before seeing the execution queue.
+
+2. **PHASE_EXECUTE** — the main work phase. Shows objective (mechanical defect) items.
+   This is where test_coverage, dead_code, naming, etc. appear.
+
+3. **PHASE_SCAN** / **PHASE_*_POSTFLIGHT** — workflow items (rescan, communicate score,
+   assessment, triage). These gate the execution phase.
+
+Most users reach PHASE_EXECUTE after the initial review completes and scores are seeded.
+
+## The two queue modes (within PHASE_EXECUTE)
+
+The execution queue operates differently depending on whether triage has run:
 
 ### Pre-triage (no plan or empty `queue_order`)
 
