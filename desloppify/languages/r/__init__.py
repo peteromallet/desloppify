@@ -1,7 +1,9 @@
-"""R language plugin — Jarl, lintr + tree-sitter."""
+"""R language plugin — Jarl, lintr + tree-sitter + R-specific smells."""
 
+from desloppify.languages._framework.base.types import DetectorPhase
 from desloppify.languages._framework.generic_support.core import generic_lang
 from desloppify.languages._framework.treesitter import R_SPEC
+from desloppify.languages.r.phases_smells import phase_smells
 
 generic_lang(
     name="r",
@@ -31,6 +33,9 @@ generic_lang(
     detect_markers=["DESCRIPTION", ".Rproj"],
     default_src="R",
     treesitter_spec=R_SPEC,
+    custom_phases=[
+        DetectorPhase("R code smells", phase_smells),
+    ],
 )
 
 __all__ = [
