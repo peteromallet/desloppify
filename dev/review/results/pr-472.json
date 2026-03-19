@@ -1,0 +1,16 @@
+{
+  "number": 472,
+  "type": "pr",
+  "title": "fix: handle dataclass serialization in json_default",
+  "author": "ammonwk",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "This PR adds a dataclass handler to json_default in schema_scores.py, but the exact same fix was already shipped in commit 61bb7cb3 (from PR #486 triage). The current file on the 0.9.11 branch already contains the identical dataclass.is_dataclass() check with dataclasses.asdict() on lines 22-23, plus a comment crediting the original reporter. The PR's diff would apply as a no-op duplicate insertion. Commit 61bb7cb3 also added test coverage (test_schema_scores_json_default.py) which this PR lacks.",
+    "reject_reason": "Exact duplicate of already-shipped fix in commit 61bb7cb3. The current codebase already contains this dataclass handler in json_default, including the import, the is_dataclass check, and asdict conversion. Nothing new to merge.",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [486],
+    "real_problem": true,
+    "suggested_fix": "Already fixed in commit 61bb7cb3 with test coverage. No further action needed."
+  }
+}

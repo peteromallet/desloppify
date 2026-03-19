@@ -1,0 +1,12 @@
+{
+  "number": 486,
+  "type": "pr",
+  "role": "advocate",
+  "verdict": "REJECT",
+  "counter_case": "The bug is real and the PR correctly identifies the crash site (json_default in schema_scores.py). Adding is_dataclass support to json_default is a defensible defense-in-depth measure: even if the root cause is fixed upstream, having the serializer handle dataclasses gracefully prevents future crashes from similar leaks. The dict/list/tuple branches, while unreachable from json.dumps directly, ARE reachable through the manual recursion inside the dataclass handler, so they are not entirely dead code as Stage 1 claimed.",
+  "summary": "Stage 1's core critique is correct, though slightly overstated. The dict/list/tuple handlers are reachable via the manual recursion in the dataclass branch, so they are not strictly dead code. However, the fix is still wrong in design: json_default is being overloaded as both a json.dumps default hook and a recursive deep-transformer. The None/bool/int/float/str early-return exists only as a base case for the manual recursion, not for json.dumps (which never calls default for those types). A correct minimal fix would use dataclasses.asdict(obj) which recursively converts all fields, then json.dumps handles the resulting plain dict naturally, calling json_default for Path/set/datetime values it encounters. More importantly, PR #483 addresses the same issue (#482) with the proper architectural fix: keeping framework caches out of persisted state entirely, so the serializer never sees these objects. PR #483 is still open and is the right solution.",
+  "conditions": [],
+  "reject_reason": "The fix conflates json.dumps's default hook with a recursive deep-transformer. While functionally it would work for the specific dataclass case, it adds unnecessary complexity (7 lines of dead-from-json.dumps code) and masks the real problem rather than fixing it. A one-line is_dataclass handler returning dataclasses.asdict(obj) would be simpler and correct. But even that is the wrong fix: PR #483 addresses the same issue at the right architectural layer by preventing runtime-only objects from reaching the serializer. Accepting this PR would add a workaround that obscures the real bug and becomes dead code once #483 lands.",
+  "confidence": "high",
+  "implementation_notes": ""
+}

@@ -1,0 +1,15 @@
+{
+  "number": 476,
+  "type": "pr",
+  "title": "fix: auto-resolve wontfix clippy/cargo items absent after cfg(test) filtering",
+  "author": "fluffypony",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "The PR hardcodes Rust-specific detector names (clippy_warning, cargo_error) into a language-agnostic engine module (merge_issues.py) to auto-resolve wontfix items that disappear from scans. The underlying problem is questionable: wontfix items absent from scans are already handled by _mark_scan_verified() (lines 158-168), and the stale_wontfix detector exists to re-evaluate old wontfix decisions. More critically, converting wontfix to auto_resolved changes reopening semantics — auto_resolved items that reappear are reopened (line 238), while wontfix items are not. This silently overrides a user's manual disposition and could cause unexpected reopening if the diagnostic returns for unrelated reasons. The PR also adds no tests.",
+    "reject_reason": "Four issues: (1) Hardcodes Rust-specific detectors in shared engine code, violating the import/separation boundary between engine and language plugins. (2) The problem is already handled — wontfix items absent from scan get scan-verified attestation at lines 158-168. (3) Changes wontfix->auto_resolved, which means if the diagnostic ever reappears, it will be reopened (line 238 upsert_issues), silently overriding the user's wontfix decision. (4) No test coverage for the new behavior. The cfg(test) filtering rationale is too narrow — it assumes all wontfix clippy/cargo items were wontfixed due to test-module diagnostics, but users may have wontfixed them for other reasons.",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "real_problem": false,
+    "potential_duplicates": []
+  }
+}

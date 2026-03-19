@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Per-item review files. Stage 1 writes {type}-{number}.json. Stage 2 writes {type}-{number}.stage2.json. Stage 3 reads both side by side.",
+
+  "definitions": {
+    "verdict": { "enum": ["ACCEPT", "ACCEPT_WITH_CONDITIONS", "ALREADY_FIXED", "NOT_ACTIONABLE", "REJECT"] },
+
+    "confidence": {
+      "enum": ["high", "medium", "low"],
+      "description": "How confident you are in your VERDICT specifically. High = you traced the code and are sure. Medium = you checked but there are areas you couldn't fully verify. Low = you're uncertain and flagging for closer review."
+    },
+
+    "scope_estimate": {
+      "enum": ["small", "medium", "large"],
+      "description": "Risk surface, not diff size. Small = isolated change, few callers, no state/format implications. Medium = touches shared code or has moderate blast radius. Large = crosses module boundaries, affects state persistence, or could break other language plugins."
+    }
+  },
+
+  "stage1_file": {
+    "description": "Written by Stage 1 assessment agent to review/results/{type}-{number}.json",
+    "type": "object",
+    "required": ["number", "type", "title", "author", "stage1"],
+    "properties": {
+      "number": { "type": "integer" },
+      "type": { "enum": ["pr", "issue"] },
+      "title": { "type": "string" },
+      "author": { "type": "string" },
+      "stage1": {
+        "type": "object",
+        "required": ["verdict", "summary", "confidence", "scope_estimate"],
+        "properties": {
+          "verdict": { "$ref": "#/definitions/verdict" },
+          "summary": { "type": "string", "description": "What this item does and why this verdict" },
+          "conditions": { "type": "array", "items": { "type": "string" } },
+          "reject_reason": { "type": "string" },
+          "confidence": { "$ref": "#/definitions/confidence" },
+          "scope_estimate": { "$ref": "#/definitions/scope_estimate" },
+          "potential_duplicates": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "PR/issue numbers that MIGHT address the same thing based on title/description. Do NOT claim duplicates — just flag candidates for the orchestrator to verify."
+          },
+          "real_problem": {
+            "type": "boolean",
+            "description": "True if the contributor identified a genuine bug/issue, even if their fix is wrong. Set this on REJECT verdicts where the underlying problem is real."
+          },
+          "suggested_fix": {
+            "type": "string",
+            "description": "When real_problem is true but verdict is REJECT: describe what the correct fix would look like. Stage 3 uses this to implement it properly."
+          }
+        }
+      }
+    }
+  },
+
+  "stage2_file": {
+    "description": "Written by Stage 2 agent to review/results/{type}-{number}.stage2.json. NEVER modify the Stage 1 file.",
+    "type": "object",
+    "required": ["number", "type", "role", "verdict", "summary", "confidence"],
+    "properties": {
+      "number": { "type": "integer" },
+      "type": { "enum": ["pr", "issue"] },
+      "role": {
+        "enum": ["challenger", "advocate"],
+        "description": "challenger = devil's advocate (for items Stage 1 accepted). advocate = angel's advocate (for items Stage 1 rejected)."
+      },
+      "verdict": { "$ref": "#/definitions/verdict" },
+      "counter_case": {
+        "type": "string",
+        "description": "Challengers: the strongest argument AGAINST. Advocates: the strongest argument FOR. Required regardless of your final verdict."
+      },
+      "summary": { "type": "string" },
+      "conditions": { "type": "array", "items": { "type": "string" } },
+      "reject_reason": { "type": "string" },
+      "confidence": { "$ref": "#/definitions/confidence" },
+      "implementation_notes": { "type": "string" }
+    }
+  },
+
+  "stage3_section": {
+    "description": "Added by Stage 3 adjudicator to the Stage 1 file (review/results/{type}-{number}.json) after making and executing a decision.",
+    "type": "object",
+    "required": ["decision", "reasoning"],
+    "properties": {
+      "decision": {
+        "enum": ["IMPLEMENT", "IMPLEMENT_WITH_CHANGES", "REJECT", "REJECT_AND_FIX", "DEFER", "CLOSE_FIXED", "CLOSE_NOT_ACTIONABLE"],
+        "description": "Stage 3 uses different vocabulary from Stages 1/2 (IMPLEMENT vs ACCEPT) to make the decision layer distinct."
+      },
+      "reasoning": { "type": "string", "description": "Why — especially if overriding either stage's verdict" },
+      "commit": { "type": ["string", "null"], "description": "Short SHA if implemented, null otherwise" },
+      "changes_applied": { "type": "array", "items": { "type": "string" }, "description": "Modifications made during IMPLEMENT_WITH_CHANGES" }
+    }
+  },
+
+  "cross_item_file": {
+    "description": "Written by Stage 2 orchestrator to review/results/_cross-item.json after all sub-agents complete.",
+    "type": "object",
+    "properties": {
+      "duplicate_groups": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "items": { "type": "array", "items": { "type": "string" }, "description": "e.g. ['pr-486', 'pr-481', 'issue-472']" },
+            "preferred": { "type": "string", "description": "e.g. 'pr-486'" },
+            "reasoning": { "type": "string" }
+          }
+        }
+      },
+      "ordering": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "item": { "type": "string" },
+            "must_come_after": { "type": "string" },
+            "reason": { "type": "string" }
+          }
+        }
+      },
+      "interactions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "items": { "type": "array", "items": { "type": "string" } },
+            "concern": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

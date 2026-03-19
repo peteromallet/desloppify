@@ -1,0 +1,17 @@
+{
+  "number": 470,
+  "type": "issue",
+  "title": "I tried it and all it did was move code around while wasting lots of tokens.",
+  "author": "izcoser",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "Vague user complaint with no actionable detail. The body is 'Just some feedback.' with no version info, no scan output, no reproduction steps. The maintainer asked which version and received no reply. Without knowing what the user ran, what version they used, or what 'move code around' means specifically, there is nothing to act on. If the user was on a pre-0.9.6 version, the over-engineering issues addressed in #407 may explain their experience, but that work is already done.",
+    "conditions": [],
+    "reject_reason": "No actionable information provided. The issue body contains no version, no command output, no reproduction steps, and no response to the maintainer's follow-up question. This is sentiment feedback, not a bug report or feature request. If the user responds with details, it can be re-evaluated.",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [407],
+    "real_problem": false,
+    "suggested_fix": "Close with a polite message asking the user to reopen with version info and scan output if the issue persists on 0.9.10+."
+  }
+}

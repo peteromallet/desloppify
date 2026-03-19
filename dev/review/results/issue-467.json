@@ -1,0 +1,17 @@
+{
+  "number": 467,
+  "type": "issue",
+  "title": "--force-rescan breaks queue -- shows 0 items and wrong score despite issues found",
+  "author": "Vuk97",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "This is plausible. The --force-rescan flow: (1) merge_scan runs normally via merge_scan_results (workflow.py:450-466) -- issues are upserted, stats recomputed, state saved. (2) reconcile_plan_post_scan runs with force_rescan=True (plan_reconcile.py:292-293). _reset_cycle_for_force_rescan (lines 40-67) removes synthetic queue items and clears cycle state. (3) Critically, line 312: 'if not force_rescan and _sync_plan_start_scores_and_log(...)' -- plan_start_scores seeding is SKIPPED when force_rescan is True. This means plan_start_scores remain from the old cycle, which can cause score_display_mode to return FROZEN, showing the old frozen score (potentially 100.0 if the previous cycle ended clean). The queue shows 0 items because _reset_cycle_for_force_rescan removed synthetic items, and the reconcile_plan call at line 298 only runs when live_planned_queue_empty returns True (line 296), which it will after the reset -- but the reconcile may not re-inject items if is_mid_cycle returns True (since plan_start_scores is preserved, per the docstring at line 43-45). The combination of preserving plan_start_scores (to prevent cluster wipe) while skipping score re-seeding creates a state where the queue appears empty and the score is stale.",
+    "conditions": [],
+    "reject_reason": "",
+    "confidence": "medium",
+    "scope_estimate": "medium",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "After _reset_cycle_for_force_rescan clears synthetic items, the plan_start_scores should be updated to reflect the new scan's scores (not skipped entirely). The fix is to change the condition at line 312 from 'if not force_rescan' to always run _sync_plan_start_scores_and_log, or to explicitly reset plan_start_scores in _reset_cycle_for_force_rescan with a 'reset' flag so _seed_plan_start_scores can re-seed from the fresh scan. Need to ensure this doesn't trigger full cluster regeneration (the original reason for preserving plan_start_scores)."
+  }
+}

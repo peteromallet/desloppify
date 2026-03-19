@@ -1,0 +1,17 @@
+{
+  "number": 407,
+  "type": "issue",
+  "title": "Execution agent over-engineering patterns degrading target codebase",
+  "author": "peteromallet",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "Thoroughly documented meta issue from the maintainer with concrete evidence of 7 anti-patterns. The fixes are already substantially implemented: execution_constraints.py in engine/_plan/policy/ encodes all 7 constraints as enforceable rules, and the maintainer's own comment confirms 0.9.6 shipped with these guardrails. The issue should remain open for tracking until all constraint enforcement is verified end-to-end (constraints exist as strings but need to be confirmed they are actually injected into reviewer/triage prompts and tested).",
+    "conditions": [],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "large",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "Verify that EXECUTION_CONSTRAINTS from execution_constraints.py are injected into all relevant prompt templates (review batch prompts, triage sense-check prompts, stage instruction blocks). Add integration tests confirming constraint text appears in generated prompts. Once verified, close the issue."
+  }
+}

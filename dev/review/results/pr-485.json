@@ -1,0 +1,21 @@
+{
+  "number": 485,
+  "type": "pr",
+  "title": "fix: handle framework dataclass cache + synthetic deferred loop",
+  "author": "ryexLLC",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "Two unrelated fixes bundled together. Change 1 (dataclass serialization in json_default) addresses a real bug but is a band-aid -- at least 5 other PRs target the same issue, and PR #483 takes the correct approach by separating runtime cache from persisted state rather than patching the serializer to tolerate objects that shouldn't be persisted. Change 2 (synthetic deferred loop filtering) is plausible but not clearly demonstrated as reachable: the PR provides no evidence that synthetic IDs actually end up in the skipped dict with kind=temporary. The PR description mentions a phantom deferred loop but doesn't show a concrete reproduction path. Both fixes are superficially reasonable but the dataclass fix is the wrong layer (serializer shouldn't need to know about dataclasses if the caching layer is correct), and the synthetic ID fix needs stronger justification that the problem actually occurs.",
+    "conditions": [],
+    "reject_reason": "Change 1 is a duplicate of a problem better solved by PR #483 (separating runtime cache from persisted state). Change 2 lacks evidence the problem is reachable. Bundling two unrelated fixes reduces reviewability.",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [472, 475, 481, 483, 486]
+  },
+  "stage3": {
+    "decision": "IMPLEMENT_WITH_CHANGES",
+    "reasoning": "Stage 2 advocate overturned Stage 1 rejection — synthetic deferred loop fix is verified reachable via two code paths. Cherry-picked only Change 2 (synthetic loop fix); dataclass fix (Change 1) handled separately via PR #486 REJECT_AND_FIX.",
+    "commit": "1a0439e2",
+    "changes_applied": ["Cherry-picked only the synthetic loop fix, skipped the dataclass serialization change (handled in commit 61bb7cb3)"]
+  }
+}

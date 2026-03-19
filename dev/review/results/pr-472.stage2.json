@@ -1,0 +1,12 @@
+{
+  "number": 472,
+  "type": "pr",
+  "role": "advocate",
+  "verdict": "REJECT",
+  "counter_case": "Reviewed the full diff. PR #472 modifies only schema_scores.py with the identical two-line dataclass handler (import dataclasses + is_dataclass/asdict check) already present from commit 61bb7cb3. No additional changes, no tests, no other improvements. This is a pure duplicate with zero incremental value.",
+  "summary": "Exact duplicate of commit 61bb7cb3. The diff is byte-for-byte identical to the dataclass handler already in the codebase. No additional value found.",
+  "conditions": [],
+  "reject_reason": "Pure duplicate. No novel content beyond the already-shipped fix.",
+  "confidence": "high",
+  "implementation_notes": ""
+}

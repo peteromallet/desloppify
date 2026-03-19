@@ -1,0 +1,20 @@
+{
+  "number": 486,
+  "type": "pr",
+  "title": "fix: handle dataclass/dict/list in json_default for nested Path objects",
+  "author": "0-CYBERDYNE-SYSTEMS-0",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "The underlying bug is real: EcosystemFrameworkDetection dataclass instances (containing Path objects) leak into state['review_cache'] via shared dict identity between lang.review_cache and state['review_cache'], causing TypeError on serialization. However, the fix is wrong. json_default is a JSON encoder fallback hook only called for non-serializable types. The PR adds dead-code handlers for None/bool/int/float/str/dict/list/tuple (the JSON encoder handles those natively and never calls the default hook for them) and turns json_default into a recursive deep-transformer, which is a conceptual misuse. The dict/list/tuple branches can never be reached through normal json.dumps(default=json_default). The only meaningful addition is the is_dataclass handler, but even that recurses json_default manually instead of letting the encoder handle it (returning vars(obj) and letting json.dumps recurse naturally on the resulting dict would be simpler and correct). No tests included.",
+    "reject_reason": "The fix misunderstands how json.dumps default= works. Handlers for None, bool, int, float, str, dict, list, and tuple are dead code (the JSON encoder never calls the default hook for natively serializable types). The recursive json_default calls inside the dataclass/dict/list handlers are unnecessary since json.dumps recurses on its own. A correct minimal fix would add only the is_dataclass check returning vars(obj) or dataclasses.asdict(obj), letting the encoder's own recursion handle nested Path objects via the existing Path handler. Alternatively, the better architectural fix is to strip framework cache entries from the state dict before serialization (as PR #483 appears to propose), since those transient runtime objects should not be persisted.",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [481, 472, 483, 475, 485]
+  },
+  "stage3": {
+    "decision": "REJECT_AND_FIX",
+    "reasoning": "Both stages agreed the fix was wrong (dead-code handlers, misuse of json_default). But the bug is real — wrote our own one-line dataclasses.asdict() fix with tests. Credited contributor in code and commit.",
+    "commit": "61bb7cb3",
+    "changes_applied": []
+  }
+}

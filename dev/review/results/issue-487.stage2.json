@@ -1,0 +1,15 @@
+{
+  "number": 487,
+  "type": "issue",
+  "role": "challenger",
+  "verdict": "ACCEPT_WITH_CONDITIONS",
+  "counter_case": "This is a Windows-only issue for a tool developed primarily on macOS. The project has no Windows CI and no way to test the fix without a Windows machine. A code change to _resolve_executable() that we can't test on the target platform risks introducing new issues (e.g., cases where shutil.which returns None and the bare name fallback fails without cmd /c). Additionally, the issue was AI-generated — the reporter explicitly credits GPT 5.4 — which raises the question of whether the repro was actually verified by a human.",
+  "summary": "The bug mechanism is sound — the double list2cmdline interaction between _wrap_cmd_c and subprocess.Popen is a real and well-documented Windows pitfall. However, since we can't test on Windows, the fix should be minimal and conservative. Don't attempt to redesign the entire Windows path — just split the .exe vs .cmd/.bat cases in _resolve_executable(). Keep _wrap_cmd_c as a safety net for the .cmd/.bat path.",
+  "conditions": [
+    "Only change _resolve_executable() to skip cmd /c when shutil.which() resolves to an .exe path — don't remove _wrap_cmd_c() or restructure the Windows codepath broadly",
+    "Add a unit test for _resolve_executable() and _wrap_cmd_c() that verifies the expected command shapes on both platforms (mockable, doesn't need Windows CI)",
+    "Keep the cmd /c fallback for the case where shutil.which() returns None on Windows (npm shim resolution)"
+  ],
+  "confidence": "high",
+  "implementation_notes": "The fix is ~5 lines in _resolve_executable(). When resolved is not None and ends with .exe, return [resolved] directly. Otherwise keep the cmd /c path. Add tests that mock sys.platform and shutil.which to verify both branches."
+}

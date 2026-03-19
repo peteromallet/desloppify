@@ -1,0 +1,21 @@
+{
+  "number": 480,
+  "type": "issue",
+  "title": "Update Codex skill to leverage the new subagents",
+  "author": "StayBlue",
+  "stage1": {
+    "verdict": "ACCEPT_WITH_CONDITIONS",
+    "summary": "Valid feature request. The Codex runner currently uses `codex exec` in single-agent mode. OpenAI's subagent support could allow the execution agent to delegate sub-tasks (e.g., running tests, applying fixes, verifying results) to child agents instead of doing everything in one prompt. The current codex_batch.py builds a straightforward `codex exec` command; leveraging subagents would require changes to the command construction and possibly the prompt structure. The request also sensibly suggests documenting a 'no' decision if subagents are evaluated and rejected.",
+    "conditions": [
+      "Requires investigation of OpenAI's subagent API to determine if it actually improves execution quality for desloppify's use case (triage stages, review batches)",
+      "Should not increase token costs significantly over the current single-agent approach",
+      "Must not regress the execution constraint guardrails already in place (issue #407 fixes)"
+    ],
+    "reject_reason": "",
+    "confidence": "medium",
+    "scope_estimate": "medium",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "Evaluate whether Codex subagents can be used in codex_batch.py and codex_runner.py to split complex triage/review tasks into delegated sub-steps. Start with a spike to measure quality and cost impact. If net negative, document the decision and close."
+  }
+}

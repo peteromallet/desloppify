@@ -1,0 +1,14 @@
+{
+  "number": 477,
+  "type": "pr",
+  "role": "challenger",
+  "verdict": "ACCEPT_WITH_CONDITIONS",
+  "counter_case": "The possessive quantifier in the annotation sub-pattern `@[\\w\\.\\(\\),<>\\s]++` cannot backtrack, so when an annotation appears on the SAME LINE as the function declaration (e.g., `@override void build() {`), the annotation pattern greedily consumes the entire line including the function name and the regex fails to match at all. This is a behavioral change from the old regex. However, the old regex also handled this case incorrectly -- it produced garbage function names like 'd' instead of 'build'. Neither version correctly handles same-line annotations; the new version (no match) is arguably better than the old (wrong match). The real fix for same-line annotations would be to remove `\\s` from the annotation character class and handle annotation-to-declaration whitespace separately, but that is a separate concern.",
+  "summary": "The fix is correct and addresses a real catastrophic backtracking bug. The possessive quantifiers prevent exponential backtracking on inputs with multiple @-prefixed tokens. As a bonus, the new regex actually fixes a latent correctness bug: annotated functions on separate lines (the normal Dart convention) now extract the correct function name instead of garbage single-character names. The only behavioral regression is same-line annotations (`@override void build() {`) which now produce no match instead of a wrong match -- acceptable since this pattern is rare in Dart and was already broken. No test coverage exists for the Dart extractor, which is a pre-existing gap. Python >=3.11 requirement (needed for possessive quantifiers) is enforced in pyproject.toml.",
+  "conditions": [
+    "PR author should be aware that same-line annotations like `@override void build() {` will no longer be detected (they were previously detected with wrong names). If this matters, a follow-up should remove `\\s` from the annotation character class and handle annotation whitespace in a separate group."
+  ],
+  "reject_reason": "",
+  "confidence": "high",
+  "implementation_notes": "Verified via testing: (1) all standard Dart function signatures produce identical or improved results, (2) the backtracking fix works -- pathological input with 25 @-params completes in <1ms vs hanging indefinitely, (3) the only behavioral difference is same-line annotations which were already broken (garbage names), (4) no existing tests to break. The \\s inside the annotation character class is the root cause of both the backtracking AND the same-line annotation issue, but removing it is out of scope for this fix."
+}

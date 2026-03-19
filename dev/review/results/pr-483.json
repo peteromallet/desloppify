@@ -1,0 +1,17 @@
+{
+  "number": 483,
+  "type": "pr",
+  "title": "fix: keep framework caches out of persisted review state",
+  "author": "maciej-trebacz",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "This PR addresses the ROOT CAUSE of the dataclass serialization crash that commit 61bb7cb3 only mitigated defensively. The code path is clear: workflow.py passes a reference to state[\"review_cache\"] into LangRun, then framework detection (detection.py) and nextjs info (nextjs.py) write dataclass objects (EcosystemFrameworkDetection, NextjsFrameworkInfo) into that shared dict. When save_state serializes to JSON, these non-serializable objects cause a crash. The fix correctly introduces a separate runtime_cache field that is never persisted, cleanly separating ephemeral scan-scoped memoization from persisted review data. The implementation is thorough: it adds runtime_cache to LangRuntimeState, LangRunOverrides, LangRuntimeContract protocol, accessors, and the override dict fields set. Framework caching in both detection.py and nextjs.py is moved to runtime_cache. Tests cover runtime isolation, accessor round-trips, and an integration test proving framework objects stay out of persisted state.",
+    "conditions": [],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [475, 481, 472],
+    "real_problem": true,
+    "suggested_fix": ""
+  }
+}

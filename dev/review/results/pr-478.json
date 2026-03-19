@@ -1,0 +1,15 @@
+{
+  "number": 478,
+  "type": "pr",
+  "title": "fix: clear stale test coverage issues on zone reclassification",
+  "author": "claytona500",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "The underlying problem is real but the fix is too narrow, duplicates existing infrastructure, and the JS zone rules part is the only piece with clear standalone value. When the test_coverage detector runs on a file in the test zone, zone policy already skips it (test_coverage is in TEST_SKIP_DETECTORS). So these stale findings only exist because OLDER scans lacked proper zone classification for JS .test./.spec. files. Once JS_ZONE_RULES is added, the detector stops emitting those findings. On the next scan, if test_coverage ran and produced any output for other files, the stale findings pass the suspect-detector check and reach verify_disappeared -- but the file still exists on disk, so they persist as open. The PR correctly identifies this gap. However: (1) the fix hardcodes detector=='test_coverage' when the correct generalization is 'any open issue whose file is now in a zone where ZONE_POLICIES skips that detector should auto-resolve' -- this covers all detectors, not just test_coverage; (2) _normalized_zone_value reinvents normalize_zone() from zones.py and _NON_PRODUCTION_ZONES duplicates EXCLUDED_ZONES; (3) threading zone_lookup as a raw callable through MergeScanOptions/merge_scan/verify_disappeared adds a new parameter to three signatures when the zone_map itself (or a thin wrapper) would be more consistent with the rest of the codebase.",
+    "reject_reason": "The reconciliation fix is too narrow (hardcoded to test_coverage only) and duplicates existing zone infrastructure (normalize_zone, EXCLUDED_ZONES, ZONE_POLICIES). The JS zone rules addition is good but should be a separate small PR. The correct fix for verify_disappeared is: import ZONE_POLICIES, look up the zone for any disappeared open issue, and auto-resolve if the issue's detector is in that zone's skip_detectors set. This handles all detectors generically with no new constants or normalization helpers.",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "real_problem": true,
+    "suggested_fix": "Two changes: (1) Add JS_ZONE_RULES with .test./.spec./__tests__/__mocks__/ patterns (the _zones.py file from this PR is fine). (2) In verify_disappeared, after the file_deleted check and before the 'continue', add a zone-policy check: if zone_lookup is available, get the zone for the file, look up ZONE_POLICIES for that zone, and if the issue's detector is in skip_detectors, auto-resolve it. Use the existing ZONE_POLICIES dict and normalize_zone() -- no new _NON_PRODUCTION_ZONES constant or _normalized_zone_value helper needed. The zone_lookup parameter is acceptable but should accept and return Zone enums (FileZoneMap.get already returns Zone), not raw strings. This generalizes to all detector/zone combinations, not just test_coverage."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "number": 465,
+  "type": "issue",
+  "title": "--manual-override import stores assessments as raw ints, crashes --external-submit",
+  "author": "Vuk97",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "Tracing the code path: --manual-override import goes through do_import -> import_holistic_issues -> store_assessments (assessments.py:50). In store_assessments, lines 72-73 handle both raw int and dict values: 'value_obj = value if isinstance(value, dict) else {}' and 'score = value if is_numeric(value) else value_obj.get(\"score\", 0)'. Line 108 ALWAYS writes a proper dict: '{\"score\": score, \"source\": source, \"assessed_at\": now, ...}'. So even with a raw int input like {\"type_safety\": 55}, the state will contain a proper dict after store_assessments runs. The mark_manual_override_assessments_provisional function (flags.py:88) also checks isinstance(payload, dict) at line 105 before modifying. The crash at line 80 ('existing.get(\"source\")' on an int) cannot occur via the current import path because store_assessments normalizes to dict on every write. This was likely a bug in a pre-0.9.0 version or the reporter is conflating a different corruption source. The current code is defensively correct.",
+    "conditions": [],
+    "reject_reason": "Cannot reproduce from code analysis. store_assessments always normalizes raw ints to proper dict format before persisting to state. The described crash path is not reachable through the --manual-override import flow in the current codebase.",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [],
+    "real_problem": false,
+    "suggested_fix": "If we want belt-and-suspenders safety, add a isinstance(existing, dict) guard at assessments.py:80 so that non-dict values from corrupted state files are silently overwritten rather than crashing. But this is a hardening measure, not a bug fix."
+  }
+}

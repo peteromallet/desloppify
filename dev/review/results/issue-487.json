@@ -1,0 +1,25 @@
+{
+  "number": 487,
+  "type": "issue",
+  "title": "Windows: `--runner codex` fails with spaced prompts due to cmd /c wrapping",
+  "author": "Dteyn",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "Real bug. On Windows, _resolve_executable() in codex_batch.py always wraps through cmd /c, even for .exe binaries. _wrap_cmd_c() tries to fix quoting by collapsing the inner command via subprocess.list2cmdline(), but when subprocess.Popen calls list2cmdline again on the outer list, prompts containing spaces get double-quoted with backslash escapes that cmd.exe doesn't understand. This produces the exact 'unexpected argument' errors the reporter describes. The fix is straightforward: only use cmd /c for .cmd/.bat wrappers, invoke .exe binaries directly.",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "In _resolve_executable(), check if the resolved path ends with .exe — if so, return [resolved] directly without cmd /c wrapping. Only use cmd /c for .cmd/.bat shims. This is a ~5-line change to _resolve_executable() and may also simplify or eliminate _wrap_cmd_c()."
+  },
+  "stage3": {
+    "decision": "IMPLEMENT_WITH_CHANGES",
+    "reasoning": "Both stages agreed the bug is real. Fix is minimal: _resolve_executable() now skips cmd /c for .exe binaries, only using it for .cmd/.bat shims and unresolved fallback. Kept _wrap_cmd_c() intact for the .cmd/.bat path. Added unit tests covering all branches.",
+    "commit": "9a1a535f",
+    "changes_applied": [
+      "Only changed _resolve_executable() — did not restructure _wrap_cmd_c() or the broader Windows codepath",
+      "Added unit tests for _resolve_executable() covering .exe, .cmd, .bat, unresolved, and non-Windows cases",
+      "Added integration test verifying .exe path produces no cmd /c in codex_batch_command output"
+    ]
+  }
+}

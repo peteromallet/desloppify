@@ -1,0 +1,13 @@
+{
+  "number": 477,
+  "type": "pr",
+  "title": "fix: prevent catastrophic backtracking in dart function extractor regex",
+  "author": "AvoMandjian",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "The PR converts non-possessive quantifiers to possessive quantifiers (++ and *+) in the Dart function declaration regex. The backtracking problem is real: the annotation sub-pattern `(?:@[\\w\\.\\(\\),<>\\s]+)\\s*` has overlapping whitespace consumption between the character class (which includes \\s) and the trailing \\s*, and wrapping in `()*` creates exponential backtracking on inputs with multiple @-prefixed tokens that don't ultimately match. Tested: 25 @-params causes the original regex to hang indefinitely while the possessive version completes in microseconds. Additionally, the possessive version actually fixes a latent correctness bug: the original regex would backtrack through annotations like @override and produce garbage single-character function names (e.g., 'd' instead of 'build' for `@override Widget build(...)`). The possessive version correctly captures the real function name in those cases. Requires Python >=3.11 which is already the project minimum.",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": []
+  }
+}

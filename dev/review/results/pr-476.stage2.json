@@ -1,0 +1,15 @@
+{
+  "number": 476,
+  "type": "pr",
+  "role": "advocate",
+  "verdict": "ACCEPT_WITH_CONDITIONS",
+  "counter_case": "Stage 1 is wrong that _mark_scan_verified handles this. It does NOT resolve wontfix items -- it only annotates them with scan_verified metadata while leaving the status as wontfix. These stale wontfix items persist forever, inflating wontfix counts in strict scoring and narrative coaching. The wontfix was a workaround for missing cfg(test) filtering, not a permanent architectural judgment. Converting to auto_resolved actually gives BETTER reopening semantics: if the cfg(test) filter is later removed or regressed, auto_resolved items will reopen (line 238 in upsert_issues), while wontfix items silently stay suppressed. Stage 1's claim about 'changed reopening behavior' is technically correct but frames it as a bug when it is actually the correct outcome.",
+  "summary": "The PR fixes a real cleanup gap: wontfix clippy/cargo items that disappeared after cfg(test) inline filtering was introduced are never resolved by the existing code path -- they just get scan_verified annotations while remaining wontfix forever. The auto_resolved transition is semantically correct since the original wontfix decision was a workaround, not a permanent judgment. However, hardcoding Rust detector names in engine/_state/merge_issues.py violates the import direction architecture (engine should not know about language-specific detectors). This should be made data-driven.",
+  "conditions": [
+    "Move the detector set out of engine code. Options: (a) add an 'obsoleted_by_filter' flag to DetectorMeta in the registry and query it from verify_disappeared, or (b) accept a set of 'filter-obsoleted detectors' as a parameter to verify_disappeared passed from the language plugin layer.",
+    "Add at least one test covering the new auto-resolve path for wontfix clippy/cargo items that disappear after filtering, and one test verifying that wontfix items from other detectors still follow the _mark_scan_verified path."
+  ],
+  "reject_reason": "",
+  "confidence": "high",
+  "implementation_notes": "The cleanest fix: add a parameter like `filter_obsoleted_detectors: set[str] = ()` to verify_disappeared(). The Rust scan workflow already knows which detectors use cfg(test) filtering (parse_clippy_messages passes skip_inline_cfg_test_modules=True). The caller in the scan workflow can pass {'clippy_warning', 'cargo_error'} when the Rust plugin is active. This keeps engine code language-agnostic while solving the real problem. The existing _mark_scan_verified path at line 158-170 should remain the default for wontfix items from detectors NOT in the obsoleted set."
+}

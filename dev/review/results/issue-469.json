@@ -1,0 +1,22 @@
+{
+  "number": 469,
+  "type": "issue",
+  "title": "Triage confirmation requires undocumented keyword patterns -- high friction",
+  "author": "Vuk97",
+  "stage1": {
+    "verdict": "ACCEPT_WITH_CONDITIONS",
+    "summary": "The triage validation system is extensive -- observe, reflect, organize, enrich, sense-check, and complete stages each have multiple validation checks spread across validation/core.py, validation/enrich_checks.py, validation/organize_policy.py, validation/reflect_accounting.py, validation/completion_policy.py, and validation/completion_stages.py. The reporter's complaint is about discoverability: requirements are enforced after submission rather than documented upfront. This is a real UX friction point for a tool that targets agents (Claude Code, Codex) as primary users. However, the triage system is intentionally strict -- it enforces thoroughness. The 30-minute overhead for 6 stages with iterative validation is high for a tool whose value proposition is reducing refactoring overhead.",
+    "conditions": [
+      "Do NOT relax validation rules -- they exist for quality reasons",
+      "Focus on discoverability: add a --show-requirements flag (or similar) that prints all validation criteria for a given stage BEFORE the user submits their report",
+      "Consider a --dry-run mode for triage stages that validates without confirming",
+      "Agent runner integration (the codex orchestrator at runner/orchestrator_codex_sense.py) already handles iterative validation -- the friction is primarily in manual/interactive use"
+    ],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "Add a 'desloppify plan triage --stage <name> --show-requirements' mode that prints all validation criteria for the stage (min char counts, required sections, issue ID citation requirements, etc.) without requiring a report. This is a rendering-only change per stage -- collect all the validation messages from the check functions and present them upfront. Each stage's rendering.py already has _print_*_report_requirement functions that partially do this."
+  }
+}

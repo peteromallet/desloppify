@@ -1,0 +1,17 @@
+{
+  "number": 466,
+  "type": "issue",
+  "title": "Language auto-detection picks JavaScript over Python when both present",
+  "author": "Vuk97",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "The auto_detect_lang function in resolution.py (lines 61-103) already handles this correctly in the current code. When multiple candidates match detect_markers, lines 98-103 count actual source files for each candidate and pick the language with the most files. Python uses detect_markers=['pyproject.toml', 'setup.py', 'setup.cfg'] and TypeScript uses detect_markers=['package.json']. If both markers exist, the code falls through to the file-counting tiebreaker (lines 98-103), which would correctly pick Python when 13 .py files outnumber 1 .tsx file. The reporter's repro does NOT create any marker files (no pyproject.toml, no package.json), so the code falls to the marker-less fallback path (lines 86-92), which also counts files. A .tsx file would match TypeScript's file_finder, and 13 .py files would match Python's. Unless TypeScript's file_finder also matches .tsx (it does -- TS extensions include .ts and .tsx), Python should win 13 to 1. The described behavior ('scans JavaScript only') may have been a v0.9.9 bug that was fixed, or the reporter had a package.json in the directory. The secondary point about --lang being a global flag is a documentation concern, not a code bug.",
+    "conditions": [],
+    "reject_reason": "The auto-detection algorithm already implements the file-counting tiebreaker the reporter requests. The described behavior cannot be reproduced from the current code when following the exact repro steps (no marker files present). If the reporter had a package.json file, that is expected behavior since TS would be the only marker-matched candidate.",
+    "confidence": "medium",
+    "scope_estimate": "small",
+    "potential_duplicates": [],
+    "real_problem": false,
+    "suggested_fix": "Consider adding a warning when auto-detection finds files for multiple languages but only one marker matches. This would help users who have a stray package.json. Low priority."
+  }
+}

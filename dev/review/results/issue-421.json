@@ -1,0 +1,17 @@
+{
+  "number": 421,
+  "type": "issue",
+  "title": "$1,000 if Desloppify does something stupid when refactoring your codebase",
+  "author": "peteromallet",
+  "stage1": {
+    "verdict": "NOT_ACTIONABLE",
+    "summary": "Standing bounty offer from the maintainer — not a bug report or feature request. This is a quality assurance incentive for external users. No code changes needed. Leave open as intended.",
+    "conditions": [],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [],
+    "real_problem": false,
+    "suggested_fix": ""
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "number": 478,
+  "type": "pr",
+  "role": "advocate",
+  "verdict": "ACCEPT_WITH_CONDITIONS",
+  "counter_case": "The narrowness is a feature, not a bug. Auto-resolving ALL disappeared issues whose detector is in a zone's skip_detectors set is risky: it conflates 'this detector should not run here' with 'existing findings should be silently cleared.' A detector being in skip_detectors means new findings are suppressed, but existing open findings may represent real work that was tracked before zone classification existed. The test_coverage case is special because coverage findings for non-production files are inherently nonsensical (you don't need production test coverage for test files), making auto-resolution safe. Other detectors in skip sets (e.g., smells downgraded in test zones) may have findings that users actively tracked. The conservative, targeted approach avoids data loss. Additionally, the PR solves a real, measured problem: 108 stale test_coverage issues in a real JS project dropped to 0.",
+  "summary": "Two-part fix: (1) adds JS zone rules for .test./.spec./__tests__/__mocks__/ patterns (unambiguously good), and (2) auto-resolves stale test_coverage issues when verify_disappeared sees the file is now in a non-production zone. Stage 1 correctly notes that _normalized_zone_value duplicates normalize_zone() and _NON_PRODUCTION_ZONES duplicates EXCLUDED_ZONE_VALUES, but the core approach of targeting test_coverage specifically is defensible as a conservative first step.",
+  "conditions": [
+    "Replace _normalized_zone_value() with the existing normalize_zone() from engine/policy/zones.py and compare result against EXCLUDED_ZONES or EXCLUDED_ZONE_VALUES instead of the local _NON_PRODUCTION_ZONES set — eliminates the DRY violations Stage 1 flagged",
+    "Add a brief code comment explaining WHY this is limited to test_coverage (coverage findings are inherently meaningless for non-production files, unlike other detectors whose historical findings may still be tracked)"
+  ],
+  "reject_reason": "",
+  "confidence": "medium",
+  "implementation_notes": "The conditions are small refactors: (1) In merge_issues.py, replace `from desloppify.engine.policy.zones import normalize_zone, EXCLUDED_ZONES` and use `normalize_zone(zone_lookup(file_path)) in EXCLUDED_ZONES` instead of the custom _normalized_zone_value + _NON_PRODUCTION_ZONES. (2) Delete _normalized_zone_value and _NON_PRODUCTION_ZONES. The zone_lookup callable returns Zone enum values from FileZoneMap.get, so normalize_zone handles them correctly. The JS _zones.py file and all test additions are fine as-is."
+}

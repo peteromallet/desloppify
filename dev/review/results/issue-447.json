@@ -1,0 +1,17 @@
+{
+  "number": 447,
+  "type": "issue",
+  "title": "Fix communicate-score cycle-boundary sentinel resets",
+  "author": "cdunda-perchwell",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "Real bug: after queue-drain clears both `plan_start_scores` and `previous_plan_start_scores`, a subsequent scan re-injects `workflow::communicate-score` because neither guard survives. The current code in `_clear_plan_start_scores_if_queue_empty` calls `clear_score_communicated_sentinel(plan)` which pops `previous_plan_start_scores`, removing the only gate that prevents `sync_communicate_score_needed` from re-injecting. The issue is well-investigated with two distinct paths identified (post-queue-drain rescan and resolve-path re-injection). PR #448 is open with a partial fix. The proposed sentinel approach (adding `communicate_score_resolved_this_cycle` and wiring it through cycle boundaries) is sound, though the simpler fix of just not clearing the sentinel at queue-drain time would also work for Path 1.",
+    "conditions": [],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "In `_clear_plan_start_scores_if_queue_empty` (plan_reconcile.py), stop calling `clear_score_communicated_sentinel(plan)`. The `previous_plan_start_scores` sentinel must survive until the next cycle starts via `_seed_plan_start_scores`. Path 2 (resolve-path re-injection) needs further investigation but has low practical impact. PR #448 already addresses this — review and merge that PR after the author splits out unrelated changes."
+  }
+}

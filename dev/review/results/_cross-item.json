@@ -1,0 +1,32 @@
+{
+  "duplicate_groups": [
+    {
+      "items": ["pr-486", "pr-485"],
+      "preferred": "pr-485",
+      "reasoning": "ALREADY PROCESSED in prior batch. PR #485 synthetic loop fix cherry-picked. PR #486 REJECT_AND_FIX — we wrote our own json_default handler."
+    },
+    {
+      "items": ["pr-481", "pr-472", "pr-475"],
+      "preferred": null,
+      "reasoning": "All three address the same json_default dataclass serialization crash already fixed in commit 61bb7cb3. PR #481 and #472 are exact duplicates. PR #475 adds encode/decode helpers for cache-miss-on-reload, but both stages agree that's harmless and fragile. All three should be REJECT — the fix already shipped."
+    },
+    {
+      "items": ["pr-483", "pr-475"],
+      "preferred": "pr-483",
+      "reasoning": "Both address framework cache leaking into persisted state. PR #483 separates runtime_cache from review_cache (root cause fix). PR #475 adds encode/decode to tolerate dataclasses in review_cache (band-aid). PR #483 is architecturally correct."
+    }
+  ],
+  "ordering": [
+    {
+      "item": "pr-483",
+      "must_come_after": null,
+      "reason": "PR #483 touches review_cache/runtime_cache infrastructure. Should be processed before any other cache-related items, but no other approved items touch this area."
+    }
+  ],
+  "interactions": [
+    {
+      "items": ["pr-478"],
+      "concern": "PR #478 touches zone infrastructure and merge_issues. Independent of all other items in this batch."
+    }
+  ]
+}

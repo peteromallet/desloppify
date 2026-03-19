@@ -1,0 +1,23 @@
+{
+  "number": 484,
+  "type": "pr",
+  "title": "fix: handle generic fixers that return entries without 'removed' key",
+  "author": "AugusteBalas",
+  "stage1": {
+    "verdict": "ACCEPT_WITH_CONDITIONS",
+    "summary": "The bug is real and verified. make_generic_fixer in tool_factories.py returns FixResult entries with shape {\"file\", \"line\"} (dry-run) or {\"file\", \"fixed\"} (actual fix) -- neither includes a \"removed\" key. Four call sites in the autofix pipeline unconditionally access result[\"removed\"], which would KeyError for any generic fixer (e.g., eslint-warning). The fix correctly guards these accesses with .get(\"removed\", []) and conditional checks. Two minor conditions: (1) the change to _cascade_unused_import_cleanup is unnecessary since that function always runs the unused-imports TS fixer which does produce \"removed\", but is harmless; (2) no tests were added -- a simple test exercising cmd_autofix or _print_fix_summary with a result dict missing \"removed\" would harden this.",
+    "conditions": [
+      "Add at least one test that exercises the autofix pipeline with a generic fixer result (no 'removed' key) to prevent regression."
+    ],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": []
+  },
+  "stage3": {
+    "decision": "IMPLEMENT_WITH_CHANGES",
+    "reasoning": "Both stages agreed. Cherry-picked with added regression tests for the generic fixer result shape.",
+    "commit": "18b497a2",
+    "changes_applied": ["Added regression tests for generic fixer results without 'removed' key"]
+  }
+}

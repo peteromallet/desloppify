@@ -1,0 +1,19 @@
+{
+  "number": 468,
+  "type": "issue",
+  "title": "SSL certificate error on macOS for update-skill",
+  "author": "Vuk97",
+  "stage1": {
+    "verdict": "ACCEPT",
+    "summary": "Confirmed from code. The _download function in update_skill/cmd.py (line 29) uses urllib.request.urlopen directly with no SSL context customization. On macOS with Homebrew Python, the system SSL certificates are not available to Python by default -- users must run 'Install Certificates.command' or use certifi. This is a well-known macOS/Homebrew Python issue. The error is caught at line 159 (urllib.error.URLError) and printed as 'Download failed: ...' with no actionable guidance. The workaround (REQUESTS_CA_BUNDLE env var) works because certifi is installed as a dependency.",
+    "conditions": [
+      "Fix should try certifi first, fall back to default SSL context, and print a helpful message on SSL failure suggesting the certifi workaround or the Install Certificates.command"
+    ],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "In _download, create an ssl.SSLContext that loads certifi's CA bundle if available: try importing certifi, create ssl.create_default_context(cafile=certifi.where()), pass that context to urlopen. If certifi is not installed, fall back to default. On SSL failure, print a specific message: 'SSL certificate verification failed. Try: pip install certifi, or on macOS run /Applications/Python*/Install\\ Certificates.command'. This is a 10-line fix in _download."
+  }
+}

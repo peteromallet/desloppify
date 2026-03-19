@@ -1,0 +1,16 @@
+{
+  "number": 475,
+  "type": "pr",
+  "title": "Fix scan crash when framework cache hits persisted review_cache",
+  "author": "MacHatter1",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "The serialization crash this PR targets was already fixed in commit 61bb7cb3 (our json_default dataclass handler, shipped via PR #486 assessment). The json_default changes in this PR are a direct duplicate. The encode/decode helpers in detection.py and nextjs.py address a secondary issue (cache miss after state reload because isinstance checks fail on plain dicts), but that is a harmless performance issue — the framework detection simply re-runs — not a crash. The encode/decode approach adds ~60 lines of hand-rolled serialization that must stay in sync with the dataclass fields, creating fragile maintenance burden for negligible benefit.",
+    "reject_reason": "The crash fix (json_default dataclass handling) is a duplicate of commit 61bb7cb3. The remaining encode/decode changes address a harmless cache-miss-on-reload (not a crash), and the hand-rolled serialize/deserialize approach is fragile maintenance burden disproportionate to the minor performance gain.",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [486],
+    "real_problem": true,
+    "suggested_fix": "The serialization crash is already fixed. If the cache-miss-on-reload performance matters in the future, the right fix would be a single generic reconstitution helper (not per-dataclass encode/decode pairs), or simply clearing the framework cache keys on state load so the isinstance path is never hit with stale dict data."
+  }
+}

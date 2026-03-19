@@ -1,0 +1,20 @@
+{
+  "number": 464,
+  "type": "issue",
+  "title": "review --prepare fails when project path contains spaces",
+  "author": "Vuk97",
+  "stage1": {
+    "verdict": "ACCEPT_WITH_CONDITIONS",
+    "summary": "The code path for review --prepare goes through setup_lang_concrete -> file_finder -> find_source_files -> _find_source_files_cached, which uses os.walk and Path operations that handle spaces fine. The scan command uses the same file_finder. The discrepancy likely comes from how the review packet context resolves path (ReviewPacketContext uses Path(args.path) directly at build.py:59) versus how the scan resolves it (prepare_scan_runtime at workflow.py:285). The scan calls resolve_lang which sets up the full runtime including project root resolution via get_project_root (Path.cwd().resolve()), while review --prepare's setup_lang_concrete gets the raw Path('.') without the same resolution chain. When CWD contains spaces, the relative-to-project-root computation in _safe_relpath or _find_source_files_cached may produce mismatched cache keys or paths. This is plausible but I cannot confirm it reproduces deterministically from the code alone -- the os.walk/Path layer handles spaces correctly, so the bug may be in a subtle interaction with relpath computation or caching. Reported against v0.9.9; current code may have shifted slightly.",
+    "conditions": [
+      "Reproduce first: create a path with spaces and run both scan and review --prepare to confirm the bug still exists in 0.9.11",
+      "If confirmed, the fix should be in path normalization/resolution, not in quoting -- ensure review --prepare resolves paths through the same chain as scan"
+    ],
+    "reject_reason": "",
+    "confidence": "medium",
+    "scope_estimate": "small",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "Ensure review --prepare resolves the scan path through the same get_project_root/resolve chain that scan uses. The likely fix is in build.py's resolve_review_packet_context or in setup_lang_concrete to resolve the path before passing to file_finder. Add a test with a tmp directory containing a space."
+  }
+}

@@ -1,0 +1,5 @@
+[
+  {"number": 484, "type": "pr", "decision": "IMPLEMENT_WITH_CHANGES", "commit": "18b497a2", "notes": "Cherry-picked + added regression tests"},
+  {"number": 486, "type": "pr", "decision": "REJECT_AND_FIX", "commit": "61bb7cb3", "notes": "Bug real, fix wrong. Wrote correct one-liner with tests. Credited contributor."},
+  {"number": 485, "type": "pr", "decision": "IMPLEMENT_WITH_CHANGES", "commit": "1a0439e2", "notes": "Stage 2 overturned Stage 1 rejection. Cherry-picked synthetic loop fix only; dataclass part handled via #486 fix."}
+]

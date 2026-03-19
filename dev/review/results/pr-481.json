@@ -1,0 +1,16 @@
+{
+  "number": 481,
+  "type": "pr",
+  "title": "fix: handle dataclass objects in json_default serializer",
+  "author": "ucanlendit",
+  "stage1": {
+    "verdict": "REJECT",
+    "summary": "Exact duplicate of the fix already shipped in commit 61bb7cb3 (from PR #486 REJECT_AND_FIX resolution). The PR adds a dataclasses.is_dataclass() handler to json_default() in schema_scores.py — this code is already present on the current branch, word-for-word identical including the `not isinstance(obj, type)` guard and the `dataclasses.asdict(obj)` return. The file already has the import, the handler, and a comment crediting the original reporter. Nothing new to merge.",
+    "reject_reason": "Duplicate of already-shipped commit 61bb7cb3. The dataclass serialization fix in json_default() was implemented as part of PR #486 triage and is already on the 0.9.11 branch.",
+    "confidence": "high",
+    "scope_estimate": "small",
+    "potential_duplicates": [486],
+    "real_problem": true,
+    "suggested_fix": "Already fixed in commit 61bb7cb3. No further action needed."
+  }
+}

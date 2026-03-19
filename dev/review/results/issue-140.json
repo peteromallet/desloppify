@@ -1,0 +1,21 @@
+{
+  "number": 140,
+  "type": "issue",
+  "title": "Feature: per-language scorecards for mixed-language repositories",
+  "author": "wang93wei",
+  "stage1": {
+    "verdict": "ACCEPT_WITH_CONDITIONS",
+    "summary": "Well-structured feature request for per-language score breakdowns in mixed-language repos. The maintainer has acknowledged this twice and said 'will add soon.' The current architecture already supports per-language scanning via `--lang`, and state is already language-scoped (state-{lang}.json). The main work is adding a `--by-language` flag that auto-detects languages in a repo and runs per-language scoring in a single invocation, plus aggregating the output. Not yet implemented based on code search.",
+    "conditions": [
+      "Auto-detection of languages in a repo must be reliable (avoid false positives for vendored/generated code)",
+      "Per-language state files must remain independent; no new coupling between language scan states",
+      "Aggregate score computation must be clearly defined (weighted by file count? line count? equal weight?)"
+    ],
+    "reject_reason": "",
+    "confidence": "high",
+    "scope_estimate": "medium",
+    "potential_duplicates": [],
+    "real_problem": true,
+    "suggested_fix": "Add a --by-language flag to scan and status commands. Implementation: detect languages present in the scan path, run per-language scoring passes, render separate score blocks in CLI output. Scorecard image generation per language is a nice-to-have follow-up. Start with CLI text output only."
+  }
+}
