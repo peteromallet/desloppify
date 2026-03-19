@@ -58,9 +58,16 @@ def resolve_import_spec(
         f"{module_path}.py",
         f"{module_path}/__init__.py",
     )
+    # Common source layout prefixes to try when direct match fails
+    _SRC_PREFIXES = ("src/",)
     for candidate in candidates:
         if candidate in production_files:
             return candidate
+        # Try src/-prefixed variants for src-layout projects
+        for prefix in _SRC_PREFIXES:
+            prefixed = f"{prefix}{candidate}"
+            if prefixed in production_files:
+                return prefixed
         if test_path:
             sibling = os.path.join(os.path.dirname(test_path), candidate)
             if sibling in production_files:
