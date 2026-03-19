@@ -84,7 +84,7 @@ def test_plan_cmd_routes_through_capability_packages() -> None:
 
 def test_development_philosophy_documents_passthrough_shim_exception() -> None:
     root = _repo_root()
-    text = (root.parent / "docs" / "DEVELOPMENT_PHILOSOPHY.md").read_text(
+    text = (root.parent / "dev" / "DEVELOPMENT_PHILOSOPHY.md").read_text(
         encoding="utf-8"
     )
     assert "Functionality compatibility shims are disallowed by default" in text
