@@ -145,7 +145,13 @@ def live_planned_queue_empty(plan: dict) -> bool:
     )
 
 
-def reconcile_plan(plan: dict, state: dict, *, target_strict: float) -> ReconcileResult:
+def reconcile_plan(
+    plan: dict,
+    state: dict,
+    *,
+    target_strict: float,
+    force_rescan: bool = False,
+) -> ReconcileResult:
     """Run the shared boundary reconciliation pipeline."""
     result = ReconcileResult()
     if not live_planned_queue_empty(plan):
@@ -156,13 +162,14 @@ def reconcile_plan(plan: dict, state: dict, *, target_strict: float) -> Reconcil
         target_strict=target_strict,
         plan=plan,
     )
-    cycle_just_completed = not plan.get("plan_start_scores")
+    cycle_just_completed = not plan.get("plan_start_scores") or force_rescan
 
     # Skip subjective sync when workflow will supersede it: all dims are
     # scored and communicate-score hasn't fired yet this cycle.  The phase
     # cleanup safety net still prunes if this peek is wrong.
     will_inject_workflow = (
-        "previous_plan_start_scores" not in plan
+        not force_rescan
+        and "previous_plan_start_scores" not in plan
         and _subjective_review_current_for_cycle(
             plan,
             state,

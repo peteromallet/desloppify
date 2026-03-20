@@ -69,6 +69,48 @@ def test_cycle_completed_injects_stale_despite_objective_backlog():
     assert plan2["queue_order"][2].startswith("subjective::")
 
 
+def test_cycle_completed_injects_stale_with_plan_start_scores_preserved():
+    """Force-rescan can inject stale dims while preserved scores keep mid-cycle semantics."""
+    plan = _plan_with_queue("some_issue::file.py::abc123")
+    plan["plan_start_scores"] = {
+        "strict": 80.0,
+        "overall": 82.0,
+        "objective": 84.0,
+        "verified": 78.0,
+    }
+    state = _state_with_stale_dimensions("design_coherence")
+    state["work_items"]["some_issue::file.py::abc123"] = {
+        "id": "some_issue::file.py::abc123",
+        "status": "open",
+        "detector": "smells",
+    }
+
+    result = sync_subjective_dimensions(plan, state, cycle_just_completed=True)
+
+    assert result.injected == ["subjective::design_coherence"]
+    assert plan["queue_order"] == [
+        "some_issue::file.py::abc123",
+        "subjective::design_coherence",
+    ]
+
+
+def test_cycle_completed_with_preserved_scores_still_skips_unscored():
+    """Force-rescan remains rescan-and-continue: placeholder reviews stay out."""
+    plan = _plan_with_queue("issue_a")
+    plan["plan_start_scores"] = {
+        "strict": 80.0,
+        "overall": 82.0,
+        "objective": 84.0,
+        "verified": 78.0,
+    }
+    state = _state_with_unscored_dimensions("design_coherence")
+
+    result = sync_subjective_dimensions(plan, state, cycle_just_completed=True)
+
+    assert result.injected == []
+    assert plan["queue_order"] == ["issue_a"]
+
+
 def test_cycle_completed_appends_to_back():
     """Post-cycle stale injection appends to back, preserving existing order."""
     plan = _plan_with_queue("issue_a", "issue_b")

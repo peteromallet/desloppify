@@ -120,6 +120,34 @@ def _seed_plan_start_scores(plan: dict[str, object], state: state_mod.StateModel
     return True
 
 
+def _refresh_plan_start_baseline(
+    plan: dict[str, object],
+    state: state_mod.StateModel,
+) -> bool:
+    """Refresh the preserved cycle baseline without clearing workflow sentinels.
+
+    ``--force-rescan`` starts a new scan boundary while intentionally keeping
+    ``plan_start_scores`` truthy so ``is_mid_cycle()`` still protects manual
+    clusters. Refreshing the baseline must therefore update both the frozen
+    score values and the scan-gate baseline, but leave workflow sentinels such
+    as ``previous_plan_start_scores`` untouched.
+    """
+    existing = plan.get("plan_start_scores")
+    if existing and not isinstance(existing, dict):
+        return False
+    scores = state_mod.score_snapshot(state)
+    if scores.strict is None:
+        return False
+    plan["plan_start_scores"] = {
+        "strict": scores.strict,
+        "overall": scores.overall,
+        "objective": scores.objective,
+        "verified": scores.verified,
+    }
+    plan["scan_count_at_plan_start"] = int(state.get("scan_count", 0) or 0)
+    return True
+
+
 def _has_objective_cycle(
     state: state_mod.StateModel,
     plan: dict[str, object],
@@ -322,6 +350,7 @@ def reconcile_plan_post_scan(runtime: Any) -> None:
             plan,
             runtime.state,
             target_strict=target_strict_score_from_config(runtime.config),
+            force_rescan=force_rescan,
         )
         _display_reconcile_results(
             result,
@@ -332,7 +361,11 @@ def reconcile_plan_post_scan(runtime: Any) -> None:
             emit_transition_message(result.lifecycle_phase)
         dirty = result.dirty or dirty
 
-    if not force_rescan and _sync_plan_start_scores_and_log(plan, runtime.state):
+    if force_rescan:
+        if _refresh_plan_start_baseline(plan, runtime.state):
+            append_log_entry(plan, "seed_start_scores", actor="system", detail={})
+            dirty = True
+    elif _sync_plan_start_scores_and_log(plan, runtime.state):
         dirty = True
     if _sync_postflight_scan_completion_and_log(plan, runtime.state, phase_before=phase_before):
         dirty = True
@@ -389,6 +422,7 @@ __all__ = [
     "_has_objective_cycle",
     "_is_mid_cycle_scan",
     "_mark_postflight_scan_completed_if_ready",
+    "_refresh_plan_start_baseline",
     "_reset_cycle_for_force_rescan",
     "_seed_plan_start_scores",
     "_sync_plan_start_scores_and_log",
