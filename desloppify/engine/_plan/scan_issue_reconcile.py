@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from desloppify.engine._plan.annotations import get_issue_note
 from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
+from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE, cluster_is_active
 from desloppify.engine._plan.operations.lifecycle import clear_focus_if_cluster_empty
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.operations.skip import resurface_stale_skips
@@ -239,6 +240,7 @@ def _complete_empty_manual_clusters(
         if cluster is None or len(cluster.get("issue_ids", [])) != 0:
             continue
         result.clusters_completed.append(name)
+        cluster["execution_status"] = EXECUTION_STATUS_DONE
         append_log_entry(
             plan,
             "cluster_done",
@@ -246,6 +248,43 @@ def _complete_empty_manual_clusters(
             cluster_name=name,
             actor="system",
             detail={"reason": "cluster members no longer actionable in state"},
+        )
+        result.changes += 1
+
+
+_RESOLVED_STATUSES = frozenset({"fixed", "auto_resolved", "wontfix"})
+
+
+def _reconcile_active_clusters_by_item_status(
+    plan: PlanModel,
+    state: StateModel,
+    *,
+    result: ReconcileResult,
+) -> None:
+    """Mark active clusters as done when all their items are resolved."""
+    clusters = plan.get("clusters", {})
+    issues = state.get("work_items") or state.get("issues", {})
+    for name, cluster in clusters.items():
+        if not cluster_is_active(cluster):
+            continue
+        issue_ids = cluster.get("issue_ids", [])
+        if not issue_ids:
+            continue
+        all_resolved = all(
+            issues.get(fid, {}).get("status") in _RESOLVED_STATUSES
+            for fid in issue_ids
+        )
+        if not all_resolved:
+            continue
+        cluster["execution_status"] = EXECUTION_STATUS_DONE
+        result.clusters_completed.append(name)
+        append_log_entry(
+            plan,
+            "cluster_done",
+            issue_ids=issue_ids,
+            cluster_name=name,
+            actor="system",
+            detail={"reason": "all items resolved in state"},
         )
         result.changes += 1
 
@@ -330,6 +369,7 @@ def reconcile_plan_after_scan(
         result=result,
     )
     _complete_empty_manual_clusters(plan, pre_sizes=pre_sizes, result=result)
+    _reconcile_active_clusters_by_item_status(plan, state, result=result)
     _reconcile_epic_clusters(plan, state, result=result)
 
     clear_focus_if_cluster_empty(plan)

@@ -165,3 +165,45 @@ def test_reconcile_prunes_existing_superseded_references():
     assert "a" not in plan["queue_order"]
     assert "a" not in plan["promoted_ids"]
     assert "a" not in plan["clusters"]["my-cluster"]["issue_ids"]
+
+
+# ---------------------------------------------------------------------------
+# Active clusters completed when all items resolved
+# ---------------------------------------------------------------------------
+
+def test_reconcile_marks_active_cluster_done_when_all_items_resolved():
+    """An active cluster whose items are all fixed/wontfix should become done."""
+    plan = _plan_with_queue("a", "b")
+    ensure_plan_defaults(plan)
+    create_cluster(plan, "my-cluster")
+    add_to_cluster(plan, "my-cluster", ["a", "b"])
+    plan["clusters"]["my-cluster"]["execution_status"] = "active"
+
+    # Both items are resolved in state
+    state = _state_with_issues("a", "b", status="fixed")
+
+    result = reconcile_plan_after_scan(plan, state)
+
+    assert "my-cluster" in result.clusters_completed
+    assert plan["clusters"]["my-cluster"]["execution_status"] == "done"
+
+
+def test_reconcile_leaves_active_cluster_when_items_still_open():
+    """An active cluster with open items should stay active."""
+    plan = _plan_with_queue("a", "b")
+    ensure_plan_defaults(plan)
+    create_cluster(plan, "my-cluster")
+    add_to_cluster(plan, "my-cluster", ["a", "b"])
+    plan["clusters"]["my-cluster"]["execution_status"] = "active"
+
+    # "a" is fixed but "b" is still open
+    state = _state_with_issues("b")
+    state["issues"]["a"] = {
+        "id": "a", "status": "fixed", "detector": "test",
+        "file": "test.py", "tier": 1, "confidence": "high", "summary": "Issue a",
+    }
+
+    result = reconcile_plan_after_scan(plan, state)
+
+    assert "my-cluster" not in result.clusters_completed
+    assert plan["clusters"]["my-cluster"]["execution_status"] == "active"
