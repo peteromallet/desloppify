@@ -13,6 +13,7 @@ from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.terminal import colorize
 from desloppify.app.commands.resolve.plan_load import warn_plan_load_degraded_once
 from desloppify.engine._plan.sync import live_planned_queue_empty, reconcile_plan
+from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE
 from desloppify.engine.plan_ops import (
     append_log_entry,
     auto_complete_steps,
@@ -119,6 +120,8 @@ def update_living_plan_after_resolve(
                 cluster_name=ctx.cluster_name,
                 actor="user",
             )
+            # Mark cluster as done so cluster_is_active() returns False
+            plan["clusters"][ctx.cluster_name]["execution_status"] = EXECUTION_STATUS_DONE
             # Clear focus when cluster is done
             if plan.get("active_cluster") == ctx.cluster_name:
                 plan["active_cluster"] = None
