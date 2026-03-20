@@ -185,7 +185,7 @@ class TestSyncTriageNeeded:
         state = _state_with_review_issues("r1")
         sync_triage_needed(plan, state)
         assert plan["queue_order"][0] == "existing_item"
-        assert plan["queue_order"][1] == "triage::observe"
+        assert plan["queue_order"][1] == "triage::strategize"
 
     def test_skips_confirmed_stages(self):
         """Stages already confirmed in meta are not injected."""
@@ -393,7 +393,7 @@ class TestSyncTriageNeeded:
         assert third.deferred is False
         assert "triage::observe" in third.injected
         assert bool(plan["epic_triage_meta"].get("triage_force_visible")) is True
-        assert plan["queue_order"][0] == "triage::observe"
+        assert plan["queue_order"][0] == "triage::strategize"
         assert "unused::obj" in plan["queue_order"]
 
 
@@ -470,13 +470,13 @@ class TestBuildTriageStageItems:
         plan["queue_order"] = list(TRIAGE_STAGE_IDS)
         state = _state_with_review_issues("r1", "r2")
         items = build_triage_stage_items(plan, state)
-        assert len(items) == 6
+        assert len(items) == 7
         assert all(it["tier"] == 1 for it in items)
         assert all(it["kind"] == "workflow_stage" for it in items)
-        assert items[0]["id"] == "triage::observe"
+        assert items[0]["id"] == "triage::strategize"
         assert (
             items[0]["primary_command"]
-            == "desloppify plan triage --run-stages --runner codex --only-stages observe"
+            == "desloppify plan triage --run-stages --runner codex --only-stages strategize"
         )
 
     def test_counts_issues(self):
@@ -491,11 +491,11 @@ class TestBuildTriageStageItems:
         plan["queue_order"] = list(TRIAGE_STAGE_IDS)
         state = _state_with_review_issues("r1")
         items = build_triage_stage_items(plan, state)
-        # observe has no dependencies
+        # strategize has no dependencies
         assert items[0]["blocked_by"] == []
         assert not items[0]["is_blocked"]
-        # reflect depends on observe
-        assert "triage::observe" in items[1]["blocked_by"]
+        # observe depends on strategize
+        assert "triage::strategize" in items[1]["blocked_by"]
         assert items[1]["is_blocked"]
 
     def test_skips_confirmed_stages(self):

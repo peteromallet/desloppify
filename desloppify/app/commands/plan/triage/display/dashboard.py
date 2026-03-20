@@ -251,6 +251,41 @@ def _print_recurring_or_first_triage(
     print(colorize("  - What's the overall arc of work and why?", "dim"))
 
 
+def _print_strategist_briefing(meta: dict) -> None:
+    briefing = meta.get("strategist_briefing", {})
+    if not isinstance(briefing, dict):
+        return
+    focus = [
+        str(entry.get("name", "")).strip()
+        for entry in briefing.get("focus_dimensions", [])
+        if isinstance(entry, dict) and str(entry.get("name", "")).strip()
+    ]
+    if not briefing and not focus:
+        return
+    print(colorize("\n  ╭─ Strategist Briefing ─────────────────────────────╮", "cyan"))
+    print(
+        colorize(
+            "  │ "
+            f"Score trend: {briefing.get('score_trend', 'stable'):<10} "
+            f"Debt trend: {briefing.get('debt_trend', 'stable'):<10}"
+            " │",
+            "cyan",
+        )
+    )
+    focus_line = ", ".join(focus[:3]) or "none"
+    print(colorize(f"  │ Focus: {focus_line[:42]:<42} │", "cyan"))
+    print(
+        colorize(
+            "  │ "
+            f"Rework warnings: {len(briefing.get('rework_warnings', []) or [])}  "
+            f"Anti-patterns: {len(briefing.get('anti_patterns', []) or [])}"
+            " │",
+            "cyan",
+        )
+    )
+    print(colorize("  ╰───────────────────────────────────────────────────╯", "cyan"))
+
+
 def cmd_triage_dashboard(
     args: argparse.Namespace,
     *,
@@ -267,6 +302,7 @@ def cmd_triage_dashboard(
     stages = meta.get("triage_stages", {})
 
     print_dashboard_header(si, stages, meta, plan, snapshot=snapshot)
+    _print_strategist_briefing(meta)
     print_action_guidance(stages, meta, si, plan, snapshot=snapshot)
     print_prior_stage_reports(stages)
     review_issues = getattr(si, "review_issues", getattr(si, "open_issues", {}))

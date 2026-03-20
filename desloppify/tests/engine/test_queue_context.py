@@ -134,14 +134,14 @@ class TestQueueContextTargetStrict:
         assert ctx.target_strict == 88.0
 
     def test_target_strict_fallback(self):
-        """Without explicit or config, falls back to 95.0."""
+        """Without explicit or config, falls back to 85.0."""
         ctx = queue_context(_minimal_state(), plan=None)
-        assert ctx.target_strict == 95.0
+        assert ctx.target_strict == 85.0
 
     def test_target_strict_fallback_no_key_in_config(self):
         """Config dict without target_strict_score key uses fallback."""
         ctx = queue_context(_minimal_state(), plan=None, config={})
-        assert ctx.target_strict == 95.0
+        assert ctx.target_strict == 85.0
 
 
 # ---------------------------------------------------------------------------

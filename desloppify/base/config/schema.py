@@ -10,7 +10,7 @@ from desloppify.base.text_utils import is_numeric
 
 MIN_TARGET_STRICT_SCORE = 0
 MAX_TARGET_STRICT_SCORE = 100
-DEFAULT_TARGET_STRICT_SCORE: float = 95.0
+DEFAULT_TARGET_STRICT_SCORE: float = 85.0
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class ConfigKey:
 
 CONFIG_SCHEMA: dict[str, ConfigKey] = {
     "target_strict_score": ConfigKey(
-        int, 95, "North-star strict score target used to prioritize guidance"
+        int, 85, "North-star strict score target used to prioritize guidance"
     ),
     "review_max_age_days": ConfigKey(
         int, 30, "Days before a file review is considered stale (0 = never)"

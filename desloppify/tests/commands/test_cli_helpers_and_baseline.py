@@ -19,8 +19,8 @@ from desloppify.cli import _apply_persisted_exclusions, create_parser
 
 class TestTargetScoreHelpers:
     def test_coerce_target_score_handles_invalid_inputs(self):
-        assert coerce_target_score(None) == 95.0
-        assert coerce_target_score("  ") == 95.0
+        assert coerce_target_score(None) == 85.0
+        assert coerce_target_score("  ") == 85.0
         assert coerce_target_score("bad", fallback=97.0) == 97.0
         assert coerce_target_score(True, fallback=96.0) == 96.0
 
@@ -30,8 +30,8 @@ class TestTargetScoreHelpers:
         assert coerce_target_score("99.5") == 99.5
 
     def test_target_strict_score_from_config_uses_fallbacks(self):
-        assert target_strict_score_from_config(None) == 95.0
-        assert target_strict_score_from_config({"target_strict_score": None}) == 95.0
+        assert target_strict_score_from_config(None) == 85.0
+        assert target_strict_score_from_config({"target_strict_score": None}) == 85.0
         assert target_strict_score_from_config({"target_strict_score": "97"}) == 97.0
         assert target_strict_score_from_config({"target_strict_score": 120}) == 100.0
 

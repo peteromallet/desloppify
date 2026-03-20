@@ -15,7 +15,7 @@ examples:
   desloppify plan triage --run-stages --runner codex
   desloppify plan triage --run-stages --runner claude
   desloppify plan triage --run-stages --runner codex --only-stages organize
-  desloppify plan triage --stage observe --report "..."   # manual fallback
+  desloppify plan triage --stage strategize --report '{"score_trend":"stable","debt_trend":"stable"}'   # manual fallback
   desloppify plan triage --confirm-existing --note "..." --strategy "same" --confirmed "I reviewed the new issues and the existing plan still holds."\
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -23,7 +23,7 @@ examples:
     p_triage.add_argument(
         "--stage",
         type=str,
-        choices=["observe", "reflect", "organize", "enrich", "sense-check"],
+        choices=["strategize", "observe", "reflect", "organize", "enrich", "sense-check"],
         default=None,
         help="Stage to record",
     )
@@ -59,7 +59,7 @@ examples:
     p_triage.add_argument(
         "--confirm",
         type=str,
-        choices=["observe", "reflect", "organize", "enrich", "sense-check"],
+        choices=["strategize", "observe", "reflect", "organize", "enrich", "sense-check"],
         default=None,
         help="Confirm a completed stage (shows summary, requires --attestation)",
     )
@@ -102,7 +102,7 @@ examples:
     p_triage.add_argument(
         "--stage-prompt",
         type=str,
-        choices=["observe", "reflect", "organize", "enrich", "sense-check"],
+        choices=["strategize", "observe", "reflect", "organize", "enrich", "sense-check"],
         default=None,
         help="Print the current prompt for a stage (built from live plan data)",
     )

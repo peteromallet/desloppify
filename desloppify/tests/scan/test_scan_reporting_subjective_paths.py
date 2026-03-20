@@ -84,7 +84,7 @@ def test_subjective_integrity_followup_handles_none_threshold_and_target():
     )
     assert notice is not None
     assert notice["status"] == "warn"
-    assert notice["target"] == 95.0
+    assert notice["target"] == 85.0
 
 
 def test_show_subjective_paths_prioritizes_integrity_gap(monkeypatch, capsys):

@@ -262,6 +262,11 @@ def _value_batch_config(
         plan=dict(plan),
         state=state,
         repo_root=repo_root,
+        strategist_briefing=(
+            plan.get("epic_triage_meta", {}).get("strategist_briefing", {})
+            if isinstance(plan.get("epic_triage_meta", {}), dict)
+            else {}
+        ),
         mode=mode,
         cli_command=cli_command,
     )

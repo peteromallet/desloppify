@@ -12,6 +12,7 @@ from .basic import (
 )
 from .enrich import confirm_enrich, confirm_sense_check
 from .organize import confirm_organize
+from .strategize import confirm_strategize
 from ..services import TriageServices, default_triage_services
 
 
@@ -28,6 +29,7 @@ def cmd_confirm_stage(
     stages = plan.get("epic_triage_meta", {}).get("triage_stages", {})
 
     handlers = {
+        "strategize": confirm_strategize,
         "observe": confirm_observe,
         "reflect": confirm_reflect,
         "organize": confirm_organize,

@@ -16,7 +16,8 @@ from .stage_validation import build_auto_attestation, validate_stage
 
 def is_full_stage_run(stages_to_run: list[str]) -> bool:
     """True when the pipeline was asked to run the full triage stage set."""
-    return set(stages_to_run) == set(STAGES)
+    requested = set(stages_to_run)
+    return requested == set(STAGES) or requested == (set(STAGES) - {"strategize"})
 
 
 def all_stage_results_successful(

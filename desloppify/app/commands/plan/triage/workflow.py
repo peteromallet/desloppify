@@ -8,7 +8,7 @@ from pathlib import Path
 
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan_triage import TRIAGE_CMD_OBSERVE
+from desloppify.engine.plan_triage import TRIAGE_CMD_STRATEGIZE
 
 from .confirmations.router import cmd_confirm_stage
 from .display.dashboard import cmd_triage_dashboard
@@ -55,13 +55,13 @@ def _cmd_triage_start(
                 detail={"action": "restart", "cleared_stages": list(stages.keys())},
             )
             services.save_plan(plan)
-            print(colorize("  Stages cleared. Begin with observe:", "green"))
+            print(colorize("  Stages cleared. Begin with strategize:", "green"))
         else:
             ensure_active_triage_issue_ids(plan, state)
             inject_triage_stages(plan)
             services.save_plan(plan)
-            print(colorize("  Begin with observe:", "green"))
-        print(colorize(f"    {TRIAGE_CMD_OBSERVE}", "dim"))
+            print(colorize("  Begin with strategize:", "green"))
+        print(colorize(f"    {TRIAGE_CMD_STRATEGIZE}", "dim"))
         return
 
     attestation: str | None = getattr(args, "attestation", None)
@@ -73,7 +73,7 @@ def _cmd_triage_start(
         log_action="triage_start",
         log_actor="user",
         log_detail={"action": "start"},
-        start_message="  Planning mode started (6 stages queued).",
+        start_message="  Planning mode started (7 stages queued).",
         start_message_style="green",
     )
     if start_outcome.status == "blocked":
@@ -82,8 +82,8 @@ def _cmd_triage_start(
     si = services.collect_triage_input(plan, state)
     review_issues = getattr(si, "review_issues", getattr(si, "open_issues", {}))
     print(f"  Open review issues: {len(review_issues)}")
-    print(colorize("  Begin with observe:", "dim"))
-    print(colorize(f"    {TRIAGE_CMD_OBSERVE}", "dim"))
+    print(colorize("  Begin with strategize:", "dim"))
+    print(colorize(f"    {TRIAGE_CMD_STRATEGIZE}", "dim"))
 
 
 def _run_staged_runner(

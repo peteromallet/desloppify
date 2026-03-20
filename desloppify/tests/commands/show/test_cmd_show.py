@@ -405,8 +405,8 @@ class TestCmdShowBackendIntegration:
                 "scan_path": ".",
                 "dimension_scores": {
                     "Naming quality": {
-                        "score": 88.0,
-                        "strict": 85.0,
+                        "score": 82.0,
+                        "strict": 80.0,
                         "failing": 2,
                         "detectors": {"subjective_assessment": {}},
                     },

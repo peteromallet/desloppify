@@ -35,7 +35,10 @@ def _plan_with_stages(*stage_names: str, confirmed: bool = False) -> dict:
     plan["queue_order"] = list(TRIAGE_STAGE_IDS)
     meta = plan.setdefault("epic_triage_meta", {})
     stages = meta.setdefault("triage_stages", {})
-    for name in stage_names:
+    normalized_stage_names = list(stage_names)
+    if normalized_stage_names and "strategize" not in normalized_stage_names:
+        normalized_stage_names.insert(0, "strategize")
+    for name in normalized_stage_names:
         stages[name] = {
             "stage": name,
             "report": f"A sufficiently long report for {name} stage that meets minimum length requirements and more text — covers r1 r2 r3",
@@ -43,6 +46,8 @@ def _plan_with_stages(*stage_names: str, confirmed: bool = False) -> dict:
             "timestamp": "2025-06-01T00:00:00Z",
             "issue_count": 5,
         }
+        if name == "strategize":
+            stages[name]["confirmed_text"] = "auto-confirmed"
         if confirmed:
             stages[name]["confirmed_at"] = "2025-06-01T00:01:00Z"
             stages[name]["confirmed_text"] = "I have thoroughly reviewed all the issues in this stage"

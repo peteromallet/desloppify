@@ -656,7 +656,7 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
     )
     subjective_out = capsys.readouterr().out
     assert "Subjective:" in subjective_out
-    assert "2 below target (95%)" in subjective_out
+    assert "2 below target (85%)" in subjective_out
     assert "files need review" in subjective_out
     assert "show subjective" in subjective_out
 

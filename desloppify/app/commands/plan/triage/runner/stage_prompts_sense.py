@@ -302,6 +302,7 @@ def build_sense_check_value_prompt(
     plan: dict,
     state: dict | None,
     repo_root: Path,
+    strategist_briefing: dict | None = None,
     mode: str = "self_record",
     cli_command: str = "desloppify",
 ) -> str:
@@ -375,6 +376,28 @@ def build_sense_check_value_prompt(
         "5. Delete dead clusters after skipping all their members.\n"
     )
     parts.append(process)
+
+    if strategist_briefing:
+        lines = ["## Strategic Flags"]
+        guidance = str(strategist_briefing.get("sense_check_guidance", "")).strip()
+        if guidance:
+            lines.append(guidance)
+        rework_warnings = strategist_briefing.get("rework_warnings", [])
+        for warning in rework_warnings:
+            if not isinstance(warning, dict):
+                continue
+            dimension = warning.get("dimension", "?")
+            resolved = warning.get("resolved", warning.get("resolved_count", 0))
+            new_open = warning.get("new_open", warning.get("new_open_count", 0))
+            lines.append(f"- Rework warning: {dimension} ({resolved} resolved, {new_open} new open)")
+        anti_patterns = strategist_briefing.get("anti_patterns", [])
+        for pattern in anti_patterns:
+            if not isinstance(pattern, dict):
+                continue
+            description = str(pattern.get("description", "")).strip()
+            if description:
+                lines.append(f"- {description}")
+        parts.append("\n".join(lines))
 
     # Include targets
     parts.append("## Live Queue Targets\n")

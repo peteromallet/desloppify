@@ -103,7 +103,7 @@ def migrate_v5_to_v6(plan: dict[str, Any]) -> None:
             order.remove(legacy_pending)
             meta = plan.get("epic_triage_meta", plan.get("epic_synthesis_meta", {}))
             confirmed = set(meta.get("triage_stages", meta.get("synthesis_stages", {})).keys())
-            stage_names = ("observe", "reflect", "organize", "commit")
+            stage_names = ("strategize", "observe", "reflect", "organize", "enrich", "sense-check", "commit")
             to_inject = [
                 stage_id
                 for stage_id, name in zip(TRIAGE_STAGE_IDS, stage_names, strict=False)

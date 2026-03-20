@@ -68,6 +68,7 @@ def _inject_pending_triage_stages(
     Returns list of injected stage IDs.
     """
     stage_names = (
+        "strategize",
         "observe",
         "reflect",
         "organize",

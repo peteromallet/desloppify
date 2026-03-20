@@ -94,7 +94,7 @@ def _completion_clusters_valid(plan: dict, state: dict | None = None) -> bool:
 
 def _required_completion_stages_valid(stages: dict) -> tuple[bool, str]:
     """Validate that the triage completion stages are present and confirmed."""
-    for required in ("observe", "reflect", "organize", "enrich", "sense-check"):
+    for required in ("strategize", "observe", "reflect", "organize", "enrich", "sense-check"):
         if required not in stages:
             return False, f"Stage {required} not recorded."
         if not stages[required].get("confirmed_at"):
@@ -231,6 +231,11 @@ def _confirm_existing_stages_valid(*, stages: dict, has_only_additions: bool, si
 
         _print_new_issues_since_last(si)
         return True
+    if "strategize" not in stages:
+        print(colorize("  Cannot confirm existing: strategize stage not complete.", "red"))
+        print(colorize("  You must review cross-cycle history first.", "dim"))
+        print(colorize('  Run: desloppify plan triage --stage strategize --report "{...}"', "dim"))
+        return False
     if "observe" not in stages:
         print(colorize("  Cannot confirm existing: observe stage not complete.", "red"))
         print(colorize("  You must read issues first.", "dim"))

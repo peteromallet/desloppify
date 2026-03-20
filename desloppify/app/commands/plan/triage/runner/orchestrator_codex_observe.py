@@ -43,6 +43,31 @@ def _merge_observe_outputs(
     return "\n\n---\n\n".join(parts)
 
 
+def _strategist_guidance_for_batch(
+    strategist_briefing: dict | None,
+    dimension_group: list[str],
+) -> str | None:
+    if not isinstance(strategist_briefing, dict):
+        return None
+    parts: list[str] = []
+    guidance = str(strategist_briefing.get("observe_guidance", "")).strip()
+    if guidance:
+        parts.append(guidance)
+    dims = {dim.lower() for dim in dimension_group}
+    for warning in strategist_briefing.get("rework_warnings", []) or []:
+        if not isinstance(warning, dict):
+            continue
+        dimension = str(warning.get("dimension", "")).strip()
+        if dimension.lower() not in dims:
+            continue
+        parts.append(
+            f"Rework warning for {dimension}: "
+            f"{warning.get('resolved', warning.get('resolved_count', 0))} resolved, "
+            f"{warning.get('new_open', warning.get('new_open_count', 0))} new open."
+        )
+    return "\n".join(parts) if parts else None
+
+
 def run_observe(
     *,
     si,
@@ -53,6 +78,7 @@ def run_observe(
     timeout_seconds: int,
     dry_run: bool = False,
     append_run_log=None,
+    strategist_briefing: dict | None = None,
 ) -> TriageStageRunResult:
     """Run observe stage via codex subprocess batches."""
     _log = append_run_log or _noop_log
@@ -72,6 +98,7 @@ def run_observe(
             dimension_group=dims,
             issues_subset=issues_subset,
             repo_root=repo_root,
+            strategist_guidance=_strategist_guidance_for_batch(strategist_briefing, dims),
         )
         prompt_file = prompts_dir / f"observe_batch_{i}.md"
         safe_write_text(prompt_file, prompt)

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections import Counter
 from pathlib import Path
 
 from desloppify.base.discovery.paths import get_project_root
+from desloppify.engine._plan.triage.strategist_data import collect_strategist_input
+from desloppify.engine._state.progression import load_progression
 from desloppify.engine.plan_triage import (
     TriageInput,
     build_triage_prompt,
@@ -24,6 +27,7 @@ from .stage_prompts_observe import (
     _observe_batch_instructions,
     build_observe_batch_prompt,
 )
+from .stage_prompts_strategist import build_strategist_prompt
 from .stage_prompts_sense import (
     build_sense_check_content_prompt,
     build_sense_check_structure_prompt,
@@ -234,10 +238,11 @@ def _relevant_prior_reports(
 ) -> list[tuple[str, str]]:
     """Return the stage reports that matter for the current stage."""
     wanted = {
-        "reflect": ("observe",),
-        "organize": ("reflect",),
+        "observe": ("strategize",),
+        "reflect": ("strategize", "observe"),
+        "organize": ("strategize", "reflect"),
         "enrich": ("organize",),
-        "sense-check": ("organize", "enrich"),
+        "sense-check": ("strategize", "organize", "enrich"),
     }.get(stage, tuple(prior_reports))
     result = [(name, prior_reports[name]) for name in wanted if name in prior_reports]
 
@@ -266,6 +271,149 @@ def _relevant_prior_reports(
     return result
 
 
+def _extract_strategist_briefing(
+    stages_data: dict | None,
+    plan: dict | None = None,
+) -> dict | None:
+    if isinstance(plan, dict):
+        meta = plan.get("epic_triage_meta", {})
+        if isinstance(meta, dict):
+            briefing = meta.get("strategist_briefing")
+            if isinstance(briefing, dict):
+                return briefing
+    if not isinstance(stages_data, dict):
+        return None
+    strategize = stages_data.get("strategize", {})
+    if not isinstance(strategize, dict):
+        return None
+    report = strategize.get("report", "")
+    if not isinstance(report, str) or not report.strip():
+        return None
+    try:
+        parsed = json.loads(report)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _format_strategize_focus_lines(briefing: dict) -> list[str]:
+    lines: list[str] = []
+    for entry in briefing.get("focus_dimensions", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            continue
+        reason = str(entry.get("reason", "")).strip()
+        trend = str(entry.get("trend", "")).strip()
+        headroom = entry.get("headroom")
+        suffix_parts = []
+        if trend:
+            suffix_parts.append(f"trend={trend}")
+        if headroom not in (None, ""):
+            suffix_parts.append(f"headroom={headroom}")
+        suffix = f" ({', '.join(suffix_parts)})" if suffix_parts else ""
+        lines.append(f"- {name}{suffix}: {reason}")
+    return lines
+
+
+def _format_strategize_avoid_lines(briefing: dict) -> list[str]:
+    lines: list[str] = []
+    for entry in briefing.get("avoid_areas", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        reason = str(entry.get("reason", "")).strip()
+        area_type = str(entry.get("type", "")).strip()
+        prefix = f"- {name}"
+        if area_type:
+            prefix += f" [{area_type}]"
+        lines.append(f"{prefix}: {reason}")
+    return lines
+
+
+def _format_strategist_for_observe(briefing: dict) -> str:
+    parts = ["## Strategic Context"]
+    guidance = str(briefing.get("observe_guidance", "")).strip()
+    if guidance:
+        parts.append(guidance)
+    hotspots = briefing.get("file_churn_hotspots", []) or []
+    if hotspots:
+        parts.append("### File Churn Hotspots")
+        for entry in hotspots[:5]:
+            if not isinstance(entry, dict):
+                continue
+            parts.append(
+                f"- {entry.get('file', '?')}: {entry.get('count', entry.get('resolved_count', 0))} churn "
+                f"(detectors: {', '.join(entry.get('detectors', [])[:4])})"
+            )
+    return "\n".join(parts)
+
+
+def _format_strategist_for_reflect(briefing: dict) -> str:
+    parts = ["## Strategic Constraints"]
+    guidance = str(briefing.get("reflect_guidance", "")).strip()
+    if guidance:
+        parts.append(guidance)
+    focus_lines = _format_strategize_focus_lines(briefing)
+    if focus_lines:
+        parts.append("### Focus Dimensions")
+        parts.extend(focus_lines)
+    avoid_lines = _format_strategize_avoid_lines(briefing)
+    if avoid_lines:
+        parts.append("### Avoid Areas")
+        parts.extend(avoid_lines)
+    rework = briefing.get("rework_warnings", []) or []
+    if rework:
+        parts.append("### Rework Warnings")
+        for warning in rework:
+            if not isinstance(warning, dict):
+                continue
+            parts.append(
+                f"- {warning.get('dimension', '?')}: {warning.get('resolved', warning.get('resolved_count', 0))} resolved, "
+                f"{warning.get('new_open', warning.get('new_open_count', 0))} new open"
+            )
+    return "\n".join(parts)
+
+
+def _format_strategist_for_organize(briefing: dict) -> str:
+    parts = ["## Strategic Priorities"]
+    guidance = str(briefing.get("organize_guidance", "")).strip()
+    if guidance:
+        parts.append(guidance)
+    focus_lines = _format_strategize_focus_lines(briefing)
+    if focus_lines:
+        parts.append("### Prioritize")
+        parts.extend(focus_lines)
+    avoid_lines = _format_strategize_avoid_lines(briefing)
+    if avoid_lines:
+        parts.append("### Avoid")
+        parts.extend(avoid_lines)
+    return "\n".join(parts)
+
+
+def _format_strategist_for_sense_check(briefing: dict) -> str:
+    parts = ["## Strategic Flags"]
+    guidance = str(briefing.get("sense_check_guidance", "")).strip()
+    if guidance:
+        parts.append(guidance)
+    for warning in briefing.get("rework_warnings", []) or []:
+        if not isinstance(warning, dict):
+            continue
+        parts.append(
+            f"- Rework loop: {warning.get('dimension', '?')} "
+            f"({warning.get('resolved', warning.get('resolved_count', 0))} resolved, "
+            f"{warning.get('new_open', warning.get('new_open_count', 0))} new open)"
+        )
+    for pattern in briefing.get("anti_patterns", []) or []:
+        if not isinstance(pattern, dict):
+            continue
+        description = str(pattern.get("description", "")).strip()
+        if description:
+            parts.append(f"- {description}")
+    return "\n".join(parts)
+
+
 def build_stage_prompt(
     stage: str,
     triage_input: TriageInput,
@@ -275,8 +423,26 @@ def build_stage_prompt(
     mode: PromptMode = "self_record",
     cli_command: str = "desloppify",
     stages_data: dict | None = None,
+    plan: dict | None = None,
+    state: dict | None = None,
 ) -> str:
     """Build a complete subagent prompt for a triage stage."""
+    if stage == "strategize":
+        if plan is None or state is None:
+            raise ValueError("build_stage_prompt(stage='strategize') requires plan and state")
+        strategist_input = collect_strategist_input(
+            state,
+            plan,
+            progression_events=load_progression(),
+        )
+        prompt = build_strategist_prompt(
+            strategist_input,
+            repo_root=repo_root,
+            mode="output_only",
+        )
+        validation = _validation_requirements(stage)
+        return f"{prompt}\n\n{validation}" if validation else prompt
+
     parts: list[str] = []
 
     # Preamble
@@ -294,6 +460,17 @@ def build_stage_prompt(
         parts.append("## Prior Stage Reports\n")
         for prior_stage, report in relevant_prior_reports:
             parts.append(f"### {prior_stage.upper()} Report\n{report}\n")
+
+    briefing = _extract_strategist_briefing(stages_data, plan)
+    if briefing:
+        if stage == "observe":
+            parts.append(_format_strategist_for_observe(briefing))
+        elif stage == "reflect":
+            parts.append(_format_strategist_for_reflect(briefing))
+        elif stage == "organize":
+            parts.append(_format_strategist_for_organize(briefing))
+        elif stage == "sense-check":
+            parts.append(_format_strategist_for_sense_check(briefing))
 
     # Issue data / summary
     parts.append(_issue_context_for_stage(stage, triage_input, mode))
@@ -338,7 +515,15 @@ def cmd_stage_prompt(
         if report:
             prior_reports[prior_stage] = report
 
-    prompt = build_stage_prompt(stage, si, prior_reports, repo_root=repo_root, stages_data=stages)
+    prompt = build_stage_prompt(
+        stage,
+        si,
+        prior_reports,
+        repo_root=repo_root,
+        stages_data=stages,
+        plan=plan,
+        state=state,
+    )
     print(prompt)
 
 

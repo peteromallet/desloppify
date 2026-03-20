@@ -174,6 +174,27 @@ class TriageStagePayload(TypedDict, total=False):
     cluster_blueprint: list[ReflectClusterBlueprint]
 
 
+class StrategistBriefing(TypedDict, total=False):
+    """Structured strategist output persisted before the triage stages."""
+
+    computed_at: str
+    lookback_scans: int
+    focus_dimensions: list[dict[str, Any]]
+    avoid_areas: list[dict[str, Any]]
+    rework_warnings: list[dict[str, Any]]
+    file_churn_hotspots: list[dict[str, Any]]
+    stagnant_dimensions: list[str]
+    debt_trend: str
+    score_trend: str
+    momentum_dimensions: list[str]
+    executive_summary: str
+    observe_guidance: str
+    reflect_guidance: str
+    organize_guidance: str
+    sense_check_guidance: str
+    anti_patterns: list[dict[str, Any]]
+
+
 class LastTriageSnapshot(TypedDict, total=False):
     """Archived triage stage state captured when triage is completed."""
 
@@ -203,6 +224,7 @@ class EpicTriageMeta(TypedDict, total=False):
     triage_defer_state: dict[str, Any]
     issue_dispositions: dict[str, IssueDisposition]
     triage_force_visible: bool
+    strategist_briefing: StrategistBriefing
 
 
 class RefreshState(TypedDict, total=False):
@@ -381,6 +403,7 @@ __all__ = [
     "PlanStartScores",
     "RefreshState",
     "SkipEntry",
+    "StrategistBriefing",
     "SupersededEntry",
     "TriageStagePayload",
     "VALID_EPIC_DIRECTIONS",

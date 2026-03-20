@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -59,6 +60,21 @@ def _record_observe_report(
     cmd_stage_observe(record_args, services=services)
 
 
+def _record_strategize_report(
+    report: str,
+    args: argparse.Namespace,
+    services: TriageServices,
+) -> None:
+    from ..stages.commands import cmd_stage_strategize
+
+    record_args = argparse.Namespace(
+        stage="strategize",
+        report=report,
+        state=getattr(args, "state", None),
+    )
+    cmd_stage_strategize(record_args, services=services)
+
+
 def _record_reflect_report(
     report: str,
     args: argparse.Namespace,
@@ -91,6 +107,10 @@ def _record_sense_check_report(
 
 
 DEFAULT_STAGE_HANDLERS: dict[str, StageHandler] = {
+    "strategize": StageHandler(
+        record_report=_record_strategize_report,
+        prompt_mode="output_only",
+    ),
     "observe": StageHandler(
         run_parallel=lambda context: run_observe(
             si=context.triage_input,
@@ -101,6 +121,11 @@ DEFAULT_STAGE_HANDLERS: dict[str, StageHandler] = {
             timeout_seconds=context.timeout_seconds,
             dry_run=context.dry_run,
             append_run_log=context.append_run_log,
+            strategist_briefing=(
+                context.plan.get("epic_triage_meta", {}).get("strategist_briefing", {})
+                if isinstance(context.plan.get("epic_triage_meta", {}), dict)
+                else {}
+            ),
         ),
         record_report=_record_observe_report,
     ),
@@ -457,14 +482,25 @@ def _build_subprocess_prompt(
 ) -> tuple[str, Mapping[str, Any]]:
     """Build and persist one stage prompt for subprocess execution."""
     stages_data = context.plan.get("epic_triage_meta", {}).get("triage_stages", {})
+    build_kwargs = {
+        "repo_root": context.repo_root,
+        "mode": prompt_mode,
+        "cli_command": context.cli_command,
+        "stages_data": stages_data,
+    }
+    try:
+        signature = inspect.signature(dependencies.build_stage_prompt)
+    except (TypeError, ValueError):
+        signature = None
+    if signature is None or "plan" in signature.parameters:
+        build_kwargs["plan"] = context.plan
+    if signature is None or "state" in signature.parameters:
+        build_kwargs["state"] = context.state
     prompt = dependencies.build_stage_prompt(
         stage,
         context.triage_input,
         dict(context.prior_reports),
-        repo_root=context.repo_root,
-        mode=prompt_mode,
-        cli_command=context.cli_command,
-        stages_data=stages_data,
+        **build_kwargs,
     )
     prompt_file = context.prompts_dir / f"{stage}.md"
     safe_write_text(prompt_file, prompt)

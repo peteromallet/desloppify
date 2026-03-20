@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-_STAGES = ("observe", "reflect", "organize", "enrich", "sense-check")
+_STAGES = ("strategize", "observe", "reflect", "organize", "enrich", "sense-check")
 PromptMode = Literal["self_record", "output_only"]
 
 _OBSERVE_FALSE_POSITIVE_GUIDANCE = """\
@@ -139,6 +139,7 @@ _CLI_REFERENCE_TEMPLATE = """\
 
 ### Stage recording
 ```
+{cli_command} plan triage --stage strategize --report "<json briefing>"
 {cli_command} plan triage --stage observe --report "<analysis>"
 {cli_command} plan triage --stage reflect --report "<strategy>" --attestation "<80+ chars>"
 {cli_command} plan triage --stage organize --report "<summary>" --attestation "<80+ chars>"

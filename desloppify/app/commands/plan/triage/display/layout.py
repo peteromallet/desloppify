@@ -21,6 +21,7 @@ from desloppify.engine.plan_triage import (
     TRIAGE_CMD_RUN_STAGES_CLAUDE,
     TRIAGE_CMD_RUN_STAGES_CODEX,
     triage_runner_commands,
+    TRIAGE_CMD_STRATEGIZE,
 )
 from desloppify.base.output.terminal import colorize
 
@@ -118,14 +119,14 @@ def _print_retriage_guidance(si: object, meta: dict) -> None:
         print(colorize("  To re-prioritize and restructure:", "cyan"))
         print(f"    Codex:  {TRIAGE_CMD_RUN_STAGES_CODEX}")
         print(f"    Claude: {TRIAGE_CMD_RUN_STAGES_CLAUDE}")
-        print(colorize(f"    Manual fallback: {TRIAGE_CMD_OBSERVE}", "dim"))
+        print(colorize(f"    Manual fallback: {TRIAGE_CMD_STRATEGIZE}", "dim"))
     else:
         _print_runner_paths(
-            only_stages="observe",
-            manual_fallback=TRIAGE_CMD_OBSERVE,
+            only_stages="strategize",
+            manual_fallback=TRIAGE_CMD_STRATEGIZE,
             intro="  Next step:",
         )
-        print(colorize("    (themes, root causes, contradictions between issues — NOT a list of IDs)", "dim"))
+        print(colorize("    (cross-cycle history, rework loops, score churn, and strategic constraints)", "dim"))
 
 
 def _print_in_progress_guidance(
@@ -225,17 +226,35 @@ def print_action_guidance(
     triage_has_run = snapshot.triage_has_run
     has_new_issues = snapshot.is_triage_stale
 
-    if "observe" not in stages:
+    later_stage_present = any(
+        name in stages for name in ("observe", "reflect", "organize", "enrich", "sense-check", "commit")
+    )
+    if "strategize" not in stages and not later_stage_present:
         if triage_has_run and not has_new_issues:
             _print_completed_guidance(si)
         else:
             _print_retriage_guidance(si, meta)
+    elif "observe" not in stages:
+        _print_runner_paths(
+            only_stages="observe",
+            manual_fallback=TRIAGE_CMD_OBSERVE,
+            intro="  Next step:",
+        )
+        print(colorize("    (themes, root causes, contradictions between issues — NOT a list of IDs)", "dim"))
     else:
         _print_in_progress_guidance(stages, meta, plan, snapshot=snapshot)
 
 
 def print_prior_stage_reports(stages: dict) -> None:
     """Print prior stage reports (observe/reflect) as context for current action."""
+    if "strategize" in stages:
+        strat_report = stages["strategize"].get("report", "")
+        if strat_report:
+            print(colorize("\n  Strategist briefing:", "dim"))
+            for line in strat_report.strip().splitlines()[:6]:
+                print(colorize(f"    {line}", "dim"))
+            if len(strat_report.strip().splitlines()) > 6:
+                print(colorize("    ...", "dim"))
     if "observe" in stages:
         obs_report = stages["observe"].get("report", "")
         if obs_report:

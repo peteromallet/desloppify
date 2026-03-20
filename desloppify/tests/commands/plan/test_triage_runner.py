@@ -259,9 +259,17 @@ def test_build_organize_prompt_output_only_omits_mutating_cli_instructions(tmp_p
 
 def _plan_with_stages(**kwargs: dict) -> dict:
     """Create a plan with triage stages."""
+    stages = dict(kwargs)
+    if stages and "strategize" not in stages:
+        stages["strategize"] = {
+            "report": "{}",
+            "timestamp": "2026-03-10T00:00:00Z",
+            "confirmed_at": "2026-03-10T00:00:00Z",
+            "confirmed_text": "auto-confirmed",
+        }
     return {
         "epic_triage_meta": {
-            "triage_stages": kwargs,
+            "triage_stages": stages,
         },
         "clusters": {},
         "queue_order": [],

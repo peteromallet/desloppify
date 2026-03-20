@@ -46,11 +46,20 @@ def test_observe_autostarts_planning_and_requires_report(monkeypatch) -> None:
     called: list[str] = []
     monkeypatch.setattr(observe_mod, "_print_observe_report_requirement", lambda: called.append("required"))
 
+    def _inject_started_plan(current_plan: dict) -> None:
+        current_plan.setdefault("queue_order", []).append("workflow::observe")
+        current_plan.setdefault("epic_triage_meta", {}).setdefault("triage_stages", {})["strategize"] = {
+            "stage": "strategize",
+            "report": "{}",
+            "confirmed_at": "t",
+            "confirmed_text": "auto-confirmed",
+        }
+
     observe_mod._cmd_stage_observe(
         _args(report=None),
         services=services,
         has_triage_in_queue_fn=lambda _plan: False,
-        inject_triage_stages_fn=lambda _plan: _plan.setdefault("queue_order", []).append("workflow::observe"),
+        inject_triage_stages_fn=_inject_started_plan,
     )
 
     assert called == ["required"]
@@ -59,7 +68,18 @@ def test_observe_autostarts_planning_and_requires_report(monkeypatch) -> None:
 
 
 def test_observe_zero_issue_path_records_stage_and_saves(monkeypatch) -> None:
-    plan = {"epic_triage_meta": {"triage_stages": {}}}
+    plan = {
+        "epic_triage_meta": {
+            "triage_stages": {
+                "strategize": {
+                    "stage": "strategize",
+                    "report": "{}",
+                    "confirmed_at": "t",
+                    "confirmed_text": "auto-confirmed",
+                }
+            }
+        }
+    }
     services, saved, _logs = _services(plan)
     monkeypatch.setattr(observe_mod, "record_observe_stage", lambda stages, **_k: stages.setdefault("observe", {}) or [])
 

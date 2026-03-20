@@ -86,6 +86,7 @@ def blocked_triage_stages(plan: dict) -> dict[str, list[str]]:
     """Return triage stages that are blocked by unmet dependencies."""
     order_set = set(plan.get("queue_order", []))
     stage_names = (
+        "strategize",
         "observe",
         "reflect",
         "organize",

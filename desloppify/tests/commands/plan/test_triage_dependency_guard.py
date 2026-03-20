@@ -47,10 +47,11 @@ def _args(**overrides) -> argparse.Namespace:
 
 
 class TestBlockedTriageStages:
-    def test_nothing_confirmed_blocks_all_except_observe(self):
+    def test_nothing_confirmed_blocks_all_except_strategize(self):
         plan = _plan_with_triage_stages()
         blocked = _blocked_triage_stages(plan)
-        assert "triage::observe" not in blocked
+        assert "triage::strategize" not in blocked
+        assert blocked["triage::observe"] == ["triage::strategize"]
         assert blocked["triage::reflect"] == ["triage::observe"]
         assert blocked["triage::organize"] == ["triage::reflect"]
         assert blocked["triage::enrich"] == ["triage::organize"]
@@ -149,8 +150,8 @@ def test_plan_resolve_force_resolve_overrides_block(monkeypatch, capsys):
     assert len(saved_plans) == 1
 
 
-def test_plan_resolve_observe_is_never_blocked(monkeypatch, capsys):
-    """triage::observe has no dependencies — always resolvable."""
+def test_plan_resolve_observe_requires_strategize(monkeypatch, capsys):
+    """triage::observe is blocked until strategize is complete."""
     plan = _plan_with_triage_stages()  # nothing confirmed
 
     monkeypatch.setattr(override_workflow_mod, "load_plan", lambda *a, **kw: plan)
@@ -163,5 +164,6 @@ def test_plan_resolve_observe_is_never_blocked(monkeypatch, capsys):
     override_mod.cmd_plan_resolve(args)
 
     out = capsys.readouterr().out
-    assert "Resolved" in out
-    assert len(saved_plans) == 1
+    assert "Cannot resolve" in out
+    assert "strategize" in out
+    assert len(saved_plans) == 0

@@ -287,7 +287,7 @@ def test_stale_triage_surfaces_observe_instead_of_empty_queue():
 
     queue = build_work_queue(state, count=None, include_subjective=True, plan=plan)
     ids = [item["id"] for item in queue["items"]]
-    assert ids[0] == "triage::observe"
+    assert ids[0] == "triage::strategize"
 
 
 def test_postflight_synthetic_queue_keeps_objective_backlog_suppressed():

@@ -32,7 +32,7 @@ def build_workflow_guide(attest_example: str) -> str:
            `desloppify plan triage --run-stages --runner codex` or
            `desloppify plan triage --run-stages --runner claude`.
            Manual dashboard/fallback: `desloppify plan triage`.
-           Complete all stages (observe → reflect → organize → enrich → sense-check → commit).
+           Complete all stages (strategize → observe → reflect → organize → enrich → sense-check → commit).
         8. **Check progress**: `desloppify status` — dimension scores dashboard.
 
         ### Decision Guide

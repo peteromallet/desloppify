@@ -67,6 +67,7 @@ def test_render_cli_reference_substitutes_cli_command() -> None:
 
 def test_shared_stage_constants_cover_all_expected_stages() -> None:
     assert shared_mod._STAGES == (
+        "strategize",
         "observe",
         "reflect",
         "organize",

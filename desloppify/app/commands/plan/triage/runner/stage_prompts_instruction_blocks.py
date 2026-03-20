@@ -12,6 +12,20 @@ from .stage_prompts_instruction_shared import (
 )
 
 
+def _strategize_instructions(mode: PromptMode = "self_record") -> str:
+    del mode
+    return """\
+## STRATEGIZE Stage Instructions
+
+Your task: analyze cross-cycle history before issue-by-issue triage begins.
+
+- Use the structured history to identify strategic mistakes, not code-level defects.
+- Look for rework loops, score-neutral churn, dimension neglect, skip-heavy execution, and growing wontfix debt.
+- Your output must be valid JSON matching the StrategistBriefing contract.
+- Include both structured directives and prose guidance for downstream stages.
+"""
+
+
 def _observe_instructions(mode: PromptMode = "self_record") -> str:
     tail = """\
 When done, run:
@@ -552,6 +566,7 @@ Required report structure — include a Decision Ledger section:
 
 
 _STAGE_INSTRUCTIONS = {
+    "strategize": _strategize_instructions,
     "observe": _observe_instructions,
     "reflect": _reflect_instructions,
     "organize": _organize_instructions,

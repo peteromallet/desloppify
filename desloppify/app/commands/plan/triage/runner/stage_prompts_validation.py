@@ -5,6 +5,16 @@ from __future__ import annotations
 
 def _validation_requirements(stage: str) -> str:
     """What must be true for the stage to pass validation."""
+    if stage == "strategize":
+        return (
+            "## Validation Requirements\n"
+            "- Output must be valid JSON matching the StrategistBriefing schema\n"
+            "- executive_summary must be 100+ characters\n"
+            "- observe_guidance and reflect_guidance must each be 50+ characters\n"
+            "- focus_dimensions must list at least 1 dimension\n"
+            "- score_trend must be one of: improving, stable, declining\n"
+            "- debt_trend must be one of: growing, stable, shrinking\n"
+        )
     if stage == "observe":
         return (
             "## Validation Requirements\n"

@@ -113,21 +113,21 @@ class TestCmdNextOutput:
                 "issues": {},
                 "dimension_scores": {
                     "Naming quality": {
-                        "score": 94.0,
-                        "strict": 94.0,
+                        "score": 84.0,
+                        "strict": 84.0,
                         "failing": 2,
                         "detectors": {"subjective_assessment": {}},
                     },
                     "Logic clarity": {
-                        "score": 96.0,
-                        "strict": 96.0,
+                        "score": 86.0,
+                        "strict": 86.0,
                         "failing": 1,
                         "detectors": {"subjective_assessment": {}},
                     },
                 },
-                "overall_score": 94.0,
-                "objective_score": 98.0,
-                "strict_score": 94.0,
+                "overall_score": 84.0,
+                "objective_score": 88.0,
+                "strict_score": 84.0,
                 "scan_path": ".",
             },
         )
@@ -155,7 +155,7 @@ class TestCmdNextOutput:
 
         cmd_next(_args())
         out = capsys.readouterr().out
-        assert "North star: strict 94.0/100 → target 95.0 (+1.0 needed)" in out
+        assert "North star: strict 84.0/100 → target 85.0 (+1.0 needed)" in out
         assert "Subjective:" in out
         assert "below target" in out
         assert "show subjective" in out
@@ -177,9 +177,9 @@ class TestCmdNextOutput:
                     }
                 },
                 "dimension_scores": {},
-                "overall_score": 90.0,
-                "objective_score": 94.0,
-                "strict_score": 90.0,
+                "overall_score": 80.0,
+                "objective_score": 84.0,
+                "strict_score": 80.0,
                 "scan_path": ".",
             },
         )
@@ -207,7 +207,7 @@ class TestCmdNextOutput:
 
         cmd_next(_args())
         out = capsys.readouterr().out
-        assert "North star: strict 90.0/100 → target 95.0 (+5.0 needed)" in out
+        assert "North star: strict 80.0/100 → target 85.0 (+5.0 needed)" in out
         assert "Subjective:" in out
         assert "need review" in out
         assert "show subjective" in out

@@ -31,7 +31,7 @@ class TestDefaultConfig:
 
     def test_default_values(self):
         cfg = default_config()
-        assert cfg["target_strict_score"] == 95
+        assert cfg["target_strict_score"] == 85
         assert cfg["review_max_age_days"] == 30
         assert cfg["review_batch_max_files"] == 80
         assert cfg["holistic_max_age_days"] == 30

@@ -418,13 +418,13 @@ class TestCurrentUnderTargetIds:
         result = current_under_target_ids(state_low, target_strict=95.0)
         assert result == {"subjective::dim_low"}
 
-    def test_default_target_is_95(self):
-        """Uses DEFAULT_TARGET_STRICT_SCORE (95.0) when not specified."""
-        state = _scored_state("design_coherence", score=94.0)
+    def test_default_target_is_85(self):
+        """Uses DEFAULT_TARGET_STRICT_SCORE (85.0) when not specified."""
+        state = _scored_state("design_coherence", score=84.0)
         result = current_under_target_ids(state)
         assert "subjective::design_coherence" in result
 
-        state_high = _scored_state("design_coherence", score=95.0)
+        state_high = _scored_state("design_coherence", score=85.0)
         result_high = current_under_target_ids(state_high)
         assert result_high == set()
 

@@ -222,5 +222,5 @@ def test_triage_appends_to_back():
     assert plan["queue_order"][0] == "issue_a"
     assert plan["queue_order"][1] == "issue_b"
     # Triage stages appended at back
-    assert plan["queue_order"][2] == "triage::observe"
+    assert plan["queue_order"][2] == "triage::strategize"
     assert all(sid in plan["queue_order"] for sid in TRIAGE_STAGE_IDS)

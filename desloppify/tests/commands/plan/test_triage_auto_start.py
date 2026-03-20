@@ -95,7 +95,7 @@ def _patch_triage(monkeypatch, plan, state, save_plan_fn=None):
 
 class TestAutoStartTriage:
     def test_observe_auto_starts_triage(self, monkeypatch, capsys):
-        """When no triage stages in queue, --stage observe auto-injects them."""
+        """When no triage stages in queue, --stage observe auto-starts then blocks on strategize."""
         plan = empty_plan()
         # No triage stage IDs in queue_order
         assert not any(sid in plan.get("queue_order", []) for sid in TRIAGE_IDS)
@@ -113,9 +113,12 @@ class TestAutoStartTriage:
 
         # All triage stage IDs should now be in queue
         assert all(sid in plan.get("queue_order", []) for sid in TRIAGE_STAGE_IDS)
-        # Stage should be recorded
+        # Observe remains blocked until strategize runs
         stages = plan.get("epic_triage_meta", {}).get("triage_stages", {})
-        assert "observe" in stages
+        assert "observe" not in stages
+        out = capsys.readouterr().out
+        assert "cannot observe" in out.lower()
+        assert "strategize" in out
 
     def test_observe_auto_start_prints_note(self, monkeypatch, capsys):
         """Auto-start prints a note about injecting triage::pending."""
@@ -135,9 +138,20 @@ class TestAutoStartTriage:
         assert "auto-started" in out.lower()
 
     def test_observe_works_normally_when_already_started(self, monkeypatch, capsys):
-        """When triage stages already in queue, observe proceeds without double-injection."""
+        """When strategize is already recorded, observe proceeds without double-injection."""
         plan = empty_plan()
         plan["queue_order"] = list(TRIAGE_STAGE_IDS)
+        plan["epic_triage_meta"] = {
+            "triage_stages": {
+                "strategize": {
+                    "stage": "strategize",
+                    "report": "{}",
+                    "timestamp": "2025-06-01T00:00:00Z",
+                    "confirmed_at": "2025-06-01T00:00:00Z",
+                    "confirmed_text": "auto-confirmed",
+                }
+            }
+        }
 
         state = _state_with_issues("r1", "r2", "r3", "r4", "r5")
         _patch_triage(monkeypatch, plan, state)

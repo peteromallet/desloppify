@@ -50,6 +50,15 @@ def _validate_recurring_dimension_mentions(
     return False
 
 
+def _mentions_rework_dimensions(report: str, rework_warnings: list[dict]) -> bool:
+    report_lower = report.lower()
+    return any(
+        isinstance(entry, dict)
+        and str(entry.get("dimension", "")).strip().lower() in report_lower
+        for entry in rework_warnings
+    )
+
+
 def _validate_reflect_submission(
     *,
     report: str,
@@ -95,11 +104,27 @@ def _validate_reflect_submission(
     ):
         return None
 
+    epic_meta = plan.get("epic_triage_meta", {})
+    strategist_briefing = epic_meta.get("strategist_briefing", {})
+    rework_warnings = strategist_briefing.get("rework_warnings", []) if isinstance(strategist_briefing, dict) else []
+    if rework_warnings and not _mentions_rework_dimensions(report, rework_warnings):
+        print(colorize("  Warning: strategist flagged rework loops not addressed:", "yellow"))
+        for warning in rework_warnings:
+            if not isinstance(warning, dict):
+                continue
+            print(
+                colorize(
+                    f"    {warning.get('dimension', '?')}: "
+                    f"{warning.get('resolved', warning.get('resolved_count', 0))} resolved, "
+                    f"{warning.get('new_open', warning.get('new_open_count', 0))} new open",
+                    "yellow",
+                )
+            )
+
     valid_ids = set(review_issues.keys())
 
     # Exclude issues already auto-skipped by observe from reflect accounting
-    meta = plan.get("epic_triage_meta", {})
-    dispositions = meta.get("issue_dispositions", {})
+    dispositions = epic_meta.get("issue_dispositions", {})
     auto_skipped_ids = {
         issue_id for issue_id, disp in dispositions.items()
         if disp.get("decision_source") == "observe_auto"

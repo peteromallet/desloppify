@@ -19,6 +19,17 @@ class ObserveAssessmentRecord(TypedDict):
     recommendation: str
 
 
+class StrategizeRecord(TypedDict, total=False):
+    stage: str
+    report: str
+    timestamp: str
+    score_trend: str
+    focus_dimensions: list[str]
+    anti_pattern_count: int
+    confirmed_at: str
+    confirmed_text: str
+
+
 class ObserveRecord(TypedDict, total=False):
     stage: str
     report: str
@@ -79,7 +90,7 @@ class SenseCheckRecord(TypedDict, total=False):
 
 TriageStages = dict[
     str,
-    ObserveRecord | ReflectRecord | OrganizeRecord | EnrichRecord | SenseCheckRecord,
+    StrategizeRecord | ObserveRecord | ReflectRecord | OrganizeRecord | EnrichRecord | SenseCheckRecord,
 ]
 
 
@@ -128,6 +139,35 @@ def record_observe_stage(
         observe.pop("confirmed_at", None)
         observe.pop("confirmed_text", None)
     return cleared
+
+
+def record_strategize_stage(
+    stages: TriageStages,
+    *,
+    report: str,
+    briefing: dict,
+    is_reuse: bool = False,
+    existing_stage: StrategizeRecord | None = None,
+) -> list[str]:
+    strategize: StrategizeRecord = {
+        "stage": "strategize",
+        "report": report,
+        "timestamp": utc_now(),
+        "score_trend": str(briefing.get("score_trend", "stable")),
+        "focus_dimensions": [
+            str(entry.get("name", "")).strip()
+            for entry in briefing.get("focus_dimensions", [])
+            if isinstance(entry, dict) and str(entry.get("name", "")).strip()
+        ],
+        "anti_pattern_count": len(briefing.get("anti_patterns", []) or []),
+        "confirmed_at": utc_now(),
+        "confirmed_text": "auto-confirmed",
+    }
+    if is_reuse and existing_stage:
+        strategize["confirmed_at"] = existing_stage.get("confirmed_at", strategize["confirmed_at"])
+        strategize["confirmed_text"] = existing_stage.get("confirmed_text", strategize["confirmed_text"])
+    stages["strategize"] = strategize
+    return cascade_clear_later_confirmations(stages, "strategize")
 
 
 def record_organize_stage(
@@ -221,11 +261,13 @@ __all__ = [
     "ObserveAssessmentRecord",
     "ObserveRecord",
     "ReflectRecord",
+    "StrategizeRecord",
     "TriageStages",
     "record_confirm_existing_completion",
     "record_enrich_stage",
     "record_observe_stage",
     "record_organize_stage",
+    "record_strategize_stage",
     "record_sense_check_stage",
     "resolve_reusable_report",
 ]

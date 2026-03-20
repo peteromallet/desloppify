@@ -24,9 +24,9 @@ def test_coerce_target_score_clamps_and_uses_fallback() -> None:
 
 
 def test_target_strict_score_from_config_handles_missing_values() -> None:
-    assert config_schema.target_strict_score_from_config(None) == 95.0
+    assert config_schema.target_strict_score_from_config(None) == 85.0
     assert config_schema.target_strict_score_from_config({"target_strict_score": "96"}) == 96.0
-    assert config_schema.target_strict_score_from_config({"target_strict_score": None}) == 95.0
+    assert config_schema.target_strict_score_from_config({"target_strict_score": None}) == 85.0
 
 
 def test_private_coerce_target_strict_score_reports_validity() -> None:

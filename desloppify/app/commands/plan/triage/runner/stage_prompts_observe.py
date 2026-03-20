@@ -58,6 +58,7 @@ def build_observe_batch_prompt(
     issues_subset: dict[str, dict],
     *,
     repo_root: Path,
+    strategist_guidance: str | None = None,
 ) -> str:
     """Build a scoped observe prompt for a single dimension-group batch.
 
@@ -75,6 +76,8 @@ def build_observe_batch_prompt(
         f"Total issues in this batch: {len(issues_subset)}\n\n"
         f"Repo root: {repo_root}"
     )
+    if strategist_guidance:
+        parts.append("## Strategic Context\n\n" + strategist_guidance.strip())
 
     # Issue data — inline the subset directly
     parts.append("## Issues to Verify\n")

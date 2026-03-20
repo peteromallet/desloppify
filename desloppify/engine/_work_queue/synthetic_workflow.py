@@ -129,8 +129,8 @@ def _create_plan_planning_tools(plan: dict) -> list[dict[str, str]]:
             manual_fallback=triage_manual_stage_command(stage),
         )
     return _runner_planning_tools(
-        only_stages="observe",
-        manual_fallback=triage_manual_stage_command("observe"),
+        only_stages="strategize",
+        manual_fallback=triage_manual_stage_command("strategize"),
     )
 
 
@@ -155,11 +155,11 @@ def build_score_checkpoint_item(plan: dict, state: dict) -> WorkflowActionItem |
             "plan_start_strict": plan_start,
             "delta": delta,
             "planning_tools": _runner_planning_tools(
-                only_stages="observe",
-                manual_fallback=triage_manual_stage_command("observe"),
+                only_stages="strategize",
+                manual_fallback=triage_manual_stage_command("strategize"),
             ),
         },
-        primary_command=triage_run_stages_command(only_stages="observe"),
+        primary_command=triage_run_stages_command(only_stages="strategize"),
     )
 
 

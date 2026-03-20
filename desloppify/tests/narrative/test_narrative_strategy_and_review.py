@@ -1173,9 +1173,9 @@ class TestComputeNarrativeContract:
         risk_types = {f["type"] for f in narrative["risk_flags"]}
         assert "high_ignore_suppression" in risk_types
         assert "wontfix_gap" in risk_types
-        assert narrative["strict_target"]["target"] == 95.0
+        assert narrative["strict_target"]["target"] == 85.0
         assert narrative["strict_target"]["current"] == 78.0
-        assert narrative["strict_target"]["gap"] == 17.0
+        assert narrative["strict_target"]["gap"] == 7.0
         assert narrative["strict_target"]["state"] == "below"
 
     def test_strict_target_invalid_config_falls_back(self):
@@ -1196,8 +1196,8 @@ class TestComputeNarrativeContract:
             ),
         )
         strict_target = narrative["strict_target"]
-        assert strict_target["target"] == 95.0
+        assert strict_target["target"] == 85.0
         assert strict_target["current"] == 91.0
-        assert strict_target["gap"] == 4.0
-        assert strict_target["state"] == "below"
+        assert strict_target["gap"] == -6.0
+        assert strict_target["state"] == "above"
         assert "Invalid config `target_strict_score='nope'`" in strict_target["warning"]

@@ -12,7 +12,7 @@ from desloppify.engine.plan_triage import TRIAGE_IDS, TRIAGE_STAGE_IDS
 
 from .plan_state_access import ensure_queue_order, ensure_skipped_map
 
-STAGE_ORDER = ["observe", "reflect", "organize", "enrich", "sense-check"]
+STAGE_ORDER = ["strategize", "observe", "reflect", "organize", "enrich", "sense-check"]
 
 
 def has_triage_in_queue(plan: PlanModel) -> bool:

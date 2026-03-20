@@ -111,6 +111,23 @@ def _validate_observe_stage(
     return True, ""
 
 
+def _validate_strategize_stage(plan: dict, stages: dict) -> tuple[bool, str]:
+    """Validate recorded strategize-stage content."""
+    if "strategize" not in stages:
+        return False, "Strategize stage not recorded."
+    if not stages["strategize"].get("confirmed_at"):
+        return False, "Strategize stage was not confirmed."
+    briefing = plan.get("epic_triage_meta", {}).get("strategist_briefing", {})
+    if not isinstance(briefing, dict):
+        return False, "Strategist briefing not persisted."
+    if len(str(briefing.get("executive_summary", "")).strip()) < 100:
+        return False, "Strategist executive_summary too short."
+    focus_dimensions = briefing.get("focus_dimensions")
+    if not isinstance(focus_dimensions, list) or not focus_dimensions:
+        return False, "Strategist briefing missing focus_dimensions."
+    return True, ""
+
+
 def _validate_reflect_stage(stages: dict) -> tuple[bool, str]:
     """Validate recorded reflect-stage content."""
     if "reflect" not in stages:
@@ -302,6 +319,7 @@ def validate_stage(
     meta = plan.get("epic_triage_meta", {})
     stages = meta.get("triage_stages", {})
     validators = {
+        "strategize": lambda: _validate_strategize_stage(plan, stages),
         "observe": lambda: _validate_observe_stage(
             stages=stages,
             triage_input=triage_input,

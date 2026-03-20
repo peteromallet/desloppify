@@ -169,6 +169,10 @@ def _require_organize_stage_for_complete(
     missing = _first_missing_recorded_stage(stages, through_stage="organize")
     if missing is None:
         return True
+    if missing == "strategize":
+        print(colorize("  Cannot complete: strategize stage not done yet.", "red"))
+        print(colorize('  Start with: desloppify plan triage --stage strategize --report "{...}"', "dim"))
+        return False
     if missing == "observe":
         print(colorize("  Cannot complete: no stages done yet.", "red"))
         print(colorize('  Start with: desloppify plan triage --stage observe --report "..."', "dim"))

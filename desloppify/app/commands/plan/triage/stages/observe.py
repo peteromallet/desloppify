@@ -43,7 +43,7 @@ def cmd_stage_observe(
             services=resolved_services,
             state=state,
             attestation=attestation,
-            start_message="  Planning mode auto-started (6 stages queued).",
+            start_message="  Planning mode auto-started (7 stages queued).",
             deps=TriageLifecycleDeps(
                 has_triage_in_queue=has_triage_in_queue_fn,
                 inject_triage_stages=inject_triage_stages_fn,
@@ -55,6 +55,11 @@ def cmd_stage_observe(
     meta = plan.setdefault("epic_triage_meta", {})
     stages = meta.setdefault("triage_stages", {})
     existing_stage = stages.get("observe")
+
+    if "strategize" not in stages:
+        print(colorize("  Cannot observe: strategize stage not complete.", "red"))
+        print(colorize('  Run: desloppify plan triage --stage strategize --report "{...}"', "dim"))
+        return
 
     report, is_reuse = resolve_reusable_report(report, existing_stage)
     if not report:

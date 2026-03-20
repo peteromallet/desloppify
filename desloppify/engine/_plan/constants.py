@@ -12,6 +12,7 @@ TRIAGE_ID = "triage::pending"  # deprecated, kept for migration
 
 TRIAGE_PREFIX = "triage::"
 TRIAGE_STAGE_IDS = (
+    "triage::strategize",
     "triage::observe",
     "triage::reflect",
     "triage::organize",
@@ -55,7 +56,8 @@ WORKFLOW_PRIORITY_ORDER = (
     WORKFLOW_SCORE_CHECKPOINT_ID,
     WORKFLOW_CREATE_PLAN_ID,
 )
-SYNTHETIC_PREFIXES = ("triage::", "workflow::", "subjective::")
+STRATEGY_PREFIX = "strategy::"
+SYNTHETIC_PREFIXES = ("triage::", "workflow::", "subjective::", "strategy::")
 
 
 def is_synthetic_id(issue_id: str) -> bool:
@@ -93,11 +95,32 @@ def _resolve_triage_stages(meta_or_stages: dict[str, Any] | None) -> dict[str, A
         return {}
     if "triage_stages" in meta_or_stages:
         raw = meta_or_stages.get("triage_stages")
-        return raw if isinstance(raw, dict) else {}
+        resolved = raw if isinstance(raw, dict) else {}
+        return _apply_legacy_strategize_tolerance(resolved)
     candidate_names = {str(name) for name in meta_or_stages.keys()}
     if candidate_names and candidate_names.issubset(_TRIAGE_STAGE_NAMES):
-        return meta_or_stages
+        return _apply_legacy_strategize_tolerance(meta_or_stages)
     return {}
+
+
+def _apply_legacy_strategize_tolerance(
+    stages: dict[str, Any],
+) -> dict[str, Any]:
+    """Backfill strategize for legacy triage runs without mutating stored state."""
+    if "strategize" in stages:
+        return stages
+    later_stages = ("observe", "reflect", "organize", "enrich", "sense-check", "commit")
+    if not any(name in stages for name in later_stages):
+        return stages
+    cloned = dict(stages)
+    cloned["strategize"] = {
+        "stage": "strategize",
+        "report": "(legacy: predates strategize stage)",
+        "timestamp": "",
+        "confirmed_at": "legacy",
+        "confirmed_text": "auto-backfilled",
+    }
+    return cloned
 
 
 def confirmed_triage_stage_names(meta_or_stages: dict[str, Any] | None) -> set[str]:
@@ -156,6 +179,7 @@ __all__ = [
     "is_triage_id",
     "is_workflow_id",
     "recorded_unconfirmed_triage_stage_names",
+    "STRATEGY_PREFIX",
     "SUBJECTIVE_PREFIX",
     "SYNTHETIC_PREFIXES",
     "TRIAGE_IDS",

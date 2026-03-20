@@ -70,6 +70,11 @@ class StageCoaching:
 
 
 STAGE_COACHING = {
+    "strategize": StageCoaching(
+        headline="  Start with the strategist briefing before issue triage.",
+        details=("  Review cross-cycle history, score churn, and rework loops first:",),
+        footer=("  The report must be valid strategist JSON.",),
+    ),
     "observe": StageCoaching(
         headline="  You must analyze the findings before resolving this.",
         details=("  Start by examining themes, root causes, and contradictions:",),
@@ -136,7 +141,7 @@ def _resolve_missing_triage_stages(plan: dict) -> set[str]:
     if meta.get("last_completed_at"):
         return set()
     confirmed_stages = confirmed_triage_stage_names(meta)
-    required_stages = {"observe", "reflect", "organize", "enrich", "commit"}
+    required_stages = {"strategize", "observe", "reflect", "organize", "enrich", "commit"}
     return required_stages - confirmed_stages
 
 

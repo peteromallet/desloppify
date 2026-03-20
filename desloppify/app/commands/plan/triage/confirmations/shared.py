@@ -11,6 +11,7 @@ from desloppify.state_io import utc_now
 from ..stage_queue import purge_triage_stage
 
 _STAGE_LABELS = {
+    "strategize": "Strategize",
     "observe": "Observe",
     "reflect": "Reflect",
     "organize": "Organize",

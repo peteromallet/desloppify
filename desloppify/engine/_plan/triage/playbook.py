@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 TRIAGE_STAGE_LABELS: tuple[tuple[str, str], ...] = (
+    ("strategize", "Analyse cross-cycle trends & set strategic focus"),
     ("observe", "Analyse issues & spot contradictions"),
     ("reflect", "Form strategy & present to user"),
     ("organize", "Defer contradictions, cluster, & prioritize"),
@@ -15,6 +16,10 @@ TRIAGE_STAGE_LABELS: tuple[tuple[str, str], ...] = (
 
 TRIAGE_RUNNERS: tuple[str, str] = ("codex", "claude")
 
+TRIAGE_CMD_STRATEGIZE = (
+    'desloppify plan triage --stage strategize --report '
+    '\'"{"score_trend":"stable","debt_trend":"stable"}"\''
+)
 TRIAGE_CMD_OBSERVE = (
     'desloppify plan triage --stage observe --report '
     '"analysis of themes and root causes..."'
@@ -63,6 +68,7 @@ _RUNNER_STAGE_NAMES = frozenset(
     stage_name for stage_name, _label in TRIAGE_STAGE_LABELS if stage_name != "commit"
 )
 _MANUAL_STAGE_COMMANDS: dict[str, str] = {
+    "strategize": TRIAGE_CMD_STRATEGIZE,
     "observe": TRIAGE_CMD_OBSERVE,
     "reflect": TRIAGE_CMD_REFLECT,
     "organize": TRIAGE_CMD_ORGANIZE,
@@ -102,7 +108,8 @@ class TriageProgress:
 
 
 TRIAGE_STAGE_PREREQUISITES: dict[str, tuple[StagePrerequisite, ...]] = {
-    "observe": (),
+    "strategize": (),
+    "observe": (StagePrerequisite("strategize"),),
     "reflect": (StagePrerequisite("observe"),),
     "organize": (
         StagePrerequisite("observe"),
@@ -149,6 +156,17 @@ def _first_unmet_prerequisite(
 def compute_triage_progress(stages_data: dict) -> TriageProgress:
     """Return canonical triage-stage progression for display and validation."""
     stage_map = stages_data if isinstance(stages_data, dict) else {}
+    if "strategize" not in stage_map and any(
+        name in stage_map for name in ("observe", "reflect", "organize", "enrich", "sense-check", "commit")
+    ):
+        stage_map = {
+            **stage_map,
+            "strategize": {
+                "stage": "strategize",
+                "report": "(legacy: predates strategize stage)",
+                "confirmed_at": "legacy",
+            },
+        }
     readiness: list[StageReadiness] = []
     recorded: dict[str, bool] = {}
     confirmed: dict[str, bool] = {}
@@ -261,6 +279,7 @@ __all__ = [
     "TRIAGE_CMD_CLUSTER_STEPS",
     "TRIAGE_CMD_COMPLETE",
     "TRIAGE_CMD_SENSE_CHECK",
+    "TRIAGE_CMD_STRATEGIZE",
     "TRIAGE_CMD_COMPLETE_VERBOSE",
     "TRIAGE_CMD_CONFIRM_EXISTING",
     "TRIAGE_CMD_ENRICH",
