@@ -210,6 +210,12 @@ def _prune_existing_superseded_references(
     result.changes += changes
 
 
+def _issue_exists_in_state(state: StateModel, issue_id: str) -> bool:
+    """Return True if the issue exists in state (regardless of status)."""
+    issues = state.get("work_items") or state.get("issues", {})
+    return issues.get(issue_id) is not None
+
+
 def _supersede_dead_references(
     plan: PlanModel,
     state: StateModel,
@@ -219,7 +225,7 @@ def _supersede_dead_references(
     result: ReconcileResult,
 ) -> None:
     for fid in sorted(referenced_ids):
-        if _is_issue_alive(state, fid):
+        if _issue_exists_in_state(state, fid):
             continue
         if _supersede_id(plan, state, fid, now):
             result.superseded.append(fid)

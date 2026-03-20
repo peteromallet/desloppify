@@ -375,8 +375,8 @@ class TestFullLifecycleGoldenPath:
 
         # ── Complete objective queue → rescan injects triage in plan, but
         #    postflight still starts with workflow items ──
-        state["work_items"]["obj-1"]["status"] = "fixed"
-        state["work_items"]["obj-2"]["status"] = "fixed"
+        del state["work_items"]["obj-1"]
+        del state["work_items"]["obj-2"]
         plan = _reconcile(state, plan, monkeypatch)
         ids = _queue_ids(state, plan)
         workflow_ids = [fid for fid in ids if fid.startswith("workflow::")]

@@ -171,12 +171,11 @@ class TestSeedPlanStartScores:
 class TestApplyPlanReconciliation:
 
     def test_supersedes_resolved_issue(self):
-        """An issue in queue_order that becomes resolved should be superseded."""
+        """An issue in queue_order that no longer exists in state should be superseded."""
         plan = empty_plan()
         plan["queue_order"] = ["issue-1", "issue-2"]
         plan["overrides"] = {"issue-1": {"issue_id": "issue-1"}}
         state = _make_state(issues={
-            "issue-1": _make_issue(status="resolved"),
             "issue-2": _make_issue(status="open"),
         })
         from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan

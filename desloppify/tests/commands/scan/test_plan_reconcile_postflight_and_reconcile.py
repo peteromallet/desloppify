@@ -182,7 +182,6 @@ class TestReconcilePlanPostScan:
         plan["queue_order"] = ["issue-1", "issue-2"]
         plan["overrides"] = {"issue-1": {"issue_id": "issue-1"}}
         state = _make_state(issues={
-            "issue-1": _make_issue(status="resolved"),
             "issue-2": _make_issue(status="open"),
         })
 
@@ -356,7 +355,6 @@ class TestReconcilePlanPostScan:
             }
         }
         state = _make_state(issues={
-            "issue-1": _make_issue(status="resolved"),
             "issue-2": _make_issue(status="open"),
         })
 
@@ -380,9 +378,7 @@ class TestReconcilePlanPostScan:
                 "skipped_at_scan": 1, "review_after": 5,
             },
         }
-        state = _make_state(issues={
-            "issue-1": _make_issue(status="resolved"),
-        })
+        state = _make_state(issues={})
 
         saved: list[dict] = []
         monkeypatch.setattr(reconcile_mod, "load_plan", lambda _path=None: plan)
@@ -400,7 +396,7 @@ class TestReconcilePlanPostScan:
         plan["queue_order"] = ["issue-1"]
         plan["overrides"] = {"issue-1": {"issue_id": "issue-1"}}
         state = _make_state(
-            issues={"issue-1": _make_issue(status="resolved")},
+            issues={},
             strict_score=85.0, overall_score=90.0,
             objective_score=88.0, verified_strict_score=80.0,
         )
@@ -462,9 +458,7 @@ class TestReconcilePlanPostScan:
         plan = empty_plan()
         plan["queue_order"] = ["issue-1"]
         plan["overrides"] = {"issue-1": {"issue_id": "issue-1"}}
-        state = _make_state(issues={
-            "issue-1": _make_issue(status="resolved"),
-        })
+        state = _make_state(issues={})
 
         saved: list[dict] = []
         monkeypatch.setattr(reconcile_mod, "load_plan", lambda _path=None: plan)
@@ -486,8 +480,6 @@ class TestReconcilePlanPostScan:
             "c": {"issue_id": "c"},
         }
         state = _make_state(issues={
-            "a": _make_issue(status="resolved"),
-            "b": _make_issue(status="resolved"),
             "c": _make_issue(status="open"),
         })
 
