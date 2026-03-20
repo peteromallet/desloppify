@@ -344,7 +344,7 @@ def reconcile_plan_post_scan(runtime: Any) -> None:
     dirty = _reset_cycle_for_force_rescan(plan) if force_rescan else False
     dirty = _sync_post_scan_without_policy(plan=plan, state=runtime.state) or dirty
 
-    boundary_crossed = live_planned_queue_empty(plan)
+    boundary_crossed = live_planned_queue_empty(plan) or force_rescan
     if boundary_crossed:
         result = reconcile_plan(
             plan,

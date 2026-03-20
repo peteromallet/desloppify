@@ -154,7 +154,7 @@ def reconcile_plan(
 ) -> ReconcileResult:
     """Run the shared boundary reconciliation pipeline."""
     result = ReconcileResult()
-    if not live_planned_queue_empty(plan):
+    if not live_planned_queue_empty(plan) and not force_rescan:
         return result
 
     policy = compute_subjective_visibility(
