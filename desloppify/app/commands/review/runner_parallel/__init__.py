@@ -114,7 +114,9 @@ def collect_batch_results(
         parsed_from_log = False
         if raw_path.exists():
             try:
-                payload = extract_payload_fn(raw_path.read_text())
+                payload = extract_payload_fn(
+                    raw_path.read_text(encoding="utf-8", errors="replace")
+                )
             except OSError as exc:
                 logger.warning("Failed reading batch payload %s: %s", raw_path, exc)
                 payload = None

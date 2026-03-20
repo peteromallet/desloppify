@@ -109,6 +109,8 @@ def _start_runner_process(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
         )
     except OSError as exc:
@@ -261,6 +263,8 @@ def _run_via_subprocess(
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=deps.timeout_seconds,
             )
         except deps.timeout_error:
