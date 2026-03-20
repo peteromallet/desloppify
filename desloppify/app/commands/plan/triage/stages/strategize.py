@@ -61,8 +61,8 @@ def _parse_briefing(report: str) -> dict | None:
     if not isinstance(focus_dimensions, list) or not focus_dimensions:
         print(colorize("  Strategize report must include at least one focus_dimensions entry.", "red"))
         return None
-    if briefing.get("score_trend") not in {"improving", "stable", "declining"}:
-        print(colorize("  score_trend must be improving, stable, or declining.", "red"))
+    if briefing.get("score_trend") not in {"improving", "stable", "declining", "recovering"}:
+        print(colorize("  score_trend must be improving, stable, declining, or recovering.", "red"))
         return None
     if briefing.get("debt_trend") not in {"growing", "stable", "shrinking"}:
         print(colorize("  debt_trend must be growing, stable, or shrinking.", "red"))
@@ -273,8 +273,11 @@ def cmd_stage_strategize(
         _create_strategic_work_items(state, plan, strategic_issues)
         resolved_services.save_plan(plan)
         # Strategic issues create work items in state — save state too
-        from desloppify.app.commands.helpers.state_persistence import save_state_or_exit
-        save_state_or_exit(state, runtime.state_path)
+        if resolved_services.save_state is not None:
+            resolved_services.save_state(state, runtime.state_path)
+        else:
+            from desloppify.app.commands.helpers.state_persistence import save_state_or_exit
+            save_state_or_exit(state, runtime.state_path)
 
     resolved_services.save_plan(plan)
     _append_progression_event(state=state, plan=plan, briefing=briefing)

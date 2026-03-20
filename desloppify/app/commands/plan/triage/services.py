@@ -7,10 +7,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from pathlib import Path
+
 from desloppify.app.commands.helpers.command_runtime import (
     CommandRuntime,
     command_runtime,
 )
+from desloppify.app.commands.helpers.state_persistence import save_state_or_exit
 from desloppify.engine.plan_state import (
     PlanModel,
     load_plan,
@@ -58,6 +61,7 @@ class TriageServices:
     append_log_entry: AppendLogEntryFn
     extract_issue_citations: Callable[[str, set[str]], set[str]]
     build_triage_prompt: Callable[[TriageInput], str]
+    save_state: Callable[[dict, Path | None], None] | None = None
 
 
 def default_triage_services() -> TriageServices:
@@ -71,6 +75,7 @@ def default_triage_services() -> TriageServices:
         append_log_entry=append_log_entry,
         extract_issue_citations=extract_issue_citations,
         build_triage_prompt=build_triage_prompt,
+        save_state=save_state_or_exit,
     )
 
 

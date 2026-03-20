@@ -248,7 +248,7 @@ def test_execution_inventory_commit_history_and_collect_strategist_input() -> No
             }
         ],
     )
-    assert strategist_input.score_trajectory.trend in {"stable", "improving", "declining"}
+    assert strategist_input.score_trajectory.trend in {"stable", "improving", "declining", "recovering"}
     assert strategist_input.completed_clusters[0].name == "cluster-a"
     assert strategist_input.commit_history.total_commits == 1
     assert strategist_input.prioritized_ids == ["review::src/a.py::1"]

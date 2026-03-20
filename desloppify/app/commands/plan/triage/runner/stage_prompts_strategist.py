@@ -39,6 +39,8 @@ def build_strategist_prompt(
                 "trend": score.trend,
                 "best_scan_delta": score.best_scan_delta,
                 "worst_scan_delta": score.worst_scan_delta,
+                "all_time_high": score.all_time_high,
+                "cycle_start_score": score.cycle_start_score,
             }
         ),
         "",
@@ -63,7 +65,7 @@ def build_strategist_prompt(
         '- `file_churn_hotspots`: list of `{file, count, detectors}`',
         '- `stagnant_dimensions`: list of strings',
         '- `debt_trend`: `"growing" | "stable" | "shrinking"`',
-        '- `score_trend`: `"improving" | "stable" | "declining"`',
+        '- `score_trend`: `"improving" | "stable" | "declining" | "recovering"` (recovering = improving but still below all-time high)',
         '- `momentum_dimensions`: list of strings',
         '- `executive_summary`: 2-3 paragraph big-picture briefing',
         '- `observe_guidance`: prose for observe',

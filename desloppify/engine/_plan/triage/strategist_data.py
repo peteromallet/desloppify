@@ -26,6 +26,7 @@ class ScoreTrajectory:
     best_scan_delta: float
     worst_scan_delta: float
     cycle_start_score: float | None = None  # from plan_start_scores or previous
+    all_time_high: float | None = None  # highest strict_score across full scan_history
 
 
 @dataclass(frozen=True)
@@ -202,30 +203,50 @@ def score_trajectory(
     *,
     cycle_start_score: float | None = None,
 ) -> ScoreTrajectory:
-    recent = [entry for entry in scan_history if isinstance(entry, dict)][-window:]
+    all_entries = [entry for entry in scan_history if isinstance(entry, dict)]
+
+    # Compute all_time_high from the FULL history
+    all_strict = [
+        strict
+        for entry in all_entries
+        if (strict := _as_float(entry.get("strict_score"))) is not None
+    ]
+    all_time_high = round(max(all_strict), 2) if all_strict else None
+
+    # Windowed scores for recent momentum
+    recent = all_entries[-window:]
     strict_scores = [
         strict
         for entry in recent
         if (strict := _as_float(entry.get("strict_score"))) is not None
     ]
     if not strict_scores:
-        return ScoreTrajectory([], 0.0, "stable", 0.0, 0.0, cycle_start_score=cycle_start_score)
+        return ScoreTrajectory([], 0.0, "stable", 0.0, 0.0, cycle_start_score=cycle_start_score, all_time_high=all_time_high)
     deltas = [
         round(current - previous, 2)
         for previous, current in zip(strict_scores, strict_scores[1:], strict=False)
     ]
     strict_delta = round(strict_scores[-1] - strict_scores[0], 2)
 
-    # Determine trend: if the window shows improvement but we're still below
-    # the cycle start score, the real trend is "recovering" (mapped to "stable"
-    # since the enum doesn't include "recovering")
+    # Determine trend from windowed delta
     trend = _trend_from_delta(strict_delta)
+
+    # Override to "recovering" when windowed trend says improving but current
+    # score is still more than 2 points below the all-time high
+    if (
+        trend == "improving"
+        and all_time_high is not None
+        and strict_scores[-1] < all_time_high - 2.0
+    ):
+        trend = "recovering"
+
+    # Also override to "recovering" when improving but still below cycle start
     if (
         trend == "improving"
         and cycle_start_score is not None
         and strict_scores[-1] < cycle_start_score - 0.5
     ):
-        trend = "stable"
+        trend = "recovering"
 
     return ScoreTrajectory(
         strict_scores=[round(score, 2) for score in strict_scores],
@@ -234,6 +255,7 @@ def score_trajectory(
         best_scan_delta=max(deltas, default=0.0),
         worst_scan_delta=min(deltas, default=0.0),
         cycle_start_score=cycle_start_score,
+        all_time_high=all_time_high,
     )
 
 

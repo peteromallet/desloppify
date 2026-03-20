@@ -108,6 +108,11 @@ def _seed_plan_start_scores(plan: dict[str, object], state: state_mod.StateModel
     scores = state_mod.score_snapshot(state)
     if scores.strict is None:
         return False
+    # Preserve current plan_start_scores as previous_plan_start_scores
+    # (only if previous doesn't already have a value — don't overwrite
+    # a good baseline with a post-regression one)
+    if existing and isinstance(existing, dict) and not plan.get("previous_plan_start_scores"):
+        plan["previous_plan_start_scores"] = dict(existing)
     plan["plan_start_scores"] = {
         "strict": scores.strict,
         "overall": scores.overall,
@@ -138,6 +143,11 @@ def _refresh_plan_start_baseline(
     scores = state_mod.score_snapshot(state)
     if scores.strict is None:
         return False
+    # Preserve current plan_start_scores as previous_plan_start_scores
+    # (only if previous doesn't already have a value — don't overwrite
+    # a good baseline with a post-regression one)
+    if existing and isinstance(existing, dict) and not plan.get("previous_plan_start_scores"):
+        plan["previous_plan_start_scores"] = dict(existing)
     plan["plan_start_scores"] = {
         "strict": scores.strict,
         "overall": scores.overall,
