@@ -206,12 +206,7 @@ def _add_setup_parser(sub) -> None:
         help="Install desloppify skill globally for AI coding assistants",
     )
     p.add_argument(
-        "--local",
-        action="store_true",
-        help="Install AGENTS.md in project root instead of global paths",
-    )
-    p.add_argument(
         "--interface",
         default=None,
-        help="Install for a specific interface only (global: claude, cursor; local: windsurf, gemini, hermes)",
+        help="Install for a specific interface only (claude, cursor)",
     )

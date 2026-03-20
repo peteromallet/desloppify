@@ -9,15 +9,12 @@ from pathlib import Path
 from desloppify.app.commands.update_skill import (
     _build_section,
     _ensure_frontmatter_first,
-    _replace_section,
 )
 from desloppify.base.discovery.file_paths import safe_write_text
-from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 
 RESOURCE_PACKAGE = "desloppify.data.global"
-LOCAL_INTERFACES = frozenset({"windsurf", "gemini", "hermes"})
 
 # Global install paths — where each AI tool discovers user-level skills.
 #
@@ -134,42 +131,11 @@ def _run_global_setup(interface: str | None) -> None:
         print(f"- {name}: {path}")
 
 
-def _run_local_setup(interface: str | None) -> None:
-    """Install bundled AGENTS.md content in the project root."""
-    if not interface:
-        raise CommandError(
-            "AGENTS.md is shared by multiple interfaces. "
-            "Specify one: --interface windsurf|gemini|hermes"
-        )
-    if interface not in LOCAL_INTERFACES:
-        names = "|".join(sorted(LOCAL_INTERFACES))
-        raise CommandError(
-            f"Project-local setup only supports shared AGENTS.md interfaces: {names}"
-        )
-
-    project_root = get_project_root()
-    target_path = project_root / "AGENTS.md"
-    section = _build_bundled_section(interface)
-
-    if target_path.is_file():
-        existing = target_path.read_text(encoding="utf-8", errors="replace")
-        result = _replace_section(existing, section)
-    else:
-        result = section
-
-    safe_write_text(target_path, result)
-    print(colorize(f"Installed project skill section for {interface}:", "green"))
-    print(str(target_path))
-
-
 def cmd_setup(args: argparse.Namespace) -> None:
-    """Install bundled skill documents globally or into the project root."""
+    """Install bundled skill documents globally."""
     interface = getattr(args, "interface", None)
     interface = interface.lower() if isinstance(interface, str) else None
-    if getattr(args, "local", False):
-        _run_local_setup(interface)
-        return
     _run_global_setup(interface)
 
 
-__all__ = ["GLOBAL_TARGETS", "LOCAL_INTERFACES", "cmd_setup"]
+__all__ = ["GLOBAL_TARGETS", "cmd_setup"]

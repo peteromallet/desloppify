@@ -246,12 +246,9 @@ def _try_auto_update_skill() -> None:
     error never breaks the scan.
     """
     install = skill_docs_mod.find_installed_skill()
-    global_install = skill_docs_mod.find_global_skill()
 
     if install and not install.stale:
         return  # Up to date.
-    if global_install:
-        return  # Respect an explicit global install; `setup` updates it.
 
     try:
         if install:
@@ -422,21 +419,11 @@ def auto_update_skill() -> None:
     # Single post-check: whatever happened above, is the doc current now?
     install = skill_docs_mod.find_installed_skill()
     if not install:
-        global_install = skill_docs_mod.find_global_skill()
-        if global_install and not global_install.stale:
-            return
-        if global_install and global_install.stale:
-            print(
-                f"Global skill document is outdated "
-                f"(v{global_install.version}, current v{skill_docs_mod.SKILL_VERSION}). "
-                f"Run: desloppify setup"
-            )
-        else:
-            names = ", ".join(sorted(skill_docs_mod.SKILL_TARGETS))
-            print(
-                f"No skill document found. Install one for better workflow guidance: "
-                f"desloppify update-skill <{names}>"
-            )
+        names = ", ".join(sorted(skill_docs_mod.SKILL_TARGETS))
+        print(
+            f"No skill document found. Install one for better workflow guidance: "
+            f"desloppify update-skill <{names}>"
+        )
     elif install.stale:
         print(
             f"Skill document is outdated "

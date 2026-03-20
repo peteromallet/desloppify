@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 from desloppify.base.discovery.paths import get_project_root
 
@@ -28,12 +27,6 @@ SKILL_SEARCH_PATHS = (
     "CLAUDE.md",
     ".cursor/rules/desloppify.md",
     ".github/copilot-instructions.md",
-)
-
-# Locations where the skill doc might be installed globally, relative to $HOME.
-GLOBAL_SKILL_SEARCH_PATHS = (
-    ".claude/skills/desloppify/SKILL.md",
-    ".cursor/rules/desloppify.md",
 )
 
 # Interface name → (target file, overlay filename, dedicated).
@@ -63,15 +56,11 @@ class SkillInstall:
     stale: bool
 
 
-def _read_skill_install(
-    *,
-    base_dir: Path,
-    search_paths: tuple[str, ...],
-    display_prefix: str = "",
-) -> SkillInstall | None:
-    """Find installed skill document metadata under a base directory, or None."""
-    for rel_path in search_paths:
-        full = base_dir / rel_path
+def find_installed_skill() -> SkillInstall | None:
+    """Find installed skill document metadata, or None."""
+    project_root = get_project_root()
+    for rel_path in SKILL_SEARCH_PATHS:
+        full = project_root / rel_path
         if not full.is_file():
             continue
         try:
@@ -86,7 +75,7 @@ def _read_skill_install(
         overlay_match = SKILL_OVERLAY_RE.search(content)
         overlay = overlay_match.group(1) if overlay_match else None
         return SkillInstall(
-            rel_path=f"{display_prefix}{rel_path}",
+            rel_path=rel_path,
             version=installed_version,
             overlay=overlay,
             stale=installed_version < SKILL_VERSION,
@@ -94,42 +83,15 @@ def _read_skill_install(
     return None
 
 
-def find_installed_skill() -> SkillInstall | None:
-    """Find project-local installed skill document metadata, or None."""
-    return _read_skill_install(
-        base_dir=get_project_root(),
-        search_paths=SKILL_SEARCH_PATHS,
-    )
-
-
-def find_global_skill() -> SkillInstall | None:
-    """Find globally installed skill document metadata under the user's home dir."""
-    return _read_skill_install(
-        base_dir=Path.home(),
-        search_paths=GLOBAL_SKILL_SEARCH_PATHS,
-        display_prefix="~/",
-    )
-
-
 def check_skill_version() -> str | None:
     """Return a warning if installed skill doc is outdated."""
     install = find_installed_skill()
-    if install:
-        if not install.stale:
-            return None
-        return (
-            f"Your desloppify skill document is outdated "
-            f"(v{install.version}, current v{SKILL_VERSION}). "
-            "Run: desloppify update-skill"
-        )
-
-    global_install = find_global_skill()
-    if not global_install or not global_install.stale:
+    if not install or not install.stale:
         return None
     return (
-        f"Your global desloppify skill is outdated "
-        f"(v{global_install.version}, current v{SKILL_VERSION}). "
-        "Run: desloppify setup"
+        f"Your desloppify skill document is outdated "
+        f"(v{install.version}, current v{SKILL_VERSION}). "
+        "Run: desloppify update-skill"
     )
 
 
@@ -139,11 +101,9 @@ __all__ = [
     "SKILL_OVERLAY_RE",
     "SKILL_BEGIN",
     "SKILL_END",
-    "GLOBAL_SKILL_SEARCH_PATHS",
     "SKILL_SEARCH_PATHS",
     "SKILL_TARGETS",
     "SkillInstall",
-    "find_global_skill",
     "find_installed_skill",
     "check_skill_version",
 ]
