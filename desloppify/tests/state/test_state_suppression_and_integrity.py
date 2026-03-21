@@ -127,9 +127,9 @@ class TestScoreAntiGaming:
         )
 
         hist = st["scan_history"][-1]
-        assert hist["subjective_integrity"]["status"] == "penalized"
-        assert hist["subjective_integrity"]["matched_count"] == 2
-        assert hist["subjective_integrity"]["reset_count"] == 2
+        assert hist["subjective_integrity"]["status"] == "disabled"
+        assert hist["subjective_integrity"]["matched_count"] == 0
+        assert hist["subjective_integrity"]["reset_count"] == 0
 
     def test_save_state_preserves_subjective_integrity_target(self, tmp_path):
         st = empty_state()
@@ -147,10 +147,11 @@ class TestScoreAntiGaming:
         save_state(st, save_path)
         reloaded = load_state(save_path)
 
-        assert reloaded["subjective_integrity"]["status"] == "penalized"
+        assert reloaded["subjective_integrity"]["status"] == "disabled"
         assert reloaded["subjective_integrity"]["target_score"] == 95.0
-        assert reloaded["dimension_scores"]["Naming quality"]["score"] == 0.0
-        assert reloaded["dimension_scores"]["Logic clarity"]["score"] == 0.0
+        # Scores are preserved — no penalty applied
+        assert reloaded["dimension_scores"]["Naming quality"]["score"] == 95.0
+        assert reloaded["dimension_scores"]["Logic clarity"]["score"] == 95.0
 
     def test_manual_fixed_does_not_improve_verified_until_scan_confirms(self):
         from desloppify.state import resolve_issues
@@ -236,7 +237,7 @@ class TestScoreAntiGaming:
 
         resolve_issues(st, "unused::a.py::x", "fixed", note="done")
         assert st["subjective_integrity"]["target_score"] == 95.0
-        assert st["subjective_integrity"]["status"] != "disabled"
+        assert st["subjective_integrity"]["status"] == "disabled"
 
     def test_remove_ignored_preserves_subjective_integrity_target(self):
         """remove_ignored_issues() must not erase the subjective integrity target.
@@ -266,4 +267,4 @@ class TestScoreAntiGaming:
 
         remove_ignored_issues(st, "unused::*")
         assert st["subjective_integrity"]["target_score"] == 95.0
-        assert st["subjective_integrity"]["status"] != "disabled"
+        assert st["subjective_integrity"]["status"] == "disabled"

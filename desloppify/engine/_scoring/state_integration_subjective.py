@@ -47,35 +47,17 @@ def _apply_subjective_integrity_policy(
     *,
     target: float,
 ) -> tuple[dict, dict[str, object]]:
-    """Apply anti-gaming penalties for subjective scores clustered on the target."""
+    """Subjective integrity check (disabled).
+
+    Previously applied anti-gaming penalties when multiple dimensions
+    scored near the target. Disabled because blind-packet subagent
+    reviews cannot anchor to the target score, making false positives
+    (legitimate score convergence) more likely than actual gaming.
+    """
     normalized_target = max(0.0, min(100.0, float(target)))
-    matched_dimensions = _subjective_target_matches(
-        subjective_assessments,
-        target=normalized_target,
-    )
     meta = _subjective_integrity_baseline(normalized_target)
-    meta["matched_count"] = len(matched_dimensions)
-    meta["matched_dimensions"] = matched_dimensions
-
-    if len(matched_dimensions) < _SUBJECTIVE_TARGET_RESET_THRESHOLD:
-        meta["status"] = "warn" if matched_dimensions else "pass"
-        return subjective_assessments, meta
-
-    adjusted = deepcopy(subjective_assessments)
-    for dimension in matched_dimensions:
-        payload = adjusted.get(dimension)
-        if isinstance(payload, dict):
-            payload["score"] = 0.0
-            payload["integrity_penalty"] = "target_match_reset"
-        else:
-            adjusted[dimension] = {
-                "score": 0.0,
-                "integrity_penalty": "target_match_reset",
-            }
-
-    meta["status"] = "penalized"
-    meta["reset_dimensions"] = matched_dimensions
-    return adjusted, meta
+    meta["status"] = "disabled"
+    return subjective_assessments, meta
 
 
 def _normalize_integrity_target(

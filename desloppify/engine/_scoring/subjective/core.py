@@ -72,9 +72,6 @@ def _compute_dimension_score(
     if reset_pending:
         score = 0.0
         pass_rate = 0.0
-    elif integrity_penalty == "target_match_reset":
-        score = 0.0
-        pass_rate = 0.0
     elif has_assessment:
         score = assessment_score
         pass_rate = score / 100.0

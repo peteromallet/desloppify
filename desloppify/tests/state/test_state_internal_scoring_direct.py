@@ -67,7 +67,7 @@ def test_suppression_metrics_aggregates_recent_history():
     assert metrics["recent_suppressed_pct"] == 20.0
 
 
-def test_update_objective_health_resets_two_target_matched_subjective_dimensions():
+def test_update_objective_health_preserves_two_target_matched_subjective_dimensions():
     state = {
         "potentials": {"python": {"unused": 0}},
         "subjective_assessments": {
@@ -84,8 +84,9 @@ def test_update_objective_health_resets_two_target_matched_subjective_dimensions
     )
 
     dim_scores = state["dimension_scores"]
-    assert dim_scores["Naming quality"]["score"] == 0.0
-    assert dim_scores["Logic clarity"]["score"] == 0.0
+    # Scores are preserved — integrity policy is disabled
+    assert dim_scores["Naming quality"]["score"] == 95.0
+    assert dim_scores["Logic clarity"]["score"] == 95.0
     assert dim_scores["AI generated debt"]["score"] == 90.0
     assert (
         dim_scores["AI generated debt"]["detectors"]["subjective_assessment"][
@@ -93,15 +94,12 @@ def test_update_objective_health_resets_two_target_matched_subjective_dimensions
         ]
         == 90.0
     )
-    assert state["subjective_integrity"]["status"] == "penalized"
-    assert state["subjective_integrity"]["matched_count"] == 2
-    assert state["subjective_integrity"]["reset_dimensions"] == [
-        "logic_clarity",
-        "naming_quality",
-    ]
+    assert state["subjective_integrity"]["status"] == "disabled"
+    assert state["subjective_integrity"]["matched_count"] == 0
+    assert state["subjective_integrity"]["reset_dimensions"] == []
 
 
-def test_update_objective_health_warns_single_target_matched_subjective_dimension():
+def test_update_objective_health_disabled_single_target_matched_subjective_dimension():
     state = {
         "potentials": {"python": {"unused": 0}},
         "subjective_assessments": {
@@ -124,8 +122,9 @@ def test_update_objective_health_warns_single_target_matched_subjective_dimensio
         ]
         == 95.0
     )
-    assert state["subjective_integrity"]["status"] == "warn"
-    assert state["subjective_integrity"]["matched_count"] == 1
+    # Integrity policy is disabled — no warn/penalize status
+    assert state["subjective_integrity"]["status"] == "disabled"
+    assert state["subjective_integrity"]["matched_count"] == 0
     assert state["subjective_integrity"]["reset_dimensions"] == []
 
 

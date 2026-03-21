@@ -127,7 +127,7 @@ def _objective_and_subjective_backlog(
 ) -> tuple[int, int]:
     ctx = queue_context(state)
     if not blocking_dims:
-        return ctx.snapshot.planned_objective_count, 0
+        return ctx.snapshot.objective_execution_count, 0
 
     normalized_blocking_dims = {_normalize_dimension_key(dim) for dim in blocking_dims}
 
@@ -147,7 +147,7 @@ def _objective_and_subjective_backlog(
         if (dim_key := _item_dimension_key(item)) is not None
         and dim_key in normalized_blocking_dims
     )
-    return ctx.snapshot.planned_objective_count, subjective_total
+    return ctx.snapshot.objective_execution_count, subjective_total
 
 
 def _print_backlog_blocked_message(

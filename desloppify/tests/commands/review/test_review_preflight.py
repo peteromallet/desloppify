@@ -90,11 +90,16 @@ def _mock_policy(objective_count: int = 0) -> SimpleNamespace:
     )
 
 
-def _mock_queue_context(objective_count: int = 0) -> SimpleNamespace:
+def _mock_queue_context(
+    objective_count: int = 0,
+    *,
+    execution_count: int | None = None,
+) -> SimpleNamespace:
     """Create a mock QueueContext with the given objective count."""
     snapshot = SimpleNamespace(
         objective_in_scope_count=objective_count,
         planned_objective_count=objective_count,
+        objective_execution_count=execution_count if execution_count is not None else objective_count,
         all_postflight_review_items=(),
     )
     return SimpleNamespace(
@@ -108,6 +113,7 @@ def _mock_queue_context(objective_count: int = 0) -> SimpleNamespace:
 def _mock_queue_context_with_reviews(
     *,
     objective_count: int = 0,
+    execution_count: int | None = None,
     review_dims: tuple[str, ...] = (),
 ) -> SimpleNamespace:
     items = tuple(
@@ -121,6 +127,7 @@ def _mock_queue_context_with_reviews(
     snapshot = SimpleNamespace(
         objective_in_scope_count=objective_count,
         planned_objective_count=objective_count,
+        objective_execution_count=execution_count if execution_count is not None else objective_count,
         all_postflight_review_items=items,
     )
     return SimpleNamespace(
@@ -240,6 +247,20 @@ def test_allowed_when_queue_empty():
     with patch(_QUEUE_CONTEXT, return_value=_mock_queue_context(objective_count=0)):
         # Should not raise
         review_rerun_preflight(state, _make_args())
+
+
+def test_phase_parked_objective_items_do_not_block(capsys):
+    """Objective items parked behind a phase gate should not block review reruns."""
+    state = _state_with_prior_review()
+    # 12 planned objective items, but 0 in current execution phase
+    ctx = _mock_queue_context(objective_count=12, execution_count=0)
+    with patch(_QUEUE_CONTEXT, return_value=ctx):
+        # Should NOT raise — items are not actionable right now
+        review_rerun_preflight(state, _make_args())
+
+    # No error output about blocking
+    err = capsys.readouterr().err
+    assert "Blocked" not in err
 
 
 def test_force_review_rerun_bypasses_check(capsys):
