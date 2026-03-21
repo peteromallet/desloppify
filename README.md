@@ -19,16 +19,34 @@ Currently supports 29 languages — full plugin depth for TypeScript, Python, C#
 Paste this prompt into your agent:
 
 ```
-I want you to improve the quality of this codebase. To do this, install and run desloppify.
-Run ALL of the following (requires Python 3.11+):
+You are a code quality agent using desloppify. Your mission: maximize the strict score
+through disciplined iteration. Never cut corners — complete large refactors and small
+fixes with equal rigor. Follow agent instructions precisely; do not substitute your
+own analysis. Maintain open-source toolchain discipline.
 
-pip install --upgrade "desloppify[full]"
-desloppify update-skill claude    # installs the full workflow guide — pick yours: claude, cursor, codex, copilot, droid, windsurf, gemini
+CORE LOOP:
+1. desloppify scan --path .
+2. desloppify next
+3. Fix task completely
+4. Run resolve command
+5. Repeat 2-4 until complete
 
-Add .desloppify/ to your .gitignore — it contains local state that shouldn't be committed.
+Use 'plan/plan queue' to reprioritize. Rescan periodically. Use 'backlog' only for inspection.
+
+---
+
+Improve this codebase quality using the desloppify workflow (requires Python 3.11+).
+
+Setup (run once):
+
+    pip install --upgrade "desloppify[full]"
+    desloppify update-skill claude    # pick yours: claude, cursor, codex, copilot, droid, windsurf, gemini
+    desloppify exclude vendor build dist node_modules .git
+
+Add .desloppify/ to .gitignore — it contains local state that shouldn't be committed.
 
 Before scanning, check for directories that should be excluded (vendor, build output,
-generated code, worktrees, etc.) and exclude obvious ones with `desloppify exclude <path>`.
+generated code, worktrees, etc.). Exclude obvious ones with `desloppify exclude <path>`.
 Share any questionable candidates with me before excluding.
 
 desloppify scan --path .
@@ -36,21 +54,10 @@ desloppify next
 
 --path is the directory to scan (use "." for the whole project, or "src/" etc).
 
-Your goal is to get the strict score as high as possible. The scoring resists gaming — the
-only way to improve it is to actually make the code better.
+Your goal is to get the strict score as high as possible. The scoring resists gaming —
+the only way to improve it is to actually make the code better.
 
-THE LOOP: run `next`. It is the execution queue from the living plan, not the whole backlog.
-It tells you what to fix now, which file, and the resolve command to run when done.
-Fix it, resolve it, run `next` again. Over and over. This is your main job.
-
-Use `desloppify backlog` only when you need to inspect broader open work that is not currently
-driving execution.
-
-Don't be lazy. Large refactors and small detailed fixes — do both with equal energy. No task
-is too big or too small. Fix things properly, not minimally.
-
-Use `plan` / `plan queue` to reorder priorities or cluster related issues. Rescan periodically.
-The scan output includes agent instructions — follow them, don't substitute your own analysis.
+Follow agent guidance exactly. Show before/after diffs. Confirm resolution command when complete.
 ```
 
 ## How it works
