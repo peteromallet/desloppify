@@ -144,7 +144,9 @@ def summarize_failure_categories(*, failures: list[int], logs_dir: Path) -> dict
             category = "missing_log"
         else:
             try:
-                category = classify_runner_failure(log_file.read_text())
+                category = classify_runner_failure(
+                    log_file.read_text(encoding="utf-8", errors="replace")
+                )
             except OSError:
                 category = "log_read_error"
         categories[category] = categories.get(category, 0) + 1
@@ -191,7 +193,7 @@ def runner_failure_hints(*, failures: list[int], logs_dir: Path) -> list[str]:
         log_file = logs_dir / f"batch-{idx + 1}.log"
         raw = ""
         try:
-            raw = log_file.read_text()
+            raw = log_file.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             log_best_effort_failure(
                 logger,
@@ -216,7 +218,9 @@ def any_restricted_sandbox_failures(*, failures: list[int], logs_dir: Path) -> b
         log_file = logs_dir / f"batch-{idx + 1}.log"
         text = ""
         try:
-            text = _normalize_runner_failure_text(log_file.read_text())
+            text = _normalize_runner_failure_text(
+                log_file.read_text(encoding="utf-8", errors="replace")
+            )
         except OSError as exc:
             log_best_effort_failure(
                 logger,
