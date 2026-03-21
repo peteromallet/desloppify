@@ -39,6 +39,9 @@ TEST_FUNCTION_RE = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)\s*\(", re.MULT
 # Python has no barrel-file expansion in coverage mapping.
 BARREL_BASENAMES: set[str] = set()
 
+# Common source layout prefixes for src-layout projects (PEP 621).
+_SRC_PREFIXES = ("src/",)
+
 
 def has_testable_logic(filepath: str, content: str) -> bool:
     """Return True if the file contains runtime logic worth testing."""
@@ -61,6 +64,11 @@ def resolve_import_spec(
     for candidate in candidates:
         if candidate in production_files:
             return candidate
+        # Try src/-prefixed variants for src-layout projects
+        for prefix in _SRC_PREFIXES:
+            prefixed = f"{prefix}{candidate}"
+            if prefixed in production_files:
+                return prefixed
         if test_path:
             sibling = os.path.join(os.path.dirname(test_path), candidate)
             if sibling in production_files:

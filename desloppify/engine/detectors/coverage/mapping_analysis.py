@@ -159,6 +159,10 @@ def _build_prod_by_module(
             if prod_file.startswith(root_str)
             else prod_file
         )
+        # Strip src/ prefix so src-layout projects map correctly
+        # (e.g. 'src/argos_toolkit/foo.py' -> 'argos_toolkit.foo')
+        if rel_path.startswith("src/") or rel_path.startswith("src\\"):
+            rel_path = rel_path[4:]
         module_name = rel_path.replace("/", ".").replace("\\", ".")
         if "." in module_name:
             module_name = module_name.rsplit(".", 1)[0]
