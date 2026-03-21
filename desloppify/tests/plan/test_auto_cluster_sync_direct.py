@@ -234,22 +234,20 @@ def test_sync_stale_escalates_after_repeated_defers() -> None:
     assert plan["subjective_defer_meta"]["defer_count"] == 1
     assert plan["subjective_defer_meta"]["deferred_review_ids"] == [
         "subjective::api_surface",
-        "subjective::architecture",
     ]
-    assert plan["subjective_defer_meta"]["deferred_stale_ids"] == [
-        "subjective::architecture",
-    ]
+    assert plan["subjective_defer_meta"]["deferred_stale_ids"] == []
     assert plan["subjective_defer_meta"]["deferred_under_target_ids"] == [
         "subjective::api_surface",
     ]
     assert "force_visible_ids" not in plan["subjective_defer_meta"]
+    assert plan["queue_order"] == ["subjective::architecture", "unused::x"]
 
     # Defer 2
     state["scan_count"] = 2
     state["last_scan"] = "2026-03-02T00:00:00+00:00"
     sync_subjective_dimensions(plan, state, policy=policy)
     assert plan["subjective_defer_meta"]["defer_count"] == 2
-    assert plan["queue_order"] == ["unused::x"]
+    assert plan["queue_order"] == ["subjective::architecture", "unused::x"]
 
     # Defer 3 → escalation
     state["scan_count"] = 3
@@ -258,10 +256,7 @@ def test_sync_stale_escalates_after_repeated_defers() -> None:
 
     defer_meta = plan["subjective_defer_meta"]
     assert defer_meta["defer_count"] == 3
-    assert defer_meta["force_visible_ids"] == [
-        "subjective::api_surface",
-        "subjective::architecture",
-    ]
+    assert defer_meta["force_visible_ids"] == ["subjective::api_surface"]
     assert plan["queue_order"][:2] == [
         "subjective::api_surface",
         "subjective::architecture",

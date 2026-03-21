@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from desloppify.engine._plan.constants import (
-    SUBJECTIVE_PREFIX,
     TRIAGE_PREFIX,
     WORKFLOW_PREFIX,
 )
@@ -20,11 +19,11 @@ from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
 
 def _phase_prefixes(phase: str) -> tuple[str, ...]:
     if phase == LIFECYCLE_PHASE_WORKFLOW_POSTFLIGHT:
-        return (SUBJECTIVE_PREFIX,)
+        return ()
     if phase in {LIFECYCLE_PHASE_TRIAGE_POSTFLIGHT, LIFECYCLE_PHASE_REVIEW_POSTFLIGHT}:
-        return (SUBJECTIVE_PREFIX, WORKFLOW_PREFIX)
+        return (WORKFLOW_PREFIX,)
     if phase == LIFECYCLE_PHASE_EXECUTE:
-        return (SUBJECTIVE_PREFIX, WORKFLOW_PREFIX, TRIAGE_PREFIX)
+        return (WORKFLOW_PREFIX, TRIAGE_PREFIX)
     return ()
 
 

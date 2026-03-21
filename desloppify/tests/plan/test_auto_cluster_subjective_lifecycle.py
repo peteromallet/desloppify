@@ -378,7 +378,7 @@ def test_under_target_not_evicted_by_auto_cluster():
 
 
 def test_stale_ids_not_evicted_by_auto_cluster():
-    """auto_cluster_sync no longer evicts stale IDs — sync_stale owns that."""
+    """Stale IDs survive both auto-cluster and sync when objective backlog exists."""
     from desloppify.engine._plan.sync.dimensions import sync_subjective_dimensions
 
     plan = empty_plan()
@@ -409,17 +409,20 @@ def test_stale_ids_not_evicted_by_auto_cluster():
     assert "subjective::design_coherence" in order
     assert "subjective::error_consistency" in order
 
-    # But sync_stale DOES evict them when objective backlog exists
+    # sync_stale also preserves them and keeps them ahead of objective work
     result = sync_subjective_dimensions(plan, state_with_obj)
     order = plan["queue_order"]
-    assert "subjective::design_coherence" not in order
-    assert "subjective::error_consistency" not in order
-    assert "subjective::design_coherence" in result.pruned
-    assert "subjective::error_consistency" in result.pruned
+    assert order[:2] == [
+        "subjective::design_coherence",
+        "subjective::error_consistency",
+    ]
+    assert "u1" in order
+    assert "u2" in order
+    assert result.pruned == []
 
 
 def test_under_target_lifecycle_with_sync_stale():
-    """Full lifecycle: sync_stale injects, evicts, re-injects. auto_cluster clusters."""
+    """Full lifecycle: under-target reviews defer only mid-cycle, then reappear."""
     from desloppify.engine._plan.sync.dimensions import sync_subjective_dimensions
 
     plan = empty_plan()
@@ -436,7 +439,8 @@ def test_under_target_lifecycle_with_sync_stale():
     auto_cluster_issues(plan, state_empty)
     assert "auto/under-target-review" in plan["clusters"]
 
-    # Phase 2: objective issues appear — sync_stale evicts them
+    # Phase 2: objective issues appear mid-cycle — sync_stale evicts them
+    plan["plan_start_scores"] = {"strict": 70.0}
     state_obj = {
         **ut,
         "issues": {

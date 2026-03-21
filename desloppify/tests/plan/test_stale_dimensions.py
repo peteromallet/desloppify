@@ -270,7 +270,7 @@ def test_injects_when_queue_empty():
     assert result.changes == 2
 
 
-def test_no_injection_when_queue_has_real_items():
+def test_stale_always_injected_with_objective_backlog():
     plan = _plan_with_queue("some_issue::file.py::abc123")
     state = _state_with_stale_dimensions("design_coherence")
     # Add an actual open objective issue to state (source of truth)
@@ -281,12 +281,15 @@ def test_no_injection_when_queue_has_real_items():
     }
 
     result = sync_subjective_dimensions(plan, state)
-    assert result.injected == []
-    assert "subjective::design_coherence" not in plan["queue_order"]
+    assert result.injected == ["subjective::design_coherence"]
+    assert plan["queue_order"] == [
+        "subjective::design_coherence",
+        "some_issue::file.py::abc123",
+    ]
 
 
-def test_stale_ids_evicted_when_objective_backlog_exists():
-    """Stale IDs should be removed from queue_order when objective work exists."""
+def test_stale_ids_not_evicted_when_objective_backlog_exists():
+    """Stale IDs remain in queue_order ahead of objective work."""
     plan = _plan_with_queue(
         "subjective::design_coherence",
         "subjective::error_consistency",
@@ -300,18 +303,19 @@ def test_stale_ids_evicted_when_objective_backlog_exists():
     }
 
     result = sync_subjective_dimensions(plan, state)
-    # Stale IDs are evicted while objective backlog exists
-    assert "subjective::design_coherence" in result.pruned
-    assert "subjective::error_consistency" in result.pruned
-    assert "subjective::design_coherence" not in plan["queue_order"]
-    assert "subjective::error_consistency" not in plan["queue_order"]
-    # No new injection either (objective backlog blocks new injections)
+    assert result.pruned == []
     assert result.injected == []
+    assert plan["queue_order"] == [
+        "subjective::design_coherence",
+        "subjective::error_consistency",
+        "some_issue::file.py::abc123",
+    ]
 
 
-def test_stale_ids_inject_when_backlog_clears():
-    """Stale IDs inject when objective backlog clears."""
+def test_stale_not_deferred_even_mid_cycle():
+    """Stale IDs remain present even when the cycle is mid-flight."""
     plan = _plan_with_queue("some_issue::file.py::abc123")
+    plan["plan_start_scores"] = {"strict": 50.0}
     state = _state_with_stale_dimensions("design_coherence")
     state["work_items"]["some_issue::file.py::abc123"] = {
         "id": "some_issue::file.py::abc123",
@@ -319,16 +323,57 @@ def test_stale_ids_inject_when_backlog_clears():
         "detector": "smells",
     }
 
-    # Mid-cycle: no injection
     r1 = sync_subjective_dimensions(plan, state)
-    assert r1.injected == []
+    assert r1.injected == ["subjective::design_coherence"]
+    assert plan["queue_order"] == [
+        "subjective::design_coherence",
+        "some_issue::file.py::abc123",
+    ]
 
-    # Objective backlog clears
-    state["work_items"]["some_issue::file.py::abc123"]["status"] = "done"
 
-    r2 = sync_subjective_dimensions(plan, state)
-    assert "subjective::design_coherence" in r2.injected
-    assert "subjective::design_coherence" in plan["queue_order"]
+def test_stale_positioned_before_objective() -> None:
+    plan = _plan_with_queue(
+        "workflow::communicate-score",
+        "triage::observe",
+        "some_issue::file.py::abc123",
+    )
+    state = _state_with_stale_dimensions("design_coherence")
+    state["work_items"]["some_issue::file.py::abc123"] = {
+        "id": "some_issue::file.py::abc123",
+        "status": "open",
+        "detector": "smells",
+    }
+
+    sync_subjective_dimensions(plan, state)
+
+    assert plan["queue_order"] == [
+        "workflow::communicate-score",
+        "triage::observe",
+        "subjective::design_coherence",
+        "some_issue::file.py::abc123",
+    ]
+
+
+def test_stale_repositioned_when_behind_objective() -> None:
+    plan = _plan_with_queue(
+        "some_issue::file.py::abc123",
+        "subjective::design_coherence",
+    )
+    state = _state_with_stale_dimensions("design_coherence")
+    state["work_items"]["some_issue::file.py::abc123"] = {
+        "id": "some_issue::file.py::abc123",
+        "status": "open",
+        "detector": "smells",
+    }
+
+    result = sync_subjective_dimensions(plan, state)
+
+    assert result.injected == []
+    assert result.pruned == []
+    assert plan["queue_order"] == [
+        "subjective::design_coherence",
+        "some_issue::file.py::abc123",
+    ]
 
 
 def test_no_injection_when_no_stale_or_under_target_dimensions():
@@ -385,27 +430,33 @@ def test_prune_does_not_touch_real_issue_ids():
 # ---------------------------------------------------------------------------
 
 def test_full_lifecycle():
-    plan = _plan_with_queue()
+    plan = _plan_with_queue("some_issue::file.py::abc123")
+    plan["plan_start_scores"] = {"strict": 50.0}
     state = _state_with_stale_dimensions("design_coherence", "error_consistency")
+    state["work_items"]["some_issue::file.py::abc123"] = {
+        "id": "some_issue::file.py::abc123",
+        "status": "open",
+        "detector": "smells",
+    }
 
-    # 1. Empty queue, stale dims → inject both
+    # 1. Mid-cycle objective backlog does not block stale dims.
     r1 = sync_subjective_dimensions(plan, state)
     assert len(r1.injected) == 2
     assert plan["queue_order"] == [
         "subjective::design_coherence",
         "subjective::error_consistency",
+        "some_issue::file.py::abc123",
     ]
 
-    # 2. User refreshes design_coherence (no longer stale, but still under target)
+    # 2. One dimension refreshes: it now follows under-target deferral rules.
     state["subjective_assessments"]["design_coherence"]["needs_review_refresh"] = False
 
     r2 = sync_subjective_dimensions(plan, state)
-    # Not pruned: still under target (score=50)
-    assert r2.pruned == []
-    assert "subjective::design_coherence" in plan["queue_order"]
+    assert r2.pruned == ["subjective::design_coherence"]
+    assert "subjective::design_coherence" not in plan["queue_order"]
     assert "subjective::error_consistency" in plan["queue_order"]
 
-    # 3. User raises both scores above target → queue empties
+    # 3. Raising both above target clears subjective entries but leaves objective work.
     state["subjective_assessments"]["error_consistency"]["needs_review_refresh"] = False
     for key in ("design_coherence", "error_consistency"):
         state["dimension_scores"][key]["score"] = 100.0
@@ -413,11 +464,11 @@ def test_full_lifecycle():
         state["subjective_assessments"][key]["score"] = 100.0
 
     r3 = sync_subjective_dimensions(plan, state)
-    assert len(r3.pruned) == 2
-    assert plan["queue_order"] == []
+    assert r3.pruned == ["subjective::error_consistency"]
+    assert plan["queue_order"] == ["some_issue::file.py::abc123"]
     assert r3.injected == []
 
-    # 4. New mechanical change makes design_coherence stale again
+    # 4. A new mechanical change makes one dimension stale again.
     state["dimension_scores"]["design_coherence"]["score"] = 50.0
     state["dimension_scores"]["design_coherence"]["strict"] = 50.0
     state["subjective_assessments"]["design_coherence"]["score"] = 50.0
@@ -425,7 +476,10 @@ def test_full_lifecycle():
 
     r4 = sync_subjective_dimensions(plan, state)
     assert r4.injected == ["subjective::design_coherence"]
-    assert plan["queue_order"] == ["subjective::design_coherence"]
+    assert plan["queue_order"] == [
+        "subjective::design_coherence",
+        "some_issue::file.py::abc123",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -604,6 +658,7 @@ def test_under_target_evicted_mid_cycle_with_objective_backlog():
 def test_under_target_reinjected_after_objective_backlog_clears():
     """Under-target IDs evicted mid-cycle must reappear when objective backlog clears."""
     plan = _plan_with_queue("some_issue::file.py::abc123")
+    plan["plan_start_scores"] = {"strict": 50.0}
     state = _state_with_mixed_dimensions(
         unscored=[],
         stale=[],

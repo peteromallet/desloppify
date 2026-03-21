@@ -95,7 +95,7 @@ def test_live_planned_queue_empty_ignores_skipped_items() -> None:
 
 
 def test_reconcile_plan_noops_when_live_queue_not_empty() -> None:
-    """Mid-cycle: pipeline is a no-op, no gates fire."""
+    """Mid-cycle objective work skips heavy sync but lifecycle still resolves."""
     state = {"issues": {"unused::a": _issue("unused::a")}}
     plan = empty_plan()
     plan["queue_order"] = ["unused::a"]
@@ -103,9 +103,45 @@ def test_reconcile_plan_noops_when_live_queue_not_empty() -> None:
 
     result = reconcile_plan(plan, state, target_strict=95.0)
 
-    assert result.dirty is False
+    assert result.dirty is True
     assert result.workflow_injected_ids == []
     assert plan["queue_order"] == ["unused::a"]
+    assert result.auto_cluster_changes == 0
+    assert result.lifecycle_phase == PHASE_SCAN
+    assert result.lifecycle_phase_changed is True
+
+
+def test_phase_resolves_to_assessment_when_stale_injected_mid_cycle() -> None:
+    state = {
+        "issues": {"unused::a": _issue("unused::a")},
+        "scan_count": 5,
+        "dimension_scores": {
+            "Naming quality": {
+                "score": 70.0,
+                "strict": 70.0,
+                "failing": 1,
+                "checks": 1,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "naming_quality"},
+                },
+            },
+        },
+        "subjective_assessments": {
+            "naming_quality": {
+                "score": 70.0,
+                "needs_review_refresh": True,
+            },
+        },
+    }
+    plan = empty_plan()
+    plan["queue_order"] = ["unused::a"]
+    plan["plan_start_scores"] = {"strict": 80.0}
+
+    result = reconcile_plan(plan, state, target_strict=95.0)
+
+    assert plan["queue_order"] == ["subjective::naming_quality", "unused::a"]
+    assert result.lifecycle_phase == PHASE_ASSESSMENT_POSTFLIGHT
+    assert result.lifecycle_phase_changed is True
 
 
 def test_reconcile_plan_second_call_is_noop() -> None:

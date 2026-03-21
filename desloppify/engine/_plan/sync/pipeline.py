@@ -26,7 +26,6 @@ from desloppify.engine._plan.sync.triage import sync_triage_needed
 from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._plan.sync.workflow import (
     ScoreSnapshot,
-    _subjective_review_current_for_cycle,
     sync_communicate_score_needed,
     sync_create_plan_needed,
 )
@@ -160,70 +159,52 @@ def reconcile_plan(
         target_strict=target_strict,
         plan=plan,
     )
-    cycle_just_completed = not plan.get("plan_start_scores") or force_rescan
 
-    # Subjective sync always runs — stale reviews should coexist with
-    # mechanical items in the queue, not be blocked by them.
-    will_inject_workflow = (
-        not force_rescan
-        and "previous_plan_start_scores" not in plan
-        and _subjective_review_current_for_cycle(
-            plan,
-            state,
-            policy=policy,
-        )
-    )
-    if will_inject_workflow:
-        result.subjective = QueueSyncResult()
-    else:
-        result.subjective = sync_subjective_dimensions(
-            plan,
-            state,
-            policy=policy,
-            cycle_just_completed=cycle_just_completed,
-        )
-        if result.subjective.changes:
-            _log_gate_changes(plan, "sync_subjective", {"changes": True})
-
-    # Auto-clustering and other reconciliation only runs at queue boundaries
-    if not live_planned_queue_empty(plan) and not force_rescan:
-        return result
-
-    result.auto_cluster_changes = int(
-        auto_cluster_issues(
-            plan,
-            state,
-            target_strict=target_strict,
-            policy=policy,
-        )
-    )
-    if result.auto_cluster_changes:
-        _log_gate_changes(plan, "auto_cluster", {"changes": True})
-
-    result.communicate_score = sync_communicate_score_needed(
-        plan,
-        state,
-        policy=policy,
-        current_scores=_current_scores(state),
-    )
-    if result.communicate_score.changes:
-        _log_gate_changes(plan, "sync_communicate_score", {"injected": True})
-
-    result.create_plan = sync_create_plan_needed(
+    result.subjective = sync_subjective_dimensions(
         plan,
         state,
         policy=policy,
     )
-    if result.create_plan.changes:
-        _log_gate_changes(plan, "sync_create_plan", {"injected": True})
+    if result.subjective.changes:
+        _log_gate_changes(plan, "sync_subjective", {"changes": True})
 
-    result.triage = sync_triage_needed(
-        plan,
-        state,
-        policy=policy,
-    )
-    if result.triage.injected:
-        _log_gate_changes(plan, "sync_triage", {"injected": True})
+    # Auto-clustering and heavier workflow reconciliation only runs at queue boundaries.
+    if live_planned_queue_empty(plan) or force_rescan:
+        result.auto_cluster_changes = int(
+            auto_cluster_issues(
+                plan,
+                state,
+                target_strict=target_strict,
+                policy=policy,
+            )
+        )
+        if result.auto_cluster_changes:
+            _log_gate_changes(plan, "auto_cluster", {"changes": True})
+
+        result.communicate_score = sync_communicate_score_needed(
+            plan,
+            state,
+            policy=policy,
+            current_scores=_current_scores(state),
+        )
+        if result.communicate_score.changes:
+            _log_gate_changes(plan, "sync_communicate_score", {"injected": True})
+
+        result.create_plan = sync_create_plan_needed(
+            plan,
+            state,
+            policy=policy,
+        )
+        if result.create_plan.changes:
+            _log_gate_changes(plan, "sync_create_plan", {"injected": True})
+
+        result.triage = sync_triage_needed(
+            plan,
+            state,
+            policy=policy,
+        )
+        if result.triage.injected:
+            _log_gate_changes(plan, "sync_triage", {"injected": True})
 
     result.lifecycle_phase = _resolve_reconcile_phase(
         plan,

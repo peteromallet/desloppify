@@ -7,11 +7,10 @@ Single-pass sync for all three subjective categories:
 - **stale** — dimensions whose assessment needs a review refresh.
 - **under_target** — scored below target but not stale.
 
-Stale and under-target IDs share injection rules: injected when no objective
-backlog exists, evicted when it does, force-promoted after repeated deferrals.
-
-Invariant: new items are always appended — sync never reorders existing queue
-(except escalation promotion, which moves deferred IDs ahead of objective work).
+Invariant: stale reviews are non-deferrable. If a stale dimension is not
+skipped, its ``subjective::`` ID stays in ``queue_order`` and is promoted to
+the subjective lane immediately after workflow/triage items. Under-target
+dimensions retain deferral and escalation behavior.
 """
 
 from __future__ import annotations
@@ -239,7 +238,6 @@ def sync_subjective_dimensions(
     state: StateModel,
     *,
     policy: SubjectiveVisibility | None = None,
-    cycle_just_completed: bool = False,
 ) -> QueueSyncResult:
     """Single-pass sync for all subjective dimensions in the plan queue.
 
@@ -250,11 +248,12 @@ def sync_subjective_dimensions(
     - **stale**: dimensions needing review refresh.
     - **under_target**: scored below target but not stale.
 
-    Stale/under-target injection is gated by objective backlog:
+    Stale/under-target paths diverge:
 
-    1. **No backlog** (or cycle just completed) — inject to back of queue.
-    2. **Backlog, not escalated** — evict from queue.  Update deferral counter.
-    3. **Backlog, escalated** — force-promote to front (after workflow/triage).
+    1. **stale** — never deferred; always promoted after workflow/triage and
+       before objective items unless explicitly skipped.
+    2. **under_target** — deferred mid-cycle while objective backlog exists,
+       then force-promoted after repeated deferrals.
 
     Unscored injection is unconditional at cycle boundaries, independent of
     backlog state.
@@ -271,7 +270,8 @@ def sync_subjective_dimensions(
     )
     under_target_ids = current_under_target_ids(state)
     skipped_ids = _skipped_subjective_ids(plan)
-    injectable_ids = (stale_ids | under_target_ids) - skipped_ids
+    stale_injectable = stale_ids - skipped_ids
+    under_target_injectable = under_target_ids - skipped_ids
 
     # --- Resurface: clear skips for never-reviewed dimensions -------------
     if not mid_cycle:
@@ -287,13 +287,13 @@ def sync_subjective_dimensions(
 
     # --- Backlog and deferral ---------------------------------------------
     objective_backlog = has_objective_backlog(state, policy)
-    should_defer = objective_backlog and not cycle_just_completed
+    should_defer_under_target = objective_backlog and mid_cycle
     escalated = False
-    if should_defer and injectable_ids:
+    if should_defer_under_target and under_target_injectable:
         escalated = _update_deferral(
             plan, state,
-            injectable_ids=injectable_ids,
-            stale_ids=stale_ids,
+            injectable_ids=under_target_injectable,
+            stale_ids=set(),
             under_target_ids=under_target_ids,
             skipped_ids=skipped_ids,
         )
@@ -301,11 +301,13 @@ def sync_subjective_dimensions(
         _clear_defer_meta(plan)
 
     # --- Single prune pass ------------------------------------------------
-    evicting = should_defer and not escalated
-    if evicting:
-        keep_ids = set() if mid_cycle else unscored_ids
+    evicting_under_target = should_defer_under_target and not escalated
+    if evicting_under_target:
+        keep_ids = stale_injectable if mid_cycle else (unscored_ids | stale_injectable)
     else:
-        keep_ids = injectable_ids if mid_cycle else (unscored_ids | injectable_ids)
+        keep_ids = stale_injectable | under_target_injectable
+        if not mid_cycle:
+            keep_ids |= unscored_ids
     _prune_subjective_ids(order, keep_ids=keep_ids, pruned=result.pruned)
 
     # --- Inject unscored (cycle boundaries only) --------------------------
@@ -317,10 +319,21 @@ def sync_subjective_dimensions(
         )
 
     # --- Inject or promote stale/under_target -----------------------------
+    existing_before = set(order)
+    if stale_injectable:
+        _promote_subjective_ids(order, sorted(stale_injectable))
+        for sid in sorted(stale_injectable):
+            if sid not in existing_before:
+                result.injected.append(sid)
+
     if escalated:
-        _promote_subjective_ids(order, sorted(injectable_ids))
-    elif not evicting and injectable_ids:
-        _inject_subjective_ids(order, inject_ids=injectable_ids, injected=result.injected)
+        _promote_subjective_ids(order, sorted(under_target_injectable))
+    elif not evicting_under_target and under_target_injectable:
+        _inject_subjective_ids(
+            order,
+            inject_ids=under_target_injectable,
+            injected=result.injected,
+        )
 
     return result
 

@@ -1095,7 +1095,7 @@ def test_stale_ids_not_evicted_by_auto_cluster():
 
 
 def test_under_target_lifecycle_with_sync_stale():
-    """Full lifecycle: sync_stale injects, evicts, re-injects. auto_cluster clusters."""
+    """Full lifecycle: under-target reviews defer only mid-cycle, then reappear."""
     from desloppify.engine._plan.sync.dimensions import sync_subjective_dimensions
 
     plan = empty_plan()
@@ -1112,7 +1112,8 @@ def test_under_target_lifecycle_with_sync_stale():
     auto_cluster_issues(plan, state_empty)
     assert "auto/under-target-review" in plan["clusters"]
 
-    # Phase 2: objective issues appear — sync_stale evicts
+    # Phase 2: objective issues appear mid-cycle — sync_stale evicts
+    plan["plan_start_scores"] = {"strict": 70.0}
     state_obj = {
         **ut,
         "issues": {
