@@ -1,11 +1,11 @@
 ---
 name: desloppify
 description: >
-  Codebase health scanner and technical debt tracker. Use when the user asks
-  about code quality, technical debt, dead code, large files, god classes,
-  duplicate functions, code smells, naming issues, import cycles, or coupling
-  problems. Also use when asked for a health score, what to fix next, or to
-  create a cleanup plan. Supports 29 languages.
+  Multi-language codebase health scanner with animal advocacy extensions.
+  Use when the user explicitly asks to run desloppify, scan for technical
+  debt, get a health score, or create a cleanup plan. Also triggers for
+  advocacy language, activist security, or animal welfare scoring. Do NOT
+  trigger for general code review, renaming, or fixing individual bugs.
 ---
 
 <!-- desloppify-begin -->
@@ -29,6 +29,8 @@ Three phases, repeated as a cycle.
 desloppify scan --path .       # analyse the codebase
 desloppify status              # check scores — are we at target?
 ```
+
+After scanning, **always run `desloppify next`** — it tells you exactly what to do, in order. Don't interpret the scan output yourself or ask the user what to do. Just run `next` and follow its instructions.
 
 The scan will tell you if subjective dimensions need review. Follow its instructions. To trigger a review manually:
 ```bash
@@ -278,7 +280,7 @@ If the fix is unclear or the change needs discussion, open an issue at `https://
 
 `command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: uvx --from git+https://github.com/Open-Paws/desloppify.git desloppify"`
 
-If `uvx` is not available: `pip install desloppify[full]`
+If `uvx` is not available: `pip install desloppify[full] && desloppify setup`
 
 ## Open Paws Animal Advocacy Extensions
 
