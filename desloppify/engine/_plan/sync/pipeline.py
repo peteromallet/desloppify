@@ -154,8 +154,6 @@ def reconcile_plan(
 ) -> ReconcileResult:
     """Run the shared boundary reconciliation pipeline."""
     result = ReconcileResult()
-    if not live_planned_queue_empty(plan) and not force_rescan:
-        return result
 
     policy = compute_subjective_visibility(
         state,
@@ -164,9 +162,8 @@ def reconcile_plan(
     )
     cycle_just_completed = not plan.get("plan_start_scores") or force_rescan
 
-    # Skip subjective sync when workflow will supersede it: all dims are
-    # scored and communicate-score hasn't fired yet this cycle.  The phase
-    # cleanup safety net still prunes if this peek is wrong.
+    # Subjective sync always runs — stale reviews should coexist with
+    # mechanical items in the queue, not be blocked by them.
     will_inject_workflow = (
         not force_rescan
         and "previous_plan_start_scores" not in plan
@@ -188,19 +185,20 @@ def reconcile_plan(
         if result.subjective.changes:
             _log_gate_changes(plan, "sync_subjective", {"changes": True})
 
-    if will_inject_workflow:
-        result.auto_cluster_changes = 0
-    else:
-        result.auto_cluster_changes = int(
-            auto_cluster_issues(
-                plan,
-                state,
-                target_strict=target_strict,
-                policy=policy,
-            )
+    # Auto-clustering and other reconciliation only runs at queue boundaries
+    if not live_planned_queue_empty(plan) and not force_rescan:
+        return result
+
+    result.auto_cluster_changes = int(
+        auto_cluster_issues(
+            plan,
+            state,
+            target_strict=target_strict,
+            policy=policy,
         )
-        if result.auto_cluster_changes:
-            _log_gate_changes(plan, "auto_cluster", {"changes": True})
+    )
+    if result.auto_cluster_changes:
+        _log_gate_changes(plan, "auto_cluster", {"changes": True})
 
     result.communicate_score = sync_communicate_score_needed(
         plan,
