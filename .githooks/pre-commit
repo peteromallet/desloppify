@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Auto-sync docs/*.md → desloppify/data/global/ before commit.
+# Only runs the sync if any docs/*.md files are staged.
+
+staged_docs=$(git diff --cached --name-only -- 'docs/*.md')
+
+if [ -z "$staged_docs" ]; then
+    exit 0
+fi
+
+# Sync copies from working tree into data/global.
+make sync-docs
+
+# Stage all changes in data/global — including deletions from renamed/removed docs.
+git add -A desloppify/data/global/

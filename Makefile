@@ -8,7 +8,9 @@
 	integration-roslyn \
 	tests \
 	tests-full \
+	sync-docs \
 	package-smoke \
+	install-hooks \
 	install-ci-tools \
 	install-full-tools
 
@@ -18,11 +20,22 @@ IMPORTLINTER_CONFIG ?= .github/importlinter.ini
 PYTEST_XML ?=
 PYTEST_XML_FLAG := $(if $(PYTEST_XML),--junitxml=$(PYTEST_XML),)
 
-install-ci-tools:
+sync-docs:
+	mkdir -p desloppify/data/global
+	find desloppify/data/global -maxdepth 1 -type f -name '*.md' -delete
+	cp docs/*.md desloppify/data/global/
+
+install-hooks:
+	mkdir -p .git/hooks
+	cp .githooks/pre-commit .git/hooks/pre-commit
+	chmod +x .git/hooks/pre-commit
+	@echo "Git hooks installed."
+
+install-ci-tools: install-hooks
 	$(PIP) install --upgrade pip
 	$(PIP) install -e . pytest mypy ruff import-linter build twine pyyaml
 
-install-full-tools:
+install-full-tools: install-hooks
 	$(PIP) install --upgrade pip
 	$(PIP) install -e ".[full]" pytest ruff
 
@@ -61,6 +74,7 @@ package-smoke: install-ci-tools
 		python -m pip install --upgrade pip && \
 		WHEEL=$$(ls -t dist/desloppify-*.whl | head -n 1) && \
 		python -m pip install "$$WHEEL[full]" && \
+		python -c "from importlib.resources import files; from pathlib import Path; docs=Path('docs'); bundled=files('desloppify.data.global'); names=sorted(p.name for p in docs.glob('*.md')); assert names; missing=[name for name in names if not bundled.joinpath(name).is_file()]; assert not missing, f'missing bundled docs: {missing}'; mismatched=[name for name in names if bundled.joinpath(name).read_text(encoding='utf-8') != (docs / name).read_text(encoding='utf-8')]; assert not mismatched, f'mismatched bundled docs: {mismatched}'" && \
 		python -c "import importlib.metadata as m,sys; extras=set(m.metadata('desloppify').get_all('Provides-Extra') or []); required={'full','treesitter','python-security','scorecard'}; missing=required-extras; print('missing extras metadata:', sorted(missing)) if missing else None; sys.exit(1 if missing else 0)" && \
 		desloppify --help > /dev/null
 	rm -rf .pkg-smoke
