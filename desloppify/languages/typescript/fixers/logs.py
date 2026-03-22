@@ -32,7 +32,7 @@ def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> FixResult:
         lines_to_remove: set[int] = set()
         for entry in file_entries:
             start = entry["line"] - 1
-            if start >= len(lines):
+            if start < 0 or start >= len(lines):
                 continue
             if is_logger_wrapper_context(lines, start):
                 continue

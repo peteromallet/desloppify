@@ -595,6 +595,24 @@ class TestFixDebugLogs:
         assert len(result.entries) == 1
         assert ts_file.read_text() == original
 
+    def test_zero_line_number_skipped(self, tmp_path):
+        """An entry with line=0 is skipped without corrupting the file."""
+        ts_file = tmp_path / "app.ts"
+        original = "function foo() {\n  return 1;\n}\n"
+        ts_file.write_text(original)
+        entries = [
+            {
+                "file": str(ts_file),
+                "line": 0,
+                "tag": "DEBUG",
+                "content": "console.log('[DEBUG] oops');",
+            }
+        ]
+        result = fix_debug_logs(entries, dry_run=False)
+        # Entry is out-of-bounds (line 0 → index -1); file must be unchanged
+        assert ts_file.read_text() == original
+        assert len(result.entries) == 0
+
     def test_result_metadata(self, tmp_path):
         """Result dict contains expected keys: file, tags, lines_removed, log_count."""
         ts_file = tmp_path / "app.ts"
