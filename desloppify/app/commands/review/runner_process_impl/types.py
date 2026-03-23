@@ -12,16 +12,16 @@ from pathlib import Path
 @dataclass(frozen=True)
 class CodexBatchRunnerDeps:
     timeout_seconds: int
-    subprocess_run: object
+    subprocess_run: Callable[..., object]
     timeout_error: type[BaseException]
-    safe_write_text_fn: object
+    safe_write_text_fn: Callable[[Path, str], None]
     use_popen_runner: bool = False
-    subprocess_popen: object | None = None
+    subprocess_popen: Callable[..., object] | None = None
     live_log_interval_seconds: float = 5.0
     stall_after_output_seconds: int = 90
     max_retries: int = 0
     retry_backoff_seconds: float = 0.0
-    sleep_fn: object = time.sleep
+    sleep_fn: Callable[[float], None] = time.sleep
     validate_output_fn: Callable[[Path], bool] | None = None
     output_validation_grace_seconds: float = 2.0
     output_validation_poll_seconds: float = 0.1
@@ -32,9 +32,9 @@ class FollowupScanDeps:
     project_root: Path
     timeout_seconds: int
     python_executable: str
-    subprocess_run: object
+    subprocess_run: Callable[..., object]
     timeout_error: type[BaseException]
-    colorize_fn: object
+    colorize_fn: Callable[[str, str], str]
 
 
 @dataclass
@@ -59,7 +59,7 @@ class _AttemptContext:
     output_file: Path
     log_file: Path
     log_sections: list[str]
-    safe_write_text_fn: object
+    safe_write_text_fn: Callable[[Path, str], None]
 
 
 @dataclass
@@ -77,7 +77,7 @@ class _ExecutionResult:
 
 @dataclass(frozen=True)
 class _RetryConfig:
-    """Normalized retry/runtime policy for codex batch attempts."""
+    """Normalized retry/runtime policy for batch attempts."""
 
     max_attempts: int
     retry_backoff_seconds: float
@@ -86,8 +86,12 @@ class _RetryConfig:
     use_popen: bool
 
 
+BatchRunnerDeps = CodexBatchRunnerDeps
+
+
 __all__ = [
     "CodexBatchRunnerDeps",
+    "BatchRunnerDeps",
     "FollowupScanDeps",
     "_AttemptContext",
     "_ExecutionResult",

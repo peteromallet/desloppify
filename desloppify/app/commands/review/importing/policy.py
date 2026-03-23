@@ -20,12 +20,10 @@ from ..runtime_paths import blind_packet_path, runtime_project_root
 
 ASSESSMENT_POLICY_KEY = "_assessment_policy"
 BLIND_PROVENANCE_KIND = "blind_review_batch_import"
-SUPPORTED_BLIND_REVIEW_RUNNERS = {"codex", "claude"}
+SUPPORTED_BLIND_REVIEW_RUNNERS = {"codex", "claude", "opencode"}
 ATTESTED_EXTERNAL_RUNNERS = {"claude"}
 ATTESTED_EXTERNAL_REQUIRED_PHRASES = ("without awareness", "unbiased")
-ATTESTED_EXTERNAL_ATTEST_EXAMPLE = (
-    "I validated this review was completed without awareness of overall score and is unbiased."
-)
+ATTESTED_EXTERNAL_ATTEST_EXAMPLE = "I validated this review was completed without awareness of overall score and is unbiased."
 ASSESSMENT_MODE_LABELS = {
     "none": "issues-only (no assessments in payload)",
     "trusted_internal": "trusted internal (durable scores)",
@@ -332,7 +330,9 @@ def assessment_policy_model_from_payload(
     payload: NormalizedReviewImportPayload | ReviewImportPayload,
 ) -> AssessmentImportPolicyModel:
     """Return typed assessment policy metadata from a loaded import payload."""
-    return AssessmentImportPolicyModel.from_mapping(assessment_policy_from_payload(payload))
+    return AssessmentImportPolicyModel.from_mapping(
+        assessment_policy_from_payload(payload)
+    )
 
 
 def assessment_mode_label(policy: AssessmentImportPolicy) -> str:

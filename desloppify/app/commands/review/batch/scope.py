@@ -14,12 +14,17 @@ from desloppify.intelligence.review.feedback_contract import (
 )
 
 
+_SUPPORTED_RUNNERS = {"codex", "opencode"}
+_DEFAULT_RUNNER = "codex"
+
+
 def validate_runner(runner: str, *, colorize_fn) -> None:
     """Validate review batch runner."""
-    if runner == "codex":
+    if runner in _SUPPORTED_RUNNERS:
         return
+    supported = ", ".join(sorted(_SUPPORTED_RUNNERS))
     raise CommandError(
-        f"Error: unsupported runner '{runner}' (supported: codex)", exit_code=2
+        f"Error: unsupported runner '{runner}' (supported: {supported})", exit_code=2
     )
 
 
@@ -43,12 +48,16 @@ def require_batches(
         )
     print(
         colorize_fn(
-            "  Happy path: `desloppify review --prepare` then follow your runner's review workflow.",
+            "  Then follow your runner's review workflow —"
+            " e.g. `desloppify review --run-batches --runner codex --parallel --scan-after-import`"
+            " (swap `codex` for `opencode` if preferred).",
             "dim",
         ),
         file=sys.stderr,
     )
-    raise PacketValidationError("Error: packet has no investigation_batches.", exit_code=1)
+    raise PacketValidationError(
+        "Error: packet has no investigation_batches.", exit_code=1
+    )
 
 
 def print_review_quality(quality: object, *, colorize_fn) -> None:
@@ -57,9 +66,7 @@ def print_review_quality(quality: object, *, colorize_fn) -> None:
         return
     coverage = quality.get("dimension_coverage")
     density = quality.get("evidence_density")
-    high_missing_issue_note = quality.get(
-        REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY
-    )
+    high_missing_issue_note = quality.get(REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY)
     if not isinstance(high_missing_issue_note, int | float):
         high_missing_issue_note = quality.get(
             LEGACY_REVIEW_QUALITY_HIGH_SCORE_MISSING_ISSUES_KEY
@@ -129,7 +136,10 @@ def missing_scored_dimensions(
 
 def missing_dimensions_command(*, missing_dims: list[str], scan_path: str) -> str:
     """Return rerun command for missing subjective dimensions."""
-    base = "desloppify review --prepare --scan-after-import"
+    base = (
+        f"desloppify review --run-batches --runner {_DEFAULT_RUNNER}"
+        " --parallel --scan-after-import"
+    )
     if scan_path and scan_path != ".":
         base += f" --path {shlex.quote(scan_path)}"
     if missing_dims:
@@ -270,6 +280,8 @@ def enforce_trusted_import_coverage_gate(
 
 
 __all__ = [
+    "_DEFAULT_RUNNER",
+    "_SUPPORTED_RUNNERS",
     "collect_reviewed_files_from_batches",
     "enforce_trusted_import_coverage_gate",
     "missing_dimensions_command",

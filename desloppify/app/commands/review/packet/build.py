@@ -77,20 +77,26 @@ def build_holistic_packet(
     context: ReviewPacketContext,
     setup_lang_fn,
     prepare_holistic_review_fn=None,
+    review_prepare_options_cls=None,
+    compute_narrative_fn=None,
+    narrative_context_cls=None,
 ) -> tuple[dict[str, Any], str]:
     """Build the canonical holistic review packet payload and lang name."""
     lang_run, found_files = setup_lang_fn(lang, context.path, config)
     lang_name = lang_run.name
-    narrative = narrative_mod.compute_narrative(
+    compute_narrative = compute_narrative_fn or narrative_mod.compute_narrative
+    narrative_context = narrative_context_cls or narrative_mod.NarrativeContext
+    prepare_options_cls = review_prepare_options_cls or HolisticReviewPrepareOptions
+    narrative = compute_narrative(
         state,
-        context=narrative_mod.NarrativeContext(lang=lang_name, command="review"),
+        context=narrative_context(lang=lang_name, command="review"),
     )
     prepare_fn = prepare_holistic_review_fn or prepare_holistic_review
     packet = prepare_fn(
         context.path,
         lang_run,
         state,
-        options=HolisticReviewPrepareOptions(
+        options=prepare_options_cls(
             dimensions=context.dimensions,
             files=found_files or None,
             max_files_per_batch=coerce_review_batch_file_limit(config),
@@ -224,6 +230,9 @@ def build_review_packet_payload(
     next_command: str,
     setup_lang_fn,
     prepare_holistic_review_fn=None,
+    review_prepare_options_cls=None,
+    compute_narrative_fn=None,
+    narrative_context_cls=None,
 ) -> dict[str, Any]:
     """Build and validate a holistic review packet without persisting artifacts."""
     packet, _lang_name = build_holistic_packet(
@@ -233,6 +242,9 @@ def build_review_packet_payload(
         context=context,
         setup_lang_fn=setup_lang_fn,
         prepare_holistic_review_fn=prepare_holistic_review_fn,
+        review_prepare_options_cls=review_prepare_options_cls,
+        compute_narrative_fn=compute_narrative_fn,
+        narrative_context_cls=narrative_context_cls,
     )
     packet["config"] = redacted_review_config(config)
     packet["next_command"] = next_command

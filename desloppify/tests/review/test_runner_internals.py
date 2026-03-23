@@ -22,12 +22,13 @@ from desloppify.app.commands.review.runner_process_impl.attempts import (
 )
 from desloppify.app.commands.review.runner_process_impl.io import (
     _check_stall,
+    _extract_text_from_opencode_json_stream,
     _output_file_has_json_payload,
     _output_file_status_text,
     extract_payload_from_log,
 )
 from desloppify.app.commands.review.runner_process_impl.types import (
-    CodexBatchRunnerDeps,
+    BatchRunnerDeps,
     _ExecutionResult,
 )
 
@@ -35,8 +36,8 @@ from desloppify.app.commands.review.runner_process_impl.types import (
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-def _make_deps(**overrides) -> CodexBatchRunnerDeps:
-    """Build a minimal CodexBatchRunnerDeps with sensible defaults."""
+def _make_deps(**overrides) -> BatchRunnerDeps:
+    """Build a minimal BatchRunnerDeps with sensible defaults."""
     defaults = dict(
         timeout_seconds=60,
         subprocess_run=MagicMock(),
@@ -53,7 +54,7 @@ def _make_deps(**overrides) -> CodexBatchRunnerDeps:
         output_validation_poll_seconds=0.01,
     )
     defaults.update(overrides)
-    return CodexBatchRunnerDeps(**defaults)
+    return BatchRunnerDeps(**defaults)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -380,7 +381,9 @@ class TestHandleEarlyAttemptReturn:
         assert handle_early_attempt_return(result) is None
 
     def test_returns_early_return_code(self):
-        result = _ExecutionResult(code=0, stdout_text="", stderr_text="", early_return=127)
+        result = _ExecutionResult(
+            code=0, stdout_text="", stderr_text="", early_return=127
+        )
         assert handle_early_attempt_return(result) == 127
 
 
@@ -439,9 +442,7 @@ class TestHandleTimeoutOrStall:
     def test_stall_with_valid_output_recovers(self, tmp_path):
         output_file = tmp_path / "out.json"
         output_file.write_text('{"quality": {}}')
-        result = _ExecutionResult(
-            code=1, stdout_text="", stderr_text="", stalled=True
-        )
+        result = _ExecutionResult(code=1, stdout_text="", stderr_text="", stalled=True)
         deps = _make_deps()
         log_sections: list[str] = []
         ret = handle_timeout_or_stall(
@@ -456,9 +457,7 @@ class TestHandleTimeoutOrStall:
         assert ret == 0
 
     def test_stall_without_output_returns_124(self, tmp_path):
-        result = _ExecutionResult(
-            code=1, stdout_text="", stderr_text="", stalled=True
-        )
+        result = _ExecutionResult(code=1, stdout_text="", stderr_text="", stalled=True)
         deps = _make_deps()
         ret = handle_timeout_or_stall(
             header="ATTEMPT 1/1",
@@ -752,7 +751,326 @@ class TestHandleFailedAttempt:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# runner_parallel.execution.py
+# OpenCode runner support
 # ═══════════════════════════════════════════════════════════════════
 
 
+class TestExtractTextFromOpenCodeJsonStream:
+    """_extract_text_from_opencode_json_stream: extracts assistant text from NDJSON."""
+
+    def test_empty_input_returns_empty(self):
+        assert _extract_text_from_opencode_json_stream("") == ""
+
+    def test_simple_text_event(self):
+        """Single text event should return the text payload."""
+        stream = (
+            '{"type":"step_start","timestamp":1,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"text","timestamp":2,"sessionID":"s","part":{"type":"text","text":"hello world"}}\n'
+            '{"type":"step_finish","timestamp":3,"sessionID":"s","part":{"type":"step-finish","reason":"stop"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == "hello world"
+
+    def test_multi_step_with_tool_use(self):
+        """Multi-step run: only the terminal stop-step text is returned."""
+        stream = (
+            '{"type":"step_start","timestamp":1,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"text","timestamp":2,"sessionID":"s","part":{"type":"text","text":"planning {\\"assessments\\": {\\"logic_clarity\\": 10}, \\"issues\\": []}"}}\n'
+            '{"type":"tool_use","timestamp":3,"sessionID":"s","part":{"type":"tool","callID":"c1"}}\n'
+            '{"type":"step_finish","timestamp":4,"sessionID":"s","part":{"type":"step-finish","reason":"tool-calls"}}\n'
+            '{"type":"step_start","timestamp":5,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"text","timestamp":6,"sessionID":"s","part":{"type":"text","text":"{\\"assessments\\": {}}"}}\n'
+            '{"type":"step_finish","timestamp":7,"sessionID":"s","part":{"type":"step-finish","reason":"stop"}}\n'
+        )
+        result = _extract_text_from_opencode_json_stream(stream)
+        assert result == '{"assessments": {}}'
+
+    def test_tool_call_run_without_terminal_stop_returns_empty(self):
+        """Without a terminal stop step, tool-call runs should not reuse earlier text."""
+        stream = (
+            '{"type":"step_start","timestamp":1,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"text","timestamp":2,"sessionID":"s","part":{"type":"text","text":"{\\"assessments\\": {\\"logic_clarity\\": 10}, \\"issues\\": []}"}}\n'
+            '{"type":"step_finish","timestamp":3,"sessionID":"s","part":{"type":"step-finish","reason":"tool-calls"}}\n'
+            '{"type":"step_start","timestamp":4,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"text","timestamp":5,"sessionID":"s","part":{"type":"text","text":"{\\"assessments\\": {\\"logic_clarity\\": 90}, \\"issues\\": []}"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == ""
+
+    def test_incomplete_step_without_finish_returns_empty(self):
+        """In-progress step text should not be exposed before step_finish arrives."""
+        stream = (
+            '{"type":"step_start","timestamp":1,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"text","timestamp":2,"sessionID":"s","part":{"type":"text","text":"{\\"assessments\\": {\\"logic_clarity\\": 10}, \\"issues\\": []}"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == ""
+
+    def test_multiple_text_events_concatenated(self):
+        """Multiple text events within a step are joined."""
+        stream = (
+            '{"type":"text","timestamp":1,"sessionID":"s","part":{"type":"text","text":"first "}}\n'
+            '{"type":"text","timestamp":2,"sessionID":"s","part":{"type":"text","text":"second"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == "first second"
+
+    def test_invalid_json_lines_skipped(self):
+        """Non-JSON lines are silently skipped."""
+        stream = (
+            "not json at all\n"
+            '{"type":"text","timestamp":1,"sessionID":"s","part":{"type":"text","text":"ok"}}\n'
+            "also not json\n"
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == "ok"
+
+    def test_non_dict_json_skipped(self):
+        """JSON arrays and scalars are skipped."""
+        stream = (
+            "[1, 2, 3]\n"
+            '"just a string"\n'
+            '{"type":"text","timestamp":1,"sessionID":"s","part":{"type":"text","text":"found"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == "found"
+
+    def test_text_event_without_part_text(self):
+        """Text event with missing part.text should contribute empty string."""
+        stream = (
+            '{"type":"text","timestamp":1,"sessionID":"s","part":{"type":"text"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == ""
+
+    def test_non_text_event_types_ignored(self):
+        """Events that are not type=text should not contribute text."""
+        stream = (
+            '{"type":"step_start","timestamp":1,"sessionID":"s","part":{"type":"step-start"}}\n'
+            '{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","text":"ignored"}}\n'
+            '{"type":"step_finish","timestamp":3,"sessionID":"s","part":{"type":"step-finish","reason":"stop"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == ""
+
+    def test_whitespace_only_input(self):
+        assert _extract_text_from_opencode_json_stream("  \n  \n  ") == ""
+
+    def test_real_world_simple_output(self):
+        """Matches the actual captured output from /tmp/opencode_json_output.txt."""
+        stream = (
+            '{"type":"step_start","timestamp":1772656351012,"sessionID":"ses_34572bc8affe2KySIxdu8u4Ojn",'
+            '"part":{"id":"prt_cba8d5721001FNzAaBjUG8rArL","sessionID":"ses_34572bc8affe2KySIxdu8u4Ojn",'
+            '"messageID":"msg_cba8d43e8001BJkygj22hMSi5X","type":"step-start",'
+            '"snapshot":"0afdb0c3b6a4da3fc76439cf1a25ddbe7731c05e"}}\n'
+            '{"type":"text","timestamp":1772656351015,"sessionID":"ses_34572bc8affe2KySIxdu8u4Ojn",'
+            '"part":{"id":"prt_cba8d5723001lZi3eZo4ZuAzIL","sessionID":"ses_34572bc8affe2KySIxdu8u4Ojn",'
+            '"messageID":"msg_cba8d43e8001BJkygj22hMSi5X","type":"text","text":"hello",'
+            '"time":{"start":1772656351013,"end":1772656351013}}}\n'
+            '{"type":"step_finish","timestamp":1772656351046,"sessionID":"ses_34572bc8affe2KySIxdu8u4Ojn",'
+            '"part":{"id":"prt_cba8d5726001wZmrZBvV0R1yaI","sessionID":"ses_34572bc8affe2KySIxdu8u4Ojn",'
+            '"messageID":"msg_cba8d43e8001BJkygj22hMSi5X","type":"step-finish","reason":"stop"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == "hello"
+
+
+class TestOpenCodeBatchCommand:
+    """opencode_batch_command: builds the opencode run command line."""
+
+    def test_basic_command(self, tmp_path, monkeypatch):
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_ATTACH", raising=False)
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        assert cmd[0] == "opencode"
+        assert cmd[1] == "run"
+        assert "--format" in cmd
+        assert "json" in cmd
+        assert "--dir" in cmd
+        assert str(tmp_path) in cmd
+        assert cmd[-1] == "test prompt"
+        assert "--attach" not in cmd
+
+    def test_attach_url_from_env(self, tmp_path, monkeypatch):
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.setenv("DESLOPPIFY_OPENCODE_ATTACH", "http://localhost:4096")
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        attach_idx = cmd.index("--attach")
+        assert cmd[attach_idx + 1] == "http://localhost:4096"
+
+    def test_empty_attach_url_ignored(self, tmp_path, monkeypatch):
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.setenv("DESLOPPIFY_OPENCODE_ATTACH", "  ")
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        assert "--attach" not in cmd
+
+    def test_model_env_var(self, tmp_path, monkeypatch):
+        """DESLOPPIFY_OPENCODE_MODEL env var adds --model flag."""
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_ATTACH", raising=False)
+        monkeypatch.setenv("DESLOPPIFY_OPENCODE_MODEL", "claude-sonnet-4-20250514")
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        model_idx = cmd.index("--model")
+        assert cmd[model_idx + 1] == "claude-sonnet-4-20250514"
+
+    def test_model_env_var_empty_ignored(self, tmp_path, monkeypatch):
+        """Empty DESLOPPIFY_OPENCODE_MODEL is ignored."""
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_ATTACH", raising=False)
+        monkeypatch.setenv("DESLOPPIFY_OPENCODE_MODEL", "  ")
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        assert "--model" not in cmd
+
+    def test_variant_env_var(self, tmp_path, monkeypatch):
+        """DESLOPPIFY_OPENCODE_VARIANT env var adds --variant flag."""
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_ATTACH", raising=False)
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_MODEL", raising=False)
+        monkeypatch.setenv("DESLOPPIFY_OPENCODE_VARIANT", "high")
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        idx = cmd.index("--variant")
+        assert cmd[idx + 1] == "high"
+
+    def test_variant_env_var_empty_ignored(self, tmp_path, monkeypatch):
+        """Empty DESLOPPIFY_OPENCODE_VARIANT is ignored."""
+        from desloppify.app.commands.review.runner_process import opencode_batch_command
+
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_ATTACH", raising=False)
+        monkeypatch.delenv("DESLOPPIFY_OPENCODE_MODEL", raising=False)
+        monkeypatch.setenv("DESLOPPIFY_OPENCODE_VARIANT", "  ")
+        cmd = opencode_batch_command(prompt="test prompt", repo_root=tmp_path)
+        assert "--variant" not in cmd
+
+
+class TestValidateRunnerOpenCode:
+    """validate_runner accepts 'opencode' as a valid runner."""
+
+    def test_opencode_accepted(self):
+        from desloppify.app.commands.review.batch.scope import validate_runner
+
+        # Should not raise
+        validate_runner("opencode", colorize_fn=lambda text, color: text)
+
+    def test_codex_still_accepted(self):
+        from desloppify.app.commands.review.batch.scope import validate_runner
+
+        validate_runner("codex", colorize_fn=lambda text, color: text)
+
+    def test_unknown_runner_rejected(self):
+        import pytest
+
+        from desloppify.app.commands.review.batch.scope import validate_runner
+        from desloppify.base.exception_sets import CommandError
+
+        with pytest.raises(CommandError, match="unsupported runner"):
+            validate_runner("unknown", colorize_fn=lambda text, color: text)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# OpenCode failure detection
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestOpenCodeFailureDetection:
+    """runner_failures: _is_runner_missing detects opencode-specific patterns."""
+
+    def test_opencode_not_found_detected(self):
+        from desloppify.app.commands.review.runner_failures import _is_runner_missing
+
+        assert _is_runner_missing("opencode not found") is True
+
+    def test_codex_not_found_still_detected(self):
+        from desloppify.app.commands.review.runner_failures import _is_runner_missing
+
+        assert _is_runner_missing("codex not found") is True
+
+    def test_opencode_errno2_detected(self):
+        from desloppify.app.commands.review.runner_failures import _is_runner_missing
+
+        assert _is_runner_missing("errno 2 opencode") is True
+
+    def test_opencode_no_such_file_detected(self):
+        from desloppify.app.commands.review.runner_failures import _is_runner_missing
+
+        assert _is_runner_missing("no such file or directory $ opencode run") is True
+
+    def test_unrelated_text_not_detected(self):
+        from desloppify.app.commands.review.runner_failures import _is_runner_missing
+
+        assert _is_runner_missing("some other error") is False
+
+    def test_classify_opencode_runner_missing(self):
+        from desloppify.app.commands.review.runner_failures import (
+            classify_runner_failure,
+        )
+
+        assert classify_runner_failure("opencode not found") == "runner_missing"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# OpenCode provenance / import policy
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestOpenCodeProvenanceTrust:
+    """SUPPORTED_BLIND_REVIEW_RUNNERS includes 'opencode' for trusted imports."""
+
+    def test_opencode_in_supported_runners(self):
+        from desloppify.app.commands.review.importing.policy import (
+            SUPPORTED_BLIND_REVIEW_RUNNERS,
+        )
+
+        assert "opencode" in SUPPORTED_BLIND_REVIEW_RUNNERS
+
+    def test_codex_still_in_supported_runners(self):
+        from desloppify.app.commands.review.importing.policy import (
+            SUPPORTED_BLIND_REVIEW_RUNNERS,
+        )
+
+        assert "codex" in SUPPORTED_BLIND_REVIEW_RUNNERS
+
+    def test_claude_still_in_supported_runners(self):
+        from desloppify.app.commands.review.importing.policy import (
+            SUPPORTED_BLIND_REVIEW_RUNNERS,
+        )
+
+        assert "claude" in SUPPORTED_BLIND_REVIEW_RUNNERS
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Runner-agnostic failure hints
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRunnerAgnosticHints:
+    """_FAILURE_HINT_BY_CATEGORY messages are runner-agnostic."""
+
+    def test_runner_missing_hint_not_codex_specific(self):
+        from desloppify.app.commands.review.runner_failures import (
+            _FAILURE_HINT_BY_CATEGORY,
+        )
+
+        hint = _FAILURE_HINT_BY_CATEGORY["runner_missing"]
+        assert "codex CLI not found" not in hint.lower()
+        assert "runner" in hint.lower()
+
+    def test_runner_auth_hint_not_codex_specific(self):
+        from desloppify.app.commands.review.runner_failures import (
+            _FAILURE_HINT_BY_CATEGORY,
+        )
+
+        hint = _FAILURE_HINT_BY_CATEGORY["runner_auth"]
+        assert "codex runner appears" not in hint.lower()
+
+    def test_usage_limit_hint_not_codex_specific(self):
+        from desloppify.app.commands.review.runner_failures import (
+            _FAILURE_HINT_BY_CATEGORY,
+        )
+
+        hint = _FAILURE_HINT_BY_CATEGORY["usage_limit"]
+        assert "codex usage" not in hint.lower()
+
+    def test_stream_disconnect_hint_not_codex_specific(self):
+        from desloppify.app.commands.review.runner_failures import (
+            _FAILURE_HINT_BY_CATEGORY,
+        )
+
+        hint = _FAILURE_HINT_BY_CATEGORY["stream_disconnect"]
+        assert "codex connectivity" not in hint.lower()

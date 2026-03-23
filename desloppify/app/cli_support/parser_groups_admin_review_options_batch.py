@@ -14,7 +14,7 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
     )
     g_batch.add_argument(
         "--runner",
-        choices=["codex"],
+        choices=["codex", "opencode"],
         default="codex",
         help="Subagent runner backend (default: codex)",
     )
@@ -26,8 +26,7 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
         type=int,
         default=3,
         help=(
-            "Max concurrent subagent batches when --parallel is enabled "
-            "(default: 3)"
+            "Max concurrent subagent batches when --parallel is enabled (default: 3)"
         ),
     )
     g_batch.add_argument(
@@ -41,8 +40,7 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
         type=int,
         default=1,
         help=(
-            "Retries per failed batch for transient runner/network errors "
-            "(default: 1)"
+            "Retries per failed batch for transient runner/network errors (default: 1)"
         ),
     )
     g_batch.add_argument(
@@ -50,8 +48,7 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
         type=float,
         default=2.0,
         help=(
-            "Base backoff delay for transient batch retries in seconds "
-            "(default: 2.0)"
+            "Base backoff delay for transient batch retries in seconds (default: 2.0)"
         ),
     )
     g_batch.add_argument(

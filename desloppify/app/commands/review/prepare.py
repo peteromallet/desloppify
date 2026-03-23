@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import desloppify.intelligence.narrative.core as narrative_mod
+import desloppify.intelligence.review.prepare as review_mod
+
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
@@ -12,6 +15,12 @@ from .packet.build import (
     resolve_review_packet_context,
 )
 from .runtime.setup import setup_lang_concrete
+
+
+_ORIGINAL_COMPUTE_NARRATIVE = narrative_mod.compute_narrative
+_ORIGINAL_NARRATIVE_CONTEXT = narrative_mod.NarrativeContext
+_ORIGINAL_PREPARE_HOLISTIC_REVIEW = review_mod.prepare_holistic_review
+_ORIGINAL_REVIEW_PREPARE_OPTIONS = review_mod.HolisticReviewPrepareOptions
 
 
 def do_prepare(
@@ -28,6 +37,22 @@ def do_prepare(
 
     # Keep prepare and external-start on one packet-construction contract.
     try:
+        build_kwargs: dict[str, object] = {}
+        if narrative_mod.compute_narrative is not _ORIGINAL_COMPUTE_NARRATIVE:
+            build_kwargs["compute_narrative_fn"] = narrative_mod.compute_narrative
+        if narrative_mod.NarrativeContext is not _ORIGINAL_NARRATIVE_CONTEXT:
+            build_kwargs["narrative_context_cls"] = narrative_mod.NarrativeContext
+        if review_mod.prepare_holistic_review is not _ORIGINAL_PREPARE_HOLISTIC_REVIEW:
+            build_kwargs["prepare_holistic_review_fn"] = (
+                review_mod.prepare_holistic_review
+            )
+        if (
+            review_mod.HolisticReviewPrepareOptions
+            is not _ORIGINAL_REVIEW_PREPARE_OPTIONS
+        ):
+            build_kwargs["review_prepare_options_cls"] = (
+                review_mod.HolisticReviewPrepareOptions
+            )
         data = build_review_packet_payload(
             state=state,
             lang=lang,
@@ -35,6 +60,7 @@ def do_prepare(
             context=context,
             next_command=next_command,
             setup_lang_fn=setup_lang_concrete,
+            **build_kwargs,
         )
     except ValueError as exc:
         msg = str(exc).strip()
@@ -59,7 +85,10 @@ def do_prepare(
 
 
 def _print_prepare_summary(
-    data: dict, *, next_command: str, retrospective: bool,
+    data: dict,
+    *,
+    next_command: str,
+    retrospective: bool,
 ) -> None:
     """Print the prepare summary to the terminal."""
     total = data.get("total_files", 0)
@@ -120,7 +149,7 @@ def _print_prepare_summary(
     )
     print(
         colorize(
-            "  5. Emergency only: `--manual-override --attest \"<why>\"` (provisional; expires on next scan)",
+            '  5. Emergency only: `--manual-override --attest "<why>"` (provisional; expires on next scan)',
             "dim",
         )
     )

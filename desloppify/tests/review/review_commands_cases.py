@@ -21,13 +21,17 @@ from desloppify import state as state_mod
 from desloppify.app.commands.review.batch.orchestrator import (
     do_run_batches,
 )
+from desloppify.app.commands.review.batch.core_parse import extract_json_payload
 from desloppify.app.commands.review.importing.cmd import do_import as _do_import
 from desloppify.app.commands.review.importing.cmd import (
     do_validate_import as _do_validate_import,
 )
 from desloppify.app.commands.review.importing.flags import ReviewImportConfig
 from desloppify.app.commands.review.prepare import do_prepare as _do_prepare
-from desloppify.app.commands.review.runtime.setup import setup_lang_concrete as _setup_lang
+from desloppify.app.commands.review.runtime.setup import (
+    setup_lang_concrete as _setup_lang,
+)
+from desloppify.app.commands.review.runner_process_impl.types import _ExecutionResult
 from desloppify.base.exception_sets import CommandError
 from desloppify.engine.policy.zones import Zone, ZoneRule
 from desloppify.intelligence.review import (
@@ -44,7 +48,7 @@ from desloppify.tests.review.shared_review_fixtures import (
 runner_helpers_mod = SimpleNamespace(
     BatchExecutionOptions=runner_parallel_mod.BatchExecutionOptions,
     BatchResult=runner_parallel_mod.BatchResult,
-    CodexBatchRunnerDeps=runner_process_mod.CodexBatchRunnerDeps,
+    CodexBatchRunnerDeps=runner_process_mod.BatchRunnerDeps,
     FollowupScanDeps=runner_process_mod.FollowupScanDeps,
     build_batch_import_provenance=runner_packets_mod.build_batch_import_provenance,
     build_blind_packet=runner_packets_mod.build_blind_packet,
@@ -56,11 +60,16 @@ runner_helpers_mod = SimpleNamespace(
     print_failures_and_raise=runner_failures_mod.print_failures_and_raise,
     run_codex_batch=runner_process_mod.run_codex_batch,
     run_followup_scan=runner_process_mod.run_followup_scan,
+    run_opencode_batch=runner_process_mod.run_opencode_batch,
     run_stamp=runner_packets_mod.run_stamp,
     selected_batch_indexes=runner_packets_mod.selected_batch_indexes,
     sha256_file=runner_packets_mod.sha256_file,
     write_packet_snapshot=runner_packets_mod.write_packet_snapshot,
 )
+
+
+def _safe_write_text(path: Path, text: str) -> None:
+    path.write_text(text)
 
 
 class TestBatchDimensionCoverageNotices:
@@ -80,7 +89,9 @@ class TestBatchDimensionCoverageNotices:
         out = capsys.readouterr().out
         assert "targets 2/3 scored subjective dimensions" in out
         assert "Missing from this run: low_level_elegance" in out
+        assert "--runner codex" in out
         assert "--dimensions low_level_elegance" in out
+        assert "<codex|opencode>" not in out
 
     def test_import_notice_warns_and_returns_missing_dimensions(self, capsys):
         missing = review_scope_mod.print_import_dimension_coverage_notice(
@@ -98,7 +109,9 @@ class TestBatchDimensionCoverageNotices:
         assert missing == ["type_safety"]
         assert "imported assessments for 2/3 scored subjective dimensions" in out
         assert "Still missing: type_safety" in out
+        assert "--runner codex" in out
         assert "--path src --dimensions type_safety" in out
+        assert "<codex|opencode>" not in out
 
 
 class TestCmdReviewPrepare:
@@ -169,13 +182,17 @@ class TestCmdReviewPrepare:
         lang = MagicMock()
         lang.name = "typescript"
 
-        with patch("desloppify.app.commands.review.importing.cmd.save_state", mock_save):
+        with patch(
+            "desloppify.app.commands.review.importing.cmd.save_state", mock_save
+        ):
             _do_import(str(issues_file), empty_state, lang, "fake_sp")
 
         assert saved["sp"] == "fake_sp"
         assert len(empty_state["work_items"]) == 1
 
-    def test_do_prepare_prints_narrative_reminders(self, mock_lang_with_zones, empty_state, tmp_path, capsys):
+    def test_do_prepare_prints_narrative_reminders(
+        self, mock_lang_with_zones, empty_state, tmp_path, capsys
+    ):
         from unittest.mock import MagicMock, patch
 
         from desloppify.app.commands.review.prepare import do_prepare as _do_prepare
@@ -197,14 +214,25 @@ class TestCmdReviewPrepare:
 
         def _fake_narrative(_state, **kwargs):
             captured_kwargs.update(kwargs)
-            return {"reminders": [{"type": "review_stale", "message": "Design review is stale."}]}
+            return {
+                "reminders": [
+                    {"type": "review_stale", "message": "Design review is stale."}
+                ]
+            }
 
-        with patch(
-            "desloppify.app.commands.review.prepare.setup_lang_concrete",
-            return_value=(mock_lang_with_zones, file_list),
-        ), \
-             patch("desloppify.app.commands.review.prepare.write_query", lambda _data: None), \
-             patch("desloppify.intelligence.narrative.core.compute_narrative", _fake_narrative):
+        with (
+            patch(
+                "desloppify.app.commands.review.prepare.setup_lang_concrete",
+                return_value=(mock_lang_with_zones, file_list),
+            ),
+            patch(
+                "desloppify.app.commands.review.prepare.write_query", lambda _data: None
+            ),
+            patch(
+                "desloppify.intelligence.narrative.core.compute_narrative",
+                _fake_narrative,
+            ),
+        ):
             _do_prepare(
                 args,
                 empty_state,
@@ -256,7 +284,9 @@ class TestCmdReviewPrepare:
                 "desloppify.app.commands.review.packet.build.prepare_holistic_review",
                 side_effect=_fake_prepare_holistic_review,
             ),
-            patch("desloppify.app.commands.review.prepare.write_query", lambda _data: None),
+            patch(
+                "desloppify.app.commands.review.prepare.write_query", lambda _data: None
+            ),
         ):
             _do_prepare(
                 args,
@@ -268,14 +298,24 @@ class TestCmdReviewPrepare:
 
         assert captured_limit["max_files_per_batch"] == 17
 
-    def test_do_import_untrusted_assessment_only_payload_imports_issues_only(self, empty_state, tmp_path):
+    def test_do_import_untrusted_assessment_only_payload_imports_issues_only(
+        self, empty_state, tmp_path
+    ):
         from unittest.mock import MagicMock
 
         from desloppify.app.commands.review.importing.cmd import do_import as _do_import
 
         empty_state["subjective_assessments"] = {
-            "naming_quality": {"score": 90, "source": "per_file", "assessed_at": "2026-02-01T00:00:00Z"},
-            "logic_clarity": {"score": 90, "source": "per_file", "assessed_at": "2026-02-01T00:00:00Z"},
+            "naming_quality": {
+                "score": 90,
+                "source": "per_file",
+                "assessed_at": "2026-02-01T00:00:00Z",
+            },
+            "logic_clarity": {
+                "score": 90,
+                "source": "per_file",
+                "assessed_at": "2026-02-01T00:00:00Z",
+            },
         }
         payload = {
             "assessments": {"naming_quality": 40, "logic_clarity": 40},
@@ -298,8 +338,16 @@ class TestCmdReviewPrepare:
         from desloppify.app.commands.review.importing.cmd import do_import as _do_import
 
         empty_state["subjective_assessments"] = {
-            "naming_quality": {"score": 90, "source": "per_file", "assessed_at": "2026-02-01T00:00:00Z"},
-            "logic_clarity": {"score": 90, "source": "per_file", "assessed_at": "2026-02-01T00:00:00Z"},
+            "naming_quality": {
+                "score": 90,
+                "source": "per_file",
+                "assessed_at": "2026-02-01T00:00:00Z",
+            },
+            "logic_clarity": {
+                "score": 90,
+                "source": "per_file",
+                "assessed_at": "2026-02-01T00:00:00Z",
+            },
         }
         payload = {
             "assessments": {"naming_quality": 40, "logic_clarity": 40},
@@ -317,7 +365,9 @@ class TestCmdReviewPrepare:
         lang = MagicMock()
         lang.name = "typescript"
 
-        with patch("desloppify.app.commands.review.importing.cmd.save_state", mock_save):
+        with patch(
+            "desloppify.app.commands.review.importing.cmd.save_state", mock_save
+        ):
             _do_import(
                 str(issues_file),
                 empty_state,
@@ -331,13 +381,22 @@ class TestCmdReviewPrepare:
 
         assert saved["sp"] == "fake_sp"
         assert empty_state["subjective_assessments"]["naming_quality"]["score"] == 40
-        assert empty_state["subjective_assessments"]["naming_quality"]["source"] == "manual_override"
         assert (
-            empty_state["subjective_assessments"]["naming_quality"]["provisional_override"]
+            empty_state["subjective_assessments"]["naming_quality"]["source"]
+            == "manual_override"
+        )
+        assert (
+            empty_state["subjective_assessments"]["naming_quality"][
+                "provisional_override"
+            ]
             is True
         )
         assert (
-            int(empty_state["subjective_assessments"]["naming_quality"]["provisional_until_scan"])
+            int(
+                empty_state["subjective_assessments"]["naming_quality"][
+                    "provisional_until_scan"
+                ]
+            )
             == int(empty_state.get("scan_count", 0)) + 1
         )
         audit = empty_state.get("assessment_import_audit", [])
@@ -379,7 +438,9 @@ class TestCmdReviewPrepare:
         self, empty_state, tmp_path
     ):
         blind_packet = tmp_path / "review_packet_blind.json"
-        blind_packet.write_text(json.dumps({"command": "review", "dimensions": ["naming_quality"]}))
+        blind_packet.write_text(
+            json.dumps({"command": "review", "dimensions": ["naming_quality"]})
+        )
         packet_hash = hashlib.sha256(blind_packet.read_bytes()).hexdigest()
 
         payload = {
@@ -404,15 +465,23 @@ class TestCmdReviewPrepare:
                 "pending_import_scores": {
                     "timestamp": "2026-03-10T10:00:00+00:00",
                     "import_file": str(tmp_path / "expected_scores.json"),
-                    "normalized_import_file": str((tmp_path / "expected_scores.json").resolve()),
+                    "normalized_import_file": str(
+                        (tmp_path / "expected_scores.json").resolve()
+                    ),
                     "packet_sha256": "expected-sha",
                 }
             },
         }
 
         with (
-            patch("desloppify.app.commands.review.importing.cmd.has_living_plan", lambda _path=None: True),
-            patch("desloppify.app.commands.review.importing.cmd.load_plan", lambda _path=None: pending_plan),
+            patch(
+                "desloppify.app.commands.review.importing.cmd.has_living_plan",
+                lambda _path=None: True,
+            ),
+            patch(
+                "desloppify.app.commands.review.importing.cmd.load_plan",
+                lambda _path=None: pending_plan,
+            ),
         ):
             with pytest.raises(CommandError) as exc:
                 _do_import(
@@ -432,7 +501,9 @@ class TestCmdReviewPrepare:
         assert "different review batch" in str(exc.value)
         assert "expected packet_sha256" in str(exc.value)
 
-    def test_trusted_internal_import_clears_provisional_flags(self, empty_state, tmp_path):
+    def test_trusted_internal_import_clears_provisional_flags(
+        self, empty_state, tmp_path
+    ):
         from unittest.mock import MagicMock
 
         from desloppify.app.commands.review.importing.cmd import do_import as _do_import
@@ -706,7 +777,9 @@ class TestCmdReviewPrepare:
         lang = MagicMock()
         lang.name = "typescript"
 
-        with patch("desloppify.app.commands.review.importing.cmd.save_state") as mock_save:
+        with patch(
+            "desloppify.app.commands.review.importing.cmd.save_state"
+        ) as mock_save:
             with pytest.raises(CommandError):
                 _do_import(str(issues_file), empty_state, lang, "sp")
         assert mock_save.called is False
@@ -736,7 +809,9 @@ class TestCmdReviewPrepare:
         lang = MagicMock()
         lang.name = "typescript"
 
-        with patch("desloppify.app.commands.review.importing.cmd.save_state") as mock_save:
+        with patch(
+            "desloppify.app.commands.review.importing.cmd.save_state"
+        ) as mock_save:
             _do_import(
                 str(issues_file),
                 empty_state,
@@ -1043,7 +1118,9 @@ class TestCmdReviewPrepare:
                             "identifier": "dup",
                             "summary": "shared",
                             "related_files": ["src/c.ts", "src/d.ts"],
-                            "evidence": ["seam handling differs between sibling modules"],
+                            "evidence": [
+                                "seam handling differs between sibling modules"
+                            ],
                             "suggestion": "standardize orchestration seams through shared adapter",
                             "confidence": "high",
                             "impact_scope": "module",
@@ -1075,7 +1152,9 @@ class TestCmdReviewPrepare:
                             "identifier": "new",
                             "summary": "unique",
                             "related_files": ["src/c.ts", "src/d.ts"],
-                            "evidence": ["local flow uses repetitive branching boilerplate"],
+                            "evidence": [
+                                "local flow uses repetitive branching boilerplate"
+                            ],
                             "suggestion": "extract one local helper to remove repeated branches",
                             "confidence": "medium",
                             "impact_scope": "local",
@@ -1090,7 +1169,9 @@ class TestCmdReviewPrepare:
 
         captured: dict[str, object] = {}
 
-        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+        def fake_import(
+            import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs
+        ):
             captured["holistic"] = holistic
             captured["config"] = config
             captured["kwargs"] = kwargs
@@ -1142,7 +1223,10 @@ class TestCmdReviewPrepare:
         import_config = captured["kwargs"]["import_config"]
         assert isinstance(import_config, ReviewImportConfig)
         assert import_config.trusted_assessment_source is True
-        assert import_config.trusted_assessment_label == "trusted internal run-batches import"
+        assert (
+            import_config.trusted_assessment_label
+            == "trusted internal run-batches import"
+        )
         assert import_config.allow_partial is True
         summary_files = sorted(runs_dir.glob("*/run_summary.json"))
         assert len(summary_files) == 1
@@ -1218,7 +1302,9 @@ class TestCmdReviewPrepare:
                         "identifier": "seam_style_drift",
                         "summary": "Seam style drifts across adjacent modules",
                         "related_files": ["src/a.ts"],
-                        "evidence": ["adjacent modules use incompatible seam conventions"],
+                        "evidence": [
+                            "adjacent modules use incompatible seam conventions"
+                        ],
                         "suggestion": "standardize one seam pattern for sibling modules",
                         "confidence": "medium",
                         "impact_scope": "module",
@@ -1231,7 +1317,9 @@ class TestCmdReviewPrepare:
 
         captured: dict[str, object] = {}
 
-        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+        def fake_import(
+            import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs
+        ):
             captured["holistic"] = holistic
             captured["config"] = config
             captured["kwargs"] = kwargs
@@ -1451,7 +1539,9 @@ class TestCmdReviewPrepare:
                     "identifier": "seam_split_between_siblings",
                     "summary": "Sibling hooks own overlapping orchestration seams",
                     "related_files": ["src/a.ts", "src/b.ts"],
-                    "evidence": ["sibling hooks both coordinate the same operation sequence"],
+                    "evidence": [
+                        "sibling hooks both coordinate the same operation sequence"
+                    ],
                     "suggestion": "extract one seam coordinator and reuse it across siblings",
                     "confidence": "high",
                     "impact_scope": "module",
@@ -1475,7 +1565,9 @@ class TestCmdReviewPrepare:
 
         captured: dict[str, object] = {}
 
-        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+        def fake_import(
+            import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs
+        ):
             captured["holistic"] = holistic
             captured["config"] = config
             captured["kwargs"] = kwargs
@@ -1521,8 +1613,13 @@ class TestCmdReviewPrepare:
         recovered_results = sorted(runs_dir.glob("*/results/batch-1.raw.txt"))
         assert len(recovered_results) == 1
         recovered_payload = json.loads(recovered_results[0].read_text())
-        assert recovered_payload["assessments"]["mid_level_elegance"] == pytest.approx(72.0)
-        assert recovered_payload["issues"][0]["identifier"] == "seam_split_between_siblings"
+        assert recovered_payload["assessments"]["mid_level_elegance"] == pytest.approx(
+            72.0
+        )
+        assert (
+            recovered_payload["issues"][0]["identifier"]
+            == "seam_split_between_siblings"
+        )
 
         summary_files = sorted(runs_dir.glob("*/run_summary.json"))
         assert len(summary_files) == 1
@@ -1607,7 +1704,9 @@ class TestCmdReviewPrepare:
                                     "identifier": "seam_style",
                                     "summary": "Seams drift slightly",
                                     "related_files": ["src/a.ts"],
-                                    "evidence": ["interface seam style differs across nearby modules"],
+                                    "evidence": [
+                                        "interface seam style differs across nearby modules"
+                                    ],
                                     "suggestion": "normalize seam style to one interface pattern",
                                     "confidence": "medium",
                                     "impact_scope": "module",
@@ -1622,7 +1721,9 @@ class TestCmdReviewPrepare:
 
         captured: dict[str, object] = {}
 
-        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+        def fake_import(
+            import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs
+        ):
             captured["holistic"] = holistic
             captured["config"] = config
             captured["kwargs"] = kwargs
@@ -1656,7 +1757,9 @@ class TestCmdReviewPrepare:
             do_run_batches(args, empty_state, lang, "fake_sp", config={})
 
         payload = captured["payload"]
-        assert payload["assessments"]["mid_level_elegance"] == pytest.approx(77.0, abs=0.1)
+        assert payload["assessments"]["mid_level_elegance"] == pytest.approx(
+            77.0, abs=0.1
+        )
         assert "reviewed_files" not in payload
         import_config = captured["kwargs"]["import_config"]
         assert isinstance(import_config, ReviewImportConfig)
@@ -1797,7 +1900,9 @@ class TestCmdReviewPrepare:
                 },
                 "dimension_judgment": {
                     "abstraction_fitness": {
-                        "strengths": ["interfaces are mostly honest about their contracts"],
+                        "strengths": [
+                            "interfaces are mostly honest about their contracts"
+                        ],
                         "dimension_character": "excessive wrapper indirection before reaching domain logic",
                         "score_rationale": "Three wrapper layers before domain calls add significant indirection cost that outweighs abstraction leverage.",
                     },
@@ -1808,7 +1913,9 @@ class TestCmdReviewPrepare:
                         "identifier": "wrapper_chain",
                         "summary": "Wrapper stack adds indirection cost",
                         "related_files": ["src/a.py", "src/b.py"],
-                        "evidence": ["3 wrapper layers before reaching domain behavior"],
+                        "evidence": [
+                            "3 wrapper layers before reaching domain behavior"
+                        ],
                         "suggestion": "collapse wrapper chain and expose one direct boundary",
                         "confidence": "high",
                         "impact_scope": "subsystem",
@@ -1821,7 +1928,9 @@ class TestCmdReviewPrepare:
 
         captured: dict[str, object] = {}
 
-        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+        def fake_import(
+            import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs
+        ):
             captured["holistic"] = holistic
             captured["config"] = config
             captured["kwargs"] = kwargs
@@ -1871,7 +1980,6 @@ class TestCmdReviewPrepare:
         assert import_config.trusted_assessment_source is True
 
     def test_run_codex_batch_returns_127_when_runner_missing(self, tmp_path):
-
         log_file = tmp_path / "batch.log"
         mock_run = MagicMock(side_effect=FileNotFoundError("codex not found"))
         code = runner_helpers_mod.run_codex_batch(
@@ -1883,14 +1991,13 @@ class TestCmdReviewPrepare:
                 timeout_seconds=60,
                 subprocess_run=mock_run,
                 timeout_error=TimeoutError,
-                safe_write_text_fn=lambda p, t: p.write_text(t),
+                safe_write_text_fn=_safe_write_text,
             ),
         )
         assert code == 127
         assert "RUNNER ERROR" in log_file.read_text()
 
     def test_run_codex_batch_retries_stream_disconnect(self, tmp_path):
-
         log_file = tmp_path / "batch.log"
         output_file = tmp_path / "out.txt"
         call_count = [0]
@@ -1918,7 +2025,7 @@ class TestCmdReviewPrepare:
                 timeout_seconds=60,
                 subprocess_run=mock_run_fn,
                 timeout_error=TimeoutError,
-                safe_write_text_fn=lambda p, t: p.write_text(t),
+                safe_write_text_fn=_safe_write_text,
                 max_retries=1,
                 retry_backoff_seconds=0.0,
                 sleep_fn=lambda _seconds: None,
@@ -1932,7 +2039,6 @@ class TestCmdReviewPrepare:
         assert "Transient runner failure detected" in raw_log
 
     def test_run_codex_batch_writes_live_status_before_completion(self, tmp_path):
-
         log_file = tmp_path / "batch.log"
         output_file = tmp_path / "out.txt"
         live_snapshot = {"text": ""}
@@ -1952,7 +2058,7 @@ class TestCmdReviewPrepare:
                 timeout_seconds=60,
                 subprocess_run=fake_run,
                 timeout_error=TimeoutError,
-                safe_write_text_fn=lambda p, t: p.write_text(t),
+                safe_write_text_fn=_safe_write_text,
             ),
         )
         assert code == 0
@@ -1961,7 +2067,6 @@ class TestCmdReviewPrepare:
         assert "STDOUT:" in log_file.read_text()
 
     def test_run_codex_batch_stall_recovery_from_output_file(self, tmp_path):
-
         log_file = tmp_path / "batch.log"
         output_file = tmp_path / "out.json"
 
@@ -1971,7 +2076,7 @@ class TestCmdReviewPrepare:
             (
                 "import pathlib,sys,time;"
                 "path=pathlib.Path(sys.argv[1]);"
-                "path.write_text('{\"assessments\":{\"logic_clarity\":91.0},\"issues\":[]}');"
+                'path.write_text(\'{"assessments":{"logic_clarity":91.0},"issues":[]}\');'
                 "print('written', flush=True);"
                 "time.sleep(5)"
             ),
@@ -1991,7 +2096,7 @@ class TestCmdReviewPrepare:
                     timeout_seconds=30,
                     subprocess_run=subprocess.run,
                     timeout_error=TimeoutError,
-                    safe_write_text_fn=lambda p, t: p.write_text(t),
+                    safe_write_text_fn=_safe_write_text,
                     use_popen_runner=True,
                     subprocess_popen=subprocess.Popen,
                     live_log_interval_seconds=0.2,
@@ -2033,7 +2138,7 @@ class TestCmdReviewPrepare:
                     timeout_seconds=30,
                     subprocess_run=subprocess.run,
                     timeout_error=TimeoutError,
-                    safe_write_text_fn=lambda p, t: p.write_text(t),
+                    safe_write_text_fn=_safe_write_text,
                     use_popen_runner=True,
                     subprocess_popen=subprocess.Popen,
                     live_log_interval_seconds=0.2,
@@ -2046,6 +2151,902 @@ class TestCmdReviewPrepare:
         assert code == 1  # process exited 0 but output file missing
         log_text = log_file.read_text()
         assert "STALL RECOVERY" not in log_text
+
+    def test_run_opencode_batch_retries_timeout(self, tmp_path):
+        log_file = tmp_path / "batch.log"
+        output_file = tmp_path / "out.json"
+        call_count = [0]
+
+        def _stream(payload: dict[str, object]) -> str:
+            return (
+                json.dumps(
+                    {
+                        "type": "text",
+                        "part": {"type": "text", "text": json.dumps(payload)},
+                    }
+                )
+                + "\n"
+            )
+
+        def mock_run_fn(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise TimeoutError()
+            return MagicMock(
+                returncode=0,
+                stdout=_stream({"assessments": {}, "issues": []}),
+                stderr="",
+            )
+
+        code = runner_helpers_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=runner_process_mod.BatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=mock_run_fn,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                max_retries=1,
+                retry_backoff_seconds=0.0,
+                sleep_fn=lambda _seconds: None,
+            ),
+        )
+
+        assert code == 0
+        assert call_count[0] == 2
+        assert json.loads(output_file.read_text()) == {"assessments": {}, "issues": []}
+        raw_log = log_file.read_text()
+        assert "ATTEMPT 1/2" in raw_log
+        assert "ATTEMPT 2/2" in raw_log
+        assert "Timeout/stall on attempt 1/2; retrying in 0.0s." in raw_log
+
+    def test_run_opencode_batch_recovers_timeout_from_stdout_payload(self, tmp_path):
+        log_file = tmp_path / "batch.log"
+        output_file = tmp_path / "out.json"
+        stale_payload = {"assessments": {"logic_clarity": 12}, "issues": []}
+        payload = {"assessments": {"logic_clarity": 88}, "issues": []}
+        stdout_text = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "step_start",
+                        "part": {"type": "step-start"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "text",
+                        "part": {
+                            "type": "text",
+                            "text": f"planning {json.dumps(stale_payload)}",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "step_finish",
+                        "part": {
+                            "type": "step-finish",
+                            "reason": "tool-calls",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "step_start",
+                        "part": {"type": "step-start"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "text",
+                        "part": {"type": "text", "text": json.dumps(payload)},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "step_finish",
+                        "part": {
+                            "type": "step-finish",
+                            "reason": "stop",
+                        },
+                    }
+                ),
+                "",
+            ]
+        )
+
+        with patch(
+            "desloppify.app.commands.review.runner_process._run_batch_attempt",
+            return_value=(
+                "ATTEMPT 1/1",
+                _ExecutionResult(
+                    code=1,
+                    stdout_text=stdout_text,
+                    stderr_text="",
+                    timed_out=True,
+                ),
+            ),
+        ):
+            code = runner_helpers_mod.run_opencode_batch(
+                prompt="test prompt",
+                repo_root=tmp_path,
+                output_file=output_file,
+                log_file=log_file,
+                deps=runner_process_mod.BatchRunnerDeps(
+                    timeout_seconds=60,
+                    subprocess_run=subprocess.run,
+                    timeout_error=TimeoutError,
+                    safe_write_text_fn=_safe_write_text,
+                    sleep_fn=lambda _seconds: None,
+                ),
+            )
+
+        assert code == 0
+        assert json.loads(output_file.read_text()) == payload
+        assert "Recovered timed-out batch from JSON output file" in log_file.read_text()
+
+    def test_run_opencode_batch_ignores_in_progress_timeout_payload(self, tmp_path):
+        log_file = tmp_path / "batch.log"
+        output_file = tmp_path / "out.json"
+        payload = {"assessments": {"logic_clarity": 88}, "issues": []}
+        stdout_text = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "step_start",
+                        "part": {"type": "step-start"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "text",
+                        "part": {"type": "text", "text": json.dumps(payload)},
+                    }
+                ),
+                "",
+            ]
+        )
+
+        with patch(
+            "desloppify.app.commands.review.runner_process._run_batch_attempt",
+            return_value=(
+                "ATTEMPT 1/1",
+                _ExecutionResult(
+                    code=1,
+                    stdout_text=stdout_text,
+                    stderr_text="",
+                    timed_out=True,
+                ),
+            ),
+        ):
+            code = runner_helpers_mod.run_opencode_batch(
+                prompt="test prompt",
+                repo_root=tmp_path,
+                output_file=output_file,
+                log_file=log_file,
+                deps=runner_process_mod.BatchRunnerDeps(
+                    timeout_seconds=60,
+                    subprocess_run=subprocess.run,
+                    timeout_error=TimeoutError,
+                    safe_write_text_fn=_safe_write_text,
+                    sleep_fn=lambda _seconds: None,
+                ),
+            )
+
+        assert code == 124
+        assert not output_file.exists()
+        assert (
+            "Recovered timed-out batch from JSON output file"
+            not in log_file.read_text()
+        )
+
+    def test_run_opencode_batch_stall_recovers_from_live_final_step_payload(
+        self, tmp_path
+    ):
+        log_file = tmp_path / "batch.log"
+        output_file = tmp_path / "out.json"
+        payload = {"assessments": {"logic_clarity": 91}, "issues": []}
+        events = [
+            {"type": "step_start", "part": {"type": "step-start"}},
+            {
+                "type": "text",
+                "part": {
+                    "type": "text",
+                    "text": 'planning {"assessments":{"logic_clarity":10},"issues":[]}',
+                },
+            },
+            {
+                "type": "step_finish",
+                "part": {"type": "step-finish", "reason": "tool-calls"},
+            },
+            {"type": "step_start", "part": {"type": "step-start"}},
+            {
+                "type": "text",
+                "part": {"type": "text", "text": json.dumps(payload)},
+            },
+            {
+                "type": "step_finish",
+                "part": {"type": "step-finish", "reason": "stop"},
+            },
+        ]
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import json, time\n"
+                f"events = {json.dumps(events)}\n"
+                "for event in events:\n"
+                "    print(json.dumps(event), flush=True)\n"
+                "    time.sleep(0.05)\n"
+                "time.sleep(5)\n"
+            ),
+        ]
+
+        code = runner_helpers_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=runner_process_mod.BatchRunnerDeps(
+                timeout_seconds=30,
+                subprocess_run=subprocess.run,
+                timeout_error=subprocess.TimeoutExpired,
+                safe_write_text_fn=_safe_write_text,
+                use_popen_runner=True,
+                subprocess_popen=subprocess.Popen,
+                live_log_interval_seconds=0.2,
+                stall_after_output_seconds=1,
+            ),
+            opencode_batch_command_fn=lambda **_kwargs: command,
+        )
+
+        assert code == 0
+        assert json.loads(output_file.read_text()) == payload
+        log_text = log_file.read_text()
+        assert "STALL RECOVERY" in log_text
+        assert "Recovered stalled batch from JSON output file" in log_text
+
+    def test_run_opencode_batch_overwrites_stale_output_on_retry(self, tmp_path):
+        log_file = tmp_path / "batch.log"
+        output_file = tmp_path / "out.json"
+        call_count = [0]
+        first_payload = {"assessments": {"logic_clarity": 10}, "issues": []}
+        second_payload = {"assessments": {"logic_clarity": 90}, "issues": []}
+
+        def _stream(payload: dict[str, object]) -> str:
+            return (
+                json.dumps(
+                    {
+                        "type": "text",
+                        "part": {"type": "text", "text": json.dumps(payload)},
+                    }
+                )
+                + "\n"
+            )
+
+        def mock_run_fn(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return MagicMock(
+                    returncode=1,
+                    stdout=_stream(first_payload),
+                    stderr="ERROR: stream disconnected before completion",
+                )
+            return MagicMock(returncode=0, stdout=_stream(second_payload), stderr="")
+
+        code = runner_helpers_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=runner_process_mod.BatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=mock_run_fn,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                max_retries=1,
+                retry_backoff_seconds=0.0,
+                sleep_fn=lambda _seconds: None,
+            ),
+        )
+
+        assert code == 0
+        assert call_count[0] == 2
+        assert json.loads(output_file.read_text()) == second_payload
+        assert output_file.read_text() != json.dumps(first_payload)
+
+    def test_run_opencode_batch_restores_valid_output_after_retry_failure(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "batch-1.raw.txt"
+        log_file = tmp_path / "batch-1.log"
+        first_payload = {"assessments": {"logic_clarity": 10}, "issues": []}
+        first_stdout = (
+            json.dumps(
+                {
+                    "type": "text",
+                    "part": {"type": "text", "text": json.dumps(first_payload)},
+                }
+            )
+            + "\n"
+        )
+
+        with patch(
+            "desloppify.app.commands.review.runner_process._run_batch_attempt",
+            side_effect=[
+                (
+                    "ATTEMPT 1/2",
+                    _ExecutionResult(
+                        code=1,
+                        stdout_text=first_stdout,
+                        stderr_text="stream disconnected before completion",
+                    ),
+                ),
+                (
+                    "ATTEMPT 2/2",
+                    _ExecutionResult(
+                        code=1,
+                        stdout_text="",
+                        stderr_text="fatal auth error",
+                    ),
+                ),
+            ],
+        ):
+            code = runner_helpers_mod.run_opencode_batch(
+                prompt="test prompt",
+                repo_root=tmp_path,
+                output_file=output_file,
+                log_file=log_file,
+                deps=runner_process_mod.BatchRunnerDeps(
+                    timeout_seconds=60,
+                    subprocess_run=subprocess.run,
+                    timeout_error=TimeoutError,
+                    safe_write_text_fn=_safe_write_text,
+                    max_retries=1,
+                    retry_backoff_seconds=0.0,
+                    sleep_fn=lambda _seconds: None,
+                ),
+            )
+
+        assert code == 1
+        assert json.loads(output_file.read_text()) == first_payload
+
+        batch_results, failures = runner_helpers_mod.collect_batch_results(
+            selected_indexes=[0],
+            failures=[0],
+            output_files={0: output_file},
+            allowed_dims={"logic_clarity"},
+            extract_payload_fn=lambda raw: extract_json_payload(
+                raw, log_fn=lambda *_args, **_kwargs: None
+            ),
+            normalize_result_fn=lambda payload, _dims: (
+                payload.get("assessments", {}),
+                payload.get("issues", []),
+                {},
+                {},
+                {},
+            ),
+        )
+
+        assert len(batch_results) == 1
+        assert failures == []
+        assert batch_results[0].assessments == first_payload["assessments"]
+
+    def test_collect_batch_results_recovers_execution_failure_with_valid_output(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "batch-1.raw.txt"
+        output_file.write_text(
+            json.dumps(
+                {
+                    "assessments": {"logic_clarity": 88.0},
+                    "dimension_notes": {
+                        "logic_clarity": {
+                            "evidence": ["flow has one avoidable branch detour"],
+                            "impact_scope": "module",
+                            "fix_scope": "single_edit",
+                            "confidence": "medium",
+                        }
+                    },
+                    "issues": [],
+                }
+            )
+        )
+
+        def normalize_result(payload, _allowed_dims):
+            notes = payload.get("dimension_notes", {})
+            return (
+                payload.get("assessments", {}),
+                payload.get("issues", []),
+                notes,
+                {},
+                {},
+            )
+
+        batch_results, failures = runner_helpers_mod.collect_batch_results(
+            selected_indexes=[0],
+            failures=[0],
+            output_files={0: output_file},
+            allowed_dims={"logic_clarity"},
+            extract_payload_fn=lambda raw: json.loads(raw),
+            normalize_result_fn=normalize_result,
+        )
+
+        assert failures == []
+        assert len(batch_results) == 1
+        assert batch_results[0].assessments["logic_clarity"] == pytest.approx(88.0)
+
+    def test_collect_batch_results_skips_full_log_fallback_when_stdout_empty(
+        self, tmp_path
+    ):
+        results_dir = tmp_path / "results"
+        logs_dir = tmp_path / "logs"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = results_dir / "batch-1.raw.txt"
+        log_path = logs_dir / "batch-1.log"
+        log_path.write_text(
+            "\n".join(
+                [
+                    "ATTEMPT 1/1",
+                    "$ codex exec ...",
+                    "Output schema:",
+                    "{",
+                    '  "assessments": {"logic_clarity": 91.0},',
+                    '  "issues": []',
+                    "}",
+                    "",
+                    "STDOUT:",
+                    "",
+                    "STDERR:",
+                    "ERROR: stream disconnected before completion",
+                ]
+            )
+        )
+
+        seen_inputs: list[str] = []
+
+        def extract_payload(raw: str) -> dict[str, object] | None:
+            seen_inputs.append(raw)
+            return None
+
+        batch_results, failures = runner_helpers_mod.collect_batch_results(
+            selected_indexes=[0],
+            failures=[],
+            output_files={0: raw_path},
+            allowed_dims={"logic_clarity"},
+            extract_payload_fn=extract_payload,
+            normalize_result_fn=lambda payload, _allowed: (  # noqa: ARG005
+                payload.get("assessments", {}),
+                payload.get("issues", []),
+                payload.get("dimension_notes", {}),
+                payload.get("dimension_judgment", {}),
+                {},
+            ),
+        )
+
+        assert batch_results == []
+        assert failures == [0]
+        assert len(seen_inputs) == 1
+        assert "Output schema:" not in seen_inputs[0]
+
+    def test_execute_batches_progress_callback_exceptions_do_not_fail_successful_tasks(
+        self, tmp_path
+    ):
+        """Progress callback errors are logged but do not mark a successful task as failed.
+
+        Upstream commit 17bb730 ('stop callback failures from failing
+        successful tasks') intentionally decoupled progress errors from
+        task success/failure.
+        """
+
+        def _broken_progress(*_args, **_kwargs):
+            raise RuntimeError("progress callback failed")
+
+        captured: list[tuple[int, str]] = []
+
+        failures = runner_helpers_mod.execute_batches(
+            tasks={0: lambda: 0},
+            options=runner_helpers_mod.BatchExecutionOptions(
+                run_parallel=True,
+                max_parallel_workers=1,
+                heartbeat_seconds=0.05,
+            ),
+            progress_fn=_broken_progress,
+            error_log_fn=lambda idx, exc: captured.append((idx, str(exc))),
+        )
+
+        assert failures == []
+        assert any("progress callback failed" in msg for _idx, msg in captured)
+
+    def test_execute_batches_serial_progress_typeerror_does_not_fail_successful_task(
+        self,
+    ):
+        """TypeError in progress callback is logged but does not fail a successful serial task.
+
+        Upstream commit 17bb730 ('stop callback failures from failing
+        successful tasks') intentionally decoupled progress errors from
+        task success/failure — applies to both serial and parallel paths.
+        """
+
+        def _broken_typeerror_progress(event):
+            _ = event
+            raise TypeError("internal progress bug")
+
+        captured: list[tuple[int, str]] = []
+        failures = runner_helpers_mod.execute_batches(
+            tasks={0: lambda: 0},
+            options=runner_helpers_mod.BatchExecutionOptions(run_parallel=False),
+            progress_fn=_broken_typeerror_progress,
+            error_log_fn=lambda idx, exc: captured.append((idx, str(exc))),
+        )
+
+        assert failures == []
+        assert any("internal progress bug" in msg for _idx, msg in captured)
+
+    def test_execute_batches_heartbeat_error_log_failure_is_nonfatal(self):
+        def _heartbeat_only_failure(event):
+            if getattr(event, "event", "") == "heartbeat":
+                raise RuntimeError("heartbeat callback failed")
+
+        def _slow_success():
+            time.sleep(0.12)
+            return 0
+
+        failures = runner_helpers_mod.execute_batches(
+            tasks={0: _slow_success},
+            options=runner_helpers_mod.BatchExecutionOptions(
+                run_parallel=True,
+                max_parallel_workers=1,
+                heartbeat_seconds=0.02,
+            ),
+            progress_fn=_heartbeat_only_failure,
+            # Intentionally fragile callback: idx=-1 used by heartbeat is unsupported.
+            error_log_fn=lambda idx, exc: {0: []}[idx].append(str(exc)),
+        )
+
+        assert failures == []
+
+    def test_print_failures_and_raise_shows_codex_missing_hint(self, tmp_path, capsys):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "$ codex exec --ephemeral ...\n\nRUNNER ERROR:\n[Errno 2] No such file or directory: 'codex'\n"
+        )
+        with pytest.raises(CommandError) as exc_info:
+            runner_helpers_mod.print_failures_and_raise(
+                failures=[0],
+                packet_path=tmp_path / "packet.json",
+                logs_dir=logs_dir,
+                colorize_fn=lambda text, _style: text,
+            )
+        assert exc_info.value.exit_code == 1
+        err = capsys.readouterr().err
+        assert "Environment hints:" in err
+        assert "Runner CLI not found on PATH" in err
+
+    def test_print_failures_and_raise_shows_codex_auth_hint(self, tmp_path, capsys):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "$ codex exec --ephemeral ...\n\nSTDERR:\nAuthentication failed: please login first.\n"
+        )
+        with pytest.raises(CommandError) as exc_info:
+            runner_helpers_mod.print_failures_and_raise(
+                failures=[0],
+                packet_path=tmp_path / "packet.json",
+                logs_dir=logs_dir,
+                colorize_fn=lambda text, _style: text,
+            )
+        assert exc_info.value.exit_code == 1
+        err = capsys.readouterr().err
+        assert "Environment hints:" in err
+        assert "codex login" in err
+
+    def test_print_failures_reports_categories_without_exit(self, tmp_path, capsys):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text("$ codex ...\nTIMEOUT after 60s\n")
+        (logs_dir / "batch-2.log").write_text(
+            "$ codex ...\nSTDERR:\nAuthentication failed: please login first.\n"
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0, 1, 2],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Failure categories:" in err
+        assert "timeout=1" in err
+        assert "runner auth=1" in err
+        assert "missing log=1" in err
+
+    def test_print_failures_reports_stream_disconnect_category(self, tmp_path, capsys):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "$ codex ...\nSTDERR:\nERROR: stream disconnected before completion\n"
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Failure categories:" in err
+        assert "stream disconnect=1" in err
+        assert "Connectivity tuning:" in err
+
+    def test_print_failures_reports_usage_limit_category_with_unicode_apostrophe(
+        self, tmp_path, capsys
+    ):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "$ codex ...\nSTDERR:\n"
+            "You\u2019ve hit your usage limit. To get more access now, "
+            "send a request to your admin or try again at 8:49 PM.\n"
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Failure categories:" in err
+        assert "usage limit=1" in err
+        assert "Environment hints:" in err
+        assert "usage quota is exhausted" in err
+
+    def test_print_failures_reports_codex_backend_connectivity_hint(
+        self, tmp_path, capsys
+    ):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "\n".join(
+                [
+                    "$ codex ...",
+                    "STDERR:",
+                    "ERROR: stream disconnected before completion:",
+                    "error sending request for url (https://chatgpt.com/backend-api/codex/responses)",
+                ]
+            )
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Environment hints:" in err
+        assert "cannot reach its backend" in err
+        assert "--external-start --external-runner claude" in err
+
+    def test_print_failures_reports_sandbox_hint_for_backend_disconnect(
+        self, tmp_path, capsys
+    ):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "batch-1.log").write_text(
+            "\n".join(
+                [
+                    "$ codex ...",
+                    "WARNING: proceeding, even though we could not update PATH: Operation not permitted (os error 1)",
+                    "STDERR:",
+                    "ERROR: stream disconnected before completion:",
+                    "error sending request for url (https://chatgpt.com/backend-api/codex/responses)",
+                ]
+            )
+        )
+
+        runner_helpers_mod.print_failures(
+            failures=[0],
+            packet_path=tmp_path / "packet.json",
+            logs_dir=logs_dir,
+            colorize_fn=lambda text, _style: text,
+        )
+        err = capsys.readouterr().err
+        assert "Sandbox hint:" in err
+        assert "restricted sandbox execution" in err
+
+    def test_run_followup_scan_returns_nonzero_code(self, tmp_path):
+        mock_run = MagicMock(return_value=MagicMock(returncode=9))
+        code = runner_helpers_mod.run_followup_scan(
+            lang_name="typescript",
+            scan_path=str(tmp_path),
+            deps=runner_helpers_mod.FollowupScanDeps(
+                project_root=tmp_path,
+                timeout_seconds=60,
+                python_executable="python",
+                subprocess_run=mock_run,
+                timeout_error=TimeoutError,
+                colorize_fn=lambda text, _: text,
+            ),
+        )
+        assert code == 9
+
+    def test_run_followup_scan_default_respects_queue_gate(self, tmp_path):
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        runner_helpers_mod.run_followup_scan(
+            lang_name="typescript",
+            scan_path=str(tmp_path),
+            deps=runner_helpers_mod.FollowupScanDeps(
+                project_root=tmp_path,
+                timeout_seconds=60,
+                python_executable="python",
+                subprocess_run=mock_run,
+                timeout_error=TimeoutError,
+                colorize_fn=lambda text, _: text,
+            ),
+        )
+
+        cmd = mock_run.call_args.args[0]
+        assert "--force-rescan" not in cmd
+        assert "--attest" not in cmd
+
+    def test_do_run_batches_scan_after_import_exits_on_failed_followup(
+        self, empty_state, tmp_path
+    ):
+        packet = {
+            "command": "review",
+            "mode": "holistic",
+            "language": "typescript",
+            "dimensions": ["high_level_elegance"],
+            "investigation_batches": [
+                {
+                    "name": "Batch A",
+                    "dimensions": ["high_level_elegance"],
+                    "files_to_read": ["src/a.ts"],
+                    "why": "A",
+                }
+            ],
+        }
+        packet_path = tmp_path / "packet.json"
+        packet_path.write_text(json.dumps(packet))
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.dimensions = None
+        args.runner = "codex"
+        args.parallel = False
+        args.dry_run = False
+        args.packet = str(packet_path)
+        args.only_batches = None
+        args.scan_after_import = True
+
+        review_packet_dir = tmp_path / ".desloppify" / "review_packets"
+        runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
+
+        lang = MagicMock()
+        lang.name = "typescript"
+
+        with (
+            patch(
+                "desloppify.app.commands.review.runtime_paths.PROJECT_ROOT",
+                tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.REVIEW_PACKET_DIR",
+                review_packet_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.SUBAGENT_RUNS_DIR",
+                runs_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator._do_import",
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator.execute_batches",
+                return_value=[],
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator.collect_batch_results",
+                return_value=(
+                    [{"assessments": {}, "dimension_notes": {}, "issues": []}],
+                    [],
+                ),
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator._merge_batch_results",
+                return_value={"assessments": {}, "dimension_notes": {}, "issues": []},
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator.run_followup_scan",
+                return_value=7,
+            ),
+        ):
+            with pytest.raises(CommandError) as exc_info:
+                do_run_batches(args, empty_state, lang, "fake_sp", config={})
+
+        assert exc_info.value.exit_code == 7
+
+    def test_do_run_batches_keyboard_interrupt_writes_partial_summary(
+        self, empty_state, tmp_path
+    ):
+        packet = {
+            "command": "review",
+            "mode": "holistic",
+            "language": "typescript",
+            "dimensions": ["high_level_elegance"],
+            "investigation_batches": [
+                {
+                    "name": "Batch A",
+                    "dimensions": ["high_level_elegance"],
+                    "files_to_read": ["src/a.ts"],
+                    "why": "A",
+                }
+            ],
+        }
+        packet_path = tmp_path / "packet.json"
+        packet_path.write_text(json.dumps(packet))
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.dimensions = None
+        args.runner = "codex"
+        args.parallel = False
+        args.dry_run = False
+        args.packet = str(packet_path)
+        args.only_batches = None
+        args.scan_after_import = False
+        args.allow_partial = False
+        args.save_run_log = True
+        args.run_log_file = None
+
+        review_packet_dir = tmp_path / ".desloppify" / "review_packets"
+        runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
+
+        lang = MagicMock()
+        lang.name = "typescript"
+
+        with (
+            patch(
+                "desloppify.app.commands.review.runtime_paths.PROJECT_ROOT",
+                tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.REVIEW_PACKET_DIR",
+                review_packet_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.runtime_paths.SUBAGENT_RUNS_DIR",
+                runs_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.orchestrator.execute_batches",
+                side_effect=KeyboardInterrupt,
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                do_run_batches(args, empty_state, lang, "fake_sp", config={})
+
+        assert exc_info.value.code == 130
+        summary_files = sorted(runs_dir.glob("*/run_summary.json"))
+        assert len(summary_files) == 1
+        summary_payload = json.loads(summary_files[0].read_text())
+        assert summary_payload["interrupted"] is True
+        assert summary_payload["interruption_reason"] == "keyboard_interrupt"
+        assert summary_payload["successful_batches"] == []
+        assert summary_payload["failed_batches"] == []
+        assert summary_payload["batches"]["1"]["status"] == "interrupted"
+
+        run_log_path = Path(summary_payload["run_log"])
+        run_log_text = run_log_path.read_text()
+        assert "run-interrupted reason=keyboard_interrupt" in run_log_text
+
 
 class TestSetupLang:
     def test_setup_builds_zone_map(self, tmp_path):
@@ -2229,10 +3230,7 @@ class TestSkippedIssues:
         assert diff["new"] == 1
         assert diff["skipped"] == 1
         missing_text = " ".join(diff["skipped_details"][0]["missing"])
-        assert any(
-            f in missing_text
-            for f in ("summary", "suggestion")
-        )
+        assert any(f in missing_text for f in ("summary", "suggestion"))
 
     def test_no_skipped_when_all_valid(self):
         state = build_empty_state()

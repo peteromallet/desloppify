@@ -21,7 +21,7 @@ from desloppify.base.exception_sets import CommandError
 runner_helpers_mod = SimpleNamespace(
     BatchExecutionOptions=runner_parallel_mod.BatchExecutionOptions,
     BatchResult=runner_parallel_mod.BatchResult,
-    CodexBatchRunnerDeps=runner_process_mod.CodexBatchRunnerDeps,
+    CodexBatchRunnerDeps=runner_process_mod.BatchRunnerDeps,
     FollowupScanDeps=runner_process_mod.FollowupScanDeps,
     build_batch_import_provenance=runner_packets_mod.build_batch_import_provenance,
     build_blind_packet=runner_packets_mod.build_blind_packet,
@@ -44,7 +44,6 @@ class TestCmdReviewPrepareRunnerHelpers:
     def test_collect_batch_results_recovers_execution_failure_with_valid_output(
         self, tmp_path
     ):
-
         output_file = tmp_path / "batch-1.raw.txt"
         output_file.write_text(
             json.dumps(
@@ -65,7 +64,14 @@ class TestCmdReviewPrepareRunnerHelpers:
 
         def normalize_result(payload, _allowed_dims):
             notes = payload.get("dimension_notes", {})
-            return payload.get("assessments", {}), payload.get("issues", []), notes, {}, {}, {}
+            return (
+                payload.get("assessments", {}),
+                payload.get("issues", []),
+                notes,
+                {},
+                {},
+                {},
+            )
 
         batch_results, failures = runner_helpers_mod.collect_batch_results(
             request=CollectBatchResultsRequest(
@@ -85,7 +91,6 @@ class TestCmdReviewPrepareRunnerHelpers:
     def test_collect_batch_results_skips_full_log_fallback_when_stdout_empty(
         self, tmp_path
     ):
-
         results_dir = tmp_path / "results"
         logs_dir = tmp_path / "logs"
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -140,8 +145,9 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert len(seen_inputs) == 1
         assert "Output schema:" not in seen_inputs[0]
 
-    def test_execute_batches_marks_progress_callback_exceptions_as_failures(self, tmp_path):
-
+    def test_execute_batches_marks_progress_callback_exceptions_as_failures(
+        self, tmp_path
+    ):
         def _broken_progress(*_args, **_kwargs):
             raise RuntimeError("progress callback failed")
 
@@ -162,7 +168,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert any("progress callback failed" in msg for _idx, msg in captured)
 
     def test_execute_batches_does_not_mask_internal_progress_typeerror(self):
-
         def _broken_typeerror_progress(event):
             _ = event
             raise TypeError("internal progress bug")
@@ -179,7 +184,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert any("internal progress bug" in msg for _idx, msg in captured)
 
     def test_execute_batches_heartbeat_error_log_failure_is_nonfatal(self):
-
         def _heartbeat_only_failure(event):
             if getattr(event, "event", "") == "heartbeat":
                 raise RuntimeError("heartbeat callback failed")
@@ -203,7 +207,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert failures == []
 
     def test_print_failures_and_raise_shows_codex_missing_hint(self, tmp_path, capsys):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text(
@@ -222,7 +225,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert "codex CLI not found on PATH" in err
 
     def test_print_failures_and_raise_shows_codex_auth_hint(self, tmp_path, capsys):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text(
@@ -241,7 +243,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert "codex login" in err
 
     def test_print_failures_reports_categories_without_exit(self, tmp_path, capsys):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text("$ codex ...\nTIMEOUT after 60s\n")
@@ -262,7 +263,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert "missing log=1" in err
 
     def test_print_failures_reports_stream_disconnect_category(self, tmp_path, capsys):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text(
@@ -283,15 +283,12 @@ class TestCmdReviewPrepareRunnerHelpers:
     def test_print_failures_reports_usage_limit_category_with_unicode_apostrophe(
         self, tmp_path, capsys
     ):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text(
-            
-                "$ codex ...\nSTDERR:\n"
-                "You\u2019ve hit your usage limit. To get more access now, "
-                "send a request to your admin or try again at 8:49 PM.\n"
-            
+            "$ codex ...\nSTDERR:\n"
+            "You\u2019ve hit your usage limit. To get more access now, "
+            "send a request to your admin or try again at 8:49 PM.\n"
         )
 
         runner_helpers_mod.print_failures(
@@ -309,7 +306,6 @@ class TestCmdReviewPrepareRunnerHelpers:
     def test_print_failures_reports_codex_backend_connectivity_hint(
         self, tmp_path, capsys
     ):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text(
@@ -334,11 +330,9 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert "cannot reach chatgpt.com backend" in err
         assert "--external-start --external-runner claude" in err
 
-
     def test_print_failures_reports_sandbox_hint_for_backend_disconnect(
         self, tmp_path, capsys
     ):
-
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "batch-1.log").write_text(
@@ -364,7 +358,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert "restricted sandbox execution" in err
 
     def test_run_followup_scan_returns_nonzero_code(self, tmp_path):
-
         mock_run = MagicMock(return_value=MagicMock(returncode=9))
         code = runner_helpers_mod.run_followup_scan(
             lang_name="typescript",
@@ -381,7 +374,6 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert code == 9
 
     def test_run_followup_scan_default_respects_queue_gate(self, tmp_path):
-
         mock_run = MagicMock(return_value=MagicMock(returncode=0))
         runner_helpers_mod.run_followup_scan(
             lang_name="typescript",

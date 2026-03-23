@@ -7,6 +7,7 @@ import logging
 import subprocess  # nosec
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -104,7 +105,12 @@ def _terminate_process(process: subprocess.Popen[str]) -> None:
         return
 
 
-def _drain_stream(stream, sink: list[str], state: _RunnerState) -> None:
+def _drain_stream(
+    stream,
+    sink: list[str],
+    state: _RunnerState,
+    stdout_text_observer: Callable[[str], None] | None = None,
+) -> None:
     """Read lines from *stream* into *sink*, updating activity timestamp."""
     if stream is None:
         return
@@ -112,9 +118,17 @@ def _drain_stream(stream, sink: list[str], state: _RunnerState) -> None:
         for chunk in iter(stream.readline, ""):
             if not chunk:
                 break
+            current_stdout = None
             with state.lock:
                 sink.append(chunk)
                 state.last_stream_activity = time.monotonic()
+                if stdout_text_observer is not None:
+                    current_stdout = "".join(sink)
+            if stdout_text_observer is not None and current_stdout is not None:
+                try:
+                    stdout_text_observer(current_stdout)
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    continue
     except (OSError, ValueError) as exc:  # pragma: no cover - defensive boundary
         with state.lock:
             sink.append(f"\n[stream read error: {exc}]\n")
@@ -209,10 +223,88 @@ def _check_stall(
     return False, prev_sig, prev_stable
 
 
+def _extract_text_from_opencode_json_stream(raw: str) -> str:
+    """Extract assistant text from OpenCode ``--format json`` NDJSON output.
+
+    OpenCode emits newline-delimited JSON events.  Text content lives in
+    events where ``event["type"] == "text"`` under ``event["part"]["text"]``.
+    Only completed assistant steps should be returned.  Earlier planning,
+    pre-tool text, or any other in-progress step content must not be mixed into
+    the final payload, because downstream JSON extraction accepts the first
+    matching review object.
+    """
+    saw_step_events = False
+    saw_tool_calls_step = False
+    step_in_progress = False
+    fallback_text_parts: list[str] = []
+    current_step_parts: list[str] = []
+    last_completed_step_text = ""
+    final_step_text = ""
+
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        event_type = str(event.get("type", "")).strip()
+        part = event.get("part")
+        part_dict = part if isinstance(part, dict) else {}
+
+        if event_type == "step_start":
+            saw_step_events = True
+            step_in_progress = True
+            current_step_parts = []
+            continue
+
+        if event_type == "text":
+            text_value = str(part_dict.get("text", ""))
+            fallback_text_parts.append(text_value)
+            current_step_parts.append(text_value)
+            continue
+
+        if event_type != "step_finish":
+            continue
+
+        saw_step_events = True
+        step_in_progress = False
+        current_step_text = "".join(current_step_parts)
+        reason = str(part_dict.get("reason", "")).strip()
+
+        if reason == "tool-calls":
+            saw_tool_calls_step = True
+            current_step_parts = []
+            continue
+
+        last_completed_step_text = current_step_text
+        current_step_parts = []
+        if reason == "stop":
+            final_step_text = current_step_text
+
+    if final_step_text:
+        return final_step_text
+    if saw_tool_calls_step or step_in_progress:
+        return ""
+    if saw_step_events:
+        if last_completed_step_text:
+            return last_completed_step_text
+        return ""
+    return "".join(fallback_text_parts)
+
+
+_extract_payload_from_log = extract_payload_from_log
+
+
 __all__ = [
     "_check_stall",
     "_drain_stream",
     "extract_payload_from_log",
+    "_extract_payload_from_log",
+    "_extract_text_from_opencode_json_stream",
     "_output_file_has_json_payload",
     "_output_file_status_text",
     "_start_live_writer",

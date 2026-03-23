@@ -45,15 +45,19 @@ _RUNNER_AUTH_PHRASES = (
 )
 _FAILURE_HINT_BY_CATEGORY = {
     "runner_missing": (
-        "codex CLI not found on PATH. Install Codex CLI and verify `codex --version`."
+        "Runner CLI not found on PATH. "
+        "Install the runner (codex or opencode) and verify it is on your PATH."
     ),
-    "runner_auth": "codex runner appears unauthenticated. Run `codex login` and retry.",
+    "runner_auth": (
+        "Runner appears unauthenticated. "
+        "For Codex run `codex login`; for OpenCode check your auth configuration."
+    ),
     "usage_limit": (
-        "Codex usage quota is exhausted for this account. "
+        "Runner usage quota is exhausted for this account. "
         "Wait for reset or add credits, then rerun failed batches."
     ),
     "stream_disconnect": (
-        "Transient Codex connectivity issue detected. Retry with "
+        "Transient runner connectivity issue detected. Retry with "
         "`--batch-max-retries 2 --batch-retry-backoff-seconds 2` and, if needed, "
         "lower concurrency via `--max-parallel-batches 1`."
     ),
@@ -61,12 +65,14 @@ _FAILURE_HINT_BY_CATEGORY = {
 
 
 def _is_runner_missing(text: str) -> bool:
-    return (
-        "codex not found" in text
-        or ("no such file or directory" in text and "$ codex " in text)
-        or ("errno 2" in text and "codex" in text)
-        or ("winerror 2" in text and "codex" in text)
-    )
+    for runner_name in ("codex", "opencode"):
+        if f"{runner_name} not found" in text:
+            return True
+        if "no such file or directory" in text and f"$ {runner_name} " in text:
+            return True
+        if "errno 2" in text and runner_name in text:
+            return True
+    return False
 
 
 def _is_runner_auth_failure(text: str) -> bool:
@@ -135,7 +141,9 @@ def looks_like_restricted_sandbox(log_text: str) -> bool:
     return any(phrase in text for phrase in _SANDBOX_PATH_WARNING_PHRASES)
 
 
-def summarize_failure_categories(*, failures: list[int], logs_dir: Path) -> dict[str, int]:
+def summarize_failure_categories(
+    *, failures: list[int], logs_dir: Path
+) -> dict[str, int]:
     """Return counts by failure category for failed batches."""
     categories: dict[str, int] = {}
     for idx in sorted(set(failures)):
@@ -163,7 +171,7 @@ def _connectivity_hints(text: str) -> list[str]:
     if not has_codex_backend_connectivity_issue(text):
         return []
     hints = [
-        "Codex runner cannot reach chatgpt.com backend from this environment. "
+        "Runner cannot reach its backend from this environment. "
         "Check outbound HTTPS/DNS/proxy access, or use cloud fallback: "
         "`desloppify review --external-start --external-runner claude`."
     ]
@@ -181,8 +189,8 @@ def _skill_file_hint(text: str) -> str | None:
     if "failed to load skill" not in text or "missing yaml frontmatter" not in text:
         return None
     return (
-        "Codex loaded an invalid local skill file. Fix/remove malformed "
-        "entries under `~/.codex/` (AGENTS.md or skills/) to reduce runner noise."
+        "Runner loaded an invalid local skill file. Fix/remove malformed "
+        "SKILL.md entries under the runner's skill directory to reduce noise."
     )
 
 
