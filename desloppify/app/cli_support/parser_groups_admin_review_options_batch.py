@@ -14,7 +14,7 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
     )
     g_batch.add_argument(
         "--runner",
-        choices=["codex"],
+        choices=["codex", "opencode"],
         default="codex",
         help="Subagent runner backend (default: codex)",
     )

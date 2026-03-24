@@ -45,15 +45,19 @@ _RUNNER_AUTH_PHRASES = (
 )
 _FAILURE_HINT_BY_CATEGORY = {
     "runner_missing": (
-        "codex CLI not found on PATH. Install Codex CLI and verify `codex --version`."
+        "Runner CLI not found on PATH. "
+        "Install the runner (codex or opencode) and verify it is on your PATH."
     ),
-    "runner_auth": "codex runner appears unauthenticated. Run `codex login` and retry.",
+    "runner_auth": (
+        "Runner appears unauthenticated. "
+        "For Codex run `codex login`; for OpenCode check your auth configuration."
+    ),
     "usage_limit": (
-        "Codex usage quota is exhausted for this account. "
+        "Runner usage quota is exhausted for this account. "
         "Wait for reset or add credits, then rerun failed batches."
     ),
     "stream_disconnect": (
-        "Transient Codex connectivity issue detected. Retry with "
+        "Transient runner connectivity issue detected. Retry with "
         "`--batch-max-retries 2 --batch-retry-backoff-seconds 2` and, if needed, "
         "lower concurrency via `--max-parallel-batches 1`."
     ),
@@ -61,12 +65,14 @@ _FAILURE_HINT_BY_CATEGORY = {
 
 
 def _is_runner_missing(text: str) -> bool:
-    return (
-        "codex not found" in text
-        or ("no such file or directory" in text and "$ codex " in text)
-        or ("errno 2" in text and "codex" in text)
-        or ("winerror 2" in text and "codex" in text)
-    )
+    for runner_name in ("codex", "opencode"):
+        if f"{runner_name} not found" in text:
+            return True
+        if "no such file or directory" in text and f"$ {runner_name} " in text:
+            return True
+        if "errno 2" in text and runner_name in text:
+            return True
+    return False
 
 
 def _is_runner_auth_failure(text: str) -> bool:

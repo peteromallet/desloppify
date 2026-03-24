@@ -48,6 +48,7 @@ from desloppify.app.commands.runner.codex_batch import (
     run_codex_batch,
     run_followup_scan,
 )
+from ..runner_opencode import run_opencode_batch
 from ..runtime.setup import setup_lang_concrete as _setup_lang
 from ..runtime_paths import (
     blind_packet_path as _blind_packet_path,
@@ -105,7 +106,7 @@ def _batch_live_log_interval_seconds(heartbeat_seconds: float) -> float:
     return max(1.0, min(heartbeat_seconds, 10.0))
 
 
-def _build_batch_run_deps(*, policy, project_root: Path) -> review_batches_mod.BatchRunDeps:
+def _build_batch_run_deps(*, args, policy, project_root: Path) -> review_batches_mod.BatchRunDeps:
     """Build the dependency bundle used by prepare/execute/import phases."""
     from desloppify.engine.plan_state import load_policy_result, render_policy_block
 
@@ -161,7 +162,7 @@ def _build_batch_run_deps(*, policy, project_root: Path) -> review_batches_mod.B
             colorize_fn=colorize,
         ),
         run_codex_batch_fn=partial(
-            run_codex_batch,
+            run_opencode_batch if getattr(args, "runner", "codex") == "opencode" else run_codex_batch,
             deps=codex_batch_deps,
         ),
         execute_batches_fn=lambda **kwargs: execute_batches(
@@ -384,6 +385,7 @@ def do_run_batches(args, state, lang, state_file, config: dict | None = None) ->
     subagent_runs_dir = _subagent_runs_dir()
     policy = resolve_batch_run_policy(args)
     batch_deps = _build_batch_run_deps(
+        args=args,
         policy=policy,
         project_root=project_root,
     )

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from pathlib import Path
+from unittest.mock import patch
 
+import desloppify.app.commands.review.batch.orchestrator as orchestrator_mod
 import desloppify.app.commands.review.batch.prompt_template as prompt_template_mod
+import desloppify.app.commands.review.runner_opencode as runner_opencode_mod
 import desloppify.app.commands.review.runner_parallel as runner_helpers_mod
 from desloppify.app.commands.review.batch.execution import CollectBatchResultsRequest
+from desloppify.app.commands.review.runner_process_impl.types import _ExecutionResult
 
 
 def test_execute_batches_parallel_emits_heartbeat_event() -> None:
@@ -140,3 +145,97 @@ def test_render_batch_prompt_loads_context_updates_example() -> None:
     )
 
     assert "context_updates example" in prompt
+
+
+def _safe_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_run_opencode_batch_recovers_timeout_from_stdout_payload(tmp_path: Path) -> None:
+    log_file = tmp_path / "batch.log"
+    output_file = tmp_path / "out.json"
+    stale_payload = {"assessments": {"logic_clarity": 12}, "issues": []}
+    payload = {"assessments": {"logic_clarity": 88}, "issues": []}
+    stdout_text = "\n".join([
+        json.dumps({"type": "step_start", "part": {"type": "step-start"}}),
+        json.dumps({"type": "text", "part": {"type": "text", "text": f"planning {json.dumps(stale_payload)}"}}),
+        json.dumps({"type": "step_finish", "part": {"type": "step-finish", "reason": "tool-calls"}}),
+        json.dumps({"type": "step_start", "part": {"type": "step-start"}}),
+        json.dumps({"type": "text", "part": {"type": "text", "text": json.dumps(payload)}}),
+        json.dumps({"type": "step_finish", "part": {"type": "step-finish", "reason": "stop"}}),
+        "",
+    ])
+
+    with patch(
+        "desloppify.app.commands.review.runner_opencode._run_batch_attempt",
+        return_value=(
+            "ATTEMPT 1/1",
+            _ExecutionResult(code=1, stdout_text=stdout_text, stderr_text="", timed_out=True),
+        ),
+    ):
+        code = runner_opencode_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=orchestrator_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=subprocess.run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                sleep_fn=lambda _seconds: None,
+            ),
+        )
+
+    assert code == 0
+    assert json.loads(output_file.read_text()) == payload
+    assert "Recovered timed-out batch from JSON output file" in log_file.read_text()
+
+
+def test_run_opencode_batch_restores_valid_output_after_retry_failure(tmp_path: Path) -> None:
+    output_file = tmp_path / "batch-1.raw.txt"
+    log_file = tmp_path / "batch-1.log"
+    first_payload = {"assessments": {"logic_clarity": 10}, "issues": []}
+    first_stdout = json.dumps({"type": "text", "part": {"type": "text", "text": json.dumps(first_payload)}}) + "\n"
+
+    with patch(
+        "desloppify.app.commands.review.runner_opencode._run_batch_attempt",
+        side_effect=[
+            ("ATTEMPT 1/2", _ExecutionResult(code=1, stdout_text=first_stdout, stderr_text="stream disconnected before completion")),
+            ("ATTEMPT 2/2", _ExecutionResult(code=1, stdout_text="", stderr_text="fatal auth error")),
+        ],
+    ):
+        code = runner_opencode_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=orchestrator_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=subprocess.run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                max_retries=1,
+                retry_backoff_seconds=0.0,
+                sleep_fn=lambda _seconds: None,
+            ),
+        )
+
+    assert code == 1
+    assert json.loads(output_file.read_text()) == first_payload
+
+    batch_results, failures = runner_helpers_mod.collect_batch_results(
+        request=CollectBatchResultsRequest(
+            selected_indexes=[0],
+            failures=[0],
+            output_files={0: output_file},
+            allowed_dims={"logic_clarity"},
+        ),
+        extract_payload_fn=lambda raw: json.loads(raw),
+        normalize_result_fn=lambda payload, _dims: (payload.get("assessments", {}), payload.get("issues", []), {}, {}, {}, {}),
+    )
+
+    assert len(batch_results) == 1
+    assert failures == []
+    assert batch_results[0].assessments == first_payload["assessments"]

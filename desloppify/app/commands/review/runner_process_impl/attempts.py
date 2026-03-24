@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import subprocess  # nosec
 import threading
 import time
@@ -71,13 +72,18 @@ def _run_via_popen(
     ctx: _AttemptContext,
     interval: float,
     stall_seconds: int,
+    stdout_text_observer: Callable[[str], None] | None = None,
 ) -> _ExecutionResult:
     with _managed_live_writer(state, ctx, interval):
         process_or_error = _start_runner_process(cmd, deps, ctx)
         if isinstance(process_or_error, _ExecutionResult):
             return process_or_error
         process = process_or_error
-        stdout_thread, stderr_thread = _start_stream_threads(process, state)
+        stdout_thread, stderr_thread = _start_stream_threads(
+            process,
+            state,
+            stdout_text_observer=stdout_text_observer,
+        )
         timed_out, stalled, recovered_from_stall = _monitor_runner_process(
             process,
             deps=deps,
@@ -135,10 +141,13 @@ def _start_runner_process(
 def _start_stream_threads(
     process: subprocess.Popen[str],
     state: _RunnerState,
+    *,
+    stdout_text_observer: Callable[[str], None] | None = None,
 ) -> tuple[threading.Thread, threading.Thread]:
     stdout_thread = threading.Thread(
         target=_drain_stream,
         args=(process.stdout, state.stdout_chunks, state),
+        kwargs={"stdout_text_observer": stdout_text_observer},
         daemon=True,
     )
     stderr_thread = threading.Thread(
@@ -333,6 +342,7 @@ def run_batch_attempt(
     use_popen: bool,
     live_log_interval: float,
     stall_seconds: int,
+    stdout_text_observer: Callable[[str], None] | None = None,
 ) -> tuple[str, _ExecutionResult]:
     header = f"ATTEMPT {attempt}/{max_attempts}\n$ {' '.join(cmd)}"
     started_monotonic = time.monotonic()
@@ -355,6 +365,7 @@ def run_batch_attempt(
             ctx,
             live_log_interval,
             stall_seconds,
+            stdout_text_observer,
         )
     else:
         result = _run_via_subprocess(cmd, deps, state, ctx, live_log_interval)

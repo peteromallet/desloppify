@@ -20,7 +20,7 @@ from ..runtime_paths import blind_packet_path, runtime_project_root
 
 ASSESSMENT_POLICY_KEY = "_assessment_policy"
 BLIND_PROVENANCE_KIND = "blind_review_batch_import"
-SUPPORTED_BLIND_REVIEW_RUNNERS = {"codex", "claude"}
+SUPPORTED_BLIND_REVIEW_RUNNERS = {"codex", "claude", "opencode"}
 ATTESTED_EXTERNAL_RUNNERS = {"claude"}
 ATTESTED_EXTERNAL_REQUIRED_PHRASES = ("without awareness", "unbiased")
 ATTESTED_EXTERNAL_ATTEST_EXAMPLE = (

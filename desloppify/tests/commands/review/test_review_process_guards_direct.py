@@ -265,6 +265,43 @@ def test_import_attested_external_rejects_non_claude_runner(tmp_path, capsys):
     assert "Hint: if provenance is valid, rerun with" in err
 
 
+def test_import_external_opencode_provenance_still_defaults_to_issues_only(tmp_path):
+    blind_packet = tmp_path / "review_packet_blind.json"
+    blind_packet.write_text(json.dumps({"command": "review", "dimensions": ["naming_quality"]}))
+    packet_hash = hashlib.sha256(blind_packet.read_bytes()).hexdigest()
+
+    payload = {
+        "issues": [
+            {
+                "dimension": "naming_quality",
+                "identifier": "process_data",
+                "summary": "Function name is generic for a payment-reconciliation path.",
+                "related_files": ["src/service.ts"],
+                "evidence": ["Name does not describe side effects or domain operation."],
+                "suggestion": "Rename to reconcile_customer_payment.",
+                "confidence": "high",
+            }
+        ],
+        "assessments": {"naming_quality": 95},
+        "provenance": {
+            "kind": "blind_review_batch_import",
+            "blind": True,
+            "runner": "opencode",
+            "packet_path": str(blind_packet),
+            "packet_sha256": packet_hash,
+        },
+    }
+    issues_path = tmp_path / "issues.json"
+    issues_path.write_text(json.dumps(payload))
+
+    parsed = load_import_issues_data(str(issues_path), config=ImportLoadConfig())
+    assert parsed["assessments"] == {}
+    policy = parsed.get("_assessment_policy", {})
+    assert policy["mode"] == "issues_only"
+    assert policy["trusted"] is False
+    assert "cannot self-attest trust" in policy["reason"]
+
+
 def test_import_attested_external_rejects_allow_partial_combo(tmp_path, capsys):
     payload = {
         "issues": [],

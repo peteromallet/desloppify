@@ -488,3 +488,35 @@ def test_try_load_prepared_packet_rejects_state_scope_mismatch(
 
     assert packet is None
     assert mismatch == "contract field 'state_path' differs"
+
+
+def test_build_batch_run_deps_selects_opencode_runner(tmp_path: Path) -> None:
+    deps = orchestrator_mod._build_batch_run_deps(
+        args=SimpleNamespace(runner="opencode"),
+        policy=SimpleNamespace(
+            batch_timeout_seconds=60,
+            heartbeat_seconds=1.0,
+            stall_kill_seconds=30,
+            batch_max_retries=1,
+            batch_retry_backoff_seconds=0.5,
+        ),
+        project_root=tmp_path,
+    )
+
+    assert deps.run_codex_batch_fn.func is orchestrator_mod.run_opencode_batch
+
+
+def test_build_batch_run_deps_keeps_codex_runner_default(tmp_path: Path) -> None:
+    deps = orchestrator_mod._build_batch_run_deps(
+        args=SimpleNamespace(runner="codex"),
+        policy=SimpleNamespace(
+            batch_timeout_seconds=60,
+            heartbeat_seconds=1.0,
+            stall_kill_seconds=30,
+            batch_max_retries=1,
+            batch_retry_backoff_seconds=0.5,
+        ),
+        project_root=tmp_path,
+    )
+
+    assert deps.run_codex_batch_fn.func is orchestrator_mod.run_codex_batch

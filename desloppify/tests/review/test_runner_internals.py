@@ -22,6 +22,7 @@ from desloppify.app.commands.review.runner_process_impl.attempts import (
 )
 from desloppify.app.commands.review.runner_process_impl.io import (
     _check_stall,
+    _extract_text_from_opencode_json_stream,
     _output_file_has_json_payload,
     _output_file_status_text,
     extract_payload_from_log,
@@ -756,3 +757,66 @@ class TestHandleFailedAttempt:
 # ═══════════════════════════════════════════════════════════════════
 
 
+
+
+class TestExtractTextFromOpenCodeJsonStream:
+    """_extract_text_from_opencode_json_stream: extracts terminal assistant text."""
+
+    def test_terminal_stop_step_wins_over_planning_text(self):
+        final_payload = json.dumps({"assessments": {}})
+        planning_payload = json.dumps(
+            {"assessments": {"logic_clarity": 10}, "issues": []}
+        )
+        stream = (
+            '{"type":"step_start","part":{"type":"step-start"}}\n'
+            + json.dumps(
+                {
+                    "type": "text",
+                    "part": {"type": "text", "text": f"planning {planning_payload}"},
+                }
+            )
+            + "\n"
+            + '{"type":"step_finish","part":{"type":"step-finish","reason":"tool-calls"}}\n'
+            + '{"type":"step_start","part":{"type":"step-start"}}\n'
+            + json.dumps(
+                {
+                    "type": "text",
+                    "part": {"type": "text", "text": final_payload},
+                }
+            )
+            + "\n"
+            + '{"type":"step_finish","part":{"type":"step-finish","reason":"stop"}}\n'
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == final_payload
+
+    def test_in_progress_step_returns_empty(self):
+        payload = json.dumps({"assessments": {"logic_clarity": 10}, "issues": []})
+        stream = (
+            '{"type":"step_start","part":{"type":"step-start"}}\n'
+            + json.dumps(
+                {
+                    "type": "text",
+                    "part": {"type": "text", "text": payload},
+                }
+            )
+            + "\n"
+        )
+        assert _extract_text_from_opencode_json_stream(stream) == ""
+
+
+class TestOpenCodeFailureDetection:
+    def test_opencode_runner_missing_patterns_detected(self):
+        from desloppify.app.commands.review.runner_failures import _is_runner_missing
+
+        assert _is_runner_missing("opencode not found") is True
+        assert _is_runner_missing("errno 2 opencode") is True
+        assert _is_runner_missing("no such file or directory $ opencode run") is True
+
+
+class TestOpenCodeProvenanceSupport:
+    def test_supported_blind_review_runners_include_opencode(self):
+        from desloppify.app.commands.review.importing.policy import (
+            SUPPORTED_BLIND_REVIEW_RUNNERS,
+        )
+
+        assert "opencode" in SUPPORTED_BLIND_REVIEW_RUNNERS

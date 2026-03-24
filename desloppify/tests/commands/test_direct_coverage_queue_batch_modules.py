@@ -13,6 +13,7 @@ import desloppify.app.commands.review.batches_runtime as batches_runtime_mod
 import desloppify.app.commands.review.coordinator as coordinator_mod
 import desloppify.app.commands.review.packet.build as packet_build_mod
 import desloppify.app.commands.review.runner_failures as runner_failures_mod
+import desloppify.app.commands.review.runner_opencode as runner_opencode_mod
 import desloppify.app.commands.review.runner_packets as runner_packets_mod
 import desloppify.app.commands.review.runner_parallel as runner_parallel_mod
 import desloppify.app.commands.runner.codex_batch as runner_process_mod
@@ -44,6 +45,8 @@ def test_direct_coverage_split_queue_batch_modules_smoke():
     assert callable(packet_build_mod.build_review_packet_payload)
     assert callable(packet_build_mod.write_review_packet_snapshot)
     assert callable(runner_failures_mod.print_failures)
+    assert callable(runner_opencode_mod.run_opencode_batch)
+    assert callable(runner_opencode_mod.opencode_batch_command)
     assert callable(runner_packets_mod.prepare_run_artifacts)
     assert callable(runner_parallel_mod.execute_batches)
     assert callable(runner_process_mod.run_codex_batch)

@@ -19,6 +19,18 @@ def test_add_review_parser_registers_review_command_with_core_flags() -> None:
     assert args.runner == "codex"
 
 
+def test_add_review_parser_accepts_opencode_runner() -> None:
+    parser = argparse.ArgumentParser(prog="desloppify")
+    sub = parser.add_subparsers(dest="command")
+
+    review_group_mod._add_review_parser(sub)
+
+    args = parser.parse_args(["review", "--prepare", "--runner", "opencode"])
+    assert args.command == "review"
+    assert args.prepare is True
+    assert args.runner == "opencode"
+
+
 def test_add_review_parser_invokes_each_option_group_builder_once(monkeypatch) -> None:
     parser = argparse.ArgumentParser(prog="desloppify")
     sub = parser.add_subparsers(dest="command")

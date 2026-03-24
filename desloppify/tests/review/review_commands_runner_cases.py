@@ -219,7 +219,7 @@ class TestCmdReviewPrepareRunnerHelpers:
         assert exc_info.value.exit_code == 1
         err = capsys.readouterr().err
         assert "Environment hints:" in err
-        assert "codex CLI not found on PATH" in err
+        assert "Runner CLI not found on PATH" in err
 
     def test_print_failures_and_raise_shows_codex_auth_hint(self, tmp_path, capsys):
 

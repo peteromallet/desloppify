@@ -14,12 +14,16 @@ from desloppify.intelligence.review.feedback_contract import (
 )
 
 
+_SUPPORTED_RUNNERS = {"codex", "opencode"}
+
+
 def validate_runner(runner: str, *, colorize_fn) -> None:
     """Validate review batch runner."""
-    if runner == "codex":
+    if runner in _SUPPORTED_RUNNERS:
         return
+    supported = ", ".join(sorted(_SUPPORTED_RUNNERS))
     raise CommandError(
-        f"Error: unsupported runner '{runner}' (supported: codex)", exit_code=2
+        f"Error: unsupported runner '{runner}' (supported: {supported})", exit_code=2
     )
 
 
