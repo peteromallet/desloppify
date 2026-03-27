@@ -66,7 +66,7 @@ EXPECT_COMPARISON_RE = re.compile(
 EXPECT_TO_BE_DEFINED_RE = re.compile(r"""\.toBeDefined\s*\(""")
 
 BARREL_BASENAMES = {"index.js", "index.jsx", "index.mjs", "index.cjs"}
-_JS_EXTENSIONS = ["", ".js", ".jsx", ".mjs", ".cjs", "/index.js", "/index.mjs"]
+_JS_EXTENSIONS = ["", ".js", ".jsx", ".mjs", ".cjs", "/index.js", "/index.jsx", "/index.mjs", "/index.cjs"]
 logger = logging.getLogger(__name__)
 
 
