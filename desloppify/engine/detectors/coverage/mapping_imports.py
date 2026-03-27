@@ -25,6 +25,8 @@ def _infer_lang_name(test_files: set[str], production_files: set[str]) -> str | 
         ".tsx": "typescript",
         ".js": "typescript",
         ".jsx": "typescript",
+        ".mjs": "javascript",
+        ".cjs": "javascript",
         ".cs": "csharp",
         ".php": "php",
         ".go": "go",
