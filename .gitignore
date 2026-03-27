@@ -41,6 +41,7 @@ pytest-full.xml
 .agents/
 /skills/
 CLAUDE.md
+!/CLAUDE.md
 !desloppify/data/global/CLAUDE.md
 AGENTS.md
 tasks/
