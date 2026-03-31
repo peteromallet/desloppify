@@ -1,0 +1,209 @@
+```python
+import re
+import ast
+
+def analyze_refactor(code_before, code_after, desloppify_logs, claude_logs):
+    """
+    Analyze the refactor made by Desloppify and determine if it's stupid.
+    
+    Args:
+    code_before (str): The code before the refactor.
+    code_after (str): The code after the refactor.
+    desloppify_logs (str): The logs from Desloppify.
+    claude_logs (str): The logs from Claude.
+    
+    Returns:
+    bool: Whether the refactor is stupid or not.
+    """
+    
+    # Check for poor new abstractions
+    if has_poor_abstraction(code_after):
+        return True
+    
+    # Check for introduced bugs
+    if has_introduced_bugs(code_after, desloppify_logs, claude_logs):
+        return True
+    
+    # Check for restructuring that makes the codebase harder to extend or understand
+    if has_restructured_poorly(code_before, code_after):
+        return True
+    
+    return False
+
+def has_poor_abstraction(code):
+    """
+    Check if the code has poor abstractions.
+    
+    Args:
+    code (str): The code to check.
+    
+    Returns:
+    bool: Whether the code has poor abstractions or not.
+    """
+    
+    # Check for overly complex functions
+    if has_overly_complex_functions(code):
+        return True
+    
+    # Check for unclear variable names
+    if has_unclear_variable_names(code):
+        return True
+    
+    return False
+
+def has_overly_complex_functions(code):
+    """
+    Check if the code has overly complex functions.
+    
+    Args:
+    code (str): The code to check.
+    
+    Returns:
+    bool: Whether the code has overly complex functions or not.
+    """
+    
+    tree = ast.parse(code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            if len(node.body) > 10:
+                return True
+    
+    return False
+
+def has_unclear_variable_names(code):
+    """
+    Check if the code has unclear variable names.
+    
+    Args:
+    code (str): The code to check.
+    
+    Returns:
+    bool: Whether the code has unclear variable names or not.
+    """
+    
+    tree = ast.parse(code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            if len(node.id) < 3:
+                return True
+    
+    return False
+
+def has_introduced_bugs(code, desloppify_logs, claude_logs):
+    """
+    Check if the refactor has introduced bugs.
+    
+    Args:
+    code (str): The code after the refactor.
+    desloppify_logs (str): The logs from Desloppify.
+    claude_logs (str): The logs from Claude.
+    
+    Returns:
+    bool: Whether the refactor has introduced bugs or not.
+    """
+    
+    # Check for syntax errors
+    if has_syntax_errors(code):
+        return True
+    
+    # Check for logical errors
+    if has_logical_errors(code, desloppify_logs, claude_logs):
+        return True
+    
+    return False
+
+def has_syntax_errors(code):
+    """
+    Check if the code has syntax errors.
+    
+    Args:
+    code (str): The code to check.
+    
+    Returns:
+    bool: Whether the code has syntax errors or not.
+    """
+    
+    try:
+        ast.parse(code)
+    except SyntaxError:
+        return True
+    
+    return False
+
+def has_logical_errors(code, desloppify_logs, claude_logs):
+    """
+    Check if the code has logical errors.
+    
+    Args:
+    code (str): The code to check.
+    desloppify_logs (str): The logs from Desloppify.
+    claude_logs (str): The logs from Claude.
+    
+    Returns:
+    bool: Whether the code has logical errors or not.
+    """
+    
+    # Check for inconsistencies in the logs
+    if has_inconsistent_logs(desloppify_logs, claude_logs):
+        return True
+    
+    return False
+
+def has_inconsistent_logs(desloppify_logs, claude_logs):
+    """
+    Check if the logs are inconsistent.
+    
+    Args:
+    desloppify_logs (str): The logs from Desloppify.
+    claude_logs (str): The logs from Claude.
+    
+    Returns:
+    bool: Whether the logs are inconsistent or not.
+    """
+    
+    # Check for differences in the logs
+    if desloppify_logs != claude_logs:
+        return True
+    
+    return False
+
+def has_restructured_poorly(code_before, code_after):
+    """
+    Check if the refactor has restructured the code poorly.
+    
+    Args:
+    code_before (str): The code before the refactor.
+    code_after (str): The code after the refactor.
+    
+    Returns:
+    bool: Whether the refactor has restructured the code poorly or not.
+    """
+    
+    # Check for changes in the code structure
+    if has_changed_code_structure(code_before, code_after):
+        return True
+    
+    return False
+
+def has_changed_code_structure(code_before, code_after):
+    """
+    Check if the code structure has changed.
+    
+    Args:
+    code_before (str): The code before the refactor.
+    code_after (str): The code after the refactor.
+    
+    Returns:
+    bool: Whether the code structure has changed or not.
+    """
+    
+    # Check for changes in the number of functions
+    if len(re.findall(r'def\s+\w+\s*\(', code_before)) != len(re.findall(r'def\s+\w+\s*\(', code_after)):
+        return True
+    
+    # Check for changes in the number of classes
+    if len(re.findall(r'class\s+\w+\s*:', code_before)) != len(re.findall(r'class\s+\w+\s*:', code_after)):
+        return True
+    
+    return False
+```
