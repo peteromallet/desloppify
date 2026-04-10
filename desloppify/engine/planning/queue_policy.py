@@ -34,6 +34,23 @@ def _queue_plan_from_options(options: QueueBuildOptions) -> dict | None:
     return options.plan
 
 
+def _resolved_subjective_threshold(
+    state: StateModel,
+    options: QueueBuildOptions,
+) -> float:
+    """Return the effective subjective threshold for queue builders.
+
+    When callers pass a precomputed QueueContext, the queue builder must honor
+    the context's resolved target_strict value; otherwise open-queue surfaces
+    can disagree about whether review findings or subjective dimensions should
+    be visible. Falling back to the state/config-derived target preserves the
+    legacy behavior for plan-only callers.
+    """
+    if options.context is not None:
+        return float(options.context.target_strict)
+    return _subjective_threshold(state)
+
+
 def build_open_plan_queue(
     state: StateModel,
     *,
@@ -46,7 +63,7 @@ def build_open_plan_queue(
     elif opts.status == QueueBuildOptions().status:
         opts = replace(opts, status="open")
     if opts.subjective_threshold == QueueBuildOptions().subjective_threshold:
-        opts = replace(opts, subjective_threshold=_subjective_threshold(state))
+        opts = replace(opts, subjective_threshold=_resolved_subjective_threshold(state, opts))
     return build_work_queue(
         state,
         options=opts,
@@ -65,6 +82,8 @@ def build_execution_queue(
         plan=_queue_plan_from_options(options),
         target_strict=_subjective_threshold(state),
     )
+    if options.subjective_threshold == QueueBuildOptions().subjective_threshold:
+        options = replace(options, subjective_threshold=ctx.target_strict)
     return _build_work_queue_with_visibility(
         state,
         options=replace(options, context=ctx),
@@ -84,6 +103,8 @@ def build_backlog_queue(
         plan=_queue_plan_from_options(options),
         target_strict=_subjective_threshold(state),
     )
+    if options.subjective_threshold == QueueBuildOptions().subjective_threshold:
+        options = replace(options, subjective_threshold=ctx.target_strict)
     return _build_work_queue_with_visibility(
         state,
         options=replace(options, context=ctx),

@@ -176,3 +176,60 @@ def test_build_open_plan_queue_uses_core_options_shape(monkeypatch) -> None:
     assert captured[0].scan_path == "src"
     assert captured[0].status == "open"
     assert captured[0].subjective_threshold == 91.0
+
+
+def test_build_execution_queue_applies_resolved_context_threshold(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    fake_ctx = SimpleNamespace(plan={"queue_order": []}, target_strict=83.0)
+
+    def _build_work_queue_with_visibility(_state, *, options, visibility):
+        captured["options"] = options
+        captured["visibility"] = visibility
+        return {"items": [], "total": 0, "grouped": {}, "new_ids": set()}
+
+    monkeypatch.setattr(queue_policy_mod, "queue_context", lambda *_a, **_k: fake_ctx)
+    monkeypatch.setattr(
+        queue_policy_mod,
+        "_build_work_queue_with_visibility",
+        _build_work_queue_with_visibility,
+    )
+
+    queue_policy_mod.build_execution_queue(
+        {"config": {"target_strict_score": 91}},
+        options=QueueBuildOptions(count=None),
+    )
+
+    options = captured["options"]
+    assert isinstance(options, QueueBuildOptions)
+    assert options.context is fake_ctx
+    assert options.subjective_threshold == 83.0
+    assert captured["visibility"] == queue_policy_mod.QueueVisibility.EXECUTION
+
+
+
+def test_build_backlog_queue_applies_resolved_context_threshold(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    fake_ctx = SimpleNamespace(plan={"queue_order": []}, target_strict=77.0)
+
+    def _build_work_queue_with_visibility(_state, *, options, visibility):
+        captured["options"] = options
+        captured["visibility"] = visibility
+        return {"items": [], "total": 0, "grouped": {}, "new_ids": set()}
+
+    monkeypatch.setattr(queue_policy_mod, "queue_context", lambda *_a, **_k: fake_ctx)
+    monkeypatch.setattr(
+        queue_policy_mod,
+        "_build_work_queue_with_visibility",
+        _build_work_queue_with_visibility,
+    )
+
+    queue_policy_mod.build_backlog_queue(
+        {"config": {"target_strict_score": 91}},
+        options=QueueBuildOptions(count=None),
+    )
+
+    options = captured["options"]
+    assert isinstance(options, QueueBuildOptions)
+    assert options.context is fake_ctx
+    assert options.subjective_threshold == 77.0
+    assert captured["visibility"] == queue_policy_mod.QueueVisibility.BACKLOG
