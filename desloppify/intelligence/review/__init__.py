@@ -55,6 +55,7 @@ from desloppify.intelligence.review.prepare import (
     prepare_holistic_review,
     prepare_review,
 )
+from desloppify.intelligence.review.personas import PERSONAS, Persona, assign_personas
 from desloppify.intelligence.review.prepare_batches_builders import build_investigation_batches
 from desloppify.intelligence.review.remediation import generate_remediation_plan
 from desloppify.intelligence.review.selection import (
@@ -141,6 +142,10 @@ __all__ = [
     "prepare_review",
     "prepare_holistic_review",
     "build_investigation_batches",
+    # personas
+    "PERSONAS",
+    "Persona",
+    "assign_personas",
     # import
     "import_review_issues",
     "import_holistic_issues",

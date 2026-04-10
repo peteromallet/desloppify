@@ -25,6 +25,7 @@ Run `desloppify review --prepare` first to generate review data, then use Claude
 
 1. Each agent must be context-isolated — do not pass conversation history or score targets.
 2. Agents must consume `.desloppify/review_packet_blind.json` (not full `query.json`) to avoid score anchoring.
+3. Each batch is automatically assigned a reviewer persona (Pragmatist, Architect, Bug Hunter, or Migrator). The persona appears in the rendered prompt and biases attention without changing scoring rules. When launching subagents manually, you can reference the persona in the task description to reinforce the bias.
 
 ### Triage workflow
 

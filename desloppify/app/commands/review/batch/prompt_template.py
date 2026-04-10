@@ -10,6 +10,8 @@ from desloppify.intelligence.review.feedback_contract import (
     HIGH_SCORE_ISSUES_NOTE_THRESHOLD,
 )
 
+from desloppify.intelligence.review.personas import PERSONAS, render_persona_block
+
 from ..prompt_sections import (
     PromptBatchContext,
     batch_dimension_prompts,
@@ -129,6 +131,17 @@ def _render_output_schema(context: PromptBatchContext, batch_index: int) -> str:
         + _render_context_update_example()
     )
 
+def _resolve_persona(name: str):
+    """Look up a Persona by name, or return None."""
+    if not name:
+        return None
+    name_lower = name.lower()
+    for persona in PERSONAS:
+        if persona.name.lower() == name_lower:
+            return persona
+    return None
+
+
 def render_batch_prompt(
     *,
     repo_root: Path,
@@ -141,6 +154,7 @@ def render_batch_prompt(
     context = build_batch_context(batch, batch_index)
     dim_prompts = context.dimension_prompts or batch_dimension_prompts(batch)
     dimension_contexts = batch.get("dimension_contexts") if isinstance(batch, dict) else None
+    persona = _resolve_persona(context.persona)
     return join_non_empty_sections(
         _render_metadata_block(
             repo_root=repo_root,
@@ -148,6 +162,7 @@ def render_batch_prompt(
             batch_index=batch_index,
             context=context,
         ),
+        render_persona_block(persona),
         render_dimension_prompts_block(context.dimensions, dim_prompts),
         policy_block,
         render_scoring_frame(),

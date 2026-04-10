@@ -16,6 +16,7 @@ class PromptBatchPayload(TypedDict, total=False):
     name: str
     dimensions: list[str]
     why: str
+    persona: str
     dimension_prompts: dict[str, dict[str, object]]
     judgment_finding_counts: dict[str, object]
     mechanical_finding_counts: dict[str, object]
@@ -31,6 +32,7 @@ class PromptBatchContext:
     rationale: str
     issues_cap: int
     dimension_prompts: dict[str, dict[str, object]]
+    persona: str
 
     @property
     def dimension_set(self) -> set[str]:
@@ -55,6 +57,7 @@ def build_batch_context(batch: PromptBatchPayload, batch_index: int) -> PromptBa
         rationale=str(batch.get("why", "")).strip(),
         issues_cap=max_batch_issues_for_dimension_count(len(dimensions)),
         dimension_prompts=batch_dimension_prompts(batch),
+        persona=str(batch.get("persona", "")).strip(),
     )
 
 

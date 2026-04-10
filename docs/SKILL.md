@@ -141,6 +141,19 @@ Four paths to get subjective scores:
 
 **Integrity rules:** Score from evidence only — no prior chat context, score history, or target-threshold anchoring. When evidence is mixed, score lower and explain uncertainty. Assess every requested dimension; never drop one.
 
+#### Persona rotation
+
+When multiple review batches run in parallel, each batch is automatically assigned a reviewer persona. Personas bias *attention*, not scoring rules: all findings still require the same confidence thresholds.
+
+| Persona | Bias | Key question |
+|---------|------|-------------|
+| Pragmatist | Simplicity over cleverness | Would a new team member understand this in 30 seconds? |
+| Architect | Boundaries, coupling, API surface | Does this respect the system's structural contracts? |
+| Bug Hunter | Null/undefined, races, missing awaits | What fails under edge cases? |
+| Migrator | Deprecated patterns, half-migrated code | What should have been cleaned up? |
+
+Personas cycle across batches automatically. A batch with the Architect persona spends more time exploring boundary violations, while a Bug Hunter batch focuses on edge-case failures. This improves coverage diversity across parallel reviews without changing the scoring rubric.
+
 #### Review output format
 
 Return machine-readable JSON for review imports. For `--external-submit`, include `session` from the generated template:
