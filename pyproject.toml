@@ -62,6 +62,7 @@ exclude = ["desloppify.tests", "desloppify.tests.*"]
 include-package-data = false
 
 [tool.setuptools.package-data]
+"desloppify.app.output" = ["_viz_template.html"]
 "desloppify.data.global" = ["*.md"]
 "desloppify.languages._framework" = ["review_data/*.json"]
 "desloppify.languages.python" = ["review_data/*.json"]

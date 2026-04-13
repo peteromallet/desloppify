@@ -1,6 +1,7 @@
 """Codebase treemap visualization with HTML output and LLM-readable tree text."""
 
 import json
+from importlib import resources
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -111,6 +112,7 @@ def generate_visualization(
 @dataclass
 class TreeTextOptions:
     """Text tree rendering options."""
+
     max_depth: int = 2
     focus: str | None = None
     min_loc: int = 0
@@ -158,4 +160,8 @@ def generate_tree_text(
 
 def _get_html_template() -> str:
     """Read the HTML treemap template from the external file."""
-    return (Path(__file__).parent / "_viz_template.html").read_text()
+    return (
+        resources.files("desloppify.app.output")
+        .joinpath("_viz_template.html")
+        .read_text()
+    )
