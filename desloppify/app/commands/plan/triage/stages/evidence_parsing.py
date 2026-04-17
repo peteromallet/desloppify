@@ -55,7 +55,7 @@ class ObserveEvidence:
 
     entries: list[ObserveAssessment] = field(default_factory=list)
     unparsed_citation_count: int = 0  # hashes cited without a verdict
-    has_parseable_ids: bool = True  # False if valid_ids had no hex-hash IDs
+    has_parseable_ids: bool = True  # False if valid_ids had no parseable short IDs
 
 
 @dataclass
@@ -93,12 +93,18 @@ def _normalise_verdict(raw: str) -> str | None:
 
 
 def _build_short_map(valid_ids: set[str]) -> dict[str, str]:
-    """Build short-hash → full-id map from valid issue IDs."""
+    """Build collision-safe short-id → full-id map from valid issue IDs."""
     short_map: dict[str, str] = {}
     for fid in valid_ids:
-        short = fid.rsplit("::", 1)[-1]
-        if re.fullmatch(r"[0-9a-f]{6,}", short):
+        short = fid.rsplit("::", 1)[-1].lower()
+        if not short:
+            continue
+        existing = short_map.get(short)
+        if existing is None:
             short_map[short] = fid
+            continue
+        if existing != fid:
+            short_map.pop(short, None)
     return short_map
 
 
@@ -109,8 +115,8 @@ def _is_valid_hash(raw_hash: str, short_map: dict[str, str], valid_ids: set[str]
 
 # --- YAML-like template parser ---
 
-# Matches lines like:  - hash: abc12345  or  hash: abc12345
-_YAML_HASH_RE = re.compile(r"^\s*-?\s*hash\s*:\s*([0-9a-f]{6,})", re.IGNORECASE)
+# Matches lines like:  - hash: abc12345  or  hash: task_param_bag
+_YAML_HASH_RE = re.compile(r"^\s*-?\s*hash\s*:\s*(\S+)", re.IGNORECASE)
 # Matches lines like:  verdict: genuine  or  verdict: false-positive
 _YAML_VERDICT_RE = re.compile(r"^\s*verdict\s*:\s*(.+)", re.IGNORECASE)
 # Matches lines like:  verdict_reasoning: some reason
@@ -214,9 +220,13 @@ def parse_observe_evidence(report: str, valid_ids: set[str]) -> ObserveEvidence:
     short_map = _build_short_map(valid_ids)
     entries = _parse_yaml_template(report, short_map, valid_ids)
 
-    # Count hashes that appear in report but weren't parsed as entries
-    all_hashes_in_report = set(re.findall(r"[0-9a-f]{8,}", report.lower()))
+    # Count short IDs that appear in report but weren't parsed as entries.
     valid_short_hashes = set(short_map.keys())
+    all_hashes_in_report = {
+        match.group(1).lower()
+        for line in report.splitlines()
+        if (match := _YAML_HASH_RE.match(line))
+    }
     cited_hashes = all_hashes_in_report & valid_short_hashes
     parsed_hashes = {e.issue_hash for e in entries}
     unparsed = len(cited_hashes - parsed_hashes)
@@ -250,7 +260,7 @@ def validate_observe_evidence(
     if issue_count == 0:
         return []
 
-    # If valid_ids contained no hex-hash IDs, verdict parsing is impossible — skip.
+    # If valid_ids contained no parseable short IDs, verdict parsing is impossible — skip.
     if not evidence.has_parseable_ids:
         return []
 
@@ -590,6 +600,10 @@ def resolve_short_hash_to_full_id(short_hash: str, valid_ids: set[str]) -> str |
     # Try direct match first
     if short_hash in valid_ids:
         return short_hash
+    short_hash = short_hash.lower()
+    bucket = maps.short_id_buckets.get(short_hash)
+    if bucket and len(bucket) == 1:
+        return bucket[0]
     # Try collision-aware short hex map
     resolved = maps.short_hex_map.get(short_hash)
     if resolved:

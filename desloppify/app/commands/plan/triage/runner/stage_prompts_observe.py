@@ -87,7 +87,8 @@ def build_observe_batch_prompt(
         title = f.get("title", fid)
         file_path = detail.get("file_path", "")
         description = detail.get("description", f.get("description", ""))
-        line = f"- [{fid[:8]}] ({dim}) **{title}**"
+        issue_token = str(detail.get("summary_hash") or fid.rsplit("::", 1)[-1])
+        line = f"- [{issue_token}] ({dim}) **{title}**"
         if file_path:
             line += f" — `{file_path}`"
         if description:

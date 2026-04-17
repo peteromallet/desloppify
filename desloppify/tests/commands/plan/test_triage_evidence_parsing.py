@@ -144,6 +144,22 @@ class TestParseObserveEvidence:
         assert len(evidence.entries) == 1
         assert evidence.entries[0].issue_hash == "abc12345"
 
+    def test_yaml_template_parses_semantic_holistic_short_ids(self):
+        valid_ids = {"review::.::holistic::naming_quality::task_param_bag"}
+        report = (
+            "- hash: task_param_bag\n"
+            "  verdict: genuine\n"
+            "  verdict_reasoning: Real issue confirmed in src/types.ts.\n"
+            "  files_read: [src/types.ts]\n"
+            "  recommendation: Refactor the shared parameter bag\n"
+        )
+
+        evidence = parse_observe_evidence(report, valid_ids)
+
+        assert evidence.has_parseable_ids is True
+        assert len(evidence.entries) == 1
+        assert evidence.entries[0].issue_hash == "task_param_bag"
+
 
 # ---------------------------------------------------------------------------
 # validate_observe_evidence — field presence checks
