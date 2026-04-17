@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.base.discovery.file_paths import rel, resolve_path
+from desloppify.languages.rust import tools as rust_tools
 from desloppify.languages.rust.support import (
     describe_rust_file,
     find_rust_files,
@@ -423,8 +424,24 @@ def _find_block_start(content: str, index: int) -> int | None:
     paren_depth = 0
     bracket_depth = 0
     angle_depth = 0
-    for cursor in range(index, len(content)):
+    cursor = index
+    while cursor < len(content):
         char = content[cursor]
+        if content.startswith("//", cursor):
+            cursor = rust_tools._line_end(content, cursor)
+            continue
+        if content.startswith("/*", cursor):
+            cursor = rust_tools._block_comment_end(content, cursor)
+            continue
+        if char == '"':
+            cursor = rust_tools._quoted_string_end(content, cursor, '"')
+            continue
+        if char == "'" and rust_tools._looks_like_char_literal_start(content, cursor):
+            cursor = rust_tools._quoted_string_end(content, cursor, "'")
+            continue
+        if char == "r" and rust_tools._looks_like_raw_string_start(content, cursor):
+            cursor = rust_tools._raw_string_end(content, cursor)
+            continue
         if char == "(":
             paren_depth += 1
         elif char == ")":
@@ -441,33 +458,16 @@ def _find_block_start(content: str, index: int) -> int | None:
             return None
         elif char == "{" and paren_depth == bracket_depth == angle_depth == 0:
             return cursor
+        cursor += 1
     return None
 
 
 def _find_matching_brace(text: str, start_index: int) -> int | None:
-    depth = 0
-    for index in range(start_index, len(text)):
-        char = text[index]
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
+    return rust_tools._find_matching_delimiter(text, start_index, "{", "}")
 
 
 def _find_matching_delimiter(text: str, start_index: int, opening: str, closing: str) -> int | None:
-    depth = 0
-    for index in range(start_index, len(text)):
-        char = text[index]
-        if char == opening:
-            depth += 1
-        elif char == closing:
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
+    return rust_tools._find_matching_delimiter(text, start_index, opening, closing)
 
 
 def _preceding_attributes(content: str, start: int) -> str:
