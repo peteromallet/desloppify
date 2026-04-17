@@ -10,7 +10,7 @@ from desloppify.base.subjective_dimensions import (
 )
 from desloppify.base.text_utils import is_numeric
 from desloppify.engine._scoring.policy.core import SUBJECTIVE_CHECKS
-from desloppify.engine._state.issue_semantics import is_review_work_item
+from desloppify.engine._state.issue_semantics import _detail_dict, is_review_work_item
 
 
 def _display_fallback(dim_name: str) -> str:
@@ -172,7 +172,7 @@ def _subjective_issue_count(
         for issue in issues.values()
         if is_review_work_item(issue)
         and issue.get("status") in failure_set
-        and _normalize_dimension_key(issue.get("detail", {}).get("dimension")) == dim_name
+        and _normalize_dimension_key(_detail_dict(issue).get("dimension")) == dim_name
     )
 
 

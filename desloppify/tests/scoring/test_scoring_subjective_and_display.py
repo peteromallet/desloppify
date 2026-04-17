@@ -251,6 +251,24 @@ class TestSubjectiveScoring:
         assert det["pass_rate"] == 0.7
         assert dim["score"] == 70.0
 
+    def test_assessment_ignores_review_issue_with_detail_none(self):
+        f1 = _issue("review", status="open", file="a.py")
+        f1["detail"] = None
+        f2 = _issue("review", status="open", file="b.py")
+        f2["detail"] = {"dimension": "naming_quality"}
+        issues = _issues_dict(f1, f2)
+        assessments = {"naming_quality": {"score": 70}}
+
+        result = compute_dimension_scores(
+            issues, {}, subjective_assessments=assessments
+        )
+
+        dim = result["Naming quality"]
+        det = dim["detectors"]["subjective_assessment"]
+        assert dim["failing"] == 1
+        assert det["failing"] == 1
+        assert dim["score"] == 70.0
+
     def test_assessment_component_breakdown_propagates_to_detector_metadata(self):
         assessments = {
             "abstraction_fitness": {
