@@ -140,6 +140,12 @@ def test_matches_exclusion_exact_directory_path():
     assert matches_exclusion(".claude/worktrees", ".claude/worktrees") is True
 
 
+def test_matches_exclusion_hidden_dir_globs_preserve_leading_dot():
+    """Hidden directories should not match non-hidden glob prefixes."""
+    assert matches_exclusion(".cache/subdir/file.py", "cache/**") is False
+    assert matches_exclusion(".cache/subdir/file.py", ".cache/**") is True
+
+
 # ── find_source_files() ─────────────────────────────────────
 
 

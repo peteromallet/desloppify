@@ -21,7 +21,7 @@ def matches_exclusion(rel_path: str, exclusion: str) -> bool:
         # Full-path glob match for patterns with directory separators
         # (e.g. "Wan2GP/**" should match "Wan2GP/models/rf.py").
         if "/" in exclusion or os.sep in exclusion:
-            normalized_path = rel_path.lstrip("./")
+            normalized_path = rel_path.removeprefix("./")
             if fnmatch.fnmatch(normalized_path, exclusion):
                 return True
     if "/" in exclusion or os.sep in exclusion:
