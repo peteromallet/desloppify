@@ -39,7 +39,11 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
     source_file.parent.mkdir(parents=True)
     source_file.write_text("<?php\n", encoding="utf-8")
     dep_file.write_text("<?php\n", encoding="utf-8")
-    file_list = [str(source_file), str(dep_file)]
+    relative_file_list = [
+        str(source_file.relative_to(tmp_path)),
+        str(dep_file.relative_to(tmp_path)),
+    ]
+    absolute_file_list = [str(source_file), str(dep_file)]
 
     monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
     monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
@@ -67,18 +71,18 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
         ),
     )
 
-    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, file_list)
+    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, relative_file_list)
     assert graph[str(source_file)]["imports"] == {str(dep_file)}
     assert graph[str(dep_file)]["importers"] == {str(source_file)}
     assert graph[str(source_file)]["import_count"] == 1
     assert graph[str(dep_file)]["importer_count"] == 1
 
-    builder = graph_mod.make_ts_dep_builder(spec, lambda _path: file_list)
+    builder = graph_mod.make_ts_dep_builder(spec, lambda _path: relative_file_list)
     assert builder(tmp_path)[str(source_file)]["imports"] == {str(dep_file)}
     assert graph_mod.ts_build_dep_graph(
         tmp_path,
         SimpleNamespace(import_query=None, resolve_import=None),
-        file_list,
+        absolute_file_list,
     ) == {}
 
 

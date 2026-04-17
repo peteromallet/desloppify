@@ -31,14 +31,20 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+    abs_file_list = [
+        filepath
+        if os.path.isabs(filepath)
+        else os.path.normpath(os.path.join(scan_path, filepath))
+        for filepath in file_list
+    ]
+    file_set = set(abs_file_list)
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
-    for f in file_list:
+    for f in abs_file_list:
         graph[f] = {"imports": set(), "importers": set()}
 
-    for filepath in file_list:
+    for filepath in abs_file_list:
         cached = get_or_parse_tree(filepath, parser, spec.grammar)
         if cached is None:
             continue
