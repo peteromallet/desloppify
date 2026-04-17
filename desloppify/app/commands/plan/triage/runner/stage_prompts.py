@@ -16,6 +16,7 @@ from desloppify.engine.plan_triage import (
 )
 
 from ..services import TriageServices, default_triage_services
+from ..validation.reflect_accounting import required_reflect_issue_tokens
 from .stage_prompts_instruction_blocks import _STAGE_INSTRUCTIONS
 from .stage_prompts_instruction_shared import (
     _STAGES,
@@ -36,10 +37,10 @@ from .stage_prompts_sense import (
 from .stage_prompts_validation import _validation_requirements
 
 
-def _required_issue_hashes(triage_input: TriageInput) -> list[str]:
-    """Return sorted short hashes for open review issues."""
+def _required_issue_tokens(triage_input: TriageInput) -> list[str]:
+    """Return the exact ledger token required for each open review issue."""
     review_issues = getattr(triage_input, "review_issues", getattr(triage_input, "open_issues", {}))
-    return sorted(issue_id.rsplit("::", 1)[-1] for issue_id in review_issues)
+    return required_reflect_issue_tokens(set(review_issues))
 
 
 def _compact_issue_summary(triage_input: TriageInput) -> str:
@@ -98,22 +99,24 @@ def _issue_context_for_stage(
     if stage in {"observe", "reflect"}:
         parts = ["## Issue Data\n\n" + build_triage_prompt(triage_input)]
         if stage == "reflect":
-            short_ids = _required_issue_hashes(triage_input)
+            issue_tokens = _required_issue_tokens(triage_input)
             parts.append(
-                "## Required Issue Hashes\n"
-                f"Total open review issues: {len(short_ids)}\n"
-                "Every one of these hashes must appear exactly once in your cluster/skip blueprint.\n"
-                "Do not repeat hashes outside that blueprint.\n"
-                + ", ".join(short_ids)
+                "## Required Issue Tokens\n"
+                f"Total open review issues: {len(issue_tokens)}\n"
+                "Every one of these tokens must appear exactly once in your cluster/skip blueprint.\n"
+                "For collided short IDs, the required token is the full issue ID shown below.\n"
+                "Do not repeat these tokens outside that blueprint.\n"
+                + ", ".join(issue_tokens)
             )
             parts.append(
                 "## Coverage Ledger Template\n"
                 "Your final report MUST contain a `## Coverage Ledger` section with one line per issue.\n"
                 "Allowed forms:\n"
-                '- `- abcd1234 -> cluster "cluster-name"`\n'
-                '- `- abcd1234 -> skip "specific-reason-tag"`\n'
-                "Do not mention hashes outside the `## Coverage Ledger` section.\n"
-                + "\n".join(f"- {short_id} -> TODO" for short_id in short_ids)
+                '- `- <token> -> cluster "cluster-name"`\n'
+                '- `- <token> -> skip "specific-reason-tag"`\n'
+                "Use the exact required token for each issue.\n"
+                "Do not mention those tokens outside the `## Coverage Ledger` section.\n"
+                + "\n".join(f"- {issue_token} -> TODO" for issue_token in issue_tokens)
             )
         return "\n\n".join(parts)
     summary = _compact_issue_summary(triage_input)

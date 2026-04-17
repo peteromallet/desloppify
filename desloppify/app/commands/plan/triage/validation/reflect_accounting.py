@@ -47,18 +47,25 @@ class _IdResolutionMaps:
     short_id_buckets: dict[str, list[str]]
     short_hex_map: dict[str, str]
     slug_prefix_map: dict[str, str]
+    issue_tokens: dict[str, str]
 
 
 def _build_id_resolution_maps(valid_ids: set[str]) -> _IdResolutionMaps:
     short_id_buckets: dict[str, list[str]] = {}
     short_hex_map: dict[str, str] = {}
     slug_prefix_map: dict[str, str] = {}
+    short_id_counts: Counter[str] = Counter(
+        issue_id.rsplit("::", 1)[-1]
+        for issue_id in valid_ids
+    )
+    issue_tokens: dict[str, str] = {}
     ambiguous_slugs: set[str] = set()
     for issue_id in sorted(valid_ids):
         parts = issue_id.rsplit("::", 1)
         short_id = parts[-1]
         slug = parts[0] if len(parts) == 2 else ""
         short_id_buckets.setdefault(short_id, []).append(issue_id)
+        issue_tokens[issue_id] = short_id if short_id_counts[short_id] == 1 else issue_id
         if re.fullmatch(r"[0-9a-f]{8,}", short_id):
             existing = short_hex_map.get(short_id)
             if existing is None:
@@ -78,7 +85,20 @@ def _build_id_resolution_maps(valid_ids: set[str]) -> _IdResolutionMaps:
         short_id_buckets=short_id_buckets,
         short_hex_map=short_hex_map,
         slug_prefix_map=slug_prefix_map,
+        issue_tokens=issue_tokens,
     )
+
+
+def required_reflect_issue_tokens(valid_ids: set[str]) -> list[str]:
+    """Return the exact ledger token required for each reflect issue."""
+    maps = _build_id_resolution_maps(valid_ids)
+    return [maps.issue_tokens[issue_id] for issue_id in sorted(valid_ids)]
+
+
+def display_reflect_issue_tokens(issue_ids: list[str]) -> list[str]:
+    """Return stable display tokens for issue IDs in user-facing messages."""
+    maps = _build_id_resolution_maps(set(issue_ids))
+    return [maps.issue_tokens.get(issue_id, issue_id) for issue_id in issue_ids]
 
 
 def _clean_ledger_token(raw: str) -> str:
@@ -142,16 +162,12 @@ def _resolve_token_to_id(
     token: str,
     valid_ids: set[str],
     maps: _IdResolutionMaps,
-    short_id_usage: Counter[str],
 ) -> str | None:
     if token in valid_ids:
         return token
     bucket = maps.short_id_buckets.get(token)
-    if bucket:
-        bucket_index = short_id_usage[token]
-        resolved = bucket[bucket_index] if bucket_index < len(bucket) else bucket[-1]
-        short_id_usage[token] += 1
-        return resolved
+    if bucket and len(bucket) == 1:
+        return bucket[0]
     for hex_token in re.findall(r"[0-9a-f]{8,}", token):
         resolved = maps.short_hex_map.get(hex_token)
         if resolved:
@@ -215,9 +231,8 @@ def _resolve_ledger_issue_id(
     line: str,
     valid_ids: set[str],
     maps: _IdResolutionMaps,
-    short_id_usage: Counter[str],
 ) -> str | None:
-    issue_id = _resolve_token_to_id(token, valid_ids, maps, short_id_usage)
+    issue_id = _resolve_token_to_id(token, valid_ids, maps)
     if issue_id:
         return issue_id
     for hex_token in re.findall(r"[0-9a-f]{8,}", line):
@@ -253,7 +268,6 @@ def _walk_coverage_ledger(
     maps = _build_id_resolution_maps(valid_ids)
     hits: Counter[str] = Counter()
     dispositions: list[ReflectDisposition] = []
-    short_id_usage: Counter[str] = Counter()
     found_section, ledger_lines = _iter_coverage_ledger_lines(report)
 
     for line in ledger_lines:
@@ -266,7 +280,6 @@ def _walk_coverage_ledger(
             line=line,
             valid_ids=valid_ids,
             maps=maps,
-            short_id_usage=short_id_usage,
         )
         if not issue_id:
             continue
@@ -345,6 +358,8 @@ def validate_reflect_accounting(
     if not missing and not duplicates:
         return True, cited, missing, duplicates
 
+    maps = _build_id_resolution_maps(valid_ids)
+
     print(
         colorize(
             "  Reflect report must account for every open review issue exactly once.",
@@ -352,17 +367,17 @@ def validate_reflect_accounting(
         )
     )
     if missing:
-        missing_short = ", ".join(issue_id.rsplit("::", 1)[-1] for issue_id in missing[:10])
-        print(colorize(f"    Missing: {missing_short}", "yellow"))
+        missing_tokens = ", ".join(maps.issue_tokens.get(issue_id, issue_id) for issue_id in missing[:10])
+        print(colorize(f"    Missing: {missing_tokens}", "yellow"))
     if duplicates:
-        duplicate_short = ", ".join(issue_id.rsplit("::", 1)[-1] for issue_id in duplicates[:10])
-        print(colorize(f"    Duplicated: {duplicate_short}", "yellow"))
+        duplicate_tokens = ", ".join(maps.issue_tokens.get(issue_id, issue_id) for issue_id in duplicates[:10])
+        print(colorize(f"    Duplicated: {duplicate_tokens}", "yellow"))
     print(colorize("  Fix the reflect blueprint before running organize.", "dim"))
     if missing:
         print(colorize("  Expected format — include a ## Coverage Ledger section:", "dim"))
-        print(colorize('    - <hash> -> cluster "cluster-name"', "dim"))
-        print(colorize('    - <hash> -> skip "reason"', "dim"))
-        print(colorize("  Also accepted: bare hashes, colon-separated, comma-separated.", "dim"))
+        print(colorize('    - <token> -> cluster "cluster-name"', "dim"))
+        print(colorize('    - <token> -> skip "reason"', "dim"))
+        print(colorize("  Use the exact required ledger token for each issue.", "dim"))
     return False, cited, missing, duplicates
 
 

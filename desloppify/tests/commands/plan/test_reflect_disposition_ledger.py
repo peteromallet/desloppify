@@ -130,6 +130,43 @@ class TestParseReflectDispositions:
         result = parse_reflect_dispositions(report, valid_ids)
         assert len(result) == 1
 
+    def test_ambiguous_short_ids_require_disambiguated_tokens(self):
+        report = (
+            "## Coverage Ledger\n"
+            '- review::src/alpha.py::arch::shared_util -> cluster "alpha-fixes"\n'
+            '- review::src/beta.py::arch::shared_util -> cluster "beta-fixes"\n'
+        )
+        valid_ids = {
+            "review::src/beta.py::arch::shared_util",
+            "review::src/alpha.py::arch::shared_util",
+        }
+        result = parse_reflect_dispositions(report, valid_ids)
+        assert result == [
+            ReflectDisposition(
+                issue_id="review::src/alpha.py::arch::shared_util",
+                decision="cluster",
+                target="alpha-fixes",
+            ),
+            ReflectDisposition(
+                issue_id="review::src/beta.py::arch::shared_util",
+                decision="cluster",
+                target="beta-fixes",
+            ),
+        ]
+
+    def test_ambiguous_short_ids_are_not_resolved_by_order(self):
+        report = (
+            "## Coverage Ledger\n"
+            '- shared_util -> cluster "alpha-fixes"\n'
+            '- shared_util -> cluster "beta-fixes"\n'
+        )
+        valid_ids = {
+            "review::src/beta.py::arch::shared_util",
+            "review::src/alpha.py::arch::shared_util",
+        }
+        result = parse_reflect_dispositions(report, valid_ids)
+        assert result == []
+
 
 # ---------------------------------------------------------------------------
 # validate_organize_against_reflect_ledger

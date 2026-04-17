@@ -1617,8 +1617,8 @@ def test_pipeline_execution_helpers_cover_leaf_paths(monkeypatch, tmp_path: Path
         duplicate_ids=["review::src/b.py::facefeed"],
         build_stage_prompt_fn=lambda *_a, **_k: "base prompt",
     )
-    assert "Missing hashes: deadbeef" in prompt
-    assert "Duplicated hashes: facefeed" in prompt
+    assert "Missing tokens: deadbeef" in prompt
+    assert "Duplicated tokens: facefeed" in prompt
     assert "Previous Reflect Report" in prompt
 
     ok, reason = orchestrator_pipeline_execution_mod.preflight_stage(

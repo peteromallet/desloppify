@@ -62,7 +62,7 @@ def test_build_reflect_prompt_includes_prior(tmp_path: Path) -> None:
     prompt = build_stage_prompt("reflect", si, prior, repo_root=tmp_path)
     assert "REFLECT" in prompt
     assert "My observation report" in prompt
-    assert "## Required Issue Hashes" in prompt
+    assert "## Required Issue Tokens" in prompt
     assert "## Coverage Ledger Template" in prompt
     assert "-> TODO" in prompt
     assert "exactly once" in prompt
@@ -188,8 +188,8 @@ def test_validate_reflect_issue_accounting_handles_short_id_collisions() -> None
     }
     report = """
 ## Coverage Ledger
-- review_packet_ownership_split -> cluster "review-packet-lifecycle-ownership"
-- review_packet_ownership_split -> cluster "review-packet-lifecycle-ownership"
+- review::src/a.py::cross_module_architecture::review_packet_ownership_split -> cluster "review-packet-lifecycle-ownership"
+- review::src/b.py::high_level_elegance::review_packet_ownership_split -> cluster "review-packet-lifecycle-ownership"
 
 ## Cluster Blueprint
 Cluster "review-packet-lifecycle-ownership" owns packet lifecycle policy.
@@ -202,6 +202,63 @@ Cluster "review-packet-lifecycle-ownership" owns packet lifecycle policy.
     assert cited == valid_ids
     assert missing == []
     assert duplicates == []
+
+
+def test_validate_reflect_issue_accounting_rejects_ambiguous_short_id_collisions() -> None:
+    valid_ids = {
+        "review::src/a.py::cross_module_architecture::review_packet_ownership_split",
+        "review::src/b.py::high_level_elegance::review_packet_ownership_split",
+    }
+    report = """
+## Coverage Ledger
+- review_packet_ownership_split -> cluster "review-packet-lifecycle-ownership"
+- review_packet_ownership_split -> cluster "review-packet-lifecycle-ownership"
+"""
+    ok, cited, missing, duplicates = _validate_reflect_issue_accounting(
+        report=report,
+        valid_ids=valid_ids,
+    )
+    assert ok is False
+    assert cited == set()
+    assert missing == sorted(valid_ids)
+    assert duplicates == []
+
+
+def test_build_reflect_prompt_uses_full_ids_for_colliding_short_ids(tmp_path: Path) -> None:
+    issues = {
+        "review::src/a.py::cross_module_architecture::review_packet_ownership_split": {
+            "status": "open",
+            "detector": "review",
+            "file": "src/a.py",
+            "summary": "Issue A summary",
+            "detail": {"dimension": "cross_module_architecture", "suggestion": "Fix it"},
+        },
+        "review::src/b.py::high_level_elegance::review_packet_ownership_split": {
+            "status": "open",
+            "detector": "review",
+            "file": "src/b.py",
+            "summary": "Issue B summary",
+            "detail": {"dimension": "high_level_elegance", "suggestion": "Fix it"},
+        },
+    }
+    si = TriageInput(
+        review_issues=issues,
+        objective_backlog_issues={},
+        existing_clusters={},
+        dimension_scores={},
+        new_since_last=set(),
+        resolved_since_last=set(),
+        previously_dismissed=[],
+        triage_version=1,
+        resolved_issues={},
+        completed_clusters=[],
+    )
+
+    prompt = build_stage_prompt("reflect", si, {"observe": "obs"}, repo_root=tmp_path)
+
+    assert "## Required Issue Tokens" in prompt
+    assert "- review::src/a.py::cross_module_architecture::review_packet_ownership_split -> TODO" in prompt
+    assert "- review::src/b.py::high_level_elegance::review_packet_ownership_split -> TODO" in prompt
 
 
 def test_build_organize_prompt(tmp_path: Path) -> None:
