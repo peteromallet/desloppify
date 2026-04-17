@@ -83,8 +83,8 @@ def _manual_clusters_or_error(
     return None
 
 
-def _clusters_enriched_or_error(plan: dict) -> bool:
-    gaps = unenriched_clusters(plan)
+def _clusters_enriched_or_error(plan: dict, state: dict | None = None) -> bool:
+    gaps = unenriched_clusters(plan, state)
     if not gaps:
         return True
     print(colorize(f"  Cannot organize: {len(gaps)} cluster(s) need enrichment.", "red"))

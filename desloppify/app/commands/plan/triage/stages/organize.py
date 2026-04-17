@@ -128,7 +128,7 @@ def _validate_organize_submission(
     manual_clusters = _manual_clusters_or_error(plan, open_review_ids=open_review_ids)
     if manual_clusters is None:
         return None
-    if not _clusters_enriched_or_error(plan):
+    if not _clusters_enriched_or_error(plan, state):
         return None
     if not _unclustered_review_issues_or_error(plan, state):
         return None

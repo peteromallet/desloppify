@@ -23,6 +23,7 @@ import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_co
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution as orchestrator_pipeline_execution_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_sense as orchestrator_sense_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_common as orchestrator_common_mod
+import desloppify.app.commands.plan.triage.stages.organize as organize_stage_mod
 import desloppify.app.commands.plan.triage.validation.completion_policy as completion_policy_mod
 import desloppify.app.commands.plan.triage.validation.completion_stages as completion_stages_mod
 import desloppify.app.commands.plan.triage.validation.enrich_checks as enrich_checks_mod
@@ -266,6 +267,82 @@ def test_confirmation_modules_stage_presence_guards(capsys) -> None:
     confirmations_organize_mod.confirm_organize(args, {}, {}, None)
     out = capsys.readouterr().out
     assert "Cannot confirm" in out
+
+
+def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatch) -> None:
+    import desloppify.app.commands.plan.triage.stages.evidence_parsing as evidence_parsing_mod
+
+    captured: dict[str, object] = {}
+    state = {"issues": {"review::closed-only": {"status": "closed", "detector": "review"}}}
+
+    monkeypatch.setattr(organize_stage_mod, "open_review_ids_from_state", lambda _state: set())
+    monkeypatch.setattr(organize_stage_mod, "auto_confirm_reflect_for_organize", lambda **_kwargs: True)
+    monkeypatch.setattr(organize_stage_mod, "_manual_clusters_or_error", lambda _plan, open_review_ids=None: ["manual"])
+
+    def _capture_enriched(plan, actual_state):
+        captured["plan"] = plan
+        captured["state"] = actual_state
+        return True
+
+    monkeypatch.setattr(organize_stage_mod, "_clusters_enriched_or_error", _capture_enriched)
+    monkeypatch.setattr(organize_stage_mod, "_unclustered_review_issues_or_error", lambda _plan, _state: True)
+    monkeypatch.setattr(organize_stage_mod, "_validate_organize_against_ledger_or_error", lambda **_kwargs: True)
+    monkeypatch.setattr(organize_stage_mod, "validate_backlog_promotions_executed", lambda **_kwargs: [])
+    monkeypatch.setattr(organize_stage_mod, "_enforce_cluster_activity_for_organize", lambda **_kwargs: True)
+    monkeypatch.setattr(organize_stage_mod, "_organize_report_or_error", lambda report: report)
+    monkeypatch.setattr(evidence_parsing_mod, "validate_report_references_clusters", lambda _report, _clusters: [])
+
+    services = SimpleNamespace(
+        collect_triage_input=lambda _plan, _state: {},
+        detect_recurring_patterns=lambda *_args, **_kwargs: [],
+        save_plan=lambda _plan: None,
+    )
+
+    result = organize_stage_mod._validate_organize_submission(
+        args=argparse.Namespace(),
+        plan={"clusters": {}},
+        state=state,
+        stages={"observe": {}, "reflect": {}},
+        report="x" * 120,
+        attestation=None,
+        is_reuse=False,
+        services=services,
+    )
+
+    assert result == (["manual"], "x" * 120)
+    assert captured["state"] is state
+
+
+def test_confirm_organize_passes_state_to_enrichment_gate(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    state = {"issues": {"review::closed-only": {"status": "closed", "detector": "review"}}}
+
+    monkeypatch.setattr(confirmations_organize_mod, "ensure_stage_is_confirmable", lambda _stages, stage: True)
+    monkeypatch.setattr(confirmations_organize_mod, "show_plan_summary", lambda _plan, _state: None)
+    monkeypatch.setattr(confirmations_organize_mod, "_print_reflect_activity_summary", lambda _plan, _stages: None)
+    monkeypatch.setattr(confirmations_organize_mod, "count_log_activity_since", lambda _plan, _ts: {})
+
+    def _capture_enriched(plan, actual_state):
+        captured["plan"] = plan
+        captured["state"] = actual_state
+        return False
+
+    monkeypatch.setattr(confirmations_organize_mod, "_require_enriched_clusters", _capture_enriched)
+    monkeypatch.setattr(confirmations_organize_mod, "_require_clustered_review_issues", lambda _plan, _state: True)
+
+    services = SimpleNamespace(
+        command_runtime=lambda _args: SimpleNamespace(state=state),
+    )
+
+    confirmations_organize_mod.confirm_organize(
+        argparse.Namespace(),
+        {"clusters": {}},
+        {"reflect": {"timestamp": ""}},
+        None,
+        services=services,
+    )
+
+    assert captured["state"] is state
 
 
 def test_confirmation_pipeline_structures_enrich_level_results(monkeypatch) -> None:

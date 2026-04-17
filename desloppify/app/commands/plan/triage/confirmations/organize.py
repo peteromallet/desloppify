@@ -28,10 +28,10 @@ from ..validation.enrich_checks import (
 )
 
 
-def _require_enriched_clusters(plan: dict) -> bool:
+def _require_enriched_clusters(plan: dict, state: dict | None = None) -> bool:
     from ..stages.helpers import unenriched_clusters  # noqa: PLC0415
 
-    gaps = unenriched_clusters(plan)
+    gaps = unenriched_clusters(plan, state)
     if not gaps:
         return True
     print(colorize(f"\n  Cannot confirm: {len(gaps)} cluster(s) still need enrichment.", "red"))
@@ -158,7 +158,7 @@ def confirm_organize(
     organize_clusters = [
         name for name in plan.get("clusters", {}) if not plan["clusters"][name].get("auto")
     ]
-    if not _require_enriched_clusters(plan):
+    if not _require_enriched_clusters(plan, state):
         return
     if not _require_clustered_review_issues(plan, state):
         return
