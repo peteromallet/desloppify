@@ -96,6 +96,25 @@ class TestCommonFindBalancedEnd:
         lines = ["foo(\n", "  bar\n"]
         assert find_balanced_end(lines, 0, track="parens") is None
 
+    def test_ignores_closing_parens_in_line_comment(self):
+        """Line comments must not terminate a multiline call early."""
+        lines = [
+            "console.log( // ))\n",
+            "  '[DEBUG] value',\n",
+            "  someVar,\n",
+            ");\n",
+        ]
+        assert find_balanced_end(lines, 0, track="parens") == 3
+
+    def test_ignores_closing_braces_in_block_comment(self):
+        """Block comments must not terminate brace tracking early."""
+        lines = [
+            "if (x) { /* }} */\n",
+            "  return 1;\n",
+            "}\n",
+        ]
+        assert find_balanced_end(lines, 0, track="braces") == 2
+
 
 class TestCommonExtractBody:
     """Tests for extract_body_between_braces()."""
@@ -126,6 +145,13 @@ class TestCommonExtractBody:
     def test_search_after_not_found_returns_none(self):
         """Returns None if search_after marker not found."""
         assert extract_body_between_braces("no marker", search_after="=>") is None
+
+    def test_ignores_comment_braces_when_extracting_body(self):
+        """Comment braces must not truncate the extracted body."""
+        text = "const f = () => { /* } */ return 42; }"
+        body = extract_body_between_braces(text, search_after="=>")
+        assert body is not None
+        assert "return 42;" in body
 
 
 class TestCommonCollapseBlankLines:
@@ -495,6 +521,31 @@ class TestFixDebugLogs:
         assert "console.log" not in content
         assert "return 1;" in content
 
+    def test_remove_multiline_log_ignores_comment_delimiters(self, tmp_path):
+        """Comment delimiters on the opening line must not truncate removal."""
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            textwrap.dedent("""\
+            function foo() {
+              console.log( // ))
+                '[DEBUG] multi',
+                someVar
+              );
+              return 1;
+            }
+        """)
+        )
+        entries = [
+            {"file": str(ts_file), "line": 2, "tag": "DEBUG", "content": "console.log("}
+        ]
+        result = fix_debug_logs(entries, dry_run=False)
+        assert len(result.entries) == 1
+        content = ts_file.read_text()
+        assert "console.log" not in content
+        assert "'[DEBUG] multi'" not in content
+        assert "someVar" not in content
+        assert "return 1;" in content
+
     def test_removes_orphaned_debug_comment(self, tmp_path):
         """A preceding // DEBUG comment is removed along with the log."""
         ts_file = tmp_path / "app.ts"
@@ -718,5 +769,4 @@ class TestFixUnusedParams:
         ]
         _ = fix_unused_params(entries, dry_run=True)
         assert ts_file.read_text() == original
-
 
