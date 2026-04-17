@@ -45,16 +45,41 @@ class ClusterContext(NamedTuple):
     cluster_remaining: int
 
 
+def _affected_cluster_names(plan: dict, resolved_ids: list[str]) -> list[str]:
+    """Return unique cluster names referenced by the resolved ids."""
+    overrides = plan.get("overrides") or {}
+    seen: set[str] = set()
+    cluster_names: list[str] = []
+    for resolved_id in resolved_ids:
+        override = overrides.get(resolved_id)
+        cluster_name = override.get("cluster") if isinstance(override, dict) else None
+        if not cluster_name or cluster_name in seen:
+            continue
+        seen.add(cluster_name)
+        cluster_names.append(cluster_name)
+    return cluster_names
+
+
+def _completed_cluster_names(plan: dict, resolved_ids: list[str]) -> list[str]:
+    """Return affected clusters whose issues are fully resolved by this command."""
+    clusters = plan.get("clusters") or {}
+    resolved_set = set(resolved_ids)
+    completed: list[str] = []
+    for cluster_name in _affected_cluster_names(plan, resolved_ids):
+        cluster = clusters.get(cluster_name)
+        if not isinstance(cluster, dict):
+            continue
+        current_ids = set(cluster.get("issue_ids") or [])
+        if current_ids - resolved_set:
+            continue
+        completed.append(cluster_name)
+    return completed
+
+
 def capture_cluster_context(plan: dict, resolved_ids: list[str]) -> ClusterContext:
     """Determine cluster membership for resolved issues before purge."""
     clusters = plan.get("clusters") or {}
-    overrides = plan.get("overrides") or {}
-    cluster_name: str | None = None
-    for resolved_id in resolved_ids:
-        override = overrides.get(resolved_id)
-        if override and override.get("cluster"):
-            cluster_name = override["cluster"]
-            break
+    cluster_name = next(iter(_affected_cluster_names(plan, resolved_ids)), None)
     if not cluster_name or cluster_name not in clusters:
         return ClusterContext(
             cluster_name=None, cluster_completed=False, cluster_remaining=0
@@ -87,6 +112,7 @@ def update_living_plan_after_resolve(
             return None, ctx
         plan = load_plan(plan_path)
         ctx = capture_cluster_context(plan, all_resolved)
+        completed_clusters = _completed_cluster_names(plan, all_resolved)
         phase_before = current_lifecycle_phase(plan)
         purged = purge_ids(plan, all_resolved)
         step_messages = auto_complete_steps(plan)
@@ -100,20 +126,21 @@ def update_living_plan_after_resolve(
             note=getattr(args, "note", None),
             detail={"status": args.status, "attestation": attestation},
         )
-        if ctx.cluster_completed and ctx.cluster_name:
-            append_log_entry(
-                plan,
-                "cluster_done",
-                issue_ids=all_resolved,
-                cluster_name=ctx.cluster_name,
-                actor="user",
-            )
-            # Mark cluster as done so cluster_is_active() returns False
-            plan["clusters"][ctx.cluster_name]["execution_status"] = (
-                EXECUTION_STATUS_DONE
-            )
-            # Clear focus when cluster is done
-            if plan.get("active_cluster") == ctx.cluster_name:
+        if completed_clusters:
+            for cluster_name in completed_clusters:
+                append_log_entry(
+                    plan,
+                    "cluster_done",
+                    issue_ids=all_resolved,
+                    cluster_name=cluster_name,
+                    actor="user",
+                )
+                # Mark cluster as done so cluster_is_active() returns False
+                plan["clusters"][cluster_name]["execution_status"] = (
+                    EXECUTION_STATUS_DONE
+                )
+            # Clear focus when the active cluster is done
+            if plan.get("active_cluster") in set(completed_clusters):
                 plan["active_cluster"] = None
         elif ctx.cluster_name and ctx.cluster_remaining > 0:
             # Auto-focus on the cluster while there's still work in it
