@@ -12,6 +12,7 @@ import desloppify.app.commands.review.batch.orchestrator as orchestrator_mod
 import desloppify.app.commands.review.batch.prompt_template as prompt_template_mod
 import desloppify.app.commands.review.runner_opencode as runner_opencode_mod
 import desloppify.app.commands.review.runner_parallel as runner_helpers_mod
+import desloppify.app.commands.review.runner_process_impl.attempt_success as runner_success_mod
 from desloppify.app.commands.review.batch.execution import CollectBatchResultsRequest
 from desloppify.app.commands.review.runner_process_impl.types import _ExecutionResult
 
@@ -58,6 +59,44 @@ def test_execute_batches_parallel_task_exception_marks_failure() -> None:
     assert failures == [0]
     assert captured
     assert any("task failed" in message for _idx, message in captured)
+
+
+def test_execute_batches_parallel_validator_exception_returns_failed_index(tmp_path: Path) -> None:
+    def _task() -> int:
+        output_file = tmp_path / "batch-1.raw.txt"
+        output_file.write_text('{"ok": true}\n', encoding="utf-8")
+        log_file = tmp_path / "batch-1.log"
+
+        return runner_success_mod.handle_successful_attempt_core(
+            result=_ExecutionResult(code=0, stdout_text="", stderr_text=""),
+            output_file=output_file,
+            log_file=log_file,
+            deps=orchestrator_mod.CodexBatchRunnerDeps(
+                timeout_seconds=30,
+                subprocess_run=subprocess.run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                sleep_fn=lambda _seconds: None,
+                validate_output_fn=lambda _path: (_ for _ in ()).throw(
+                    KeyError("validator exploded")
+                ),
+                output_validation_grace_seconds=0.0,
+            ),
+            log_sections=["header"],
+            default_validate_fn=lambda _path: True,
+            monotonic_fn=lambda: 100.0,
+        )
+
+    failures = runner_helpers_mod.execute_batches(
+        tasks={0: _task, 1: lambda: 0},
+        options=runner_helpers_mod.BatchExecutionOptions(
+            run_parallel=True,
+            max_parallel_workers=2,
+            heartbeat_seconds=0.01,
+        ),
+    )
+
+    assert failures == [0]
 
 
 def test_collect_batch_results_recovers_from_log_stdout_payload(tmp_path: Path) -> None:

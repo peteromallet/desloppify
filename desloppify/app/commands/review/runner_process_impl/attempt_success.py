@@ -29,7 +29,7 @@ def handle_successful_attempt_core(
         return None
 
     validate = deps.validate_output_fn or default_validate_fn
-    valid = validate(output_file)
+    valid = _safe_validate_output(validate, output_file)
     valid, grace_wait_used = _validate_with_grace_wait(
         valid,
         output_file=output_file,
@@ -77,6 +77,20 @@ def _validation_timing(deps: CodexBatchRunnerDeps) -> tuple[float, float]:
     return grace_seconds, poll_seconds
 
 
+def _safe_validate_output(validate: DefValidateFn, output_file: Path) -> bool:
+    """Run output validation without letting callback errors abort execution."""
+    try:
+        return bool(validate(output_file))
+    except Exception as exc:  # noqa: BLE001 - user-supplied validator must not abort batch execution
+        logger.warning(
+            "Runner output validator failed for %s (%s): %s",
+            output_file,
+            exc.__class__.__name__,
+            exc,
+        )
+        return False
+
+
 def _validate_with_grace_wait(
     valid: bool,
     *,
@@ -100,7 +114,7 @@ def _validate_with_grace_wait(
             deps.sleep_fn(sleep_for)
         except (OSError, RuntimeError, ValueError, TypeError):
             break
-        if validate(output_file):
+        if _safe_validate_output(validate, output_file):
             return True, True
     return False, True
 
@@ -128,7 +142,7 @@ def _recover_output_from_fallback_text(
             exc,
         )
         return False
-    if not validate(output_file):
+    if not _safe_validate_output(validate, output_file):
         return False
     log_sections.append(
         "Runner output recovered from stdout/stderr fallback text."

@@ -72,6 +72,35 @@ def test_handle_successful_attempt_core_recovers_from_stdout_fallback(tmp_path) 
     assert "recovered" in log_file.read_text(encoding="utf-8").lower()
 
 
+def test_handle_successful_attempt_core_treats_validator_exception_as_invalid(tmp_path) -> None:
+    output_file = tmp_path / "out.json"
+    output_file.write_text('{"ok": true}\n', encoding="utf-8")
+    log_file = tmp_path / "run.log"
+
+    deps = CodexBatchRunnerDeps(
+        timeout_seconds=30,
+        subprocess_run=object(),
+        timeout_error=TimeoutError,
+        safe_write_text_fn=lambda path, text: Path(path).write_text(text, encoding="utf-8"),
+        sleep_fn=lambda _seconds: None,
+        validate_output_fn=lambda _path: (_ for _ in ()).throw(KeyError("missing required field")),
+        output_validation_grace_seconds=0.0,
+    )
+
+    rc = runner_success_mod.handle_successful_attempt_core(
+        result=_ExecutionResult(code=0, stdout_text="", stderr_text=""),
+        output_file=output_file,
+        log_file=log_file,
+        deps=deps,
+        log_sections=["header"],
+        default_validate_fn=lambda _path: True,
+        monotonic_fn=lambda: 100.0,
+    )
+
+    assert rc == 1
+    assert "missing or invalid" in log_file.read_text(encoding="utf-8").lower()
+
+
 def test_core_models_normalized_issue_payload_round_trip() -> None:
     issue = core_models_mod.NormalizedBatchIssue(
         dimension="naming_quality",
