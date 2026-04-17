@@ -753,6 +753,19 @@ class TestApplyFileMove:
         )
         assert importer.read_text() == "from b import thing"
 
+    def test_file_move_fails_if_destination_already_exists(self, tmp_path):
+        src = tmp_path / "a.py"
+        dest = tmp_path / "b.py"
+        src.write_text("source content")
+        dest.write_text("existing content")
+
+        with pytest.raises(FileExistsError, match="Destination already exists"):
+            move_apply_mod.apply_file_move(str(src), str(dest), {}, [])
+
+        assert src.exists()
+        assert src.read_text() == "source content"
+        assert dest.read_text() == "existing content"
+
     def test_file_move_rollback_on_write_error(self, tmp_path):
         """If writing an importer fails, the move is rolled back."""
         src = tmp_path / "a.py"
@@ -801,6 +814,22 @@ class TestApplyDirectoryMove:
             {str(src / "a.py"): [("from pkg.b import f", "from new_pkg.b import f")]},
         )
         assert (dest / "a.py").read_text() == "from new_pkg.b import f"
+
+    def test_directory_move_fails_if_destination_already_exists(self, tmp_path):
+        src = tmp_path / "pkg"
+        src.mkdir()
+        (src / "mod.py").write_text("source content")
+
+        dest = tmp_path / "new_pkg"
+        dest.mkdir()
+        (dest / "mod.py").write_text("existing content")
+
+        with pytest.raises(FileExistsError, match="Destination already exists"):
+            move_apply_mod.apply_directory_move(str(src), str(dest), src, {}, {})
+
+        assert src.exists()
+        assert (src / "mod.py").read_text() == "source content"
+        assert (dest / "mod.py").read_text() == "existing content"
 
 
 # =====================================================================

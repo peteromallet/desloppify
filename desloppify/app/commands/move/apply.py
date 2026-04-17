@@ -17,6 +17,11 @@ from desloppify.base.output.fallbacks import restore_files_best_effort, warn_bes
 from desloppify.base.output.terminal import colorize
 
 
+def _ensure_move_destination_absent(dest_abs: str) -> None:
+    if Path(dest_abs).exists():
+        raise FileExistsError(f"Destination already exists: {dest_abs}")
+
+
 def _rollback_written_files(written_files: dict[str, str]) -> None:
     failed = restore_files_best_effort(written_files, safe_write_text)
     for filepath in failed:
@@ -55,6 +60,7 @@ def apply_file_move(
     Path(dest_abs).parent.mkdir(parents=True, exist_ok=True)
     written_files: dict[str, str] = {}
     try:
+        _ensure_move_destination_absent(dest_abs)
         shutil.move(source_abs, dest_abs)
 
         if dest_abs in new_contents:
@@ -85,6 +91,7 @@ def apply_directory_move(
     Path(dest_abs).parent.mkdir(parents=True, exist_ok=True)
     written_files: dict[str, str] = {}
     try:
+        _ensure_move_destination_absent(dest_abs)
         shutil.move(source_abs, dest_abs)
 
         for src_file, changes in internal_changes.items():
