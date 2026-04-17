@@ -289,10 +289,10 @@ def ensure_plan_defaults(plan: dict[str, Any]) -> None:
 
     Runtime contract is v8-only. Legacy payloads are upgraded in-place once.
     """
+    _upgrade_plan_to_v8(plan)
     defaults = empty_plan()
     for key, value in defaults.items():
         plan.setdefault(key, value)
-    _upgrade_plan_to_v8(plan)
     subjective_defer_meta = plan.get("subjective_defer_meta")
     if isinstance(subjective_defer_meta, dict):
         subjective_defer_meta.pop("force_visible_ids", None)

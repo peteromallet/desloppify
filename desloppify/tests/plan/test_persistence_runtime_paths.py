@@ -82,3 +82,17 @@ def test_resolve_plan_load_status_migrates_legacy_lifecycle_in_memory_only(tmp_p
     assert json.loads(plan_file.read_text(encoding="utf-8"))["refresh_state"][
         "lifecycle_phase"
     ] == "workflow"
+
+
+def test_resolve_plan_load_status_preserves_legacy_uncommitted_findings(tmp_path):
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        '{"version": 7, "created": "2026-01-01T00:00:00+00:00", "updated": "2026-01-01T00:00:00+00:00", "queue_order": [], "deferred": [], "skipped": {}, "active_cluster": null, "overrides": {}, "clusters": {}, "superseded": {}, "promoted_ids": [], "plan_start_scores": {}, "refresh_state": {}, "execution_log": [], "epic_triage_meta": {}, "commit_log": [], "uncommitted_findings": ["review::a.py::issue-1"], "uncommitted_issues": [], "commit_tracking_branch": null}\n',
+        encoding="utf-8",
+    )
+
+    status = persistence_mod.resolve_plan_load_status(plan_file)
+
+    assert status.plan is not None
+    assert status.plan["uncommitted_issues"] == ["review::a.py::issue-1"]
+    assert "uncommitted_findings" not in status.plan

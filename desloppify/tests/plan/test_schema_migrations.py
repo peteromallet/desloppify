@@ -28,6 +28,21 @@ def test_ensure_container_types_sets_defaults_and_renames_keys() -> None:
     assert plan["commit_tracking_branch"] is None
 
 
+def test_ensure_container_types_rename_overwrites_existing_target_key() -> None:
+    plan = {
+        "epic_triage_meta": {"finding_snapshot_hash": "abc", "issue_snapshot_hash": ""},
+        "uncommitted_findings": ["x"],
+        "uncommitted_issues": [],
+    }
+
+    migrations.ensure_container_types(plan)
+
+    assert plan["epic_triage_meta"]["issue_snapshot_hash"] == "abc"
+    assert "finding_snapshot_hash" not in plan["epic_triage_meta"]
+    assert plan["uncommitted_issues"] == ["x"]
+    assert "uncommitted_findings" not in plan
+
+
 def test_migrate_synthesis_to_triage_renames_ids_meta_and_cluster_fields() -> None:
     plan = {
         "queue_order": ["synthesis::a", "other"],

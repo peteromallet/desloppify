@@ -13,7 +13,7 @@ _HEX_SUFFIX_RE = re.compile(r"^[0-9a-f]{8}$")
 def _rename_key(d: dict, old: str, new: str) -> bool:
     if old not in d:
         return False
-    d.setdefault(new, d.pop(old))
+    d[new] = d.pop(old)
     return True
 
 
