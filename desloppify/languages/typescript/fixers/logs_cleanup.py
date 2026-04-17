@@ -200,6 +200,13 @@ def _try_remove_multiline_block(
         new_lines.append(f"{indent}}}\n")
         return j + 1
     if re.match(r"\s*(?:if|else\s+if)\s*\(", stripped):
+        next_line_idx = j + 1
+        while next_line_idx < len(lines) and lines[next_line_idx].strip() == "":
+            next_line_idx += 1
+        if next_line_idx < len(lines):
+            next_stripped = lines[next_line_idx].strip()
+            if next_stripped.startswith("else"):
+                return None
         return j + 1
     return None
 

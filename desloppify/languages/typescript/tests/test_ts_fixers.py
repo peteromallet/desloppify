@@ -3,8 +3,12 @@
 Covers: __init__, common, imports, vars, logs, params, if_chain, useeffect.
 """
 
+import subprocess
+import tempfile
 import textwrap
+from pathlib import Path
 
+from desloppify.languages.typescript.detectors.logs import detect_logs
 from desloppify.languages.typescript.fixers import __all__
 from desloppify.languages.typescript.fixers.fixer_io import apply_fixer
 from desloppify.languages.typescript.fixers.if_chain import (
@@ -632,6 +636,73 @@ class TestFixDebugLogs:
         assert "lines_removed" in r
         assert "log_count" in r
 
+    def test_orphaned_else_after_debug_log_removal(self):
+        """Removing a debug log must not leave an orphaned else block behind."""
+        test_code = textwrap.dedent(
+            """\
+            function process(data) {
+              if (data.debug) {
+                console.log('[DEBUG] processing data', data);
+              }
+              else {
+                processData(data);
+              }
+            }
+            """
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.ts"
+            test_file.write_text(test_code)
+
+            result = detect_logs(Path(tmpdir))
+            fix_debug_logs(result.entries, dry_run=False)
+
+            proc = subprocess.run(
+                ["node", "--check", str(test_file)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert proc.returncode == 0, (
+                f"Output has syntax error:\n{test_file.read_text()}\n{proc.stderr}"
+            )
+
+    def test_orphaned_else_in_if_elseif_chain(self):
+        """Removing logs from an if/else-if chain must preserve the final else."""
+        test_code = textwrap.dedent(
+            """\
+            function process(data) {
+              if (data.debug) {
+                console.log('[DEBUG] processing data', data);
+              }
+              else if (data.trace) {
+                console.log('[TRACE] data', data);
+              }
+              else {
+                processData(data);
+              }
+            }
+            """
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.ts"
+            test_file.write_text(test_code)
+
+            result = detect_logs(Path(tmpdir))
+            fix_debug_logs(result.entries, dry_run=False)
+
+            proc = subprocess.run(
+                ["node", "--check", str(test_file)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert proc.returncode == 0, (
+                f"Output has syntax error:\n{test_file.read_text()}\n{proc.stderr}"
+            )
+
 
 # =====================================================================
 # params.py — _is_param_context, fix_unused_params
@@ -718,5 +789,4 @@ class TestFixUnusedParams:
         ]
         _ = fix_unused_params(entries, dry_run=True)
         assert ts_file.read_text() == original
-
 
