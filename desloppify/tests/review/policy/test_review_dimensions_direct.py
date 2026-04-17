@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import math
 from types import SimpleNamespace
 
 import pytest
 
+from desloppify.base.text_utils import is_numeric
 import desloppify.intelligence.review.dimensions.data as dimensions_data_mod
 import desloppify.intelligence.review.dimensions.lang as dimensions_mod
 import desloppify.intelligence.review.dimensions.metadata as dimensions_metadata_mod
@@ -360,6 +362,28 @@ def test_parse_dimensions_payload_supports_meta_enabled_defaults():
     assert prompts["structure_signal"]["meta"]["enabled_by_default"] is True
     assert prompts["structure_signal"]["meta"]["display_name"] == "Structure Signal"
     assert prompts["structure_signal"]["meta"]["weight"] == 4.5
+
+
+def test_is_numeric_rejects_non_finite_floats():
+    assert is_numeric(1) is True
+    assert is_numeric(1.5) is True
+    assert is_numeric(math.inf) is False
+    assert is_numeric(-math.inf) is False
+    assert is_numeric(math.nan) is False
+
+
+def test_validate_prompt_meta_rejects_non_finite_weight():
+    with pytest.raises(ValueError, match=r"prompt\.meta\.weight must be a number"):
+        dimensions_validation_mod.validate_prompt_meta(
+            {"weight": math.inf},
+            context="prompt.meta",
+        )
+
+    with pytest.raises(ValueError, match=r"prompt\.meta\.weight must be a number"):
+        dimensions_validation_mod.validate_prompt_meta(
+            {"weight": math.nan},
+            context="prompt.meta",
+        )
 
 
 def test_load_dimensions_for_lang_meta_enabled_dimension_requires_no_append(
