@@ -36,6 +36,55 @@ def test_cluster_steps_print_step_variants(capsys) -> None:
     assert "2. [x] Done step" in out
 
 
+def test_build_request_rejects_update_title_without_update_step() -> None:
+    args = argparse.Namespace(
+        cluster_name="alpha",
+        description=None,
+        steps=None,
+        steps_file=None,
+        add_step=None,
+        update_title="rename step",
+        detail=None,
+        update_step=None,
+        remove_step=None,
+        done_step=None,
+        undone_step=None,
+        priority=None,
+        effort=None,
+        depends_on=None,
+        issue_refs=None,
+    )
+
+    with pytest.raises(CommandError, match="--update-title requires --update-step"):
+        cluster_update_flow_mod.build_request(args)
+
+
+def test_build_request_rejects_orphan_step_metadata_flags() -> None:
+    args = argparse.Namespace(
+        cluster_name="alpha",
+        description=None,
+        steps=None,
+        steps_file=None,
+        add_step=None,
+        update_title=None,
+        detail="extra detail",
+        update_step=None,
+        remove_step=None,
+        done_step=None,
+        undone_step=None,
+        priority=None,
+        effort="small",
+        depends_on=None,
+        issue_refs=["review::a::b"],
+    )
+
+    with pytest.raises(
+        CommandError,
+        match="--detail, --effort, and --issue-refs require --add-step or --update-step",
+    ):
+        cluster_update_flow_mod.build_request(args)
+
+
 def test_cluster_display_helpers_and_renderers(monkeypatch, capsys) -> None:
     plan = {
         "active_cluster": "alpha",

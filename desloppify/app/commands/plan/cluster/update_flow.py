@@ -105,6 +105,18 @@ def build_request(args) -> ClusterUpdateRequest:
         update_title = add_step
         add_step = None
 
+    if update_title is not None and update_step is None:
+        raise CommandError("--update-title requires --update-step")
+
+    if (
+        getattr(args, "detail", None) is not None
+        or getattr(args, "effort", None) is not None
+        or getattr(args, "issue_refs", None) is not None
+    ) and add_step is None and update_step is None:
+        raise CommandError(
+            "--detail, --effort, and --issue-refs require --add-step or --update-step"
+        )
+
     return ClusterUpdateRequest(
         cluster_name=str(getattr(args, "cluster_name", "")),
         description=getattr(args, "description", None),
