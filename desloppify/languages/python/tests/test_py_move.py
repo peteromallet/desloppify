@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import desloppify.languages.python.move as py_move
+from desloppify.languages.python.detectors.deps import build_dep_graph
 
 
 def test_move_py_module_imports():
@@ -70,3 +71,40 @@ class TestMovePyHelpers:
     def test_resolve_py_relative_not_found(self, tmp_path):
         result = py_move._resolve_py_relative(tmp_path, ".", "nonexistent")
         assert result is None
+
+    def test_relative_import_replacement_uses_full_line(self, tmp_path, monkeypatch):
+        pkg_dir = tmp_path / "pkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "__init__.py").write_text("SOME_CONSTANT = 42\n")
+        (pkg_dir / "utils.py").write_text("def helper():\n    return 1\n")
+
+        sub_dir = pkg_dir / "sub"
+        sub_dir.mkdir()
+        importer = sub_dir / "importer.py"
+        importer.write_text(
+            "from .. import SOME_CONSTANT\nfrom ..utils import helper\n"
+        )
+
+        monkeypatch.setenv("DESLOPPIFY_ROOT", str(tmp_path))
+
+        graph = build_dep_graph(tmp_path)
+        source_abs = str((pkg_dir / "__init__.py").resolve())
+        dest_abs = str((tmp_path / "newpkg" / "__init__.py").resolve())
+
+        changes = py_move.find_replacements(source_abs, dest_abs, graph)
+        importer_abs = str(importer.resolve())
+
+        assert changes[importer_abs] == [
+            (
+                "from .. import SOME_CONSTANT",
+                "from ...newpkg import SOME_CONSTANT",
+            )
+        ]
+
+        content = importer.read_text()
+        for old_str, new_str in changes[importer_abs]:
+            content = content.replace(old_str, new_str)
+
+        assert content == (
+            "from ...newpkg import SOME_CONSTANT\nfrom ..utils import helper\n"
+        )

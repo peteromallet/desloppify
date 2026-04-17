@@ -49,6 +49,19 @@ def _replace_exact_module(line: str, old_module: str, new_module: str) -> str:
     return re.sub(rf"(?<!\w){re.escape(old_module)}(?![\w.])", new_module, line)
 
 
+def _replace_relative_from_module(
+    line: str,
+    old_module: str,
+    new_module: str,
+) -> str:
+    """Replace the module portion of a relative ``from`` import line."""
+    return re.sub(
+        rf"^from\s+{re.escape(old_module)}(?=\s+import\b)",
+        f"from {new_module}",
+        line,
+    )
+
+
 def _resolve_py_relative(source_dir: Path, dots: str, remainder: str) -> str | None:
     """Resolve a relative Python import to an absolute file path."""
     dot_count = len(dots)
@@ -154,9 +167,11 @@ def find_replacements(
                 if resolved and str(Path(resolved).resolve()) == source_abs:
                     new_rel = _compute_py_relative_import(importer, dest_abs)
                     if new_rel:
-                        old_from = f"from {dots}{remainder}"
-                        new_from = f"from {new_rel}"
-                        replacements.append((old_from, new_from))
+                        new_line = _replace_relative_from_module(
+                            stripped, f"{dots}{remainder}", new_rel
+                        )
+                        if new_line != stripped:
+                            replacements.append((stripped, new_line))
 
         if replacements:
             changes[importer] = _dedup(replacements)
@@ -199,10 +214,11 @@ def find_self_replacements(
         if not new_rel:
             continue
 
-        old_from = f"from {dots}{remainder}"
-        new_from = f"from {new_rel}"
-        if old_from != new_from:
-            replacements.append((old_from, new_from))
+        new_line = _replace_relative_from_module(
+            stripped, f"{dots}{remainder}", new_rel
+        )
+        if new_line != stripped:
+            replacements.append((stripped, new_line))
 
     return _dedup(replacements)
 
