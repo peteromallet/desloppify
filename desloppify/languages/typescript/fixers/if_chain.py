@@ -57,12 +57,12 @@ def _find_if_chain_end(lines: list[str], start: int) -> int:
                 if found_brace and brace_depth == 0:
                     rest = line[ci + 1 :].strip()
                     if rest.startswith("else"):
-                        break
+                        continue
                     j = i + 1
                     while j < len(lines) and lines[j].strip() == "":
                         j += 1
                     if j < len(lines) and lines[j].strip().startswith("else"):
-                        break
+                        continue
                     return i
 
     return start
