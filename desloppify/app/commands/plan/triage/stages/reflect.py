@@ -153,7 +153,7 @@ def _validate_reflect_submission(
         return None
 
     # Parse structured disposition ledger from Coverage Ledger section
-    disposition_ledger = parse_reflect_dispositions(report, valid_ids)
+    disposition_ledger = parse_reflect_dispositions(report, accounting_ids)
 
     # Validate backlog decisions for auto-clusters (warn, don't block)
     auto_clusters = getattr(triage_input, "auto_clusters", None) or {}

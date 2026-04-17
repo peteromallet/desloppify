@@ -193,3 +193,62 @@ def test_reflect_rejects_incomplete_issue_accounting(monkeypatch, capsys) -> Non
     out = capsys.readouterr().out
     assert "account for every open review issue exactly once" in out
     assert "reflect" not in plan["epic_triage_meta"]["triage_stages"]
+
+
+def test_validate_reflect_submission_excludes_observe_auto_from_disposition_ledger(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    plan = {
+        "epic_triage_meta": {
+            "issue_dispositions": {
+                "review::naming::bbbb2222": {
+                    "decision": "skip",
+                    "target": "duplicate-work",
+                    "decision_source": "observe_auto",
+                }
+            },
+            "triage_stages": {
+                "observe": {
+                    "report": "x" * 120,
+                    "confirmed_at": "2026-03-09T00:00:00Z",
+                }
+            },
+        }
+    }
+    open_issues = {
+        "review::complexity::aaaa1111": {"status": "open"},
+        "review::naming::bbbb2222": {"status": "open"},
+    }
+    services, _saved, _logs = _services(plan, state={"issues": open_issues}, open_issues=open_issues)
+
+    monkeypatch.setattr(reflect_mod, "auto_confirm_observe_if_attested", lambda **_kwargs: True)
+    monkeypatch.setattr(reflect_mod, "validate_stage_report_length", lambda **_kwargs: True)
+    monkeypatch.setattr(reflect_mod, "_validate_recurring_dimension_mentions", lambda **_kwargs: True)
+    monkeypatch.setattr(reflect_mod, "validate_reflect_accounting", lambda **_kwargs: (True, {"review::complexity::aaaa1111"}, [], []))
+    monkeypatch.setattr(reflect_mod, "validate_backlog_decisions", lambda **_kwargs: ([], []))
+    monkeypatch.setattr(reflect_mod, "parse_backlog_decisions", lambda _report: [])
+
+    def _capture_parse(report: str, valid_ids: set[str]):
+        captured["report"] = report
+        captured["valid_ids"] = valid_ids
+        return []
+
+    monkeypatch.setattr(reflect_mod, "parse_reflect_dispositions", _capture_parse)
+
+    result = reflect_mod._validate_reflect_submission(
+        report=(
+            "## Coverage Ledger\n"
+            '- aaaa1111 -> cluster "cluster-alpha"\n'
+            '- bbbb2222 -> skip "duplicate-work"\n'
+            "## Strategy\n"
+        ),
+        plan=plan,
+        state={"issues": open_issues},
+        stages=plan["epic_triage_meta"]["triage_stages"],
+        attestation=None,
+        services=services,
+    )
+
+    assert result is not None
+    assert captured["valid_ids"] == {"review::complexity::aaaa1111"}
