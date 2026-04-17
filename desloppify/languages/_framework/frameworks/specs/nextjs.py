@@ -545,6 +545,7 @@ NEXTJS_SPEC = FrameworkSpec(
             id="next_lint",
             label="next lint",
             cmd="npx --no-install next lint --format json",
+            fallback_cmds=("npx --no-install eslint --format json .",),
             fmt="next_lint",
             tier=2,
             slow=True,

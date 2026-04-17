@@ -49,6 +49,7 @@ class ToolIntegration:
     cmd: str
     fmt: str
     tier: int
+    fallback_cmds: tuple[str, ...] = ()
     slow: bool = False
     confidence: str = "medium"
 

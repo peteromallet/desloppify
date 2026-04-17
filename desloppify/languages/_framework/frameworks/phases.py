@@ -139,6 +139,7 @@ def _framework_tool_phase(spec: FrameworkSpec, tool: ToolIntegration) -> Detecto
         tool.id,
         tool.tier,
         confidence=tool.confidence,
+        fallback_cmds=tool.fallback_cmds,
     )
     tool_phase.slow = bool(tool.slow)
 

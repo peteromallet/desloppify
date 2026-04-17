@@ -138,6 +138,54 @@ def test_next_lint_tool_phase_reports_potential_when_clean(monkeypatch, tmp_path
     assert signals == {"next_lint": 1}
 
 
+def test_next_lint_tool_phase_falls_back_to_eslint_for_next_16(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    scan_path = tmp_path / "apps" / "web"
+    scan_path.mkdir(parents=True, exist_ok=True)
+
+    payload = [
+        {
+            "filePath": "app/page.tsx",
+            "messages": [{"line": 7, "message": "Use a button", "severity": 2}],
+        }
+    ]
+    calls: list[list[str]] = []
+
+    def fake_run(argv, *, shell, cwd, capture_output, text, timeout):
+        del shell, cwd, capture_output, text, timeout
+        calls.append(list(argv))
+        if "next" in argv and "lint" in argv:
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                stdout="",
+                stderr="Invalid project directory provided, no such directory: /tmp/example/lint",
+            )
+        return subprocess.CompletedProcess(argv, 1, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
+
+    phase = make_tool_phase(
+        "next lint",
+        "npx --no-install next lint --format json",
+        "next_lint",
+        "next_lint",
+        2,
+        fallback_cmds=("npx --no-install eslint --format json .",),
+    )
+    lang = SimpleNamespace(detector_coverage={}, coverage_warnings=[])
+
+    issues, signals = phase.run(scan_path, lang)
+    assert len(calls) == 2
+    assert calls[0][-4:] == ["next", "lint", "--format", "json"]
+    assert calls[1][-4:] == ["eslint", "--format", "json", "."]
+    assert signals == {"next_lint": 1}
+    assert len(issues) == 1
+    assert issues[0]["detector"] == "next_lint"
+    assert issues[0]["file"] == "apps/web/app/page.tsx"
+    assert lang.coverage_warnings == []
+
+
 def test_next_lint_tool_phase_records_coverage_warning_on_tool_missing(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
