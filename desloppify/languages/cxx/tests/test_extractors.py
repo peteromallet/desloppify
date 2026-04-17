@@ -44,3 +44,29 @@ def test_find_cxx_files_includes_common_header_only_extensions(tmp_path):
 
 def test_cxx_extractors_use_local_brace_helper():
     assert cxx_extractors.find_matching_brace.__module__ == "desloppify.languages.cxx._parse_helpers"
+
+
+def test_extract_function_with_unbalanced_brace_in_comment(tmp_path):
+    source = tmp_path / "test.cpp"
+    source.write_text(
+        """void validateInput() {
+    /* Validate against old schema:
+       { "type": "required" }
+       See ticket #1234 for context }
+     */
+    if (input.isValid()) {
+        return;
+    }
+    throw std::runtime_error("Invalid");
+}
+""",
+        encoding="utf-8",
+    )
+
+    functions = extract_all_cxx_functions([str(source)])
+
+    assert len(functions) == 1
+    func = functions[0]
+    assert func.name == "validateInput"
+    assert func.end_line == 10
+    assert "input.isValid()" in func.body

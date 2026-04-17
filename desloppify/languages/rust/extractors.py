@@ -81,7 +81,8 @@ def _find_matching_brace(content: str, open_pos: int) -> int | None:
     depth = 0
     in_string: str | None = None
     i = open_pos
-    while i < len(content):
+    length = len(content)
+    while i < length:
         char = content[i]
         if in_string:
             if char == "\\":
@@ -94,6 +95,19 @@ def _find_matching_brace(content: str, open_pos: int) -> int | None:
         if char in {'"', "'"}:
             in_string = char
             i += 1
+            continue
+        if char == "/" and i + 1 < length and content[i + 1] == "*":
+            i += 2
+            while i + 1 < length:
+                if content[i] == "*" and content[i + 1] == "/":
+                    i += 2
+                    break
+                i += 1
+            continue
+        if char == "/" and i + 1 < length and content[i + 1] == "/":
+            i += 2
+            while i < length and content[i] != "\n":
+                i += 1
             continue
         if char == "{":
             depth += 1

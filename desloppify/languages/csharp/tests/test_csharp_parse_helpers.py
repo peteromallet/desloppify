@@ -50,6 +50,14 @@ class TestFindMatchingBrace:
         content = "{}"
         assert find_matching_brace(content, 0) == 1
 
+    def test_skips_block_comments_with_unbalanced_braces(self):
+        content = "{ /* } }} {{{ */ return 1; }"
+        assert find_matching_brace(content, 0) == len(content) - 1
+
+    def test_skips_line_comments_with_unbalanced_braces(self):
+        content = "{ // } }}\n return 1; }"
+        assert find_matching_brace(content, 0) == len(content) - 1
+
 
 class TestFindExpressionEnd:
     def test_simple(self):

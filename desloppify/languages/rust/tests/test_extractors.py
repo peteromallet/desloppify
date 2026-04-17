@@ -75,3 +75,30 @@ pub fn run() {
     assert "// comment" not in normalized
     assert "println!" not in normalized
     assert "let value = 1;" in normalized
+
+
+def test_extract_rust_functions_ignores_unbalanced_braces_inside_comments(tmp_path):
+    filepath = _write(
+        tmp_path,
+        "src/lib.rs",
+        """
+pub fn validate_input() {
+    /* Validate against old schema:
+       { "type": "required" }
+       See ticket #1234 for context }
+     */
+    if input_is_valid() {
+        return;
+    }
+    panic!("Invalid");
+}
+""",
+    )
+
+    functions = extract_rust_functions(filepath)
+
+    assert len(functions) == 1
+    func = functions[0]
+    assert func.name == "validate_input"
+    assert func.end_line == 11
+    assert "input_is_valid()" in func.body
