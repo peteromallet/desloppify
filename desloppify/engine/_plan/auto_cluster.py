@@ -163,13 +163,16 @@ def _evictable_auto_cluster_issue_ids(plan: PlanModel) -> set[str]:
     active_ids: set[str] = set()
     inactive_ids: set[str] = set()
     for cluster in plan.get("clusters", {}).values():
-        if not isinstance(cluster, dict) or not cluster.get("auto"):
+        if not isinstance(cluster, dict):
             continue
         ids = {
             issue_id
             for issue_id in cluster.get("issue_ids", [])
             if isinstance(issue_id, str) and issue_id and not is_synthetic_id(issue_id)
         }
+        if not cluster.get("auto"):
+            active_ids |= ids
+            continue
         if cluster_is_active(cluster):
             active_ids |= ids
         else:

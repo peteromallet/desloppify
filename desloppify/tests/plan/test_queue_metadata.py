@@ -229,6 +229,30 @@ def test_cross_cluster_move_not_evicted() -> None:
     assert evicted == {"old_only"}
 
 
+def test_manual_cluster_member_not_evicted_from_inactive_auto_cluster() -> None:
+    from desloppify.engine._plan.auto_cluster import (
+        _evictable_auto_cluster_issue_ids,
+    )
+
+    plan = {
+        "clusters": {
+            "auto/exports": {
+                "auto": True,
+                "issue_ids": ["u1", "u2"],
+                "execution_status": EXECUTION_STATUS_REVIEW,
+                "execution_policy": EXECUTION_POLICY_PLANNED_ONLY,
+            },
+            "manual/my-task": {
+                "auto": False,
+                "issue_ids": ["u1"],
+                "execution_status": EXECUTION_STATUS_ACTIVE,
+            },
+        },
+    }
+    evicted = _evictable_auto_cluster_issue_ids(plan)
+    assert evicted == {"u2"}
+
+
 # ── explain_queue ──────────────────────────────────────────────────
 
 
