@@ -148,10 +148,20 @@ def verify_disappeared(
                 file_deleted = not os.path.exists(
                     os.path.join(project_root, file_path)
                 )
+            detector = previous.get("detector", "")
+            if detector == "test_coverage":
+                # Coverage gaps are a detector-owned fact, not a manual judgment
+                # call. If the detector ran and a previous open issue disappeared,
+                # the scan has direct evidence that the file now has mapped tests.
+                previous["status"] = "auto_resolved"
+                previous["resolved_at"] = now
+                previous["note"] = "Auto-resolved: test coverage gap absent from latest scan"
+                resolved_detectors.add(detector or "unknown")
+                resolved += 1
+                continue
             # Auto-resolve if zone policy now says this detector should be
             # skipped for this file's zone (e.g. test_coverage on test files).
             # Bug reported by @claytona500 in PR #478.
-            detector = previous.get("detector", "")
             if zone_map and file_path and should_skip_issue(zone_map, file_path, detector):
                 previous["status"] = "auto_resolved"
                 previous["resolved_at"] = now

@@ -681,7 +681,7 @@ class TestWontfixAutoResolution:
     """Wontfix issues stay authoritative when the detector produces no findings."""
 
     def test_wontfix_stays_wontfix_when_detector_ran(self):
-        """Wontfix issues stay wontfix and gain scan verification."""
+        """Open test coverage issues auto-resolve while wontfix stays authoritative."""
         st = empty_state()
         # Pre-populate 3 open + 2 wontfix test_coverage issues
         for i in range(3):
@@ -707,7 +707,11 @@ class TestWontfixAutoResolution:
         diff = merge_scan(
             st, [], MergeScanOptions(lang="python", potentials={"test_coverage": 50, "smells": 100})
         )
-        assert diff["auto_resolved"] == 2
+        assert diff["auto_resolved"] == 5
+        assert (
+            st["issues"]["test_coverage::mod0.py::untested_module"]["status"]
+            == "auto_resolved"
+        )
         assert (
             st["issues"]["test_coverage::mod3.py::untested_module"]["status"]
             == "wontfix"
@@ -715,10 +719,6 @@ class TestWontfixAutoResolution:
         assert (
             st["issues"]["test_coverage::mod4.py::untested_module"]["resolution_attestation"]["scan_verified"]
             is True
-        )
-        assert (
-            st["issues"]["test_coverage::mod0.py::untested_module"]["status"]
-            == "open"
         )
 
     def test_wontfix_not_resolved_when_detector_suspect(self):
@@ -804,6 +804,30 @@ class TestWontfixAutoResolution:
         assert (
             st["issues"]["test_coverage::mod3.py::untested_module"]["status"]
             == "open"
+        )
+
+    def test_open_test_coverage_issues_auto_resolve_when_detector_runs_clean(self):
+        """Disappeared open coverage issues should not linger as stale debt."""
+        st = empty_state()
+        issue = _make_raw_issue(
+            "test_coverage::mod.py::untested_module",
+            detector="test_coverage",
+            file="mod.py",
+            lang="python",
+        )
+        st["issues"][issue["id"]] = issue
+
+        diff = merge_scan(
+            st,
+            [],
+            MergeScanOptions(lang="python", potentials={"test_coverage": 10}),
+        )
+
+        assert diff["auto_resolved"] == 1
+        assert st["issues"][issue["id"]]["status"] == "auto_resolved"
+        assert (
+            st["issues"][issue["id"]]["note"]
+            == "Auto-resolved: test coverage gap absent from latest scan"
         )
 
     def test_empty_potentials_dict_not_treated_as_none(self):
