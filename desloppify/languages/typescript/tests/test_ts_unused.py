@@ -4,6 +4,7 @@ Note: detect_unused depends on tsc (TypeScript compiler) and a real project setu
 so we test what is feasible: the helper function _categorize_unused and module imports.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from desloppify.languages.typescript.detectors.unused import (
     TS6133_RE,
     TS6192_RE,
     _categorize_unused,
+    _select_unused_tsc_base_config,
     detect_unused,
 )
 
@@ -36,6 +38,7 @@ def test_module_imports():
     """Module can be imported without errors."""
     assert callable(detect_unused)
     assert callable(_categorize_unused)
+    assert callable(_select_unused_tsc_base_config)
     assert callable(ts_unused_mod._run_tsc_unused_check)
 
 
@@ -135,6 +138,27 @@ class TestCategorizeUnused:
 
 
 class TestDenoFallback:
+    def test_select_unused_tsc_base_config_prefers_tsconfig_app(self, tmp_path):
+        _write(tmp_path, "tsconfig.app.json", "{}\n")
+        _write(tmp_path, "tsconfig.json", "{}\n")
+
+        assert _select_unused_tsc_base_config(tmp_path) == "./tsconfig.app.json"
+
+    def test_select_unused_tsc_base_config_falls_back_to_tsconfig(self, tmp_path):
+        _write(tmp_path, "tsconfig.json", "{}\n")
+
+        assert _select_unused_tsc_base_config(tmp_path) == "./tsconfig.json"
+
+    def test_select_unused_tsc_base_config_supports_jsconfig(self, tmp_path):
+        _write(tmp_path, "jsconfig.json", "{}\n")
+
+        assert _select_unused_tsc_base_config(tmp_path) == "./jsconfig.json"
+
+    def test_select_unused_tsc_base_config_returns_none_without_project_config(
+        self, tmp_path
+    ):
+        assert _select_unused_tsc_base_config(tmp_path) is None
+
     def test_run_tsc_unused_check_uses_fixed_command(self, tmp_path, monkeypatch):
         class _Result:
             stdout = ""
@@ -164,6 +188,56 @@ class TestDenoFallback:
             ]
         assert recorded["cwd"] == tmp_path
         assert recorded["timeout"] == 120
+
+    def test_detect_unused_extends_project_tsconfig_when_app_config_missing(
+        self, tmp_path, monkeypatch
+    ):
+        _write(tmp_path, "tsconfig.json", "{}\n")
+        _write(tmp_path, "src/app.ts", "const x = 1;\n")
+
+        class _Result:
+            stdout = (
+                "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
+            )
+            stderr = ""
+
+        captured: dict[str, object] = {}
+
+        def _fake_run(project_root, tsconfig_path):
+            captured["project_root"] = project_root
+            captured["tsconfig_path"] = tsconfig_path
+            captured["config"] = json.loads(Path(tsconfig_path).read_text())
+            return _Result()
+
+        monkeypatch.setattr(ts_unused_mod, "_run_tsc_unused_check", _fake_run)
+        entries, total = detect_unused(tmp_path / "src")
+
+        assert total == 1
+        assert entries and entries[0]["name"] == "x"
+        assert captured["project_root"] == tmp_path
+        assert captured["config"] == {
+            "extends": "./tsconfig.json",
+            "compilerOptions": {
+                "noUnusedLocals": True,
+                "noUnusedParameters": True,
+            },
+        }
+
+    def test_detect_unused_falls_back_without_any_project_config(
+        self, tmp_path, monkeypatch
+    ):
+        _write(tmp_path, "src/app.ts", "import { x } from './dep.ts';\nconst unusedLocal = 1;\n")
+        _write(tmp_path, "src/dep.ts", "export const x = 1;\n")
+
+        def _should_not_run(*args, **kwargs):
+            raise AssertionError("tsc subprocess should not run without a project config")
+
+        monkeypatch.setattr(ts_unused_mod, "_run_tsc_unused_check", _should_not_run)
+        entries, total = detect_unused(tmp_path / "src")
+
+        assert total == 2
+        names = {entry["name"] for entry in entries}
+        assert names == {"x", "unusedLocal"}
 
     def test_run_tsc_unused_check_raises_without_npx(self, tmp_path, monkeypatch):
         monkeypatch.setattr(ts_unused_mod.shutil, "which", lambda _name: None)
@@ -224,6 +298,7 @@ class TestDenoFallback:
 
     def test_detect_unused_non_deno_keeps_tsc_path(self, tmp_path, monkeypatch):
         """Regular TypeScript projects should still parse TS6133/TS6192 from tsc."""
+        _write(tmp_path, "tsconfig.json", "{}\n")
         _write(tmp_path, "src/app.ts", "const x = 1;\n")
 
         class _Result:
@@ -254,6 +329,7 @@ class TestDenoFallback:
     ):
         """A repo-level deno.lock alone should not disable tsc-based unused detection."""
         _write(tmp_path, "deno.lock", "{}\n")
+        _write(tmp_path, "tsconfig.json", "{}\n")
         _write(tmp_path, "src/app.ts", "const x = 1;\n")
 
         class _Result:

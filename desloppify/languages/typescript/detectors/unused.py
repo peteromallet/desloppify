@@ -42,6 +42,14 @@ _detect_unused_fallback = detect_unused_fallback
 _should_use_deno_fallback = should_use_deno_fallback
 
 
+def _select_unused_tsc_base_config(project_root: Path) -> str | None:
+    """Return the best project-local config for a temporary unused-symbol check."""
+    for candidate in ("tsconfig.app.json", "tsconfig.json", "jsconfig.json"):
+        if (project_root / candidate).is_file():
+            return f"./{candidate}"
+    return None
+
+
 def _run_tsc_unused_check(
     project_root: Path,
     tsconfig_path: Path,
@@ -84,18 +92,27 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     if _should_use_deno_fallback(path, ts_files):
         return _detect_unused_fallback(path, category)
 
+    project_root = get_project_root()
+    base_tsconfig = _select_unused_tsc_base_config(project_root)
+    if base_tsconfig is None:
+        logger.debug(
+            "Falling back to source-based unused detection: no tsconfig.app.json/tsconfig.json/jsconfig.json in %s",
+            project_root,
+        )
+        return _detect_unused_fallback(path, category)
+
     tmp_tsconfig = {
-        "extends": "./tsconfig.app.json",
+        "extends": base_tsconfig,
         "compilerOptions": {
             "noUnusedLocals": True,
             "noUnusedParameters": True,
         },
     }
-    tmp_path = get_project_root() / "tsconfig.desloppify.json"
+    tmp_path = project_root / "tsconfig.desloppify.json"
     try:
         safe_write_text(tmp_path, json.dumps(tmp_tsconfig, indent=2))
         try:
-            result = _run_tsc_unused_check(get_project_root(), tmp_path)
+            result = _run_tsc_unused_check(project_root, tmp_path)
         except (_proc_runtime.SubprocessError, OSError) as exc:
             logger.debug("Falling back to source-based unused detection: %s", exc)
             return _detect_unused_fallback(path, category)
