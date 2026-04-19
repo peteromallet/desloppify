@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import contextvars
 import hashlib
 import logging
 import os
@@ -50,6 +51,20 @@ _FUNCTION_CACHE_ATTR = "_shared_review_function_cache"
 _PREFETCH_BOILERPLATE_KEY = "boilerplate"
 _PREFETCH_SECURITY_KEY = "security_lang"
 _PREFETCH_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
+def _submit_with_context(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> concurrent.futures.Future[Any]:
+    """Submit *fn* to the prefetch executor, preserving the caller's contextvars.
+
+    ``ThreadPoolExecutor`` does not propagate ``ContextVar`` values to worker
+    threads. Several runtime settings (notably user-configured path exclusions
+    read via ``get_exclusions()``) live in a ContextVar and are only observable
+    from the calling thread. Without this wrapper, detectors launched in the
+    pool (jscpd, security prefetch) see the process-default context and ignore
+    the current scan's configuration.
+    """
+    ctx = contextvars.copy_context()
+    return _PREFETCH_EXECUTOR.submit(ctx.run, fn, *args, **kwargs)
 
 
 def _detector_cache(review_cache: object, detector: str) -> dict[str, object] | None:
@@ -350,7 +365,7 @@ def prewarm_review_phase_detectors(
             else None
         )
         if cached_entries is None and _PREFETCH_BOILERPLATE_KEY not in futures:
-            futures[_PREFETCH_BOILERPLATE_KEY] = _PREFETCH_EXECUTOR.submit(
+            futures[_PREFETCH_BOILERPLATE_KEY] = _submit_with_context(
                 detect_with_jscpd,
                 path,
             )
@@ -377,7 +392,7 @@ def prewarm_review_phase_detectors(
             else None
         )
         if cached_result is None and _PREFETCH_SECURITY_KEY not in futures:
-            futures[_PREFETCH_SECURITY_KEY] = _PREFETCH_EXECUTOR.submit(
+            futures[_PREFETCH_SECURITY_KEY] = _submit_with_context(
                 lang.detect_lang_security_detailed,
                 files,
                 zone_map,
