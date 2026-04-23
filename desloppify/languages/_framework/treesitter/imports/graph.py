@@ -75,13 +75,23 @@ def ts_build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
-
-            # Only track edges within the scanned file set.
+            # file_set may use relative or absolute paths depending on the
+            # file_finder. Try the resolved path as-is first, then try the
+            # absolute form (for relative resolvers with an absolute file_set)
+            # and the relative form (for absolute resolvers with a relative
+            # file_set).
             if resolved not in file_set:
-                continue
+                if os.path.isabs(resolved):
+                    try:
+                        alt = os.path.relpath(resolved, scan_path)
+                    except ValueError:
+                        alt = resolved
+                else:
+                    alt = os.path.normpath(os.path.join(scan_path, resolved))
+                if alt in file_set:
+                    resolved = alt
+                else:
+                    continue
 
             graph[filepath]["imports"].add(resolved)
             if resolved in graph:

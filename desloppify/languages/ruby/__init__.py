@@ -7,6 +7,7 @@ extraction for duplicate detection and import-graph analysis at no extra cost.
 
 from desloppify.languages._framework.generic_support.core import generic_lang
 from desloppify.languages._framework.treesitter import RUBY_SPEC
+from desloppify.languages.ruby import test_coverage as _test_coverage_mod
 
 generic_lang(
     name="ruby",
@@ -46,6 +47,7 @@ generic_lang(
         "*.gemspec",     # Gem specification — present in library/gem projects
     ],
     treesitter_spec=RUBY_SPEC,
+    test_coverage_module=_test_coverage_mod,
 )
 
 __all__ = [
