@@ -185,6 +185,43 @@ def _to_security_entry(
     }
 
 
+def _exclude_globs(exclude_dirs: list[str]) -> list[str]:
+    """Expand absolute exclude paths into bandit-friendly glob patterns.
+
+    Bandit's ``--exclude`` is matched against filenames it discovers during
+    its recursive walk. When desloppify hands it absolute directory paths
+    (e.g. ``/repo/.claude``), bandit only filters files whose name *equals*
+    one of those paths — directories *under* the exclude (e.g.
+    ``/repo/.claude/worktrees/foo.py``) still get scanned because their
+    full filename does not equal the exclude string.
+
+    Expanding each absolute path into ``**/<basename>/**`` (and a sibling
+    ``<basename>`` form for the directory itself) ensures bandit prunes the
+    whole subtree the way the rest of desloppify already does. The
+    original absolute paths are kept as a belt-and-braces fallback.
+    """
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for raw in exclude_dirs:
+        if not raw:
+            continue
+        if raw not in seen:
+            expanded.append(raw)
+            seen.add(raw)
+        # Walk every path component and emit a glob; this catches both
+        # top-level (``.claude``) and nested (``.claude/worktrees``) excludes
+        # without requiring callers to know the layout.
+        parts = [p for p in raw.replace("\\", "/").split("/") if p]
+        for part in parts:
+            if not part or part in {"*", "**"}:
+                continue
+            for candidate in (f"**/{part}", f"**/{part}/**"):
+                if candidate not in seen:
+                    expanded.append(candidate)
+                    seen.add(candidate)
+    return expanded
+
+
 def detect_with_bandit(
     path: Path,
     zone_map: FileZoneMap | None,
@@ -197,9 +234,11 @@ def detect_with_bandit(
     Parameters
     ----------
     exclude_dirs:
-        Absolute directory paths to pass to bandit's ``--exclude`` flag.
-        When non-empty, bandit will skip these directories during its
-        recursive scan.
+        Absolute directory paths to skip. Each path is expanded into a
+        ``**/<name>/**`` glob (in addition to the original absolute path)
+        before being passed to bandit's ``--exclude`` flag, so that nested
+        files under the exclude are pruned, not just the directory entry
+        itself.
     skip_tests:
         Bandit test IDs to suppress via ``--skip`` (e.g. ``["B101", "B601"]``).
         Allows users to disable entire rule families from ``config.json``.
@@ -214,7 +253,7 @@ def detect_with_bandit(
         "--quiet",
     ]
     if exclude_dirs:
-        cmd.extend(["--exclude", ",".join(exclude_dirs)])
+        cmd.extend(["--exclude", ",".join(_exclude_globs(exclude_dirs))])
     if skip_tests:
         cmd.extend(["--skip", ",".join(skip_tests)])
     cmd.append(str(path.resolve()))

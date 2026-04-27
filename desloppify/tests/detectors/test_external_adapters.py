@@ -487,6 +487,36 @@ class TestBanditAdapter:
 
         assert "--exclude" not in captured_cmd
 
+    def test_exclude_dirs_expanded_to_glob_for_nested_pruning(self):
+        """REGRESSION: bandit's --exclude must prune nested files, not just dirs.
+
+        When given a bare absolute path like ``/project/.claude``, bandit
+        only filters files whose full name equals that string; files
+        beneath the directory are still scanned. ``detect_with_bandit``
+        must therefore expand each path into ``**/<name>/**`` globs.
+        """
+        captured: list[str] = []
+
+        def _capture_run(cmd, **kwargs):
+            captured.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = self._bandit_result([])
+            return mock_result
+
+        with patch("subprocess.run", side_effect=_capture_run):
+            detect_with_bandit(
+                Path("/project"),
+                zone_map=None,
+                exclude_dirs=["/project/.claude", "/project/.claude/worktrees"],
+            )
+
+        idx = captured.index("--exclude")
+        exclude_value = captured[idx + 1]
+        assert "/project/.claude" in exclude_value
+        assert "**/.claude" in exclude_value
+        assert "**/.claude/**" in exclude_value
+        assert "**/worktrees/**" in exclude_value
+
 
 class TestBanditExcludeIntegration:
     """Verify PythonConfig passes exclusion dirs to bandit."""
