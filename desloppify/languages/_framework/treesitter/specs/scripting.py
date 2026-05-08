@@ -47,9 +47,22 @@ BASH_SPEC = TreeSitterLangSpec(
             body: (compound_statement) @body) @func
     """,
     comment_node_types=frozenset({"comment"}),
+    # Filter to `source <path>` and `. <path>` only. The #match? predicate
+    # must be placed INSIDE the (command ...) pattern (the Julia spec in
+    # functional.py uses #eq? the same way for `include(...)`); placed
+    # outside the closing paren it parses as a separate top-level pattern
+    # and has no filtering effect.
+    #
+    # Without the predicate, the query matched every (command, argument)
+    # pair, so `set -euo pipefail` produced "Unused import: pipefail" and
+    # `curl -fsS https://...` produced "Unused import: -fsS" — every shell
+    # flag was a spurious finding. resolve_bash_source only resolves
+    # source/. invocations, but unused-imports flagging runs on the raw
+    # captured `path` before resolution, so the resolver couldn't save it.
     import_query="""
         (command
             name: (command_name) @_cmd
+            (#match? @_cmd "^(source|\\.)$")
             argument: (word) @path) @import
     """,
     resolve_import=resolve_bash_source,
