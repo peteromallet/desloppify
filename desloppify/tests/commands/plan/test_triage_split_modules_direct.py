@@ -800,11 +800,8 @@ def test_orchestrator_sense_non_dry_run_merges_outputs(monkeypatch, tmp_path, ca
         assert validate_output_fn(output_file)
         return codex_runner_mod.TriageStageRunResult(exit_code=0)
 
-    monkeypatch.setattr(
-        orchestrator_sense_mod,
-        "run_triage_stage",
-        fake_run_triage_stage,
-    )
+    import desloppify.app.commands.plan.triage.runner.stage_runner_override as override_mod
+    monkeypatch.setattr(override_mod, "_STAGE_RUNNER_OVERRIDE", fake_run_triage_stage)
 
     def fake_run_parallel_batches(
         *,
@@ -985,7 +982,8 @@ def test_orchestrator_sense_apply_updates_sequences_and_reloads_plan(monkeypatch
         "build_sense_check_value_prompt",
         lambda **_kwargs: "value prompt",
     )
-    monkeypatch.setattr(orchestrator_sense_mod, "run_triage_stage", fake_run_triage_stage)
+    import desloppify.app.commands.plan.triage.runner.stage_runner_override as override_mod
+    monkeypatch.setattr(override_mod, "_STAGE_RUNNER_OVERRIDE", fake_run_triage_stage)
     monkeypatch.setattr(orchestrator_sense_mod, "run_parallel_batches", fake_run_parallel_batches)
 
     prompts_dir = tmp_path / "prompts"
@@ -1065,7 +1063,8 @@ def test_orchestrator_sense_scopes_content_batches_to_active_triage(monkeypatch,
         assert validate_output_fn(output_file)
         return codex_runner_mod.TriageStageRunResult(exit_code=0)
 
-    monkeypatch.setattr(orchestrator_sense_mod, "run_triage_stage", fake_run_triage_stage)
+    import desloppify.app.commands.plan.triage.runner.stage_runner_override as override_mod
+    monkeypatch.setattr(override_mod, "_STAGE_RUNNER_OVERRIDE", fake_run_triage_stage)
     monkeypatch.setattr(
         orchestrator_sense_mod,
         "run_parallel_batches",

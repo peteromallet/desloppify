@@ -14,6 +14,7 @@ from desloppify.engine.plan_state import load_plan
 from desloppify.engine.plan_triage import (
     TRIAGE_CMD_RUN_STAGES_CLAUDE,
     TRIAGE_CMD_RUN_STAGES_CODEX,
+    TRIAGE_CMD_RUN_STAGES_ROVODEV,
     TriageSnapshot,
     build_triage_snapshot,
     triage_phase_banner,
@@ -90,7 +91,8 @@ def triage_guardrail_messages(
             messages.append(
                 f"{len(result.new_ids)} new review issue(s) not yet triaged."
                 " Run the staged triage runner to incorporate them "
-                f"(`{TRIAGE_CMD_RUN_STAGES_CODEX}` or `{TRIAGE_CMD_RUN_STAGES_CLAUDE}`)."
+                f"(`{TRIAGE_CMD_RUN_STAGES_CODEX}`, `{TRIAGE_CMD_RUN_STAGES_CLAUDE}`, "
+                f"or `{TRIAGE_CMD_RUN_STAGES_ROVODEV}`)."
             )
 
     if result._plan is not None:
@@ -166,8 +168,9 @@ def require_triage_current_or_exit(
         if len(new_ids) > 5:
             lines.append(f"    ... and {len(new_ids) - 5} more")
     lines.append("")
-    lines.append(f"  NEXT STEP (Codex):  {TRIAGE_CMD_RUN_STAGES_CODEX}")
-    lines.append(f"  NEXT STEP (Claude): {TRIAGE_CMD_RUN_STAGES_CLAUDE}")
+    lines.append(f"  NEXT STEP (Codex):    {TRIAGE_CMD_RUN_STAGES_CODEX}")
+    lines.append(f"  NEXT STEP (Claude):   {TRIAGE_CMD_RUN_STAGES_CLAUDE}")
+    lines.append(f"  NEXT STEP (Rovo Dev): {TRIAGE_CMD_RUN_STAGES_ROVODEV}")
     lines.append("  Manual fallback:    desloppify plan triage")
     lines.append("  (Review new issues, then either --confirm-existing or re-plan.)")
     lines.append("")

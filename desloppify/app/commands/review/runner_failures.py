@@ -46,11 +46,12 @@ _RUNNER_AUTH_PHRASES = (
 _FAILURE_HINT_BY_CATEGORY = {
     "runner_missing": (
         "Runner CLI not found on PATH. "
-        "Install the runner (codex or opencode) and verify it is on your PATH."
+        "Install the runner (codex, opencode, or acli for rovodev) and verify it is on your PATH."
     ),
     "runner_auth": (
         "Runner appears unauthenticated. "
-        "For Codex run `codex login`; for OpenCode check your auth configuration."
+        "For Codex run `codex login`; for OpenCode check your auth configuration; "
+        "for Rovo Dev run `acli rovodev auth login`."
     ),
     "usage_limit": (
         "Runner usage quota is exhausted for this account. "
@@ -65,7 +66,8 @@ _FAILURE_HINT_BY_CATEGORY = {
 
 
 def _is_runner_missing(text: str) -> bool:
-    for runner_name in ("codex", "opencode"):
+    # Rovo Dev's binary is ``acli``; treat both names as runner candidates.
+    for runner_name in ("codex", "opencode", "acli"):
         if f"{runner_name} not found" in text:
             return True
         if "no such file or directory" in text and f"$ {runner_name} " in text:

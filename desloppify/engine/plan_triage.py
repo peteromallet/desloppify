@@ -34,6 +34,7 @@ from desloppify.engine._plan.triage.playbook import (
     TRIAGE_CMD_REFLECT,
     TRIAGE_CMD_RUN_STAGES_CLAUDE,
     TRIAGE_CMD_RUN_STAGES_CODEX,
+    TRIAGE_CMD_RUN_STAGES_ROVODEV,
     TRIAGE_CMD_SENSE_CHECK,
     TRIAGE_CMD_STRATEGIZE,
     TRIAGE_STAGE_DEPENDENCIES,
@@ -75,7 +76,7 @@ def triage_phase_banner(
     meta = plan.get("epic_triage_meta", {})
     run_hint = (
         f"Run: {TRIAGE_CMD_RUN_STAGES_CODEX} "
-        f"(or {TRIAGE_CMD_RUN_STAGES_CLAUDE})"
+        f"(or {TRIAGE_CMD_RUN_STAGES_CLAUDE} / {TRIAGE_CMD_RUN_STAGES_ROVODEV})"
     )
     resolved_state = state or {}
     resolved_snapshot = snapshot or build_triage_snapshot(plan, resolved_state)
@@ -144,6 +145,7 @@ __all__ = [
     "TRIAGE_CMD_REFLECT",
     "TRIAGE_CMD_RUN_STAGES_CLAUDE",
     "TRIAGE_CMD_RUN_STAGES_CODEX",
+    "TRIAGE_CMD_RUN_STAGES_ROVODEV",
     "TRIAGE_CMD_SENSE_CHECK",
     "TRIAGE_CMD_STRATEGIZE",
     "TRIAGE_IDS",

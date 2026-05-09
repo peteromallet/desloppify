@@ -20,6 +20,7 @@ from desloppify.engine.plan_triage import (
     TRIAGE_CMD_REFLECT,
     TRIAGE_CMD_RUN_STAGES_CLAUDE,
     TRIAGE_CMD_RUN_STAGES_CODEX,
+    TRIAGE_CMD_RUN_STAGES_ROVODEV,
     triage_runner_commands,
     TRIAGE_CMD_STRATEGIZE,
 )
@@ -64,9 +65,10 @@ def print_dashboard_header(
     print(f"  Open review issues: {len(review_issues)}")
     print(colorize("  Goal: identify contradictions, resolve them, then group the coherent", "cyan"))
     print(colorize("  remainder into clusters by root cause with action steps and priorities.", "cyan"))
-    print(colorize("  Preferred: staged runner workflow (Codex or Claude).", "cyan"))
-    print(colorize(f"    Codex:  {TRIAGE_CMD_RUN_STAGES_CODEX}", "dim"))
-    print(colorize(f"    Claude: {TRIAGE_CMD_RUN_STAGES_CLAUDE}", "dim"))
+    print(colorize("  Preferred: staged runner workflow (Codex, Claude, or Rovo Dev).", "cyan"))
+    print(colorize(f"    Codex:    {TRIAGE_CMD_RUN_STAGES_CODEX}", "dim"))
+    print(colorize(f"    Claude:   {TRIAGE_CMD_RUN_STAGES_CLAUDE}", "dim"))
+    print(colorize(f"    Rovo Dev: {TRIAGE_CMD_RUN_STAGES_ROVODEV}", "dim"))
     print(colorize("  Manual stage commands below are fallback/debug paths.", "dim"))
     existing_clusters = si.existing_clusters
     if existing_clusters:
@@ -117,8 +119,9 @@ def _print_retriage_guidance(si: object, meta: dict) -> None:
         print('    desloppify plan triage --confirm-existing --note "..." --strategy "same" --confirmed "I have reviewed..."')
         print()
         print(colorize("  To re-prioritize and restructure:", "cyan"))
-        print(f"    Codex:  {TRIAGE_CMD_RUN_STAGES_CODEX}")
-        print(f"    Claude: {TRIAGE_CMD_RUN_STAGES_CLAUDE}")
+        print(f"    Codex:    {TRIAGE_CMD_RUN_STAGES_CODEX}")
+        print(f"    Claude:   {TRIAGE_CMD_RUN_STAGES_CLAUDE}")
+        print(f"    Rovo Dev: {TRIAGE_CMD_RUN_STAGES_ROVODEV}")
         print(colorize(f"    Manual fallback: {TRIAGE_CMD_STRATEGIZE}", "dim"))
     else:
         _print_runner_paths(

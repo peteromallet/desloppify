@@ -113,6 +113,30 @@ class TestResolveInterface:
         result = resolve_interface(None, install=install)
         assert result == "opencode"
 
+    def test_from_install_path_match_rovodev(self):
+        from desloppify.app.skill_docs import SkillInstall
+
+        install = SkillInstall(
+            rel_path=".rovodev/skills/desloppify/SKILL.md",
+            version=1,
+            overlay=None,
+            stale=False,
+        )
+        result = resolve_interface(None, install=install)
+        assert result == "rovodev"
+
+    def test_from_install_overlay_rovodev(self):
+        from desloppify.app.skill_docs import SkillInstall
+
+        install = SkillInstall(
+            rel_path=".rovodev/skills/desloppify/SKILL.md",
+            version=1,
+            overlay="rovodev",
+            stale=False,
+        )
+        result = resolve_interface(None, install=install)
+        assert result == "rovodev"
+
     def test_from_install_no_match(self):
         from desloppify.app.skill_docs import SkillInstall
         install = SkillInstall(
@@ -188,6 +212,33 @@ class TestUpdateInstalledSkill:
         assert result is True
         written = (tmp_path / ".claude" / "skills" / "desloppify" / "SKILL.md").read_text()
         assert "desloppify-skill-version" in written
+        out = capsys.readouterr().out
+        assert "Updated" in out
+
+    @patch("desloppify.app.commands.update_skill.colorize", side_effect=lambda t, _c: t)
+    @patch("desloppify.app.commands.update_skill._download")
+    def test_successful_dedicated_install_rovodev(
+        self, mock_download, _mock_colorize, capsys, tmp_path
+    ):
+        """Per-project `update-skill rovodev` writes the dedicated `.rovodev/...` file."""
+        skill_content = "# Skill\n<!-- desloppify-skill-version: 1 -->\nContent"
+        mock_download.side_effect = lambda f: {
+            "SKILL.md": skill_content,
+            "ROVODEV.md": "rovodev overlay",
+        }[f]
+
+        with patch(
+            "desloppify.app.commands.update_skill.get_project_root",
+            return_value=tmp_path,
+        ):
+            result = update_installed_skill("rovodev")
+
+        assert result is True
+        target = tmp_path / ".rovodev" / "skills" / "desloppify" / "SKILL.md"
+        assert target.is_file()
+        written = target.read_text()
+        assert "desloppify-skill-version" in written
+        assert "rovodev overlay" in written
         out = capsys.readouterr().out
         assert "Updated" in out
 

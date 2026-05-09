@@ -51,6 +51,19 @@ from .orchestrator_common import STAGES, run_stamp
 from .stage_prompts import build_stage_prompt
 from ..stages.helpers import value_check_targets
 _STAGE_HANDLERS: dict[str, StageHandler] = DEFAULT_STAGE_HANDLERS
+
+# Module-level override for the per-stage runner. The default (``None``)
+# means "use the codex stage runner". The wrapper helpers in
+# :mod:`rovodev_pipeline` swap this for the rovodev stage runner during
+# the lifetime of one ``run_codex_pipeline`` call so that the existing
+# pipeline can drive any subprocess backend without further refactoring.
+from .stage_runner_override import (  # re-exported for backwards compat
+    active_runner_name,
+    active_stage_runner,
+    clear_stage_runner_override,
+    set_stage_runner_override,
+    stage_runner_override,
+)
 _analyze_reflect_issue_accounting = analyze_reflect_issue_accounting
 _validate_reflect_issue_accounting = validate_reflect_accounting
 
@@ -104,11 +117,18 @@ def _write_desloppify_cli_helper(run_dir: Path) -> Path:
     safe_write_text(script_path, script)
     os.chmod(script_path, 0o700)
     return script_path
-def _stage_execution_dependencies() -> StageExecutionDependencies:
-    """Resolve stage execution dependencies from module symbols for patchability."""
+def _stage_execution_dependencies(
+    stage_runner_fn=None,
+) -> StageExecutionDependencies:
+    """Resolve stage execution dependencies from module symbols for patchability.
+
+    ``stage_runner_fn`` defaults to the codex stage runner; pass an alternate
+    callable (e.g. the rovodev or external stage runner) to swap the
+    underlying subprocess backend without changing the surrounding pipeline.
+    """
     return StageExecutionDependencies(
         build_stage_prompt=build_stage_prompt,
-        run_triage_stage=run_triage_stage,
+        run_triage_stage=stage_runner_fn or run_triage_stage,
         read_stage_output=read_stage_output_impl,
         analyze_reflect_issue_accounting=analyze_reflect_issue_accounting,
         validate_reflect_issue_accounting=validate_reflect_accounting,
@@ -189,7 +209,7 @@ def _run_stage_sequence(
                 state=pipeline_context.state,
             ),
             handlers=_STAGE_HANDLERS,
-            dependencies=_stage_execution_dependencies(),
+            dependencies=_stage_execution_dependencies(stage_runner_override()),
         )
         if execution_result.status == "dry_run":
             stage_results[stage] = execution_result.payload
@@ -339,7 +359,7 @@ def run_codex_pipeline(
         log_actor="system",
         log_detail={
             "source": "runner_auto_start",
-            "runner": "codex",
+            "runner": active_runner_name(),
             "injected_stage_ids": list(STAGES),
         },
         start_message="  Planning mode auto-started.",
@@ -364,8 +384,9 @@ def run_codex_pipeline(
     run_log_path = run_dir / "run.log"
     append_run_log = make_run_log_writer(run_log_path)
     cli_helper = _write_desloppify_cli_helper(run_dir)
+    runner_label = active_runner_name()
     append_run_log(
-        f"run-start runner=codex stages={','.join(stages_to_run)} "
+        f"run-start runner={runner_label} stages={','.join(stages_to_run)} "
         f"timeout={timeout_seconds}s dry_run={dry_run}"
     )
 
@@ -418,7 +439,7 @@ def write_triage_run_summary(
     summary = {
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "run_stamp": stamp,
-        "runner": "codex",
+        "runner": active_runner_name(),
         "stages_requested": stages,
         "stage_results": stage_results,
         "run_dir": str(run_dir),

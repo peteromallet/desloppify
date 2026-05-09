@@ -49,6 +49,7 @@ from desloppify.app.commands.runner.codex_batch import (
     run_followup_scan,
 )
 from ..runner_opencode import run_opencode_batch
+from ..runner_rovodev import run_rovodev_batch
 from ..runtime.setup import setup_lang_concrete as _setup_lang
 from ..runtime_paths import (
     blind_packet_path as _blind_packet_path,
@@ -80,6 +81,22 @@ from .execution_results import (
 )
 
 FOLLOWUP_SCAN_TIMEOUT_SECONDS = 45 * 60
+
+
+def _select_batch_runner(runner: str):
+    """Return the per-batch run function matching the requested runner.
+
+    Falls back to ``run_codex_batch`` for unknown runner strings; the
+    caller has already validated the runner via ``validate_runner`` by
+    the time the dispatch helper is reached during normal flows.
+    """
+    normalized = (runner or "").strip().lower()
+    if normalized == "opencode":
+        return run_opencode_batch
+    if normalized == "rovodev":
+        return run_rovodev_batch
+    return run_codex_batch
+
 _PREPARED_PACKET_CONTRACT_KEY = "prepared_packet_contract"
 ABSTRACTION_SUB_AXES = (
     "abstraction_leverage",
@@ -162,7 +179,7 @@ def _build_batch_run_deps(*, args, policy, project_root: Path) -> review_batches
             colorize_fn=colorize,
         ),
         run_batch_fn=partial(
-            run_opencode_batch if getattr(args, "runner", "codex") == "opencode" else run_codex_batch,
+            _select_batch_runner(getattr(args, "runner", "codex")),
             deps=codex_batch_deps,
         ),
         execute_batches_fn=lambda **kwargs: execute_batches(

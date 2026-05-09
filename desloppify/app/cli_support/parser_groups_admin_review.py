@@ -23,6 +23,7 @@ examples:
   desloppify review --prepare
   desloppify review --run-batches --runner codex --parallel --scan-after-import
   desloppify review --run-batches --runner opencode --parallel --scan-after-import
+  desloppify review --run-batches --runner rovodev --parallel --scan-after-import
   desloppify review --external-start --external-runner claude
   desloppify review --external-submit --session-id <id> --import issues.json
   desloppify review --merge --similarity 0.8""",

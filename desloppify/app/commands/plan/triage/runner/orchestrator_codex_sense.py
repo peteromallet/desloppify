@@ -19,9 +19,9 @@ from ..stages.helpers import scoped_manual_clusters_with_issues, triage_scoped_p
 from .codex_runner import (
     TriageStageRunResult,
     _output_file_has_text,
-    run_triage_stage,
 )
 from .orchestrator_codex_parallel import run_parallel_batches
+from .stage_runner_override import active_stage_runner
 from .stage_prompts import (
     build_sense_check_content_prompt,
     build_sense_check_structure_prompt,
@@ -154,7 +154,7 @@ def _content_tasks_and_meta(
         batch_meta.append((config.label, config.output_file))
         if not dry_run:
             tasks[i] = partial(
-                run_triage_stage,
+                active_stage_runner(),
                 prompt=config.prompt,
                 repo_root=repo_root,
                 output_file=config.output_file,
@@ -372,7 +372,7 @@ def run_sense_check(
 
     structure_tasks: dict[int, Callable[[], TriageStageRunResult]] = {
         0: partial(
-            run_triage_stage,
+            active_stage_runner(),
             prompt=structure_config.prompt,
             repo_root=repo_root,
             output_file=structure_config.output_file,
@@ -417,7 +417,7 @@ def run_sense_check(
     if not dry_run:
         value_tasks: dict[int, Callable[[], TriageStageRunResult]] = {
             0: partial(
-                run_triage_stage,
+                active_stage_runner(),
                 prompt=value_config.prompt,
                 repo_root=repo_root,
                 output_file=value_config.output_file,

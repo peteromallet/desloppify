@@ -98,6 +98,12 @@ def _print_prepare_summary(
     )
     print(
         colorize(
+            "  1b. Rovo Dev: `desloppify review --run-batches --runner rovodev --parallel --scan-after-import`",
+            "dim",
+        )
+    )
+    print(
+        colorize(
             f"  2. Claude / other agent: `desloppify review --run-batches --dry-run`"
             f" → generates {n_batches} prompt files in .desloppify/subagent_runs/<run>/prompts/."
             f" Launch {n_batches} subagents in parallel (one per prompt),"

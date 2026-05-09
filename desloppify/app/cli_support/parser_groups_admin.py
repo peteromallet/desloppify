@@ -195,7 +195,7 @@ def _add_update_skill_parser(sub) -> None:
         "interface",
         nargs="?",
         default=None,
-        help="Agent interface (amp, claude, codex, cursor, copilot, windsurf, gemini, hermes, droid, opencode). "
+        help="Agent interface (amp, claude, codex, cursor, copilot, windsurf, gemini, hermes, droid, opencode, rovodev). "
         "Auto-detected on updates if omitted.",
     )
 
@@ -208,6 +208,6 @@ def _add_setup_parser(sub) -> None:
     p.add_argument(
         "--interface",
         default=None,
-        choices=["amp", "claude", "codex", "gemini", "opencode"],
+        choices=["amp", "claude", "codex", "gemini", "opencode", "rovodev"],
         help="Install for a specific interface only",
     )

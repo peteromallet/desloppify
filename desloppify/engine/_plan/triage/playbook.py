@@ -14,7 +14,7 @@ TRIAGE_STAGE_LABELS: tuple[tuple[str, str], ...] = (
     ("commit", "Write strategy & confirm"),
 )
 
-TRIAGE_RUNNERS: tuple[str, str] = ("codex", "claude")
+TRIAGE_RUNNERS: tuple[str, ...] = ("codex", "claude", "rovodev")
 
 TRIAGE_CMD_STRATEGIZE = (
     'desloppify plan triage --stage strategize --report '
@@ -63,6 +63,7 @@ TRIAGE_CMD_CLUSTER_STEPS = (
 )
 TRIAGE_CMD_RUN_STAGES_CODEX = "desloppify plan triage --run-stages --runner codex"
 TRIAGE_CMD_RUN_STAGES_CLAUDE = "desloppify plan triage --run-stages --runner claude"
+TRIAGE_CMD_RUN_STAGES_ROVODEV = "desloppify plan triage --run-stages --runner rovodev"
 
 _RUNNER_STAGE_NAMES = frozenset(
     stage_name for stage_name, _label in TRIAGE_STAGE_LABELS if stage_name != "commit"
@@ -248,11 +249,14 @@ def triage_run_stages_command(
 def triage_runner_commands(
     *,
     only_stages: str | tuple[str, ...] | list[str] | None = None,
-) -> tuple[tuple[str, str], tuple[str, str]]:
-    """Return the preferred staged-runner commands for Codex and Claude."""
-    return (
-        ("Codex", triage_run_stages_command(runner="codex", only_stages=only_stages)),
-        ("Claude", triage_run_stages_command(runner="claude", only_stages=only_stages)),
+) -> tuple[tuple[str, str], ...]:
+    """Return the preferred staged-runner commands for each supported runner."""
+    return tuple(
+        (
+            runner.capitalize() if runner != "rovodev" else "Rovo Dev",
+            triage_run_stages_command(runner=runner, only_stages=only_stages),
+        )
+        for runner in TRIAGE_RUNNERS
     )
 
 
@@ -288,6 +292,7 @@ __all__ = [
     "TRIAGE_CMD_REFLECT",
     "TRIAGE_CMD_RUN_STAGES_CLAUDE",
     "TRIAGE_CMD_RUN_STAGES_CODEX",
+    "TRIAGE_CMD_RUN_STAGES_ROVODEV",
     "TRIAGE_RUNNERS",
     "compute_triage_progress",
     "triage_manual_stage_command",

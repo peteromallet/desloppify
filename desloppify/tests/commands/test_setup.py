@@ -186,6 +186,30 @@ def test_bundled_resources_are_readable() -> None:
         "DROID.md",
         "COPILOT.md",
         "OPENCODE.md",
+        "ROVODEV.md",
     ):
         text = resource_dir.joinpath(filename).read_text(encoding="utf-8")
         assert text.strip()
+
+
+def test_rovodev_global_setup_writes_dedicated_skill_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Rovo Dev install should write a dedicated SKILL.md under ~/.rovodev."""
+    (tmp_path / ".rovodev").mkdir()
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    setup_cmd_mod.cmd_setup(_setup_args(interface="rovodev"))
+
+    target = tmp_path / ".rovodev" / "skills" / "desloppify" / "SKILL.md"
+    assert target.is_file()
+    content = target.read_text(encoding="utf-8")
+    assert "desloppify-skill-version" in content
+    assert "<!-- desloppify-overlay: rovodev -->" in content
+
+
+def test_setup_parser_accepts_rovodev_choice() -> None:
+    parser = create_parser()
+    args = parser.parse_args(["setup", "--interface", "rovodev"])
+    assert args.interface == "rovodev"

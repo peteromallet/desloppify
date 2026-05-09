@@ -52,6 +52,7 @@ from desloppify.engine._state.progression import (
 from desloppify.engine.plan_triage import (
     TRIAGE_CMD_RUN_STAGES_CLAUDE,
     TRIAGE_CMD_RUN_STAGES_CODEX,
+    TRIAGE_CMD_RUN_STAGES_ROVODEV,
 )
 from desloppify.intelligence.review.importing.contracts_types import (
     NormalizedReviewImportPayload,
@@ -178,8 +179,9 @@ def _print_review_import_footer(
     print(colorize("  NEXT STEP:", "yellow"))
     print(colorize("    Run:    desloppify next", "yellow"))
     if triage_injected and not workflow_injected:
-        print(colorize(f"    Codex:  {TRIAGE_CMD_RUN_STAGES_CODEX}", "dim"))
-        print(colorize(f"    Claude: {TRIAGE_CMD_RUN_STAGES_CLAUDE}", "dim"))
+        print(colorize(f"    Codex:    {TRIAGE_CMD_RUN_STAGES_CODEX}", "dim"))
+        print(colorize(f"    Claude:   {TRIAGE_CMD_RUN_STAGES_CLAUDE}", "dim"))
+        print(colorize(f"    Rovo Dev: {TRIAGE_CMD_RUN_STAGES_ROVODEV}", "dim"))
         print(colorize("    Manual dashboard: desloppify plan triage", "dim"))
     print(
         colorize(

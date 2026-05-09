@@ -14,9 +14,9 @@ from ..observe_batches import group_issues_into_observe_batches
 from .codex_runner import (
     TriageStageRunResult,
     _output_file_has_text,
-    run_triage_stage,
 )
 from .orchestrator_codex_parallel import run_parallel_batches
+from .stage_runner_override import active_stage_runner
 from .stage_prompts import build_observe_batch_prompt
 
 
@@ -109,7 +109,7 @@ def run_observe(
 
         if not dry_run:
             tasks[i] = partial(
-                run_triage_stage,
+                active_stage_runner(),
                 prompt=prompt,
                 repo_root=repo_root,
                 output_file=output_file,

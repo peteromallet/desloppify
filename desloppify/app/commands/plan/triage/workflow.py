@@ -16,6 +16,7 @@ from .lifecycle import ensure_triage_started
 from .review_coverage import ensure_active_triage_issue_ids
 from .runner.orchestrator_claude import run_claude_orchestrator
 from .runner.orchestrator_codex_pipeline import run_codex_pipeline
+from .runner.rovodev_pipeline import run_rovodev_pipeline
 from .runner.orchestrator_common import parse_only_stages
 from .runner.stage_prompts import cmd_stage_prompt
 from .services import TriageServices
@@ -106,8 +107,15 @@ def _run_staged_runner(
             services=services,
         )
         return
+    if runner == "rovodev":
+        run_rovodev_pipeline(
+            args,
+            stages_to_run=stages_to_run,
+            services=services,
+        )
+        return
     raise CommandError(
-        f"Unknown runner: {runner}. Use 'codex' or 'claude'.",
+        f"Unknown runner: {runner}. Use 'codex', 'claude', or 'rovodev'.",
         exit_code=1,
     )
 

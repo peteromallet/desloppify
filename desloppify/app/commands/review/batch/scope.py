@@ -14,7 +14,7 @@ from desloppify.intelligence.review.feedback_contract import (
 )
 
 
-_SUPPORTED_RUNNERS = {"codex", "opencode"}
+_SUPPORTED_RUNNERS = {"codex", "opencode", "rovodev"}
 
 
 def validate_runner(runner: str, *, colorize_fn) -> None:

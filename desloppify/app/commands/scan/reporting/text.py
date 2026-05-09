@@ -27,10 +27,11 @@ def build_workflow_guide(attest_example: str) -> str:
         4. **Run auto-fixers** (if available): `desloppify autofix <fixer> --dry-run` to preview, then apply.
         5. **Rescan**: `desloppify scan --path <path>` — verify improvements, catch cascading effects.
         6. **Subjective review**: `desloppify review --prepare` then follow your runner's review workflow
-           (see skill doc for Codex, Claude, or external paths).
+           (see skill doc for Codex, Claude, OpenCode, Rovo Dev, or external paths).
         7. **Triage** (after review): prefer
-           `desloppify plan triage --run-stages --runner codex` or
-           `desloppify plan triage --run-stages --runner claude`.
+           `desloppify plan triage --run-stages --runner codex`,
+           `desloppify plan triage --run-stages --runner claude`, or
+           `desloppify plan triage --run-stages --runner rovodev`.
            Manual dashboard/fallback: `desloppify plan triage`.
            Complete all stages (strategize → observe → reflect → organize → enrich → sense-check → commit).
         8. **Check progress**: `desloppify status` — dimension scores dashboard.

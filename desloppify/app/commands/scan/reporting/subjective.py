@@ -100,7 +100,7 @@ def subjective_rerun_command(
         if dim_keys:
             command_parts.extend(["--dimensions", dim_keys])
         cmd = f"`{' '.join(command_parts)}`"
-        return f"{cmd} (set up `--runner codex` or `--runner opencode` for automated reviews)"
+        return f"{cmd} (set up `--runner codex`, `--runner opencode`, or `--runner rovodev` for automated reviews)"
 
     command_parts = [
         "desloppify",
