@@ -49,3 +49,17 @@ def test_treesitter_extra_declares_runtime_and_language_pack() -> None:
     package_names = _package_names(treesitter_specs)
     assert "tree-sitter" in package_names
     assert "tree-sitter-language-pack" in package_names
+
+
+def test_treesitter_language_pack_is_capped_below_incompatible_release() -> None:
+    optional = _optional_dependencies()
+    treesitter_specs = optional.get("treesitter")
+    assert isinstance(treesitter_specs, list), "optional extra 'treesitter' must be a list"
+
+    language_pack_specs = [
+        str(spec)
+        for spec in treesitter_specs
+        if str(spec).startswith("tree-sitter-language-pack")
+    ]
+
+    assert language_pack_specs == ["tree-sitter-language-pack>=0.3,<1.8"]
