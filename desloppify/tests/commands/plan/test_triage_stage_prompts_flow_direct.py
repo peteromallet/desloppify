@@ -73,7 +73,15 @@ def test_observe_and_sense_prompt_builders_include_expected_context(tmp_path) ->
                 "title": "Naming issue",
                 "description": "rename to clear name",
                 "detail": {"dimension": "naming_quality", "file_path": "src/a.py"},
-            }
+            },
+            "review::.::holistic::naming_quality::task_param_bag": {
+                "title": "Holistic naming issue",
+                "description": "shared task parameter bag hides intent",
+                "detail": {
+                    "dimension": "naming_quality",
+                    "summary_hash": "1a2b3c4d",
+                },
+            },
         },
         repo_root=tmp_path,
     )
@@ -82,7 +90,8 @@ def test_observe_and_sense_prompt_builders_include_expected_context(tmp_path) ->
     assert "observe batch 1/2" in observe
     assert "naming_quality" in observe
     assert f"Repo root: {tmp_path}" in observe
-    assert "[review::s" not in observe  # hash prefix truncation is used
+    assert "[abcdef12]" in observe
+    assert "[1a2b3c4d]" in observe
     for required_field in ("- hash:", "verdict:", "verdict_reasoning:", "files_read:", "recommendation:"):
         assert required_field in observe
     assert "Do NOT run any `desloppify` commands" in observe
