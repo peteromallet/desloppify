@@ -107,19 +107,45 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
 
 
 def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
-    parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+    """Resolve an absolute import within scan root first, then project root.
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+    Probes four candidate roots in order, supporting both flat layouts and
+    the common ``src/``-layout (PEP 621 / Hatchling / setuptools) where the
+    actual package lives at ``<project>/src/<pkg>/...``:
+
+    1. ``<scan_root>/<dotted/path>``
+    2. ``<project_root>/<dotted/path>``
+    3. ``<scan_root>/src/<dotted/path>``
+    4. ``<project_root>/src/<dotted/path>``
+
+    The ``src/`` probes catch the case where ``desloppify scan --path .``
+    runs at the project root but the imported package only exists under
+    ``src/``. Without them every file beneath ``src/<pkg>/`` looks unimported
+    and the orphan-file detector emits false positives.
+    """
+    parts = module_path.split(".")
+    project_root = get_project_root()
+    scan_root_resolved = scan_root.resolve()
+
+    candidate_roots: list[Path] = [scan_root_resolved, project_root]
+    src_scan_root = scan_root_resolved / "src"
+    src_project_root = project_root / "src"
+    # Only add the src-prefixed candidates when those directories actually
+    # exist. This keeps behavior unchanged for flat-layout projects while
+    # adding the resolution path needed for src-layout projects.
+    if src_scan_root.is_dir() and src_scan_root not in candidate_roots:
+        candidate_roots.append(src_scan_root)
+    if src_project_root.is_dir() and src_project_root not in candidate_roots:
+        candidate_roots.append(src_project_root)
+
+    for root in candidate_roots:
+        target_base = root
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
 
 
 def try_resolve_path(target_base: Path) -> str | None:
