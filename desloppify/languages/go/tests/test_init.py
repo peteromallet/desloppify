@@ -5,9 +5,15 @@ Go plugin originally contributed by tinker495 (PR #128).
 
 from __future__ import annotations
 
-from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.engine.hook_registry import get_lang_hook
+from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages import get_lang
+from desloppify.languages._framework.generic_parts import tool_factories
+
+
+class _ToolPhaseRuntime:
+    detector_coverage = {}
+    coverage_warnings = []
 
 
 def test_config_name():
@@ -37,6 +43,23 @@ def test_has_core_phases():
     assert "Security" in labels
     assert "golangci-lint" in labels
     assert "go vet" in labels
+
+
+def test_golangci_lint_phase_uses_v2_json_output_flags(tmp_path, monkeypatch):
+    cfg = get_lang("go")
+    phase = next(p for p in cfg.phases if p.label == "golangci-lint")
+    captured = {}
+
+    def fake_run_tool_result(cmd, run_path, parser):
+        captured["cmd"] = cmd
+        return tool_factories.ToolRunResult(status="empty", entries=[], meta={})
+
+    monkeypatch.setattr(tool_factories, "run_tool_result", fake_run_tool_result)
+
+    phase.run(tmp_path, _ToolPhaseRuntime())
+
+    assert "--out-format=json" not in captured["cmd"]
+    assert "--output.json.path stdout" in captured["cmd"]
 
 
 def test_integration_depth_full():

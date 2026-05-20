@@ -19,6 +19,7 @@ from desloppify.languages._framework.registry.registration import register_full_
 from desloppify.languages._framework.registry.state import register_lang_hooks
 from desloppify.languages._framework.treesitter.phases import all_treesitter_phases
 from desloppify.languages.go import test_coverage as go_test_coverage_hooks
+from desloppify.languages.go._zones import GO_ZONE_RULES
 from desloppify.languages.go.commands import get_detect_commands
 from desloppify.languages.go.detectors.deps import build_dep_graph as build_go_dep_graph
 from desloppify.languages.go.extractors import (
@@ -36,8 +37,6 @@ from desloppify.languages.go.review import (
     api_surface,
     module_patterns,
 )
-
-from desloppify.languages.go._zones import GO_ZONE_RULES
 
 GO_ENTRY_PATTERNS = ["/main.go", "/cmd/"]
 
@@ -57,7 +56,7 @@ class GoConfig(LangConfig):
                 DetectorPhase("Structural analysis", phase_structural),
                 make_tool_phase(
                     "golangci-lint",
-                    "golangci-lint run --out-format=json",
+                    "golangci-lint run --output.json.path stdout --output.text.path '' --show-stats=false",
                     "golangci",
                     "golangci_lint",
                     tier=2,
