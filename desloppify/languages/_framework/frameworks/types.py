@@ -65,6 +65,13 @@ class FrameworkSpec:
     excludes: tuple[str, ...] = ()
     scanners: tuple[ScannerRule, ...] = ()
     tools: tuple[ToolIntegration, ...] = ()
+    # Non-host-language source files that should still be scanned as importers
+    # of the host language's modules (e.g. `.astro` files importing `.js`).
+    # The dep-graph builder reads these files via a regex pass and records
+    # importer edges into ``file_set``; framework files themselves are not
+    # added as graph nodes. Default empty for specs whose source files are
+    # already covered by the host language's extensions (e.g. Next.js).
+    source_extensions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -383,7 +383,7 @@ def test_generic_registration_helpers(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "desloppify.languages._framework.treesitter.imports.graph.make_ts_dep_builder",
-        lambda _spec, _finder: "ts-dep-builder",
+        lambda _spec, _finder, **_kw: "ts-dep-builder",
     )
 
     _, extract_fn, dep_graph_fn, has_ts, ts_spec = registration_mod._resolve_generic_extractors(

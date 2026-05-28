@@ -16,6 +16,11 @@ import pytest
 
 from desloppify.languages import get_lang
 from desloppify.languages._framework.generic_parts.parsers import parse_eslint
+from desloppify.languages._framework.treesitter import is_available as ts_available
+
+requires_treesitter = pytest.mark.skipif(
+    not ts_available(), reason="tree-sitter-language-pack not installed"
+)
 
 
 @pytest.fixture(scope="module")
@@ -83,6 +88,73 @@ def test_command_has_no_placeholder(cfg):
 def test_fix_cmd_registered(cfg):
     """JavaScript supports autofix — at least one fixer must be registered."""
     assert cfg.fixers, "expected at least one fixer (fix_cmd) to be registered for JavaScript"
+
+
+@requires_treesitter
+def test_dep_graph_treats_astro_frontmatter_as_importer(cfg, tmp_path, set_project_root):
+    """JS modules imported only from .astro frontmatter must not be orphans.
+
+    Regression for a false-positive class on Astro projects: the page/component
+    `.astro` files weren't in the JS plugin's enumerated extensions, so any
+    .js module they imported showed `importer_count == 0` and tripped the
+    orphaned-file detector. With ``frameworks=True`` on the plugin and the
+    framework-extensions wiring in the shared graph builder, the importer
+    edge is now recorded.
+    """
+    del set_project_root  # PROJECT_ROOT scoped to tmp_path
+
+    src = tmp_path / "src"
+    src.mkdir()
+    config = src / "config.js"
+    config.write_text("export const LIST_UUID = 'xyz';\n", encoding="utf-8")
+
+    pages = src / "pages"
+    pages.mkdir()
+    (pages / "index.astro").write_text(
+        "---\nimport { LIST_UUID } from '../config.js';\n---\n<html />\n",
+        encoding="utf-8",
+    )
+
+    graph = cfg.build_dep_graph(tmp_path)
+    config_key = str(config.resolve())
+    astro_key = str((pages / "index.astro").resolve())
+
+    assert config_key in graph, (
+        f"config.js missing from graph; keys: {sorted(graph)[:5]}…"
+    )
+    assert graph[config_key]["importer_count"] >= 1
+    assert astro_key in graph[config_key]["importers"]
+    # The .astro file itself is not a graph node — it must not appear as
+    # an orphan in JS plugin reports.
+    assert astro_key not in graph
+
+
+@requires_treesitter
+def test_dep_graph_treats_mjs_config_as_importer(cfg, tmp_path, set_project_root):
+    """.mjs config files (e.g. astro.config.mjs, vite.config.mjs) must register
+    as importers of the .js modules they pull in.
+
+    .mjs IS in the JS plugin's extension list, so this should "just work" —
+    but covering it explicitly guards against regressions in how the
+    tree-sitter pass handles ESM-only files.
+    """
+    del set_project_root
+
+    src = tmp_path / "src"
+    src.mkdir()
+    helper = src / "helper.js"
+    helper.write_text("export const ok = true;\n", encoding="utf-8")
+    (tmp_path / "tool.config.mjs").write_text(
+        "import { ok } from './src/helper.js';\nexport default { ok };\n",
+        encoding="utf-8",
+    )
+
+    graph = cfg.build_dep_graph(tmp_path)
+    helper_key = str(helper.resolve())
+    mjs_key = str((tmp_path / "tool.config.mjs").resolve())
+
+    assert helper_key in graph
+    assert mjs_key in graph[helper_key]["importers"]
 
 
 def test_parsing_eslint_format():

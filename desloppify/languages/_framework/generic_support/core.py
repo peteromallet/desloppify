@@ -97,6 +97,7 @@ def generic_lang(
     file_finder, extract_fn, dep_graph_fn, has_treesitter, ts_spec = _resolve_generic_extractors(
         path_extensions=extensions,
         opts=opts,
+        frameworks=frameworks,
     )
     phases = _build_generic_phases(
         tool_specs=tool_specs,

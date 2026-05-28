@@ -82,6 +82,244 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
     ) == {}
 
 
+def test_graph_records_framework_files_as_importers(
+    monkeypatch, tmp_path: Path, set_project_root
+) -> None:
+    """``.astro``/``.svelte``/``.vue`` files contribute importer edges to the
+    host-language graph without becoming graph nodes themselves.
+
+    Regression for a class of false positives that used to flag every JS
+    module imported only from an Astro page/component as orphaned.
+    """
+    del set_project_root  # PROJECT_ROOT scoped to tmp_path via fixture
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    target = src_dir / "config.js"
+    target.write_text("export const X = 1;\n", encoding="utf-8")
+
+    astro = src_dir / "Page.astro"
+    astro.write_text(
+        "---\nimport { X } from './config';\n---\n<html>{X}</html>\n",
+        encoding="utf-8",
+    )
+    svelte = src_dir / "Widget.svelte"
+    svelte.write_text(
+        "<script>\nimport { X } from './config';\n</script>\n<div>{X}</div>\n",
+        encoding="utf-8",
+    )
+
+    # Stub the tree-sitter pass so .js files alone produce no edges — the
+    # importer edges in this test must come from the framework-file pass.
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(graph_mod, "get_or_parse_tree", lambda *_a, **_k: None)
+
+    target_abs = str(target.resolve())
+
+    def fake_resolve(text: str, _source_file: str, _scan_path: str) -> str | None:
+        return target_abs if text == "./config" else None
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=fake_resolve,
+    )
+    file_list = [target_abs]
+
+    graph = graph_mod.ts_build_dep_graph(
+        tmp_path,
+        spec,
+        file_list,
+        framework_extensions=(".astro", ".svelte"),
+    )
+
+    astro_abs = str(astro.resolve())
+    svelte_abs = str(svelte.resolve())
+    assert astro_abs in graph[target_abs]["importers"]
+    assert svelte_abs in graph[target_abs]["importers"]
+    assert graph[target_abs]["importer_count"] == 2
+    # Framework files themselves are not graph nodes — they must not show
+    # up in orphan or coupling reports.
+    assert astro_abs not in graph
+    assert svelte_abs not in graph
+
+
+def test_graph_framework_pass_is_opt_in(
+    monkeypatch, tmp_path: Path, set_project_root
+) -> None:
+    """Without ``framework_extensions``, framework files are ignored entirely."""
+    del set_project_root
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    target = src_dir / "config.js"
+    target.write_text("export const X = 1;\n", encoding="utf-8")
+
+    astro = src_dir / "Page.astro"
+    astro.write_text(
+        "---\nimport { X } from './config';\n---\n<html />\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(graph_mod, "get_or_parse_tree", lambda *_a, **_k: None)
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=lambda *_a, **_k: str(target.resolve()),
+    )
+    target_abs = str(target.resolve())
+
+    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, [target_abs])
+    assert graph[target_abs]["importer_count"] == 0
+
+
+def _make_fw_test_setup(monkeypatch, tmp_path: Path):
+    """Build a minimal JS target file + stubbed tree-sitter pass.
+
+    Returns ``(target_abs, src_dir, spec)`` for tests that want to drive
+    ``ts_build_dep_graph``'s framework pass without exercising the host
+    language's tree-sitter pipeline.
+    """
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    target = src_dir / "config.js"
+    target.write_text("export const X = 1;\n", encoding="utf-8")
+
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(graph_mod, "get_or_parse_tree", lambda *_a, **_k: None)
+
+    target_abs = str(target.resolve())
+
+    def fake_resolve(text: str, _source_file: str, _scan_path: str) -> str | None:
+        return target_abs if text == "./config" else None
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=fake_resolve,
+    )
+    return target_abs, src_dir, spec
+
+
+def test_framework_pass_ignores_commented_imports(
+    monkeypatch, tmp_path: Path, set_project_root
+) -> None:
+    """Commented-out imports (``//``, ``/* */``, ``<!-- -->``) must not create
+    importer edges — they're the orphan detector's primary false-positive mode.
+    """
+    del set_project_root
+
+    target_abs, src_dir, spec = _make_fw_test_setup(monkeypatch, tmp_path)
+
+    (src_dir / "JsLine.astro").write_text(
+        "---\n// import { X } from './config';\n---\n<html />\n",
+        encoding="utf-8",
+    )
+    (src_dir / "JsBlock.astro").write_text(
+        "---\n/* import { X } from './config'; */\n---\n<html />\n",
+        encoding="utf-8",
+    )
+    (src_dir / "HtmlComment.vue").write_text(
+        "<template><!-- import { X } from './config' --></template>\n",
+        encoding="utf-8",
+    )
+
+    graph = graph_mod.ts_build_dep_graph(
+        tmp_path,
+        spec,
+        [target_abs],
+        framework_extensions=(".astro", ".vue"),
+    )
+
+    assert graph[target_abs]["importer_count"] == 0
+
+
+def test_framework_pass_supports_vue_and_type_imports(
+    monkeypatch, tmp_path: Path, set_project_root
+) -> None:
+    """Vue ``<script>`` blocks and ``import type`` qualifiers both contribute edges.
+
+    ``.vue`` was in the default framework tuple from day one but only ``.astro``
+    and ``.svelte`` had test coverage. Type-only imports are common in TS-backed
+    framework projects and must not be dropped by the regex extractor.
+    """
+    del set_project_root
+
+    target_abs, src_dir, spec = _make_fw_test_setup(monkeypatch, tmp_path)
+
+    vue = src_dir / "Widget.vue"
+    vue.write_text(
+        "<script setup lang=\"ts\">\n"
+        "import { X } from './config';\n"
+        "</script>\n"
+        "<template><div>{{ X }}</div></template>\n",
+        encoding="utf-8",
+    )
+    type_only = src_dir / "Types.astro"
+    type_only.write_text(
+        "---\nimport type { X } from './config';\n---\n<html />\n",
+        encoding="utf-8",
+    )
+
+    graph = graph_mod.ts_build_dep_graph(
+        tmp_path,
+        spec,
+        [target_abs],
+        framework_extensions=(".astro", ".vue"),
+    )
+
+    vue_abs = str(vue.resolve())
+    type_only_abs = str(type_only.resolve())
+    assert vue_abs in graph[target_abs]["importers"]
+    assert type_only_abs in graph[target_abs]["importers"]
+    assert graph[target_abs]["importer_count"] == 2
+
+
+def test_framework_file_finder_honors_caller_supplied_exclusions(
+    monkeypatch, tmp_path: Path, set_project_root
+) -> None:
+    """When ``framework_file_finder`` is provided, only the files it returns
+    contribute importer edges — proving exclude-aware finders can suppress
+    framework files in user-excluded directories (e.g. ``examples/``).
+    """
+    del set_project_root
+
+    target_abs, src_dir, spec = _make_fw_test_setup(monkeypatch, tmp_path)
+
+    included = src_dir / "Real.astro"
+    included.write_text(
+        "---\nimport { X } from './config';\n---\n<html />\n",
+        encoding="utf-8",
+    )
+    excluded_dir = tmp_path / "examples"
+    excluded_dir.mkdir()
+    excluded = excluded_dir / "Demo.astro"
+    excluded.write_text(
+        "---\nimport { X } from './config';\n---\n<html />\n",
+        encoding="utf-8",
+    )
+
+    def fw_finder(_path: Path) -> list[str]:
+        return [str(included)]
+
+    graph = graph_mod.ts_build_dep_graph(
+        tmp_path,
+        spec,
+        [target_abs],
+        framework_extensions=(".astro",),
+        framework_file_finder=fw_finder,
+    )
+
+    assert graph[target_abs]["importer_count"] == 1
+    assert str(included.resolve()) in graph[target_abs]["importers"]
+    assert str(excluded.resolve()) not in graph[target_abs]["importers"]
+
+
 def test_import_normalize_helpers_strip_comments_and_log_lines() -> None:
     cached = normalize_mod._get_log_patterns((r"logger\.",))
     assert cached is normalize_mod._get_log_patterns((r"logger\.",))
