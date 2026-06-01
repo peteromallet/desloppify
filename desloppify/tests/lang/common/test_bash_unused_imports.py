@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import textwrap
 
+import pytest
+
+from desloppify.languages._framework.treesitter import is_available
+
+pytestmark = pytest.mark.skipif(
+    not is_available(), reason="tree-sitter-language-pack not installed"
+)
+
 
 def _detect(tmp_path, contents: str):
     from desloppify.languages._framework.treesitter.analysis.unused_imports import (

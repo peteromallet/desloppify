@@ -149,6 +149,13 @@ def collect_exclude_dirs(
         if "*" not in pat:
             patterns.add(pat)
     patterns.update(p for p in resolved_exclusions if p and "*" not in p)
+    # External tools (e.g. bandit) match --exclude against absolute walked paths,
+    # so a relative scan_root — commonpath is often Path(".") — would make every
+    # exclude silently match nothing. Anchor relative roots to an absolute path
+    # (matching the .resolve() bandit applies to its own scan target); leave
+    # already-absolute roots byte-stable so callers' paths are unchanged.
+    if not scan_root.is_absolute():
+        scan_root = scan_root.resolve()
     return [str(scan_root / p) for p in sorted(patterns) if p]
 
 

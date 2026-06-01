@@ -1010,3 +1010,20 @@ class TestCollectExcludeDirs:
             result = collect_exclude_dirs(tmp_path)
         node_entries = [p for p in result if p.endswith("/node_modules")]
         assert len(node_entries) == 1
+
+    def test_relative_scan_root_yields_absolute_paths(self):
+        """A relative scan_root must still yield absolute exclude dirs.
+
+        ``scan_root_from_files`` derives the root from ``os.path.commonpath``,
+        which is relative (often ``Path('.')``) when scanning with a relative
+        ``--path``. bandit matches ``--exclude`` against *absolute* walked paths,
+        so a relative entry like ``.worktrees`` silently excludes nothing — the
+        bug behind ~2000 phantom B101 findings from worktree copies.
+        """
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions",
+            return_value=(".worktrees",),
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert all(Path(p).is_absolute() for p in result), result
+        assert any(p.endswith("/.worktrees") for p in result), result
