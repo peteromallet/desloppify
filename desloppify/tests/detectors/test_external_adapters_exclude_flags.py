@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from desloppify.languages.python._security import detect_python_security
 from desloppify.languages.python.detectors.ruff_smells import detect_with_ruff_smells
 from desloppify.languages.python.detectors.unused import detect_unused
 
@@ -104,3 +105,30 @@ class TestRuffUnusedExcludeFlag:
             detect_unused(tmp_path)
 
         assert "--exclude" not in captured_cmd
+
+
+class TestBanditSecurityExcludeFlag:
+    """Regression: config-level excludes (`desloppify exclude <dir>`) must reach
+    bandit's --exclude. Previously only the file-discovery detectors honoured them,
+    so the security detector kept reporting findings from excluded directories."""
+
+    def test_security_passes_config_excludes_to_bandit(self, tmp_path):
+        (tmp_path / "app.py").write_text("x = 1\n")
+        captured_cmd: list[str] = []
+
+        def _capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            mock_result = MagicMock()
+            mock_result.stdout = ""
+            mock_result.returncode = 0
+            return mock_result
+
+        with patch("subprocess.run", side_effect=_capture_run), patch(
+            "desloppify.languages.python._security.load_config",
+            return_value={"exclude": ["vendored_lib"]},
+        ):
+            detect_python_security([str(tmp_path / "app.py")], zone_map=None)
+
+        assert "--exclude" in captured_cmd
+        exclude_value = captured_cmd[captured_cmd.index("--exclude") + 1]
+        assert "vendored_lib" in exclude_value
