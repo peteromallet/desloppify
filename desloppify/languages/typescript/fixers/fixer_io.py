@@ -65,7 +65,7 @@ def _process_fixer_file(
     dry_run: bool,
 ) -> dict[str, object] | None:
     path = Path(filepath) if Path(filepath).is_absolute() else get_project_root() / filepath
-    original = path.read_text()
+    original = path.read_text(encoding="utf-8")
     lines = original.splitlines(keepends=True)
 
     new_lines, removed_names = transform_fn(lines, file_entries)
