@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
@@ -131,6 +132,54 @@ class BanditScanResult:
     status: BanditRunStatus
 
 
+# Ruff's flake8-bandit (`S`) codes map one-to-one onto Bandit's `B` tests:
+# the numeric part is identical (`S608` ⇄ `B608`, `S310` ⇄ `B310`). A line that a
+# ruff-based project has already reviewed and suppressed with `noqa: S608`
+# expresses the same accepted-risk decision as Bandit's `nosec`.
+_NOQA_RE = re.compile(
+    r"#\s*noqa(?::\s*(?P<codes>[A-Z]+[0-9]+(?:[,\s]+[A-Z]+[0-9]+)*))?",
+    re.IGNORECASE,
+)
+
+
+def _line_suppressed_by_ruff_noqa(
+    filepath: str, line_number: int, test_id: str
+) -> bool:
+    """Return True if the flagged source line carries a ruff ``noqa`` for *test_id*.
+
+    Honors ruff's flake8-bandit suppressions the way Bandit honors its own
+    ``nosec``: a bare ``noqa`` suppresses every check on the line, and
+    ``noqa: S608`` (optionally among other codes) suppresses the Bandit test
+    whose number matches — ``B608``. Without this, every ruff-suppressed site is
+    reported twice: silenced by ruff, re-flagged by Bandit. Bandit strips its own
+    ``nosec`` lines before results reach this adapter, so only the ruff form is
+    handled here.
+    """
+    if line_number <= 0 or not (test_id.startswith("B") and test_id[1:].isdigit()):
+        return False
+    path = Path(filepath)
+    if not path.is_absolute():
+        path = get_project_root() / filepath
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            line = next(
+                (text for i, text in enumerate(handle, start=1) if i == line_number),
+                "",
+            )
+    except OSError:
+        return False
+    match = _NOQA_RE.search(line)
+    if match is None:
+        return False
+    codes = match.group("codes")
+    if codes is None:
+        return True  # bare ``noqa`` suppresses every check on the line
+    ruff_code = f"S{test_id[1:]}"  # ``B608`` -> ``S608``
+    return ruff_code.casefold() in {
+        token.casefold() for token in re.split(r"[,\s]+", codes.strip()) if token
+    }
+
+
 def _to_security_entry(
     result: dict,
     zone_map: FileZoneMap | None,
@@ -152,6 +201,10 @@ def _to_security_entry(
     if test_id in _CROSS_LANG_OVERLAP:
         return None
 
+    line = result.get("line_number", 0)
+    if _line_suppressed_by_ruff_noqa(filepath, line, test_id):
+        return None
+
     raw_severity = result.get("issue_severity", "MEDIUM").upper()
     raw_confidence = result.get("issue_confidence", "MEDIUM").upper()
 
@@ -164,7 +217,6 @@ def _to_security_entry(
     tier = _SEVERITY_TO_TIER.get(raw_severity, 3)
     confidence = _SEVERITY_TO_CONFIDENCE.get(raw_severity, "medium")
 
-    line = result.get("line_number", 0)
     summary = result.get("issue_text", "")
     test_name = result.get("test_name", test_id)
     return {

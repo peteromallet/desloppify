@@ -74,6 +74,56 @@ def test_to_security_entry_skips_test_zone_with_abs_key_zone_map():
     assert entry is None
 
 
+def _result_for_file(
+    path: Path, *, line_number: int = 1, test_id: str = "B608"
+) -> dict[str, object]:
+    result = _sample_result(test_id=test_id)
+    result["filename"] = str(path)
+    result["line_number"] = line_number
+    return result
+
+
+def test_to_security_entry_honors_ruff_noqa_for_matching_code(tmp_path):
+    """``# noqa: S608`` suppresses the matching Bandit ``B608`` finding."""
+    src = tmp_path / "q.py"
+    src.write_text('q = f"SELECT * FROM {t}"  # noqa: S608\n')
+    entry = adapter_mod._to_security_entry(
+        _result_for_file(src), _StubZoneMap(Zone.PRODUCTION)
+    )
+    assert entry is None
+
+
+def test_to_security_entry_honors_bare_ruff_noqa(tmp_path):
+    """A bare ``# noqa`` suppresses every check on the line."""
+    src = tmp_path / "q.py"
+    src.write_text('q = f"SELECT * FROM {t}"  # noqa\n')
+    entry = adapter_mod._to_security_entry(
+        _result_for_file(src), _StubZoneMap(Zone.PRODUCTION)
+    )
+    assert entry is None
+
+
+def test_to_security_entry_ignores_noqa_for_unrelated_code(tmp_path):
+    """``# noqa: E501`` does not suppress an unrelated ``B608`` finding."""
+    src = tmp_path / "q.py"
+    src.write_text('q = f"SELECT * FROM {t}"  # noqa: E501\n')
+    entry = adapter_mod._to_security_entry(
+        _result_for_file(src), _StubZoneMap(Zone.PRODUCTION)
+    )
+    assert isinstance(entry, dict)
+    assert entry["detail"]["kind"] == "B608"
+
+
+def test_to_security_entry_reports_when_line_has_no_noqa(tmp_path):
+    """A genuinely unsuppressed line is still reported."""
+    src = tmp_path / "q.py"
+    src.write_text('q = f"SELECT * FROM {t}"\n')
+    entry = adapter_mod._to_security_entry(
+        _result_for_file(src), _StubZoneMap(Zone.PRODUCTION)
+    )
+    assert isinstance(entry, dict)
+
+
 def test_detect_with_bandit_uses_absolute_scan_path(monkeypatch):
     captured: dict[str, object] = {}
 
