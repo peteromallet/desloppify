@@ -107,19 +107,42 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
 
 
 def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
-    parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+    """Resolve an absolute import to a project file.
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+    Each candidate source root (see :func:`candidate_source_roots`) is tried in
+    priority order, covering both the flat layout (``<root>/<pkg>``) and the
+    ``src`` layout (``<root>/src/<pkg>``) recommended by the Python Packaging
+    Authority. Without the ``src`` candidates, a ``from pkg.sub import x``
+    statement in a ``src``-layout project resolves to nothing, so ``pkg/sub.py``
+    is recorded with zero importers and misreported as orphaned/uncoupled.
+    """
+    parts = module_path.split(".")
+    for root in candidate_source_roots(scan_root):
+        target_base = root
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
+
+
+def candidate_source_roots(scan_root: Path) -> list[Path]:
+    """Return the roots an absolute import may resolve against, in priority order.
+
+    The scan root and the project root are each tried with and without a ``src``
+    prefix, so absolute imports resolve under both the flat and ``src`` layouts.
+    The flat roots are tried before the ``src`` roots, so this is strictly
+    additive: any import that resolved before resolves to the same file, and only
+    previously-unresolved ``src``-layout imports gain an edge. Duplicate roots
+    (common when the scan root is the project root) are collapsed.
+    """
+    flat_roots = [scan_root.resolve(), get_project_root()]
+    roots: list[Path] = []
+    for candidate in (*flat_roots, *(root / "src" for root in flat_roots)):
+        if candidate not in roots:
+            roots.append(candidate)
+    return roots
 
 
 def try_resolve_path(target_base: Path) -> str | None:
@@ -141,6 +164,7 @@ def try_resolve_path(target_base: Path) -> str | None:
 
 
 __all__ = [
+    "candidate_source_roots",
     "resolve_absolute_import",
     "resolve_python_from_import",
     "resolve_python_import",

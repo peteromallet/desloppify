@@ -174,6 +174,38 @@ class TestDetectOrphanedFiles:
         assert len(entries) == 1
         assert entries[0]["file"] == str(f3)
 
+    def test_sphinx_conf_py_excluded_by_python_entry_patterns(self, tmp_path):
+        """A Sphinx ``docs/conf.py`` is an entry point, not an orphan.
+
+        Regression for PY_ENTRY_PATTERNS: ``conf.py`` is loaded by ``sphinx-build``
+        and has zero importers by design, so it must be recognized as an entry
+        point rather than flagged as a dead file.
+        """
+        from desloppify.languages.python.phases import PY_ENTRY_PATTERNS
+
+        conf = _write_file(tmp_path / "docs" / "conf.py", lines=30)
+        orphan = _write_file(tmp_path / "dead.py", lines=30)
+        graph = {
+            str(conf): _graph_entry(importer_count=0),
+            str(orphan): _graph_entry(importer_count=0),
+        }
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, total = detect_orphaned_files(
+                tmp_path,
+                graph,
+                [".py"],
+                options=OrphanedDetectionOptions(
+                    extra_entry_patterns=PY_ENTRY_PATTERNS
+                ),
+            )
+
+        assert total == 2
+        assert [e["file"] for e in entries] == [str(orphan)]
+
     def test_barrel_names_excluded(self, tmp_path):
         """Files matching barrel_names are not reported as orphaned."""
         f1 = _write_file(tmp_path / "index.ts", lines=30)

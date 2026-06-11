@@ -150,6 +150,36 @@ class TestGraphStructure:
         assert graph[shared_key]["importer_count"] >= 2
 
 
+# ── src/ layout (PyPA recommended) ────────────────────────
+
+
+class TestSrcLayout:
+    """Absolute imports must resolve when the package lives under ``src/``.
+
+    Regression for the ``src``-layout import resolver: ``from mypkg.schema
+    import VAL`` in ``<root>/src/mypkg/main.py`` resolves to
+    ``<root>/src/mypkg/schema.py``. Before the fix, only ``<root>/mypkg`` and
+    ``<project_root>/mypkg`` were tried, so the edge was dropped and
+    ``schema.py`` was misreported as orphaned with zero importers.
+    """
+
+    def test_absolute_import_resolves_under_src(self, tmp_path):
+        root = tmp_path / "proj"
+        src_pkg = root / "src" / "mypkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").write_text("")
+        (src_pkg / "schema.py").write_text("VAL = 1\n")
+        (src_pkg / "main.py").write_text("from mypkg.schema import VAL\n")
+
+        graph = build_dep_graph(root)
+
+        schema_key = next((k for k in graph if k.endswith("schema.py")), None)
+        assert schema_key is not None, "schema.py should be in graph"
+        assert graph[schema_key]["importer_count"] >= 1, (
+            "schema.py is imported via `from mypkg.schema import VAL` under src/ layout"
+        )
+
+
 # ── Deferred imports ──────────────────────────────────────
 
 

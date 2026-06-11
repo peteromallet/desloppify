@@ -95,6 +95,7 @@ PY_ENTRY_PATTERNS = [
     "/migrations/",
     "settings.py",
     "config.py",
+    "conf.py",  # Sphinx documentation config (loaded by sphinx-build)
     "wsgi.py",
     "asgi.py",
     "cli.py",  # CLI entry points (loaded via framework/importlib)
