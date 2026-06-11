@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.base.discovery.paths import get_project_root
+from desloppify.languages.python.source_roots import declared_source_roots
 
 
 def resolve_python_from_import(
@@ -107,19 +108,22 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
 
 
 def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
+    """Resolve an absolute import within scan root, project root, then any
+    pyproject-declared source roots (e.g. ``scripts/`` for projects run with
+    ``PYTHONPATH=scripts``)."""
     parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+    project_root = get_project_root()
+    bases = [scan_root.resolve(), project_root]
+    bases += [project_root / root for root in declared_source_roots(str(project_root))]
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+    for base in bases:
+        target_base = base
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
 
 
 def try_resolve_path(target_base: Path) -> str | None:
