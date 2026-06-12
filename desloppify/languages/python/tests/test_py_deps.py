@@ -96,6 +96,28 @@ class TestBasicGraph:
         # but cli.py should exist in the graph
         assert "imports" in graph[cli_key]
 
+    def test_absolute_import_resolves_from_service_root(self, tmp_path):
+        """Service-rooted absolute imports resolve in multi-root repositories.
+
+        A Django-style layout nests app packages under a service directory
+        (`backend/accounting/...`). Absolute imports such as
+        `from accounting.services import X` are rooted at the service
+        directory, not the scan root, and must still produce graph edges.
+        """
+        service = tmp_path / "backend"
+        app = service / "accounting"
+        app.mkdir(parents=True)
+        (app / "__init__.py").write_text("")
+        (app / "services.py").write_text("CONST = 1\n")
+        (app / "tasks.py").write_text("from accounting.services import CONST\n")
+
+        graph = build_dep_graph(tmp_path)
+
+        services_key = next(k for k in graph if k.endswith("services.py"))
+        tasks_key = next(k for k in graph if k.endswith("tasks.py"))
+        assert any(t.endswith("services.py") for t in graph[tasks_key]["imports"])
+        assert graph[services_key]["importer_count"] >= 1
+
     def test_multi_file_graph(self, tmp_path):
         pkg = _make_pkg(
             tmp_path,

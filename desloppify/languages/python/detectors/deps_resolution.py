@@ -82,7 +82,7 @@ def resolve_python_import(
     scan_root_path = Path(scan_root) if not isinstance(scan_root, Path) else scan_root
     if module_path.startswith("."):
         return resolve_relative_import(module_path, source_dir)
-    return resolve_absolute_import(module_path, scan_root_path)
+    return resolve_absolute_import(module_path, scan_root_path, source_dir=source_dir)
 
 
 def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
@@ -106,20 +106,40 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
     return try_resolve_path(target_base)
 
 
-def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
-    parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+def resolve_absolute_import(
+    module_path: str,
+    scan_root: Path,
+    source_dir: Path | None = None,
+) -> str | None:
+    """Resolve an absolute import within scan root, source-file package roots, then project root.
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+    ``source_dir`` (when given) enables multi-root repositories: each ancestor
+    of the importing file up to ``scan_root`` is tried as a package root, so
+    service-rooted absolute imports (Django apps under ``backend/service/``,
+    ``src/`` layouts, monorepo subprojects) resolve correctly.
+    """
+    parts = module_path.split(".")
+    scan_base = scan_root.resolve()
+    candidates = [scan_base]
+    if source_dir is not None:
+        anchor = source_dir.resolve()
+        while True:
+            if anchor not in candidates:
+                candidates.append(anchor)
+            if anchor == scan_base or anchor.parent == anchor:
+                break
+            anchor = anchor.parent
+    project_root = get_project_root()
+    if project_root not in candidates:
+        candidates.append(project_root)
+    for base in candidates:
+        target_base = base
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
 
 
 def try_resolve_path(target_base: Path) -> str | None:
