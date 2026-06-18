@@ -42,6 +42,24 @@ _BASE_IGNORES = (
 
 _ARTIFACT_PREFIXES = ("build/", "dist/", ".desloppify/", ".claude/")
 _BUILD_MIRROR_PREFIX = "build/lib/"
+_DEFAULT_JSCPD_TIMEOUT_SECONDS = 120
+
+
+def _jscpd_timeout_seconds(default: int = _DEFAULT_JSCPD_TIMEOUT_SECONDS) -> int:
+    """Return the jscpd timeout, allowing local long-scan overrides."""
+
+    raw_timeout = os.environ.get("DESLOPPIFY_JSCPD_TIMEOUT_SECONDS")
+    if raw_timeout is None:
+        return default
+    try:
+        timeout = int(raw_timeout)
+    except ValueError:
+        warn_best_effort(
+            "Ignoring invalid DESLOPPIFY_JSCPD_TIMEOUT_SECONDS value; "
+            f"expected integer seconds, got {raw_timeout!r}."
+        )
+        return default
+    return max(1, timeout)
 
 
 def _to_scan_relative(path_resolved: Path, name: str) -> str | None:
@@ -234,6 +252,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
         logger.debug("jscpd: neither jscpd nor npx found — skipping")
         return None
 
+    timeout_seconds = _jscpd_timeout_seconds()
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
             _run_jscpd_command(
@@ -252,7 +271,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                     _jscpd_ignore_arg(path),
                     "--silent",
                 ],
-                timeout=120,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             warn_best_effort(
@@ -279,7 +298,8 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
             return None
         except subprocess.TimeoutExpired:
             warn_best_effort(
-                "Boilerplate duplication detection skipped: jscpd timed out after 120s."
+                "Boilerplate duplication detection skipped: "
+                f"jscpd timed out after {timeout_seconds}s."
             )
             logger.debug("jscpd: timed out")
             return None

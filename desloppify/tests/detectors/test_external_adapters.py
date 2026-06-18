@@ -531,11 +531,27 @@ class TestBanditExcludeIntegration:
 from desloppify.engine.detectors.jscpd_adapter import (  # noqa: E402
     _parse_jscpd_report,
     _run_jscpd_command,
+    _jscpd_timeout_seconds,
     detect_with_jscpd,
 )
 
 
 class TestJscpdAdapter:
+    def test_jscpd_timeout_defaults_to_120_seconds(self, monkeypatch):
+        monkeypatch.delenv("DESLOPPIFY_JSCPD_TIMEOUT_SECONDS", raising=False)
+
+        assert _jscpd_timeout_seconds() == 120
+
+    def test_jscpd_timeout_reads_environment_override(self, monkeypatch):
+        monkeypatch.setenv("DESLOPPIFY_JSCPD_TIMEOUT_SECONDS", "1800")
+
+        assert _jscpd_timeout_seconds() == 1800
+
+    def test_jscpd_timeout_ignores_invalid_environment_override(self, monkeypatch):
+        monkeypatch.setenv("DESLOPPIFY_JSCPD_TIMEOUT_SECONDS", "forever")
+
+        assert _jscpd_timeout_seconds() == 120
+
     def test_returns_none_when_jscpd_not_installed(self, tmp_path):
         with patch(
             "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
@@ -552,6 +568,28 @@ class TestJscpdAdapter:
             side_effect=subprocess.TimeoutExpired("npx", 120),
         ):
             assert detect_with_jscpd(tmp_path) is None
+
+    def test_detect_uses_environment_timeout_override(self, tmp_path, monkeypatch):
+        report_file = tmp_path / "jscpd-report.json"
+        report_file.write_text(json.dumps({"duplicates": []}))
+        monkeypatch.setenv("DESLOPPIFY_JSCPD_TIMEOUT_SECONDS", "1800")
+
+        def _fake_run(_cmd, **kwargs):
+            assert kwargs["timeout"] == 1800
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch(
+            "desloppify.engine.detectors.jscpd_adapter._run_jscpd_command",
+            side_effect=_fake_run,
+        ), patch(
+            "tempfile.TemporaryDirectory"
+        ) as mock_td:
+            mock_td.return_value.__enter__.return_value = str(tmp_path)
+            mock_td.return_value.__exit__.return_value = None
+            assert detect_with_jscpd(tmp_path) == []
 
     def test_timeout_kills_jscpd_process_group(self):
         class FakeProc:
