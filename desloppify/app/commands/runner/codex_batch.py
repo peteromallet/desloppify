@@ -43,6 +43,12 @@ def _resolve_executable(name: str) -> list[str]:
     if sys.platform == "win32":
         if resolved is not None:
             if resolved.lower().endswith((".cmd", ".bat")):
+                if name == "codex":
+                    shim_dir = Path(resolved).parent
+                    node_exe = shim_dir / "node.exe"
+                    codex_js = shim_dir / "node_modules" / "@openai" / "codex" / "bin" / "codex.js"
+                    if node_exe.exists() and codex_js.exists():
+                        return [str(node_exe), str(codex_js)]
                 return ["cmd", "/c", resolved]
             # .exe or extensionless — invoke directly, no cmd /c wrapper
             return [resolved]
@@ -100,9 +106,9 @@ def codex_batch_command(*, prompt: str, repo_root: Path, output_file: Path) -> l
         "-s",
         sandbox,
         "-c",
-        'approval_policy="never"',
+        "approval_policy=never",
         "-c",
-        f'model_reasoning_effort="{effort}"',
+        f"model_reasoning_effort={effort}",
         "-o",
         str(output_file),
         "-" if _prompt_via_stdin(prompt) else prompt,

@@ -94,6 +94,27 @@ def test_resolve_executable_skips_cmd_c_for_exe_on_windows(monkeypatch) -> None:
     assert result == ["/usr/local/bin/codex"]
 
 
+def test_resolve_executable_uses_node_for_codex_cmd_shim_on_windows(monkeypatch) -> None:
+    """Use node.exe + codex.js directly when an npm Codex shim is self-contained."""
+    resolve = codex_batch_mod._resolve_executable
+
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("shutil.which", lambda _name: "C:\\npm\\codex.CMD")
+
+    def fake_exists(path: Path) -> bool:
+        return str(path) in {
+            "C:\\npm\\node.exe",
+            "C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js",
+        }
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+
+    assert resolve("codex") == [
+        "C:\\npm\\node.exe",
+        "C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js",
+    ]
+
+
 def test_codex_batch_command_exe_on_windows_no_cmd_c(monkeypatch, tmp_path: Path) -> None:
     """On Windows with a .exe binary, prompts with spaces must not be wrapped in cmd /c."""
     monkeypatch.setattr("sys.platform", "win32")
@@ -174,7 +195,8 @@ def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_pa
     assert any(c.endswith("codex") or "codex" in c for c in command[:3])
     assert "exec" in command
     assert "--ephemeral" in command
-    assert f'model_reasoning_effort="high"' in command
+    assert "model_reasoning_effort=high" in command
+    assert "approval_policy=never" in command
     assert str(tmp_path) in command
 
     monkeypatch.setenv("DESLOPPIFY_CODEX_REASONING_EFFORT", "invalid")
@@ -183,7 +205,7 @@ def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_pa
         repo_root=tmp_path,
         output_file=tmp_path / "out.json",
     )
-    assert f'model_reasoning_effort="low"' in command
+    assert "model_reasoning_effort=low" in command
 
 
 def test_codex_batch_command_uses_sandbox_env_override(monkeypatch, tmp_path: Path) -> None:
