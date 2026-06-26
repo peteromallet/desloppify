@@ -1,5 +1,6 @@
 """Tests for desloppify.languages.typescript.detectors.smells.helpers."""
 
+from desloppify.languages.typescript.detectors.smells import TS_SMELL_CHECKS
 from desloppify.languages.typescript.detectors.smells.detector_core import (
     _find_function_start,
 )
@@ -25,7 +26,6 @@ from desloppify.languages.typescript.detectors.smells.helpers import (
     _track_brace_body,
     _ts_match_is_in_string,
 )
-from desloppify.languages.typescript.detectors.smells import TS_SMELL_CHECKS
 
 
 def _ctx(content: str, filepath: str = "test.ts") -> _FileContext:
@@ -325,6 +325,38 @@ class TestDetectAsyncNoAwait:
 
     def test_skips_async_with_await(self):
         content = "async function fetchData() {\n  const d = await fetch('/');\n  return d;\n}\n"
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_skips_multiline_async_with_default_object_and_await(self):
+        content = (
+            "export async function runOperation(\n"
+            "  operationId: string,\n"
+            "  input: Record<string, unknown>,\n"
+            "  opts: RunOpts = {},\n"
+            "): Promise<Envelope> {\n"
+            "  const registry = await loadRegistry();\n"
+            "  return registry.get(operationId);\n"
+            "}\n"
+        )
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_skips_multiline_async_destructured_param_with_await(self):
+        content = (
+            "async function runSinglePage(\n"
+            "  {\n"
+            "    cmd,\n"
+            "    warnings = [],\n"
+            "  }: ExecutableOperationRun,\n"
+            "  makeRequest: RequestFactory,\n"
+            "): Promise<{ env: Envelope }> {\n"
+            "  const req = await makeRequest(cmd);\n"
+            "  return { env: req };\n"
+            "}\n"
+        )
         counts = _make_counts()
         _detect_async_no_await(_ctx(content), counts)
         assert len(counts["async_no_await"]) == 0
