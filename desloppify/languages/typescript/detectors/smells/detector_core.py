@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 
+from desloppify.languages.typescript.syntax.scanner import scan_code
+
 from .helpers import (
     _code_text,
+    _find_block_end,
     _strip_ts_comments,
-    _track_brace_body,
 )
 
 _MONSTER_FUNCTION_LOC = 150
@@ -96,6 +98,24 @@ def _find_function_start(line: str, next_lines: list[str]) -> str | None:
     return None
 
 
+def _previous_code_char(content: str, pos: int) -> str:
+    cursor = pos - 1
+    while cursor >= 0:
+        if not content[cursor].isspace():
+            return content[cursor]
+        cursor -= 1
+    return ""
+
+
+def _next_code_char(content: str, pos: int) -> str:
+    cursor = pos + 1
+    while cursor < len(content):
+        if not content[cursor].isspace():
+            return content[cursor]
+        cursor += 1
+    return ""
+
+
 def _find_opening_brace_line(lines: list[str], start: int, *, window: int = 5) -> int | None:
     for idx in range(start, min(start + window, len(lines))):
         if "{" in lines[idx]:
@@ -103,22 +123,51 @@ def _find_opening_brace_line(lines: list[str], start: int, *, window: int = 5) -
     return None
 
 
+def _find_function_body_brace(content: str) -> int | None:
+    """Find the function body ``{``, ignoring braces in params/defaults/types."""
+    paren_depth = 0
+    saw_signature_close = False
+    for index, ch, in_string in scan_code(content):
+        if in_string:
+            continue
+        if ch == "(":
+            paren_depth += 1
+            continue
+        if ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+            if paren_depth == 0:
+                saw_signature_close = True
+            continue
+        if ch != "{" or paren_depth != 0 or not saw_signature_close:
+            continue
+        # ``function f(): { value: string } {`` has a return-type literal
+        # before the real body. Keep scanning until the body brace.
+        if _previous_code_char(content, index) == ":":
+            continue
+        # ``function f(): Promise<{ value: string }> {`` nests a type literal
+        # inside the return type. Its closing brace is followed by type syntax,
+        # not by the next top-level declaration/expression.
+        end = _find_block_end(content, index)
+        if end is None:
+            continue
+        if _next_code_char(content, end) in {"{", ">", "|", "&", ","}:
+            continue
+        return index
+    return None
+
+
 def _extract_function_body(
     lines: list[str], start_line: int, *, max_scan: int = 2000,
 ) -> str | None:
     """Extract the inner body text of a function starting at start_line."""
-    brace_line = _find_opening_brace_line(lines, start_line, window=5)
-    if brace_line is None:
+    content = "\n".join(lines[start_line : min(start_line + max_scan, len(lines))])
+    body_start = _find_function_body_brace(content)
+    if body_start is None:
         return None
-    end_line = _track_brace_body(lines, brace_line, max_scan=max_scan)
-    if end_line is None:
+    body_end = _find_block_end(content, body_start, max_scan=max_scan)
+    if body_end is None or body_start >= body_end:
         return None
-    body_text = "\n".join(lines[brace_line : end_line + 1])
-    first_brace = body_text.find("{")
-    last_brace = body_text.rfind("}")
-    if first_brace == -1 or last_brace == -1 or first_brace >= last_brace:
-        return None
-    return body_text[first_brace + 1 : last_brace]
+    return content[body_start + 1 : body_end]
 
 
 def _count_pattern_in_body(body: str, pattern: re.Pattern[str]) -> int:
