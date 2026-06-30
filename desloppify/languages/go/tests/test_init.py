@@ -5,9 +5,13 @@ Go plugin originally contributed by tinker495 (PR #128).
 
 from __future__ import annotations
 
-from desloppify.engine.policy.zones import FileZoneMap, Zone
+from pathlib import Path
+
 from desloppify.engine.hook_registry import get_lang_hook
+from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages import get_lang
+from desloppify.languages._framework.generic_parts import tool_factories
+from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
 
 
 def test_config_name():
@@ -37,6 +41,25 @@ def test_has_core_phases():
     assert "Security" in labels
     assert "golangci-lint" in labels
     assert "go vet" in labels
+
+
+def test_golangci_lint_uses_v2_json_output(monkeypatch, tmp_path: Path):
+    captured = {}
+
+    def fake_run_tool_result(cmd, path, parser):
+        captured["cmd"] = cmd
+        return ToolRunResult(entries=[], status="empty")
+
+    monkeypatch.setattr(tool_factories, "run_tool_result", fake_run_tool_result)
+    phase = next(
+        phase for phase in get_lang("go").phases if phase.label == "golangci-lint"
+    )
+
+    phase.run(tmp_path, object())
+
+    assert captured["cmd"] == (
+        "golangci-lint run --output.json.path stdout --show-stats=false"
+    )
 
 
 def test_integration_depth_full():
