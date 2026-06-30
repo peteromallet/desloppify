@@ -7,18 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from desloppify.base.discovery.file_paths import rel
-from desloppify.base.output.terminal import colorize
 from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.output.terminal import colorize
 from desloppify.engine.planning.helpers import is_subjective_phase
 from desloppify.engine.policy.zones import ZONE_POLICIES, FileZoneMap
 from desloppify.languages.framework import (
-    clear_review_phase_prefetch,
     DetectorPhase,
     LangConfig,
     LangRun,
     auto_detect_lang,
     available_langs,
     capability_report,
+    clear_review_phase_prefetch,
     get_lang,
     make_lang_run,
     prewarm_review_phase_detectors,
@@ -54,7 +54,9 @@ def _resolve_lang(
     return get_lang(detected)
 
 
-def _build_zone_map(path: Path, lang: LangRun, zone_overrides: dict[str, str] | None) -> None:
+def _build_zone_map(
+    path: Path, lang: LangRun, zone_overrides: dict[str, str] | None
+) -> None:
     if not (lang.zone_rules and lang.file_finder):
         return
 
@@ -77,7 +79,9 @@ def _build_zone_map(path: Path, lang: LangRun, zone_overrides: dict[str, str] | 
             _stderr(f"  Not available: {', '.join(missing)}")
 
 
-def _select_phases(lang: LangRun, *, include_slow: bool, profile: str) -> list[DetectorPhase]:
+def _select_phases(
+    lang: LangRun, *, include_slow: bool, profile: str
+) -> list[DetectorPhase]:
     active_profile = profile if profile in {"objective", "full", "ci"} else "full"
     phases = lang.phases
     if not include_slow or active_profile == "ci":
@@ -87,7 +91,9 @@ def _select_phases(lang: LangRun, *, include_slow: bool, profile: str) -> list[D
     return phases
 
 
-def _run_phases(path: Path, lang: LangRun, phases: list[DetectorPhase]) -> tuple[list[Issue], dict[str, int]]:
+def _run_phases(
+    path: Path, lang: LangRun, phases: list[DetectorPhase]
+) -> tuple[list[Issue], dict[str, int]]:
     issues: list[Issue] = []
     all_potentials: dict[str, int] = {}
 
@@ -114,7 +120,11 @@ def _stamp_issue_context(issues: list[Issue], lang: LangRun) -> None:
         if lang.zone_map is None:
             continue
 
-        zone = lang.zone_map.get(issue.get("file", ""))
+        file_path = issue.get("file", "")
+        if issue.get("detector") == "flat_dirs":
+            zone = lang.zone_map.get_directory(file_path)
+        else:
+            zone = lang.zone_map.get(file_path)
         issue["zone"] = zone.value
         policy = zone_policies.get(zone) if zone_policies else None
         if policy and issue.get("detector") in policy.downgrade_detectors:
