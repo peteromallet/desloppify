@@ -11,6 +11,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import PurePath
 
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.engine.policy.zones_data import (
@@ -192,6 +193,25 @@ class FileZoneMap:
             if rel_zone is not None:
                 return rel_zone
 
+        return Zone.PRODUCTION
+
+    def get_directory(self, path: str) -> Zone:
+        """Get the common zone for classified files beneath a directory."""
+        rel_path = path
+        if self._rel_fn is not None:
+            try:
+                rel_path = self._rel_fn(path)
+            except (OSError, TypeError, ValueError):
+                pass
+
+        directory = PurePath(rel_path)
+        zones = {
+            zone
+            for file_path, zone in self._rel_map.items()
+            if PurePath(file_path).is_relative_to(directory)
+        }
+        if len(zones) == 1:
+            return zones.pop()
         return Zone.PRODUCTION
 
     def exclude(self, files: list[str], *zones: Zone) -> list[str]:

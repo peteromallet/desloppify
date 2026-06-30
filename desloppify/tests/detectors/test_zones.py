@@ -278,6 +278,23 @@ class TestFileZoneMap:
         """File not in the map returns PRODUCTION."""
         assert zone_map.get("unknown/file.py") == Zone.PRODUCTION
 
+    def test_get_directory_returns_common_descendant_zone(self):
+        """A directory inherits the zone shared by all classified descendants."""
+        files = ["auth_test.go", "internal/runner/runner.go"]
+        overrides = {file_path: "test" for file_path in files}
+        zone_map = FileZoneMap(files, [], overrides=overrides)
+
+        assert zone_map.get_directory(".") == Zone.TEST
+        assert zone_map.get_directory("internal") == Zone.TEST
+
+    def test_get_directory_defaults_production_for_mixed_or_unknown_directory(self):
+        """Mixed and unknown directories retain conservative production scoring."""
+        files = ["src/app.py", "tests/test_app.py"]
+        zone_map = FileZoneMap(files, COMMON_ZONE_RULES)
+
+        assert zone_map.get_directory(".") == Zone.PRODUCTION
+        assert zone_map.get_directory("missing") == Zone.PRODUCTION
+
     def test_exclude_zones(self, zone_map, sample_files):
         """exclude() removes files in specified zones."""
         result = zone_map.exclude(sample_files, Zone.TEST, Zone.VENDOR)
@@ -569,4 +586,3 @@ class TestZonePolicies:
 
 
 # ── adjust_potential() ───────────────────────────────────────
-
