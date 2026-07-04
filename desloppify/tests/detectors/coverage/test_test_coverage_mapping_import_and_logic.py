@@ -910,3 +910,29 @@ class TestHasTestableLogic:
         entries, _ = detect_test_coverage(graph, zone_map, "typescript")
         assert len(entries) == 1
         assert entries[0]["detail"]["kind"] == "runtime_entrypoint_no_direct_tests"
+
+
+def test_naming_based_mapping_go_credits_whole_package():
+    """Go tests are package-scoped: one _test.go file covers every sibling
+    production file, not just its name-paired counterpart."""
+    production = {
+        "internal/ingest/plan.go",
+        "internal/ingest/verify.go",
+        "internal/ingest/fetch.go",
+        "internal/other/other.go",
+    }
+    tests = {"internal/ingest/ingest_test.go", "internal/ingest/fetch_test.go"}
+    tested = naming_based_mapping(tests, production, "go")
+    assert tested == {
+        "internal/ingest/plan.go",
+        "internal/ingest/verify.go",
+        "internal/ingest/fetch.go",
+    }
+
+
+def test_naming_based_mapping_plural_hook_absent_is_noop():
+    """Languages without map_test_to_sources keep name-paired behavior only."""
+    production = {"src/widget.ts", "src/other.ts"}
+    tests = {"src/widget.test.ts"}
+    tested = naming_based_mapping(tests, production, "typescript")
+    assert "src/other.ts" not in tested
