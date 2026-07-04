@@ -99,6 +99,26 @@ def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
     return None
 
 
+def map_test_to_sources(test_path: str, production_set: set[str]) -> set[str]:
+    """Map a Go test file to every production file in its package.
+
+    Go compiles all files of a directory as one package and `go test`
+    reports coverage package-wide: a test file can exercise any identifier
+    in its package regardless of which file defines it. Name-pairing alone
+    (foo_test.go -> foo.go) therefore under-reports Go coverage and flags
+    files as untested_module even when the package's test suite covers
+    them (e.g. ingest_test.go covering plan.go, verify.go, run.go).
+    """
+    if not test_path.endswith("_test.go"):
+        return set()
+    test_dir = os.path.dirname(test_path)
+    return {
+        p
+        for p in production_set
+        if os.path.dirname(p) == test_dir and p.endswith(".go")
+    }
+
+
 def strip_test_markers(basename: str) -> str | None:
     """Strip Go test naming marker to derive source basename."""
     if basename.endswith("_test.go"):

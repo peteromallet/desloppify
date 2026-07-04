@@ -184,6 +184,7 @@ def get_test_files_for_prod(
     *,
     parse_test_imports_fn: Callable[[str, set[str], dict[str, str], str], set[str]],
     map_test_to_source_fn: Callable[[str, set[str], str], str | None],
+    map_test_to_sources_fn: Callable[[str, set[str], str], set[str]] | None = None,
     project_root: str,
 ) -> list[str]:
     """Find which test files exercise a given production file."""
@@ -216,6 +217,11 @@ def get_test_files_for_prod(
             result.append(test_path)
             continue
         if map_test_to_source_fn(test_path, {prod_file}, lang_name) == prod_file:
+            result.append(test_path)
+            continue
+        if map_test_to_sources_fn is not None and prod_file in map_test_to_sources_fn(
+            test_path, {prod_file}, lang_name
+        ):
             result.append(test_path)
     return result
 

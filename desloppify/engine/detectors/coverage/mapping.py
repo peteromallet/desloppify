@@ -157,6 +157,24 @@ def _map_test_to_source(
     return None
 
 
+def _map_test_to_sources(
+    test_path: str,
+    production_set: set[str],
+    lang_name: str,
+) -> set[str]:
+    """Match a test file to every production file it covers by language scope.
+
+    Optional plural hook for languages whose test scope is wider than one
+    name-paired file (Go tests cover their whole package). Returns an empty
+    set when the language module does not define it.
+    """
+    mod = _load_lang_test_coverage_module(lang_name)
+    mapper = getattr(mod, "map_test_to_sources", None)
+    if callable(mapper):
+        return mapper(test_path, production_set)
+    return set()
+
+
 def naming_based_mapping(
     test_files: set[str],
     production_files: set[str],
@@ -171,6 +189,8 @@ def naming_based_mapping(
         prod_by_basename.setdefault(bn, []).append(p)
 
     for tf in test_files:
+        tested |= _map_test_to_sources(tf, production_files, lang_name)
+
         matched = _map_test_to_source(tf, production_files, lang_name)
         if matched:
             tested.add(matched)
@@ -224,6 +244,7 @@ def get_test_files_for_prod(
         parsed_imports_by_test,
         parse_test_imports_fn=_parse_test_imports,
         map_test_to_source_fn=_map_test_to_source,
+        map_test_to_sources_fn=_map_test_to_sources,
         project_root=str(get_project_root()),
     )
 
