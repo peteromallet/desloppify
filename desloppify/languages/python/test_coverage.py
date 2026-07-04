@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 # Python: does the file contain any function definition?
 _PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+", re.MULTILINE)
@@ -41,11 +42,56 @@ MOCK_PATTERNS = [
 SNAPSHOT_PATTERNS: list[re.Pattern[str]] = []
 TEST_FUNCTION_RE = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)\s*\(", re.MULTILINE)
 
-# Python has no barrel-file expansion in coverage mapping.
-BARREL_BASENAMES: set[str] = set()
+# Python package __init__ files can explicitly re-export concrete submodules.
+BARREL_BASENAMES: set[str] = {"__init__.py"}
+
+PY_IMPORT_MODULE_RE = re.compile(
+    r"(?P<name>\w+)\s*=\s*import_module\(\s*['\"](?P<spec>[\w.]+)['\"]\s*\)"
+)
+PY_SYS_MODULES_ALIAS_RE = re.compile(
+    r"sys\.modules\[\s*__name__\s*\]\s*=\s*"
+    r"(?:import_module\(\s*['\"](?P<spec>[\w.]+)['\"]\s*\)|(?P<name>\w+))"
+)
+PY_LOCAL_IMPORT_RE = re.compile(
+    r"^\s*from\s+\.\s+import\s+(?P<names>[\w \t,]+)|"
+    r"^\s*from\s+\.(?P<module>[\w.]+)\s+import\s+(?:\*|\(?\s*[\w \t,]+)",
+    re.MULTILINE,
+)
 
 # Common source layout prefixes for src-layout projects (PEP 621).
 _SRC_PREFIXES = ("src/",)
+
+
+def _normalized_path(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def _match_production_candidate(candidate: str, production_files: set[str]) -> str | None:
+    normalized_candidate = _normalized_path(candidate).lstrip("/")
+    exact_matches = [
+        prod
+        for prod in production_files
+        if _normalized_path(prod).lstrip("/") == normalized_candidate
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+
+    suffix = f"/{normalized_candidate}"
+    suffix_matches = [
+        prod
+        for prod in production_files
+        if _normalized_path(prod).endswith(suffix)
+    ]
+    if len(suffix_matches) == 1:
+        return suffix_matches[0]
+    return None
+
+
+def _module_path_candidates(module_path: str) -> tuple[str, str]:
+    return (
+        f"{module_path}.py",
+        f"{module_path}/__init__.py",
+    )
 
 
 def has_testable_logic(filepath: str, content: str) -> bool:
@@ -62,28 +108,105 @@ def resolve_import_spec(
     if not module_path or module_path.startswith("/"):
         return None
 
-    candidates = (
-        f"{module_path}.py",
-        f"{module_path}/__init__.py",
-    )
+    candidates = _module_path_candidates(module_path)
     for candidate in candidates:
-        if candidate in production_files:
-            return candidate
+        matched = _match_production_candidate(candidate, production_files)
+        if matched:
+            return matched
         # Try src/-prefixed variants for src-layout projects
         for prefix in _SRC_PREFIXES:
             prefixed = f"{prefix}{candidate}"
-            if prefixed in production_files:
-                return prefixed
+            matched = _match_production_candidate(prefixed, production_files)
+            if matched:
+                return matched
         if test_path:
             sibling = os.path.join(os.path.dirname(test_path), candidate)
-            if sibling in production_files:
-                return sibling
+            matched = _match_production_candidate(sibling, production_files)
+            if matched:
+                return matched
     return None
 
 
-def resolve_barrel_reexports(_filepath: str, _production_files: set[str]) -> set[str]:
-    """Python has no barrel-file re-export expansion for coverage mapping."""
-    return set()
+def _identity_alias_targets(content: str) -> list[str]:
+    import_module_aliases = {
+        match.group("name"): match.group("spec")
+        for match in PY_IMPORT_MODULE_RE.finditer(content)
+    }
+
+    targets: list[str] = []
+    for match in PY_SYS_MODULES_ALIAS_RE.finditer(content):
+        spec = match.group("spec")
+        if spec:
+            targets.append(spec)
+            continue
+        alias_name = match.group("name")
+        if alias_name and alias_name in import_module_aliases:
+            targets.append(import_module_aliases[alias_name])
+    return targets
+
+
+def _local_module_path(filepath: str, imported_module: str) -> str:
+    base = Path(filepath).parent
+    for part in imported_module.split("."):
+        base /= part
+    return _normalized_path(str(base))
+
+
+def _local_import_targets(content: str, filepath: str) -> list[str]:
+    targets: list[str] = []
+    for match in PY_LOCAL_IMPORT_RE.finditer(content):
+        module_name = match.group("module")
+        if module_name:
+            targets.append(_local_module_path(filepath, module_name))
+            continue
+
+        raw_names = match.group("names") or ""
+        for raw_name in raw_names.split(","):
+            name = raw_name.strip()
+            if not name or not _looks_reexported(content, name):
+                continue
+            targets.append(_local_module_path(filepath, name))
+    return targets
+
+
+def _looks_reexported(content: str, name: str) -> bool:
+    return any(
+        pattern in content
+        for pattern in (
+            f"{name}.__dict__",
+            f"getattr({name},",
+            f"dir({name})",
+            f"{name}.__all__",
+        )
+    )
+
+
+def _resolve_local_target(target: str, production_files: set[str]) -> str | None:
+    for candidate in _module_path_candidates(target):
+        matched = _match_production_candidate(candidate, production_files)
+        if matched:
+            return matched
+    return None
+
+
+def resolve_barrel_reexports(filepath: str, production_files: set[str]) -> set[str]:
+    """Resolve explicit Python identity aliases and package re-export modules."""
+    try:
+        content = Path(filepath).read_text()
+    except (OSError, UnicodeDecodeError):
+        return set()
+
+    results: set[str] = set()
+    for spec in _identity_alias_targets(content):
+        resolved = resolve_import_spec(spec, filepath, production_files)
+        if resolved:
+            results.add(resolved)
+
+    for target in _local_import_targets(content, filepath):
+        resolved = _resolve_local_target(target, production_files)
+        if resolved:
+            results.add(resolved)
+    return results
 
 
 def parse_test_import_specs(content: str) -> list[str]:

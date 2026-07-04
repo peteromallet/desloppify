@@ -6,10 +6,12 @@ import math
 
 import pytest
 
+from desloppify.base.runtime_state import RuntimeContext, runtime_scope
 from desloppify.engine.detectors.coverage.mapping import (
     _map_test_to_source,
     _strip_test_markers,
     analyze_test_quality,
+    build_test_import_index,
     get_test_files_for_prod,
     import_based_mapping,
     transitive_coverage,
@@ -253,6 +255,106 @@ class TestImportBasedMapping:
         }
         result = import_based_mapping(graph, {test_file}, {prod_file}, "typescript")
         assert prod_file in result
+
+    def test_python_package_reexport_import_marks_canonical_module_directly_tested(
+        self,
+        tmp_path,
+    ):
+        package_init = _write_file(tmp_path, "pkg/geometry/__init__.py", (
+            "from __future__ import annotations\n"
+            "from . import geojson\n"
+            "for _name, _value in geojson.__dict__.items():\n"
+            "    if not _name.startswith('__'):\n"
+            "        globals()[_name] = _value\n"
+            "__all__ = ['geojson', 'point_in_geojson']\n"
+            "def __getattr__(name):\n"
+            "    return getattr(geojson, name)\n"
+        ))
+        canonical = _write_file(
+            tmp_path,
+            "pkg/geometry/geojson.py",
+            "def point_in_geojson(payload):\n    return bool(payload)\n",
+        )
+        test_file = _write_file(tmp_path, "tests/test_point_in_geojson.py", (
+            "from pkg import geometry\n\n"
+            "def test_point_in_geojson():\n"
+            "    assert geometry.point_in_geojson({'type': 'Point'}) is True\n"
+        ))
+        graph = {test_file: {"imports": set()}}
+        production_files = {package_init, canonical}
+
+        with runtime_scope(RuntimeContext(project_root=tmp_path)):
+            directly_tested = import_based_mapping(
+                graph,
+                {test_file},
+                production_files,
+                "python",
+            )
+            parsed_imports = build_test_import_index(
+                {test_file},
+                production_files,
+                "python",
+            )
+            related = get_test_files_for_prod(
+                canonical,
+                {test_file},
+                graph,
+                "python",
+                parsed_imports_by_test=parsed_imports,
+            )
+
+        assert package_init in directly_tested
+        assert canonical in directly_tested
+        assert test_file in related
+
+    def test_python_identity_alias_import_marks_canonical_module_directly_tested(
+        self,
+        tmp_path,
+    ):
+        alias_file = _write_file(tmp_path, "vendor_core/app/tasks/intermod_result_mapping.py", (
+            "from __future__ import annotations\n"
+            "import sys\n"
+            "from importlib import import_module\n"
+            "sys.modules[__name__] = import_module(\n"
+            "    'vendor_core.app.tasks.intermod.result_mapping'\n"
+            ")\n"
+        ))
+        canonical = _write_file(
+            tmp_path,
+            "vendor_core/app/tasks/intermod/result_mapping.py",
+            "def normalize(payload):\n    return dict(payload)\n",
+        )
+        test_file = _write_file(tmp_path, "vendor_core/tests/tasks/test_intermod_result_mapping_direct.py", (
+            "from vendor_core.app.tasks import intermod_result_mapping\n\n"
+            "def test_normalize():\n"
+            "    assert intermod_result_mapping.normalize({'ok': True}) == {'ok': True}\n"
+        ))
+        graph = {test_file: {"imports": set()}}
+        production_files = {alias_file, canonical}
+
+        with runtime_scope(RuntimeContext(project_root=tmp_path)):
+            directly_tested = import_based_mapping(
+                graph,
+                {test_file},
+                production_files,
+                "python",
+            )
+            parsed_imports = build_test_import_index(
+                {test_file},
+                production_files,
+                "python",
+            )
+            related = get_test_files_for_prod(
+                canonical,
+                {test_file},
+                graph,
+                "python",
+                parsed_imports_by_test=parsed_imports,
+            )
+
+        assert alias_file in directly_tested
+        assert canonical in directly_tested
+        assert test_file in related
 
 
 class TestInlineRustCoverage:
@@ -971,4 +1073,3 @@ class TestDetectTestCoverage:
             if e["detail"]["kind"] in ("untested_module", "untested_critical")
         ]
         assert untested == []
-

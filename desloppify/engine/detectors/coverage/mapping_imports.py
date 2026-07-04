@@ -8,7 +8,6 @@ from desloppify.engine.detectors.test_coverage.io import read_coverage_file
 from desloppify.engine.hook_registry import get_lang_hook
 
 
-
 def _load_lang_test_coverage_module(lang_name: str | None):
     """Load language-specific test coverage helpers from ``lang/<name>/test_coverage.py``."""
     return get_lang_hook(lang_name, "test_coverage") or object()
@@ -129,6 +128,7 @@ def _parse_test_imports(
         resolved = _resolve_import(spec, test_path, production_files, lang_name)
         if resolved:
             tested.add(resolved)
+            tested |= _resolve_barrel_reexports(resolved, production_files, lang_name)
             continue
 
         # Fallback: module-name lookup with progressively shorter prefixes.
@@ -137,7 +137,13 @@ def _parse_test_imports(
         for i in range(len(parts), 0, -1):
             candidate = ".".join(parts[:i])
             if candidate in prod_by_module:
-                tested.add(prod_by_module[candidate])
+                resolved = prod_by_module[candidate]
+                tested.add(resolved)
+                tested |= _resolve_barrel_reexports(
+                    resolved,
+                    production_files,
+                    lang_name,
+                )
                 break
 
     return tested
