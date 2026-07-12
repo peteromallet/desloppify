@@ -94,7 +94,7 @@ def resolve_detection_root(
     markers = marker_provider()
     project_root_path = (
         project_root if project_root is not None else get_project_root()
-    )
+    ).resolve()
 
     raw_path = getattr(args, "path", None)
     if not raw_path:
@@ -106,7 +106,12 @@ def resolve_detection_root(
     candidate = candidate.resolve()
     candidate_root = candidate if candidate.is_dir() else candidate.parent
 
-    for probe_root in (candidate_root, *candidate_root.parents):
+    probe_roots = (candidate_root, *candidate_root.parents)
+    if candidate_root.is_relative_to(project_root_path):
+        project_root_index = probe_roots.index(project_root_path)
+        probe_roots = probe_roots[: project_root_index + 1]
+
+    for probe_root in probe_roots:
         if any((probe_root / marker).exists() for marker in markers):
             return probe_root
     return candidate_root

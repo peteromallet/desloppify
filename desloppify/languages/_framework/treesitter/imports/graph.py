@@ -7,11 +7,31 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .cache import get_or_parse_tree
+from desloppify.base.discovery.file_paths import resolve_scan_file
+
 from ..analysis.extractors import _get_parser, _make_query, _run_query, _unwrap_node
+from .cache import get_or_parse_tree
 
 if TYPE_CHECKING:
     from desloppify.languages._framework.treesitter import TreeSitterLangSpec
+
+
+def _source_path(filepath: str) -> Path:
+    """Resolve discovery keys against the project root without changing case."""
+    return resolve_scan_file(filepath)
+
+
+def _import_path(filepath: str, scan_path: Path) -> Path:
+    """Resolve a resolver result using its scan-root-relative contract."""
+    path = Path(filepath)
+    if path.is_absolute():
+        return path.resolve()
+    return (scan_path / path).resolve()
+
+
+def _path_identity(path: Path) -> str:
+    """Return a comparison identity without changing the path used for I/O."""
+    return os.path.normcase(str(path))
 
 
 def ts_build_dep_graph(
@@ -30,8 +50,18 @@ def ts_build_dep_graph(
     parser, language = _get_parser(spec.grammar)
     query = _make_query(language, spec.import_query)
 
-    scan_path = str(path.resolve())
-    file_set = set(file_list)
+    scan_path = path.resolve()
+    file_paths_by_key = {filepath: _source_path(filepath) for filepath in file_list}
+    file_keys_by_path: dict[str, str] = {}
+    for filepath, resolved_path in file_paths_by_key.items():
+        identity = _path_identity(resolved_path)
+        previous_key = file_keys_by_path.get(identity)
+        if previous_key is not None and previous_key != filepath:
+            raise ValueError(
+                "Tree-sitter dependency graph received duplicate paths "
+                f"{previous_key!r} and {filepath!r} for {resolved_path}"
+            )
+        file_keys_by_path[identity] = filepath
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -39,7 +69,8 @@ def ts_build_dep_graph(
         graph[f] = {"imports": set(), "importers": set()}
 
     for filepath in file_list:
-        cached = get_or_parse_tree(filepath, parser, spec.grammar)
+        source_path = file_paths_by_key[filepath]
+        cached = get_or_parse_tree(str(source_path), parser, spec.grammar)
         if cached is None:
             continue
         _source, tree = cached
@@ -71,21 +102,21 @@ def ts_build_dep_graph(
                 ).strip("\"'`")
                 import_text = f"{prefix_text}\\{import_text}"
 
-            resolved = spec.resolve_import(import_text, filepath, scan_path)
+            resolved = spec.resolve_import(
+                import_text, str(source_path), str(scan_path)
+            )
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
-
-            # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            # Match by filesystem identity, then store the caller's original key.
+            resolved_key = file_keys_by_path.get(
+                _path_identity(_import_path(resolved, scan_path))
+            )
+            if resolved_key is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(resolved_key)
+            graph[resolved_key]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():

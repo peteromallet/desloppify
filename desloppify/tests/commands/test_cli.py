@@ -823,6 +823,39 @@ class TestResolveLang:
         assert lang is not None
         assert lang.name == "python"
 
+    def test_auto_detect_ignores_markers_above_active_project_root(
+        self, tmp_path, monkeypatch
+    ):
+        (tmp_path / "package.json").write_text('{"name":"outside"}\n')
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        scripts = project_root / "scripts"
+        scripts.mkdir()
+        (scripts / "job.py").write_text("print('x')\n")
+
+        monkeypatch.setattr(lang_helpers_mod, "get_project_root", lambda: project_root)
+        args = SimpleNamespace(lang=None, path=str(scripts))
+
+        assert lang_helpers_mod.resolve_detection_root(args) == scripts
+        lang = resolve_lang(args)
+        assert lang is not None
+        assert lang.name == "python"
+
+    def test_detection_root_includes_active_project_root_boundary(
+        self, tmp_path, monkeypatch
+    ):
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        (project_root / "package.json").write_text('{"name":"project"}\n')
+        source = project_root / "src"
+        source.mkdir()
+
+        monkeypatch.setattr(lang_helpers_mod, "get_project_root", lambda: project_root)
+        args = SimpleNamespace(path=str(source))
+
+        assert lang_helpers_mod.resolve_detection_root(args) == project_root
+
     def test_auto_detect_walks_up_from_external_subdir_path(
         self, tmp_path, monkeypatch
     ):
@@ -845,6 +878,23 @@ class TestResolveLang:
         lang = resolve_lang(args)
         assert lang is not None
         assert lang.name == "typescript"
+
+    def test_detection_root_still_walks_to_external_target_marker(
+        self, tmp_path, monkeypatch
+    ):
+        project_root = tmp_path / "active_project"
+        project_root.mkdir()
+
+        external_root = tmp_path / "external_project"
+        external_root.mkdir()
+        (external_root / "package.json").write_text('{"name":"target"}\n')
+        external_src = external_root / "src"
+        external_src.mkdir()
+
+        monkeypatch.setattr(lang_helpers_mod, "get_project_root", lambda: project_root)
+        args = SimpleNamespace(path=str(external_src))
+
+        assert lang_helpers_mod.resolve_detection_root(args) == external_root
 
     def test_auto_detect_prefers_path_subtree_when_no_markers(
         self, tmp_path, monkeypatch

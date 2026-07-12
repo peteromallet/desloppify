@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import builtins
+import json
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 import desloppify.languages._framework.treesitter.imports.graph as graph_mod
 import desloppify.languages._framework.treesitter.imports.normalize as normalize_mod
@@ -31,6 +33,29 @@ class FakeNode:
         self.child_count = len(self.children)
         self.start_byte = start_byte
         self.end_byte = end_byte
+
+
+def stub_graph_parser(monkeypatch, importers: set[str]) -> None:
+    monkeypatch.setattr(
+        graph_mod, "_get_parser", lambda _grammar: ("parser", "language")
+    )
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(
+        graph_mod,
+        "get_or_parse_tree",
+        lambda filepath, *_a, **_k: (b"", SimpleNamespace(root_node=filepath)),
+    )
+    monkeypatch.setattr(
+        graph_mod,
+        "_run_query",
+        lambda _query, filepath: (
+            [(0, {"path": FakeNode("string", text="'./support.js'")})]
+            if filepath in importers
+            else []
+        ),
+    )
+    monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
+
 
 
 def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: Path) -> None:
@@ -80,6 +105,170 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
         SimpleNamespace(import_query=None, resolve_import=None),
         file_list,
     ) == {}
+
+
+@pytest.mark.parametrize(
+    "absolute_file_list", [False, True], ids=["relative", "absolute"]
+)
+def test_graph_matches_resolved_paths_without_changing_file_keys(
+    monkeypatch,
+    tmp_path: Path,
+    absolute_file_list: bool,
+) -> None:
+    project_root = tmp_path
+    scan_path = project_root / "packages" / "app"
+    source_file = scan_path / "src" / "main.js"
+    dep_file = scan_path / "src" / "support.js"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("import './support.js';\n", encoding="utf-8")
+    dep_file.write_text("export const support = true;\n", encoding="utf-8")
+    monkeypatch.chdir(project_root)
+
+    if absolute_file_list:
+        file_list = [str(source_file), str(dep_file)]
+    else:
+        file_list = [
+            source_file.relative_to(project_root).as_posix(),
+            dep_file.relative_to(project_root).as_posix(),
+        ]
+
+    monkeypatch.setattr(
+        graph_mod, "_get_parser", lambda _grammar: ("parser", "language")
+    )
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(
+        graph_mod,
+        "get_or_parse_tree",
+        lambda filepath, *_a, **_k: (
+            b"",
+            SimpleNamespace(root_node=Path(filepath).name),
+        ),
+    )
+    monkeypatch.setattr(
+        graph_mod,
+        "_run_query",
+        lambda _query, filename: (
+            [(0, {"path": FakeNode("string", text="'./support.js'")})]
+            if filename == source_file.name
+            else []
+        ),
+    )
+    monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
+
+    resolver_calls: list[tuple[str, str, str]] = []
+
+    def resolve_import(import_text: str, source_path: str, root_path: str) -> str:
+        resolver_calls.append((import_text, source_path, root_path))
+        return str(dep_file)
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=resolve_import,
+    )
+
+    graph = graph_mod.ts_build_dep_graph(scan_path, spec, file_list)
+
+    assert list(graph) == file_list
+    assert resolver_calls == [("./support.js", str(source_file), str(scan_path))]
+    assert graph[file_list[0]]["imports"] == {file_list[1]}
+    assert graph[file_list[1]]["importers"] == {file_list[0]}
+
+
+def test_graph_prefers_project_relative_discovery_keys_over_scan_root(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    scan_path = tmp_path / "src"
+    source_file = scan_path / "main.js"
+    dep_file = scan_path / "support.js"
+    nested_decoy = scan_path / "src" / "main.js"
+    nested_decoy.parent.mkdir(parents=True)
+    source_file.write_text("import './support.js';\n", encoding="utf-8")
+    dep_file.write_text("export const support = true;\n", encoding="utf-8")
+    nested_decoy.write_text("export const decoy = true;\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    file_list = [
+        source_file.relative_to(tmp_path).as_posix(),
+        dep_file.relative_to(tmp_path).as_posix(),
+        nested_decoy.relative_to(tmp_path).as_posix(),
+    ]
+    stub_graph_parser(monkeypatch, {str(source_file)})
+    resolver_sources: list[str] = []
+
+    def resolve_import(_text: str, source_path: str, _root_path: str) -> str:
+        resolver_sources.append(source_path)
+        return str(dep_file)
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=resolve_import,
+    )
+
+    graph = graph_mod.ts_build_dep_graph(scan_path, spec, file_list)
+
+    assert resolver_sources == [str(source_file)]
+    assert graph[file_list[0]]["imports"] == {file_list[1]}
+    assert graph[file_list[2]]["imports"] == set()
+
+
+def test_graph_uses_identity_normalization_only_for_comparison(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_file = tmp_path / "MixedCase" / "Main.js"
+    dep_file = source_file.with_name("Support.js")
+    source_file.parent.mkdir()
+    source_file.write_text("import './Support.js';\n", encoding="utf-8")
+    dep_file.write_text("export const support = true;\n", encoding="utf-8")
+    file_list = [str(source_file), str(dep_file)]
+    stub_graph_parser(monkeypatch, {str(source_file)})
+    monkeypatch.setattr(graph_mod.os.path, "normcase", lambda path: path.lower())
+    resolver_sources: list[str] = []
+
+    def resolve_import(_text: str, source_path: str, _root_path: str) -> str:
+        resolver_sources.append(source_path)
+        return str(dep_file)
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=resolve_import,
+    )
+
+    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, file_list)
+
+    assert resolver_sources == [str(source_file)]
+    assert graph[file_list[0]]["imports"] == {file_list[1]}
+
+
+@pytest.mark.parametrize(
+    "reverse", [False, True], ids=["relative-first", "absolute-first"]
+)
+def test_graph_rejects_duplicate_filesystem_identities(
+    monkeypatch,
+    tmp_path: Path,
+    reverse: bool,
+) -> None:
+    source_file = tmp_path / "src" / "main.js"
+    source_file.parent.mkdir()
+    source_file.write_text("export const value = true;\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    aliases = [source_file.relative_to(tmp_path).as_posix(), str(source_file)]
+    if reverse:
+        aliases.reverse()
+    stub_graph_parser(monkeypatch, set())
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=lambda *_args: None,
+    )
+
+    with pytest.raises(ValueError, match="duplicate paths"):
+        graph_mod.ts_build_dep_graph(tmp_path, spec, aliases)
+
 
 
 def test_import_normalize_helpers_strip_comments_and_log_lines() -> None:
