@@ -938,6 +938,34 @@ class TestResolveLang:
         resolved = lang_helpers_mod.resolve_detection_root(args)
         assert resolved == target_root
 
+    @pytest.mark.parametrize("external", [False, True], ids=["project", "worktree"])
+    def test_resolve_detection_root_does_not_cross_boundaries(
+        self, tmp_path, monkeypatch, external
+    ):
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "package.json").write_text("{}\n")
+
+        worktree = home / "worktree"
+        worktree.mkdir()
+        (worktree / ".git").write_text("gitdir: /repo/.git/worktrees/worktree\n")
+
+        project_root = worktree
+        path = "."
+        if external:
+            project_root = tmp_path / "current_project"
+            project_root.mkdir()
+            path = str(worktree)
+
+        monkeypatch.setattr(lang_helpers_mod, "get_project_root", lambda: project_root)
+        monkeypatch.setattr(
+            lang_helpers_mod, "_lang_config_markers", lambda: ("package.json",)
+        )
+
+        args = SimpleNamespace(path=path)
+        resolved = lang_helpers_mod.resolve_detection_root(args)
+        assert resolved == worktree
+
 
 # ===========================================================================
 # _project_root_from_state_path
