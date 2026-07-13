@@ -105,8 +105,20 @@ def _add_cluster_subparser(plan_sub) -> None:
     p_cu.add_argument("--effort", type=str, default=None,
                       choices=["trivial", "small", "medium", "large"],
                       help="Effort tag for --add-step or --update-step")
-    p_cu.add_argument("--depends-on", nargs="+", default=None, metavar="CLUSTER",
-                      help="Cluster(s) this cluster depends on")
+    dependency_options = p_cu.add_mutually_exclusive_group()
+    dependency_options.add_argument(
+        "--depends-on",
+        nargs="+",
+        default=None,
+        metavar="CLUSTER",
+        help="Cluster(s) this cluster depends on",
+    )
+    dependency_options.add_argument(
+        "--clear-depends-on",
+        action="store_true",
+        default=False,
+        help="Clear all cluster dependencies",
+    )
     p_cu.add_argument("--issue-refs", nargs="+", default=None, metavar="REF",
                       help="Issue refs for --add-step or --update-step")
 
