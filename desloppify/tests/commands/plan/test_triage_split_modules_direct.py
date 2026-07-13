@@ -1207,6 +1207,93 @@ def test_orchestrator_sense_scopes_content_batches_to_active_triage(monkeypatch,
     assert len(structure_versions) == 1
 
 
+def test_orchestrator_sense_rescopes_reloaded_prompts_to_active_triage(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Post-content prompts must not revive historical clusters."""
+    active_issue = "review::current::issue"
+    current_cluster = {
+        "issue_ids": [active_issue],
+        "action_steps": [{"title": "Keep current scope", "detail": "Touch src/current.py"}],
+    }
+    reloaded_plan = {
+        "epic_triage_meta": {"active_triage_issue_ids": [active_issue]},
+        "clusters": {
+            "current": current_cluster,
+            **{
+                f"legacy-history-{index}": {
+                    "issue_ids": [f"review::legacy::{index}"],
+                    "action_steps": [
+                        {
+                            "title": "Historical work",
+                            "detail": "Touch src/legacy.py",
+                        }
+                    ],
+                }
+                for index in range(3)
+            },
+        },
+    }
+
+    def fake_run_triage_stage(
+        *,
+        prompt,
+        repo_root,
+        output_file,
+        log_file,
+        timeout_seconds,
+        validate_output_fn,
+    ):
+        del prompt, repo_root, log_file, timeout_seconds
+        output_file.write_text("ok", encoding="utf-8")
+        assert validate_output_fn(output_file)
+        return codex_runner_mod.TriageStageRunResult(exit_code=0)
+
+    import desloppify.app.commands.plan.triage.runner.stage_runner_override as override_mod
+
+    monkeypatch.setattr(override_mod, "_STAGE_RUNNER_OVERRIDE", fake_run_triage_stage)
+    monkeypatch.setattr(
+        orchestrator_sense_mod,
+        "run_parallel_batches",
+        lambda **kwargs: [task() for task in kwargs["tasks"].values()] and [],
+    )
+
+    prompts_dir = tmp_path / "prompts"
+    output_dir = tmp_path / "out"
+    logs_dir = tmp_path / "logs"
+    prompts_dir.mkdir()
+    output_dir.mkdir()
+    logs_dir.mkdir()
+
+    result = orchestrator_sense_mod.run_sense_check(
+        plan={
+            "epic_triage_meta": {"active_triage_issue_ids": [active_issue]},
+            "clusters": {"current": current_cluster},
+        },
+        repo_root=tmp_path,
+        prompts_dir=prompts_dir,
+        output_dir=output_dir,
+        logs_dir=logs_dir,
+        timeout_seconds=60,
+        dry_run=False,
+        apply_updates=True,
+        reload_plan=lambda: reloaded_plan,
+    )
+
+    assert result.ok
+    structure_prompt = (prompts_dir / "sense_check_structure.md").read_text(
+        encoding="utf-8"
+    )
+    assert "### current" in structure_prompt
+    assert "legacy-history-0" not in structure_prompt
+    assert "legacy-history-2" not in structure_prompt
+    value_prompt = (prompts_dir / "sense_check_value.md").read_text(encoding="utf-8")
+    assert "### current" in value_prompt
+    assert "legacy-history-0" not in value_prompt
+    assert "legacy-history-2" not in value_prompt
+
+
 def test_default_sense_handler_enables_apply_update_mode(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
