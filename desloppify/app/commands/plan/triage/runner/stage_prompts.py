@@ -97,7 +97,13 @@ def _issue_context_for_stage(
 ) -> str:
     """Return the amount of issue context appropriate for a stage."""
     if stage in {"observe", "reflect"}:
-        parts = ["## Issue Data\n\n" + build_triage_prompt(triage_input)]
+        parts = [
+            "## Issue Data\n\n"
+            + build_triage_prompt(
+                triage_input,
+                include_auto_cluster_decision_guidance=False,
+            )
+        ]
         if stage == "reflect":
             issue_tokens = _required_issue_tokens(triage_input)
             parts.append(

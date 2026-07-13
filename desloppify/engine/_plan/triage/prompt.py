@@ -457,6 +457,8 @@ def _append_mechanical_backlog_section(
     parts: list[str],
     objective_backlog_issues: dict[str, dict],
     auto_clusters: dict[str, dict],
+    *,
+    include_auto_cluster_decision_guidance: bool = True,
 ) -> None:
     if not objective_backlog_issues:
         return
@@ -494,18 +496,19 @@ def _append_mechanical_backlog_section(
         "These are detector-created findings grouped by rule type. Each auto-cluster "
         "is a first-class triage candidate — decide its fate just like review issues."
     )
-    parts.append(
-        "You MUST make an explicit decision for each auto-cluster listed below. "
-        "Include every auto-cluster in your `auto_cluster_decisions` output with one of: "
-        "promote (add to active queue with a priority position), "
-        "skip (with a specific reason — e.g. 'mostly false positives per sampling'), "
-        "defer (keep in backlog — revisit after higher-impact work is done), or "
-        "break_up (split into smaller sub-clusters with a reason).\n\n"
-        "IMPORTANT: Prioritize code quality fixes (dead code, naming, smells, duplication, "
-        "structural issues) BEFORE test coverage. Writing tests for sloppy code locks in the "
-        "slop. Clean up the code first, then add tests to protect the clean version. "
-        "Defer test_coverage clusters unless code quality dimensions are already above 80%."
-    )
+    if include_auto_cluster_decision_guidance:
+        parts.append(
+            "You MUST make an explicit decision for each auto-cluster listed below. "
+            "Include every auto-cluster in your `auto_cluster_decisions` output with one of: "
+            "promote (add to active queue with a priority position), "
+            "skip (with a specific reason — e.g. 'mostly false positives per sampling'), "
+            "defer (keep in backlog — revisit after higher-impact work is done), or "
+            "break_up (split into smaller sub-clusters with a reason).\n\n"
+            "IMPORTANT: Prioritize code quality fixes (dead code, naming, smells, duplication, "
+            "structural issues) BEFORE test coverage. Writing tests for sloppy code locks in the "
+            "slop. Clean up the code first, then add tests to protect the clean version. "
+            "Defer test_coverage clusters unless code quality dimensions are already above 80%."
+        )
 
     rendered_clusters: list[tuple[str, dict, int]] = []
     for name, cluster in auto_clusters.items():
@@ -521,11 +524,18 @@ def _append_mechanical_backlog_section(
         rendered_clusters.append((name, cluster, member_count))
 
     if rendered_clusters:
-        parts.append("### Auto-clusters (decision required for each)")
-        parts.append(
-            "Each cluster below includes a statistical summary with severity breakdown "
-            "and sample issues. Decide for each: promote, skip (with reason), or break_up."
-        )
+        if include_auto_cluster_decision_guidance:
+            parts.append("### Auto-clusters (decision required for each)")
+            parts.append(
+                "Each cluster below includes a statistical summary with severity breakdown "
+                "and sample issues. Decide for each: promote, skip (with reason), or break_up."
+            )
+        else:
+            parts.append("### Auto-clusters")
+            parts.append(
+                "Each cluster below includes a statistical summary with severity breakdown "
+                "and sample issues."
+            )
         rendered_clusters.sort(key=lambda item: (-item[2], item[0]))
         visible_clusters = rendered_clusters[:15]
         for name, cluster, member_count in visible_clusters:
@@ -656,7 +666,11 @@ def _append_previously_dismissed_section(parts: list[str], dismissed_ids: list[s
     parts.append("")
 
 
-def build_triage_prompt(si: TriageInput) -> str:
+def build_triage_prompt(
+    si: TriageInput,
+    *,
+    include_auto_cluster_decision_guidance: bool = True,
+) -> str:
     """Build the user-facing prompt content with all issue data."""
     parts: list[str] = []
     _append_existing_clusters_section(parts, si.existing_clusters)
@@ -680,6 +694,7 @@ def build_triage_prompt(si: TriageInput) -> str:
         parts,
         si.objective_backlog_issues,
         si.auto_clusters,
+        include_auto_cluster_decision_guidance=include_auto_cluster_decision_guidance,
     )
     _append_previously_dismissed_section(parts, si.previously_dismissed)
     return "\n".join(parts)
