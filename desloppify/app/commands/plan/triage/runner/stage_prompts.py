@@ -16,6 +16,10 @@ from desloppify.engine.plan_triage import (
 )
 
 from ..services import TriageServices, default_triage_services
+from ..stages.helpers import (
+    active_triage_issue_scope,
+    scoped_manual_clusters_with_issues,
+)
 from ..validation.reflect_accounting import required_reflect_issue_tokens
 from .stage_prompts_instruction_blocks import _STAGE_INSTRUCTIONS
 from .stage_prompts_instruction_shared import (
@@ -28,12 +32,12 @@ from .stage_prompts_observe import (
     _observe_batch_instructions,
     build_observe_batch_prompt,
 )
-from .stage_prompts_strategist import build_strategist_prompt
 from .stage_prompts_sense import (
     build_sense_check_content_prompt,
     build_sense_check_structure_prompt,
     build_sense_check_value_prompt,
 )
+from .stage_prompts_strategist import build_strategist_prompt
 from .stage_prompts_validation import _validation_requirements
 
 
@@ -86,8 +90,47 @@ To see all open review issues with suggestions:
   desloppify show review --status open --no-budget
 To see a cluster's steps, members, and suggestions:
   desloppify plan cluster show <name>
-To list all clusters:
+To list all clusters (this is global/historical context, not an enrichment mutation scope):
   desloppify plan cluster list --verbose"""
+
+
+def _enrich_active_scope_block(plan: dict | None, state: dict | None) -> str:
+    """Render the frozen triage session's only allowed enrich targets.
+
+    The generic Codex pipeline passes the full plan to every stage prompt.  That
+    plan can contain many historical clusters, while a recovered/current triage
+    session owns only the clusters linked to its frozen review issue IDs.
+    """
+    if not isinstance(plan, dict):
+        return ""
+    meta = plan.get("epic_triage_meta", {})
+    frozen_issue_ids = meta.get("active_triage_issue_ids") if isinstance(meta, dict) else None
+    if not isinstance(frozen_issue_ids, list) or not frozen_issue_ids:
+        return ""
+
+    # ``scoped_manual_clusters_with_issues`` intentionally falls back to all
+    # manual clusters when its live scope is empty. A frozen session whose
+    # issues have all gone stale must instead name no mutation targets.
+    live_scope = active_triage_issue_scope(plan, state)
+    cluster_names = (
+        scoped_manual_clusters_with_issues(plan, state) if live_scope is not None else []
+    )
+    lines = [
+        "## Active Enrich Scope (frozen triage session)",
+        "Mutate ONLY the named active clusters below for this enrich run.",
+    ]
+    if cluster_names:
+        lines.extend(f"- `{name}`" for name in cluster_names)
+    else:
+        lines.append("- No live manual clusters match the frozen triage issues; do not mutate any cluster.")
+    lines.extend(
+        [
+            "",
+            "`desloppify plan cluster list --verbose` is global/historical context. "
+            "Do not use it to discover or mutate additional clusters.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _issue_context_for_stage(
@@ -477,6 +520,14 @@ def build_stage_prompt(
 
     # Issue data / summary
     parts.append(_issue_context_for_stage(stage, triage_input, mode))
+
+    # A recovered/current triage session can coexist with many historical
+    # clusters.  Make its frozen ownership explicit before enrich instructions
+    # tell a subprocess to mutate plan state.
+    if stage == "enrich":
+        active_scope = _enrich_active_scope_block(plan, state)
+        if active_scope:
+            parts.append(active_scope)
 
     # Stage-specific instructions
     instruction_fn = _STAGE_INSTRUCTIONS.get(stage)

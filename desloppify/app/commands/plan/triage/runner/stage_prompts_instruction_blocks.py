@@ -325,7 +325,7 @@ Every review issue must end up in a cluster OR be skipped.
 
 def _enrich_instructions(mode: PromptMode = "self_record") -> str:
     subagent_block = """\
-**USE SUBAGENTS — one per cluster.** Each subagent MUST:
+**USE SUBAGENTS — one per in-scope cluster.** Each subagent MUST:
 
 1. Run `desloppify plan cluster show <name>` to get steps, members, and reviewer suggestions
 2. For deeper analysis, run `desloppify show <issue-id> --no-budget` to see full evidence
@@ -343,7 +343,7 @@ desloppify plan triage --stage enrich --report "<enrichment summary>" --attestat
 """
     if mode == "output_only":
         subagent_block = """\
-**USE SUBAGENTS — one per cluster.** Each subagent MUST:
+**USE SUBAGENTS — one per in-scope cluster.** Each subagent MUST:
 
 1. Inspect the cluster definition provided in the prompt context
 2. **Read the actual source file for every step** — not just the issue description.
@@ -359,8 +359,12 @@ effort tags, and issue refs for each cluster. The orchestrator records the stage
     return f"""\
 ## ENRICH Stage Instructions
 
-Your task: make EVERY step executor-ready. The test: could a developer who has never seen
-this codebase read your step detail and make the change without asking a single question?
+Your task: make EVERY step in the current triage clusters executor-ready. When an
+**Active Enrich Scope** block appears above, it is authoritative: mutate ONLY the named
+active clusters. `desloppify plan cluster list --verbose` is global/historical context, not
+an invitation to add historical clusters to this enrich run. The test: could a developer who
+has never seen this codebase read your step detail and make the change without asking a
+single question?
 
 If the answer is "they'd need to figure out which file" or "they'd need to understand the
 context" — your step is not ready. Be specific enough that the work is mechanical.
@@ -369,11 +373,11 @@ strategy from old triage runs unless you find a concrete mismatch you need to ex
 
 ### Requirements (ALL BLOCKING — confirmation will reject if not met)
 
-1. Every step MUST have `--detail` with 80+ chars INCLUDING at least one file path (src/... or supabase/...)
-2. Every step MUST have `--issue-refs` linking it to specific review issue hash(es)
-3. Every step MUST have `--effort` tag (trivial/small/medium/large) — set INDIVIDUALLY, not bulk
+1. Every in-scope step MUST have `--detail` with 80+ chars INCLUDING at least one file path (src/... or supabase/...)
+2. Every in-scope step MUST have `--issue-refs` linking it to specific review issue hash(es)
+3. Every in-scope step MUST have `--effort` tag (trivial/small/medium/large) — set INDIVIDUALLY, not bulk
 4. File paths in detail MUST exist on disk (validator checks this)
-5. No step may reference a skipped/wontfixed issue in its issue_refs
+5. No in-scope step may reference a skipped/wontfixed issue in its issue_refs
 
 ### How to enrich
 

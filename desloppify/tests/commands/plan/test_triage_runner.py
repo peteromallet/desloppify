@@ -6,9 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from desloppify.app.commands.plan.triage.validation.core import (
-    _validate_reflect_issue_accounting,
-)
 from desloppify.app.commands.plan.triage.runner import codex_runner
 from desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution import (
     build_reflect_repair_prompt,
@@ -18,6 +15,9 @@ from desloppify.app.commands.plan.triage.runner.stage_validation import (
     build_auto_attestation,
     validate_completion,
     validate_stage,
+)
+from desloppify.app.commands.plan.triage.validation.core import (
+    _validate_reflect_issue_accounting,
 )
 from desloppify.engine._plan.triage.prompt import TriageInput
 
@@ -336,6 +336,84 @@ def test_build_enrich_prompt(tmp_path: Path) -> None:
     assert "ENRICH" in prompt
     assert "--issue-refs" in prompt
     assert "exist on disk" in prompt
+
+
+def test_build_enrich_prompt_scopes_frozen_triage_to_current_clusters(tmp_path: Path) -> None:
+    """A generic Codex enrich prompt must not expand into historical clusters."""
+    si = _make_triage_input()
+    prior = {"observe": "obs", "reflect": "ref", "organize": "org"}
+    plan = _plan_with_stages(organize={"report": "organized"})
+    plan["epic_triage_meta"]["active_triage_issue_ids"] = ["review::current::issue"]
+    plan["clusters"] = {
+        "current": {
+            "issue_ids": ["review::current::issue"],
+            "description": "current triage work",
+            "action_steps": [],
+        },
+        "historical": {
+            "issue_ids": ["review::historical::issue"],
+            "description": "finished historical work",
+            "action_steps": [],
+        },
+    }
+    state = {
+        "issues": {
+            "review::current::issue": {"status": "open", "detector": "review"},
+            "review::historical::issue": {"status": "open", "detector": "review"},
+        }
+    }
+
+    prompt = build_stage_prompt(
+        "enrich",
+        si,
+        prior,
+        repo_root=tmp_path,
+        mode="output_only",
+        plan=plan,
+        state=state,
+    )
+
+    assert "## Active Enrich Scope (frozen triage session)" in prompt
+    assert "- `current`" in prompt
+    assert "`historical`" not in prompt
+    assert "Mutate ONLY the named active clusters" in prompt
+    assert "global/historical context" in prompt
+
+
+def test_build_enrich_prompt_does_not_fall_back_to_historical_when_scope_is_stale(
+    tmp_path: Path,
+) -> None:
+    """A frozen but fully stale session must not turn into a global enrich run."""
+    si = _make_triage_input()
+    prior = {"observe": "obs", "reflect": "ref", "organize": "org"}
+    plan = _plan_with_stages(organize={"report": "organized"})
+    plan["epic_triage_meta"]["active_triage_issue_ids"] = ["review::stale::issue"]
+    plan["clusters"] = {
+        "historical": {
+            "issue_ids": ["review::historical::issue"],
+            "description": "still-open historical work",
+            "action_steps": [],
+        }
+    }
+    state = {
+        "issues": {
+            "review::stale::issue": {"status": "closed", "detector": "review"},
+            "review::historical::issue": {"status": "open", "detector": "review"},
+        }
+    }
+
+    prompt = build_stage_prompt(
+        "enrich",
+        si,
+        prior,
+        repo_root=tmp_path,
+        mode="output_only",
+        plan=plan,
+        state=state,
+    )
+
+    assert "No live manual clusters match the frozen triage issues" in prompt
+    assert "- `historical`" not in prompt
 
 
 def test_build_organize_prompt_output_only_omits_mutating_cli_instructions(tmp_path: Path) -> None:
