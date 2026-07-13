@@ -103,6 +103,94 @@ def test_update_living_plan_after_resolve_fixed_flow(monkeypatch, capsys) -> Non
     assert "add" in calls and "clear" in calls and "save" in calls
 
 
+def test_update_living_plan_after_resolve_does_not_focus_stale_fixed_member(
+    monkeypatch,
+) -> None:
+    plan = {
+        "queue_order": ["a"],
+        "overrides": {
+            "a": {"cluster": "epic/a"},
+            "stale-b": {"cluster": "epic/a"},
+        },
+        "clusters": {"epic/a": {"issue_ids": ["a", "stale-b"]}},
+    }
+    state = {
+        "work_items": {
+            "a": {"id": "a", "status": "fixed"},
+            "stale-b": {"id": "stale-b", "status": "fixed"},
+        }
+    }
+
+    monkeypatch.setattr(living_plan_mod, "has_living_plan", lambda _p=None: True)
+    monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
+    monkeypatch.setattr(living_plan_mod, "auto_complete_steps", lambda _plan: [])
+    monkeypatch.setattr(living_plan_mod, "append_log_entry", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        living_plan_mod, "invalidate_postflight_scan", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(living_plan_mod, "live_planned_queue_empty", lambda _plan: False)
+    monkeypatch.setattr(living_plan_mod, "save_plan", lambda _plan, _p=None: None)
+
+    updated_plan, ctx = living_plan_mod.update_living_plan_after_resolve(
+        args=_args(status="fixed"),
+        all_resolved=["a"],
+        attestation="attest",
+        state=state,
+    )
+
+    assert ctx.cluster_remaining == 1
+    assert updated_plan is plan
+    assert updated_plan["clusters"]["epic/a"]["issue_ids"] == ["stale-b"]
+    assert updated_plan.get("active_cluster") is None
+
+
+def test_update_living_plan_after_resolve_focuses_open_remaining_member(
+    monkeypatch,
+) -> None:
+    plan = {
+        "queue_order": ["a", "live-b"],
+        "overrides": {
+            "a": {"cluster": "epic/a"},
+            "live-b": {"cluster": "epic/a"},
+        },
+        "clusters": {"epic/a": {"issue_ids": ["a", "live-b"]}},
+    }
+    state = {
+        "work_items": {
+            "a": {"id": "a", "status": "fixed"},
+            "live-b": {"id": "live-b", "status": "open"},
+        }
+    }
+
+    monkeypatch.setattr(living_plan_mod, "has_living_plan", lambda _p=None: True)
+    monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
+    monkeypatch.setattr(living_plan_mod, "auto_complete_steps", lambda _plan: [])
+    monkeypatch.setattr(living_plan_mod, "append_log_entry", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        living_plan_mod, "invalidate_postflight_scan", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(living_plan_mod, "live_planned_queue_empty", lambda _plan: False)
+    monkeypatch.setattr(living_plan_mod, "save_plan", lambda _plan, _p=None: None)
+
+    updated_plan, ctx = living_plan_mod.update_living_plan_after_resolve(
+        args=_args(status="fixed"),
+        all_resolved=["a"],
+        attestation="attest",
+        state=state,
+    )
+
+    assert ctx.cluster_remaining == 1
+    assert updated_plan is plan
+    assert updated_plan["clusters"]["epic/a"]["issue_ids"] == ["live-b"]
+    assert updated_plan["active_cluster"] == "epic/a"
+
+
 def test_update_living_plan_after_resolve_marks_all_completed_clusters_done(
     monkeypatch,
 ) -> None:
