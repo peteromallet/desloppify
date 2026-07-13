@@ -136,8 +136,56 @@ def test_build_triage_prompt_includes_mechanical_backlog_context() -> None:
 
     assert "## Auto-cluster candidates (2 items: 1 in 1 auto-clusters, 1 unclustered)" in prompt
     assert "### Auto-clusters (decision required for each)" in prompt
+    assert "`auto_cluster_decisions`" in prompt
     assert "- auto/unused-imports (1 items) [autofix: desloppify autofix import-cleanup --dry-run]" in prompt
     assert "Remove 1 unused import issue" in prompt
     assert "### Unclustered items (1 items — needs human judgment or isolated findings)" in prompt
     assert "- [medium] test_coverage::src/b.py::miss — Missing behavioral coverage" in prompt
     assert "Inspect a cluster: `desloppify plan cluster show auto/<name>`" in prompt
+
+
+def test_build_triage_prompt_can_omit_legacy_auto_cluster_decision_guidance() -> None:
+    open_id, open_issue = _issue(
+        "review::open::1111aaaa",
+        summary="Open API drift",
+        dimension="api_surface_coherence",
+    )
+    triage_input = TriageInput(
+        review_issues={open_id: open_issue},
+        objective_backlog_issues={
+            "unused::src/a.py::dead": {
+                "detector": "unused",
+                "summary": "Unused export",
+                "file": "src/a.py",
+                "confidence": "high",
+            },
+        },
+        auto_clusters={
+            "auto/unused-imports": {
+                "auto": True,
+                "issue_ids": ["unused::src/a.py::dead"],
+                "description": "Remove 1 unused import issue",
+            }
+        },
+        existing_clusters={},
+        dimension_scores={},
+        new_since_last=set(),
+        resolved_since_last=set(),
+        previously_dismissed=[],
+        triage_version=1,
+        resolved_issues={},
+        completed_clusters=[],
+    )
+
+    prompt = build_triage_prompt(
+        triage_input,
+        include_auto_cluster_decision_guidance=False,
+    )
+
+    assert "## Auto-cluster candidates (1 items: 1 in 1 auto-clusters, 0 unclustered)" in prompt
+    assert "### Auto-clusters" in prompt
+    assert "### Auto-clusters (decision required for each)" not in prompt
+    assert "- auto/unused-imports (1 items)" in prompt
+    assert "`auto_cluster_decisions`" not in prompt
+    assert "defer (keep in backlog" not in prompt
+    assert "break_up (split into smaller sub-clusters" not in prompt

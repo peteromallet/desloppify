@@ -9,6 +9,10 @@ from desloppify.app.commands.plan.triage.validation.core import (
 from desloppify.app.commands.plan.triage.validation.organize_policy import (
     validate_organize_against_reflect_ledger,
 )
+from desloppify.app.commands.plan.triage.validation.reflect_accounting import (
+    parse_backlog_decisions,
+    validate_backlog_decisions,
+)
 
 # ---------------------------------------------------------------------------
 # parse_reflect_dispositions
@@ -166,6 +170,25 @@ class TestParseReflectDispositions:
         }
         result = parse_reflect_dispositions(report, valid_ids)
         assert result == []
+
+
+def test_backlog_decisions_reject_legacy_defer_and_break_up_actions() -> None:
+    report = (
+        "## Backlog Decisions\n"
+        '- auto/unused-imports -> defer "revisit later"\n'
+        '- auto/dead-code -> break_up "split by package"\n'
+    )
+
+    assert parse_backlog_decisions(report) == []
+
+    valid, messages = validate_backlog_decisions(
+        report=report,
+        auto_cluster_names=["auto/unused-imports", "auto/dead-code"],
+    )
+
+    assert valid is False
+    assert "auto/unused-imports" in messages[0]
+    assert "auto/dead-code" in messages[0]
 
 
 # ---------------------------------------------------------------------------
