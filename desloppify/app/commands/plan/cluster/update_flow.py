@@ -131,7 +131,11 @@ def build_request(args) -> ClusterUpdateRequest:
         undone_step=getattr(args, "undone_step", None),
         priority=getattr(args, "priority", None),
         effort=getattr(args, "effort", None),
-        depends_on=getattr(args, "depends_on", None),
+        depends_on=(
+            []
+            if getattr(args, "clear_depends_on", False)
+            else getattr(args, "depends_on", None)
+        ),
         issue_refs=getattr(args, "issue_refs", None),
     )
 
@@ -196,7 +200,10 @@ def _apply_cluster_metadata(
         print(services.colorize_fn(f"  Unknown cluster(s): {', '.join(bad)}", "red"))
         return False
     cluster["depends_on_clusters"] = request.depends_on
-    print(services.colorize_fn(f"  Dependencies set: {', '.join(request.depends_on)}", "dim"))
+    if request.depends_on:
+        print(services.colorize_fn(f"  Dependencies set: {', '.join(request.depends_on)}", "dim"))
+    else:
+        print(services.colorize_fn("  Dependencies cleared.", "dim"))
     return True
 
 

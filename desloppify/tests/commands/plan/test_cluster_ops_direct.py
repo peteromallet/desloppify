@@ -449,6 +449,41 @@ def test_cluster_update_direct_paths(capsys) -> None:
     assert "Nothing to update" in out2
 
 
+def test_cluster_update_clears_dependencies(capsys) -> None:
+    plan = {
+        "clusters": {
+            "alpha": {
+                "issue_ids": [],
+                "action_steps": [],
+                "depends_on_clusters": ["beta"],
+            },
+            "beta": {"issue_ids": []},
+        }
+    }
+    saved: list[dict] = []
+    args = argparse.Namespace(cluster_name="alpha", clear_depends_on=True)
+    services = cluster_update_flow_mod.ClusterUpdateServices(
+        load_plan_fn=lambda: plan,
+        save_plan_fn=lambda payload: saved.append(payload),
+        append_log_entry_fn=lambda *_a, **_k: None,
+        parse_steps_file_fn=lambda _text: [],
+        normalize_step_fn=lambda step: {"title": str(step)},
+        step_summary_fn=lambda step: str(step),
+        utc_now_fn=lambda: "2026-03-09T00:00:00+00:00",
+        colorize_fn=lambda text, _tone: text,
+    )
+
+    cluster_update_mod.cmd_cluster_update(
+        args,
+        services=services,
+        plan_lock_fn=lambda: nullcontext(),
+    )
+
+    assert plan["clusters"]["alpha"]["depends_on_clusters"] == []
+    assert saved == [plan]
+    assert "Dependencies cleared." in capsys.readouterr().out
+
+
 def test_cluster_update_steps_file_parse_failure_raises_command_error(tmp_path) -> None:
     plan = {"clusters": {"alpha": {"issue_ids": [], "action_steps": []}}}
     steps_file = tmp_path / "steps.md"

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
 from desloppify.app.cli_support.parser_groups_admin_review_options_batch import (
     _add_batch_execution_options,
 )
@@ -271,6 +273,31 @@ def test_plan_cluster_triage_commit_and_scan_gate_subparsers() -> None:
     assert cluster_update.effort == "small"
     assert cluster_update.depends_on == ["base", "parser"]
     assert cluster_update.issue_refs == ["test_coverage::a", "test_coverage::b"]
+
+    clear_dependencies = parser.parse_args(
+        [
+            "plan",
+            "cluster",
+            "update",
+            "auto/test_coverage",
+            "--clear-depends-on",
+        ]
+    )
+    assert clear_dependencies.clear_depends_on is True
+    assert clear_dependencies.depends_on is None
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "plan",
+                "cluster",
+                "update",
+                "auto/test_coverage",
+                "--depends-on",
+                "base",
+                "--clear-depends-on",
+            ]
+        )
 
     triage_args = parser.parse_args(
         [
