@@ -3,6 +3,8 @@
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from desloppify.languages.python.detectors import dict_keys as dict_keys_mod
 from desloppify.languages.python.detectors.dict_keys import (
     detect_dict_key_flow,
@@ -93,6 +95,43 @@ class TestPhantomRead:
         )
         entries, _ = detect_dict_key_flow(path)
         assert "phantom_read" not in _kinds(entries)
+
+    @pytest.mark.parametrize("constructor", ("dict(source)", "dict(**source)"))
+    def test_copy_constructor_does_not_assume_an_empty_local_dict(
+        self, tmp_path, constructor
+    ):
+        path = _write_py(
+            tmp_path,
+            f"""\
+            def build(source):
+                copied = {constructor}
+                value = copied["expected"]
+                return value
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert "phantom_read" not in _kinds(entries)
+
+    @pytest.mark.parametrize("constructor", ("dict()", "dict(expected=1)"))
+    def test_empty_and_keyword_dict_constructors_still_track_reads(
+        self, tmp_path, constructor
+    ):
+        path = _write_py(
+            tmp_path,
+            f"""\
+            def build():
+                created = {constructor}
+                value = created["missing"]
+                return value
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        phantom = _find_kind(entries, "phantom_read")
+        assert any(entry["key"] == "missing" for entry in phantom)
 
 
 # ── Dead writes (written key never read) ──────────────────

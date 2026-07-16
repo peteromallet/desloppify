@@ -113,7 +113,7 @@ class DictKeyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _check_dict_creation(self, name: str, value: ast.expr, line: int):
-        """Detect d = {}, d = dict(), d = {"k": v, ...}."""
+        """Detect local dict literals, dict(), and dict(key=value) constructors."""
         initial_keys: list[str] = []
         is_creation = False
 
@@ -144,11 +144,12 @@ class DictKeyVisitor(ast.NodeVisitor):
             isinstance(value, ast.Call)
             and isinstance(value.func, ast.Name)
             and value.func.id == "dict"
+            and not value.args
+            and all(keyword.arg is not None for keyword in value.keywords)
         ):
             is_creation = True
             for kw in value.keywords:
-                if kw.arg:
-                    initial_keys.append(kw.arg)
+                initial_keys.append(kw.arg)
 
         if is_creation:
             td = self._track(
