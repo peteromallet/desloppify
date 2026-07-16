@@ -105,15 +105,25 @@ def _read_stage_output(output_file: Path) -> str:
 
 
 
-def _write_desloppify_cli_helper(run_dir: Path) -> Path:
+def _write_desloppify_cli_helper(run_dir: Path, state_path: Path | None = None) -> Path:
     """Create an exact CLI wrapper so codex subagents use this checkout + interpreter."""
     package_root = Path(desloppify.__file__).resolve().parent.parent
     script_path = run_dir / "run_desloppify.sh"
+    python_command = f"{shlex.quote(sys.executable)} -m desloppify.cli"
     script = (
         "#!/bin/sh\n"
         f"export PYTHONPATH={shlex.quote(str(package_root))}${{PYTHONPATH:+:$PYTHONPATH}}\n"
-        f"exec {shlex.quote(sys.executable)} -m desloppify.cli \"$@\"\n"
     )
+    if state_path is None:
+        script += f'exec {python_command} "$@"\n'
+    else:
+        script += (
+            f'[ "$#" -gt 0 ] || exec {python_command} "$@"\n'
+            'command_name=$1\n'
+            'shift\n'
+            f'exec {python_command} "$command_name" --state '
+            f'{shlex.quote(str(state_path))} "$@"\n'
+        )
     safe_write_text(script_path, script)
     os.chmod(script_path, 0o700)
     return script_path
@@ -383,7 +393,10 @@ def run_codex_pipeline(
 
     run_log_path = run_dir / "run.log"
     append_run_log = make_run_log_writer(run_log_path)
-    cli_helper = _write_desloppify_cli_helper(run_dir)
+    cli_helper = _write_desloppify_cli_helper(
+        run_dir,
+        getattr(runtime, "state_path", None),
+    )
     runner_label = active_runner_name()
     append_run_log(
         f"run-start runner={runner_label} stages={','.join(stages_to_run)} "
