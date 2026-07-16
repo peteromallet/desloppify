@@ -1207,6 +1207,97 @@ def test_orchestrator_sense_scopes_content_batches_to_active_triage(monkeypatch,
     assert len(structure_versions) == 1
 
 
+def test_orchestrator_sense_keeps_reloaded_structure_and_value_prompts_in_active_scope(
+    monkeypatch, tmp_path
+) -> None:
+    """A content-update reload must not reintroduce historical clusters."""
+    monkeypatch.setattr(
+        orchestrator_sense_mod,
+        "scoped_manual_clusters_with_issues",
+        lambda _plan, _state=None: ["current"],
+    )
+    monkeypatch.setattr(
+        orchestrator_sense_mod,
+        "triage_scoped_plan",
+        lambda plan, _state=None: {
+            **plan,
+            "clusters": {"current": plan["clusters"]["current"]},
+        },
+    )
+
+    structure_cluster_sets: list[set[str]] = []
+    value_cluster_sets: list[set[str]] = []
+
+    monkeypatch.setattr(
+        orchestrator_sense_mod,
+        "build_sense_check_content_prompt",
+        lambda **_kwargs: "content prompt",
+    )
+
+    def fake_structure_prompt(*, plan, **_kwargs):
+        structure_cluster_sets.append(set(plan["clusters"]))
+        return "structure prompt"
+
+    def fake_value_prompt(*, plan, **_kwargs):
+        value_cluster_sets.append(set(plan["clusters"]))
+        return "value prompt"
+
+    monkeypatch.setattr(orchestrator_sense_mod, "build_sense_check_structure_prompt", fake_structure_prompt)
+    monkeypatch.setattr(orchestrator_sense_mod, "build_sense_check_value_prompt", fake_value_prompt)
+
+    def fake_run_triage_stage(
+        *,
+        prompt,
+        repo_root,
+        output_file,
+        log_file,
+        timeout_seconds,
+        validate_output_fn,
+    ):
+        del prompt, repo_root, log_file, timeout_seconds
+        output_file.write_text("ok", encoding="utf-8")
+        assert validate_output_fn(output_file)
+        return codex_runner_mod.TriageStageRunResult(exit_code=0)
+
+    import desloppify.app.commands.plan.triage.runner.stage_runner_override as override_mod
+
+    monkeypatch.setattr(override_mod, "_STAGE_RUNNER_OVERRIDE", fake_run_triage_stage)
+    monkeypatch.setattr(
+        orchestrator_sense_mod,
+        "run_parallel_batches",
+        lambda **kwargs: [task() for task in kwargs["tasks"].values()] and [],
+    )
+
+    prompts_dir = tmp_path / "prompts"
+    output_dir = tmp_path / "out"
+    logs_dir = tmp_path / "logs"
+    prompts_dir.mkdir()
+    output_dir.mkdir()
+    logs_dir.mkdir()
+
+    plan = {
+        "clusters": {
+            "current": {"issue_ids": ["review::current::issue"], "action_steps": []},
+            "legacy": {"issue_ids": ["review::legacy::issue"], "action_steps": []},
+        }
+    }
+    result = orchestrator_sense_mod.run_sense_check(
+        plan=plan,
+        repo_root=tmp_path,
+        prompts_dir=prompts_dir,
+        output_dir=output_dir,
+        logs_dir=logs_dir,
+        timeout_seconds=60,
+        dry_run=False,
+        apply_updates=True,
+        reload_plan=lambda: plan,
+    )
+
+    assert result.ok
+    assert structure_cluster_sets == [{"current"}, {"current"}]
+    assert value_cluster_sets == [{"current"}]
+
+
 def test_default_sense_handler_enables_apply_update_mode(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
