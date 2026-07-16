@@ -144,7 +144,11 @@ class DictKeyVisitor(ast.NodeVisitor):
             isinstance(value, ast.Call)
             and isinstance(value.func, ast.Name)
             and value.func.id == "dict"
+            and not value.args
+            and all(kw.arg is not None for kw in value.keywords)
         ):
+            # `dict(mapping)` and `dict(**mapping)` inherit keys the visitor
+            # cannot see, so they are not locally-created literals.
             is_creation = True
             for kw in value.keywords:
                 if kw.arg:
