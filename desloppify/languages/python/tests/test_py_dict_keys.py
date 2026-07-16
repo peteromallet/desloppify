@@ -94,6 +94,49 @@ class TestPhantomRead:
         entries, _ = detect_dict_key_flow(path)
         assert "phantom_read" not in _kinds(entries)
 
+    def test_mapping_copies_are_not_tracked_as_empty_literals(self, tmp_path):
+        """Copies retain keys the detector cannot infer from the constructor."""
+        path = _write_py(
+            tmp_path,
+            """\
+            from typing import Mapping, TypedDict
+
+            class Person(TypedDict):
+                name: str
+
+            def copy_typed_dict(person: Person):
+                copied = dict(person)
+                return copied["name"]
+
+            def copy_mapping(person: Mapping[str, str]):
+                copied = dict(**person)
+                return copied["name"]
+        """,
+        )
+        entries, _ = detect_dict_key_flow(path)
+        assert "phantom_read" not in _kinds(entries)
+
+    def test_empty_and_keyword_only_dict_constructors_still_track_keys(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_missing_empty_dict():
+                result = dict()
+                return result["missing"]
+
+            def read_missing_keyword_dict():
+                result = dict(name="Alice")
+                return result["missing"]
+        """,
+        )
+        entries, _ = detect_dict_key_flow(path)
+        phantoms = _find_kind(entries, "phantom_read")
+        assert {entry["key"] for entry in phantoms} == {"missing"}
+        assert {entry["func"] for entry in phantoms} == {
+            "read_missing_empty_dict",
+            "read_missing_keyword_dict",
+        }
+
 
 # ── Dead writes (written key never read) ──────────────────
 
