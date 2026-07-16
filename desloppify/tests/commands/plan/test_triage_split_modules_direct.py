@@ -1319,6 +1319,33 @@ def test_orchestrator_pipeline_writes_exact_cli_helper(tmp_path: Path) -> None:
     assert "-m desloppify.cli" in text
 
 
+def test_orchestrator_pipeline_cli_helper_propagates_state(monkeypatch, tmp_path: Path) -> None:
+    import subprocess
+
+    recorded_args = tmp_path / "recorded-args.txt"
+    python = tmp_path / "record-python"
+    python.write_text(
+        f'#!/bin/sh\nprintf "%s\\n" "$@" > {recorded_args}\n',
+        encoding="utf-8",
+    )
+    python.chmod(0o700)
+    monkeypatch.setattr(orchestrator_pipeline_mod.sys, "executable", str(python))
+
+    state_path = tmp_path / "named state" / "state.json"
+    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(tmp_path, state_path)
+    subprocess.run([str(helper), "plan", "cluster", "list"], check=True)
+
+    assert recorded_args.read_text(encoding="utf-8").splitlines() == [
+        "-m",
+        "desloppify.cli",
+        "plan",
+        "--state",
+        str(state_path),
+        "cluster",
+        "list",
+    ]
+
+
 def test_load_prior_reports_from_plan_uses_existing_stage_reports() -> None:
     plan = {
         "epic_triage_meta": {
@@ -1856,7 +1883,7 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
         "_write_desloppify_cli_helper",
-        lambda run_dir: run_dir / "run_desloppify.sh",
+        lambda run_dir, _state_path: run_dir / "run_desloppify.sh",
     )
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
