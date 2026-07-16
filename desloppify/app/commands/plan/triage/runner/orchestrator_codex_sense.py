@@ -358,7 +358,10 @@ def run_sense_check(
         reloaded_plan = _reload_structure_plan(reload_plan=reload_plan, log=_log)
         if reloaded_plan is None:
             return TriageStageRunResult(exit_code=1, reason="plan_reload_failed")
-        structure_plan = reloaded_plan
+        # Content batches update the live plan. Keep the structure pass scoped
+        # to the frozen triage session after reloading so historical clusters
+        # cannot inflate the runner prompt beyond the Codex input limit.
+        structure_plan = triage_scoped_plan(reloaded_plan, state)
         structure_config = _structure_batch_config(
             plan=structure_plan,
             repo_root=repo_root,
@@ -395,7 +398,10 @@ def run_sense_check(
     if apply_updates and reload_plan is not None:
         reloaded = _reload_structure_plan(reload_plan=reload_plan, log=_log)
         if reloaded is not None:
-            value_plan = reloaded
+            # Value checking shares the same frozen triage scope as content and
+            # structure checks; otherwise every historical manual cluster is
+            # serialized into the prompt after a reload.
+            value_plan = triage_scoped_plan(reloaded, state)
             _log("sense-check-plan-reloaded phase=value")
 
     value_mode = "self_record" if apply_updates else "output_only"
