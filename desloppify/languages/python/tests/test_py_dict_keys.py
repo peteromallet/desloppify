@@ -209,6 +209,23 @@ class TestDeadWrite:
         entries, _ = detect_dict_key_flow(path)
         assert "dead_write" not in _kinds(entries)
 
+    def test_no_dead_write_when_dict_literal_assigned_to_attribute(self, tmp_path):
+        """A durable attribute assignment is an escape boundary, not local dead code."""
+        path = _write_py(
+            tmp_path,
+            """\
+            def record(receipt):
+                receipt.result_payload = {
+                    "data": 1,
+                    "error_code": None,
+                    "user_message": None,
+                    "extra": None,
+                }
+        """,
+        )
+        entries, _ = detect_dict_key_flow(path)
+        assert "dead_write" not in _kinds(entries)
+
     def test_no_dead_write_when_nested_in_list_return(self, tmp_path):
         """Dict returned inside nested list/tuple structures should be escaped."""
         path = _write_py(
