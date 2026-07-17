@@ -87,6 +87,40 @@ def test_collapse_clusters_preserves_order():
     assert len(result) == 2  # other + cluster
 
 
+def test_collapse_manual_clusters_respects_explicit_queue_order():
+    """Manual cluster display follows member order, not cluster-map insertion order."""
+    from desloppify.engine._work_queue.plan_order import collapse_clusters
+
+    plan = {
+        "queue_order": ["first-1", "first-2", "later-1", "later-2"],
+        "clusters": {
+            # Deliberately inserted first even though it was reordered behind
+            # ``first`` in the execution queue.
+            "later": {
+                "auto": False,
+                "issue_ids": ["later-1", "later-2"],
+                "description": "The later manual packet",
+            },
+            "first": {
+                "auto": False,
+                "issue_ids": ["first-1", "first-2"],
+                "description": "The first manual packet",
+            },
+        },
+    }
+    items = [
+        {"id": "later-1", "kind": "issue", "detector": "review", "detail": {}},
+        {"id": "first-1", "kind": "issue", "detector": "review", "detail": {}},
+        {"id": "later-2", "kind": "issue", "detector": "review", "detail": {}},
+        {"id": "first-2", "kind": "issue", "detector": "review", "detail": {}},
+        {"id": "other", "kind": "issue", "detector": "smells", "detail": {}},
+    ]
+
+    result = collapse_clusters(items, plan)
+
+    assert [item["id"] for item in result] == ["first", "later", "other"]
+
+
 # -- Plan-ordered subjective items surface despite objective backlog --------
 
 

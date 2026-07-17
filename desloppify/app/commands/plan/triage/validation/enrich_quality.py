@@ -77,8 +77,7 @@ def _active_cluster_names(plan: dict, triage_issue_ids: set[str]) -> set[str]:
     return {
         name
         for name, cluster in plan.get("clusters", {}).items()
-        if not cluster_issue_ids(cluster)
-        or set(cluster_issue_ids(cluster)) & triage_issue_ids
+        if set(cluster_issue_ids(cluster)) & triage_issue_ids
     }
 
 
