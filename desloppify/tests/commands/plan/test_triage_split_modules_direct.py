@@ -468,6 +468,30 @@ def test_confirmation_pipeline_threads_triage_issue_scope(monkeypatch) -> None:
     assert captured["triage_issue_ids"] == {"review::current::issue"}
 
 
+def test_enrich_quality_scope_excludes_empty_and_historical_clusters() -> None:
+    """Current-cycle enrich checks must not inspect historical empty packets."""
+    from desloppify.app.commands.plan.triage.validation import (
+        enrich_quality as enrich_quality_mod,
+    )
+
+    plan = {
+        "clusters": {
+            "current": {"issue_ids": ["review::current::issue"]},
+            "historical": {"issue_ids": ["review::historical::issue"]},
+            "completed-empty": {"issue_ids": [], "action_steps": [{"detail": "stale"}]},
+        },
+    }
+
+    active = enrich_quality_mod._active_cluster_names(
+        plan,
+        {"review::current::issue"},
+    )
+    scoped = enrich_quality_mod._scoped_plan(plan, {"review::current::issue"})
+
+    assert active == {"current"}
+    assert set(scoped["clusters"]) == {"current"}
+
+
 def test_validate_attestation_rules() -> None:
     assert confirmations_basic_mod.validate_attestation("mentions naming", "observe", dimensions=["Naming"]) is None
     err = confirmations_basic_mod.validate_attestation(

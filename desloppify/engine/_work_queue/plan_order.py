@@ -231,11 +231,29 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
             cname, members, clusters.get(cname, {})
         )
 
-    # Collect manual cluster names in plan order (for front-insertion)
+    # Collect manual cluster names in explicit queue order (for front-insertion).
+    # Cluster mapping insertion order is incidental: ``plan cluster reorder``
+    # moves member IDs in ``queue_order`` and expects collapsed manual clusters
+    # to follow that same order.
+    queue_order = plan.get("queue_order", [])
+    queue_positions: dict[str, int] = {}
+    for position, issue_id in enumerate(queue_order):
+        queue_positions.setdefault(issue_id, position)
     manual_names = [
-        name for name in clusters
+        name
+        for name in clusters
         if not clusters[name].get("auto") and name in meta_items
     ]
+    manual_names.sort(
+        key=lambda name: min(
+            (
+                queue_positions[member["id"]]
+                for member in cluster_members[name]
+                if member["id"] in queue_positions
+            ),
+            default=len(queue_order),
+        )
+    )
 
     # Walk in order: replace first auto-cluster member with meta-item,
     # skip subsequent members.  Manual cluster members are always skipped
