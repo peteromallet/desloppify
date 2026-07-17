@@ -329,6 +329,107 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
     assert captured["state"] is state
 
 
+def test_validate_organize_submission_scopes_cluster_activity_to_live_triage(monkeypatch) -> None:
+    """Historical clusters must not inflate the current triage operation floor."""
+    captured: dict[str, object] = {}
+    plan = {
+        "epic_triage_meta": {"active_triage_issue_ids": ["review::current"]},
+        "clusters": {
+            "current": {
+                "issue_ids": ["review::current"],
+                "description": "current work",
+                "action_steps": [{"title": "current step"}],
+            },
+            "legacy": {
+                "issue_ids": ["review::legacy"],
+                "description": "historical work",
+                "action_steps": [{"title": "legacy step"}],
+            },
+        },
+    }
+    state = {
+        "issues": {
+            "review::current": {"status": "open", "detector": "review"},
+            "review::legacy": {"status": "open", "detector": "review"},
+        }
+    }
+
+    monkeypatch.setattr(
+        organize_stage_mod, "auto_confirm_reflect_for_organize", lambda **_kwargs: True
+    )
+    monkeypatch.setattr(organize_stage_mod, "_clusters_enriched_or_error", lambda *_args: True)
+    monkeypatch.setattr(
+        organize_stage_mod, "_unclustered_review_issues_or_error", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        organize_stage_mod, "_validate_organize_against_ledger_or_error", lambda **_kwargs: True
+    )
+    monkeypatch.setattr(
+        organize_stage_mod, "validate_backlog_promotions_executed", lambda **_kwargs: []
+    )
+
+    def _capture_activity(**kwargs) -> bool:
+        captured["manual_clusters"] = kwargs["manual_clusters"]
+        captured["open_review_ids"] = kwargs["open_review_ids"]
+        return True
+
+    monkeypatch.setattr(organize_stage_mod, "_enforce_cluster_activity_for_organize", _capture_activity)
+
+    services = SimpleNamespace(
+        collect_triage_input=lambda _plan, _state: {},
+        detect_recurring_patterns=lambda *_args, **_kwargs: [],
+        save_plan=lambda _plan: None,
+    )
+    report = "current cluster is the live review packet and is ready for execution. " + "x" * 70
+
+    result = organize_stage_mod._validate_organize_submission(
+        args=argparse.Namespace(),
+        plan=plan,
+        state=state,
+        stages={"observe": {}, "reflect": {}},
+        report=report,
+        attestation=None,
+        is_reuse=False,
+        services=services,
+    )
+
+    assert result == (["current"], report)
+    assert captured == {
+        "manual_clusters": ["current"],
+        "open_review_ids": {"review::current"},
+    }
+
+
+def test_enrich_quality_does_not_reopen_historical_clusters_for_empty_live_scope(tmp_path) -> None:
+    """An empty frozen scope is distinct from legacy no-scope validation."""
+    from desloppify.app.commands.plan.triage.validation.enrich_quality import (
+        evaluate_enrich_quality,
+    )
+
+    plan = {
+        "clusters": {
+            "legacy": {
+                "issue_ids": ["review::legacy"],
+                "action_steps": [{"title": "underspecified legacy step"}],
+            }
+        }
+    }
+
+    report = evaluate_enrich_quality(
+        plan,
+        tmp_path,
+        phase_label="enrich",
+        bad_paths_severity="warning",
+        missing_effort_severity="warning",
+        include_missing_issue_refs=False,
+        include_vague_detail=False,
+        stale_issue_refs_severity=None,
+        triage_issue_ids=set(),
+    )
+
+    assert report.failures == []
+
+
 def test_confirm_organize_passes_state_to_enrichment_gate(monkeypatch) -> None:
     captured: dict[str, object] = {}
     state = {"issues": {"review::closed-only": {"status": "closed", "detector": "review"}}}

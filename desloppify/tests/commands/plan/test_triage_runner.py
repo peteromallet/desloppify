@@ -6,9 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from desloppify.app.commands.plan.triage.validation.core import (
-    _validate_reflect_issue_accounting,
-)
 from desloppify.app.commands.plan.triage.runner import codex_runner
 from desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution import (
     build_reflect_repair_prompt,
@@ -18,6 +15,9 @@ from desloppify.app.commands.plan.triage.runner.stage_validation import (
     build_auto_attestation,
     validate_completion,
     validate_stage,
+)
+from desloppify.app.commands.plan.triage.validation.core import (
+    _validate_reflect_issue_accounting,
 )
 from desloppify.engine._plan.triage.prompt import TriageInput
 
@@ -535,6 +535,45 @@ def test_validate_enrich_ignores_out_of_scope_clusters_for_frozen_triage(tmp_pat
             "review::legacy::issue": {"status": "open", "detector": "review"},
         }
     }
+    ok, msg = validate_stage("enrich", plan, state, tmp_path)
+    assert ok, msg
+
+
+def test_validate_enrich_ignores_closed_member_of_frozen_triage(tmp_path: Path) -> None:
+    """A closed frozen finding must not revive its old cluster for validation."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "current.ts").write_text("export {}")
+    plan = _plan_with_stages(enrich={"report": "x" * 150})
+    plan["epic_triage_meta"]["active_triage_issue_ids"] = [
+        "review::current::issue",
+        "review::closed::issue",
+    ]
+    plan["clusters"] = {
+        "current": {
+            "issue_ids": ["review::current::issue"],
+            "description": "current batch",
+            "action_steps": [
+                {
+                    "title": "fix current",
+                    "detail": "Update src/current.ts to simplify the active path and remove duplication. " + "x" * 30,
+                    "effort": "small",
+                    "issue_refs": ["review::current::issue"],
+                }
+            ],
+        },
+        "closed-legacy": {
+            "issue_ids": ["review::closed::issue"],
+            "description": "old batch",
+            "action_steps": [{"title": "stale empty step"}],
+        },
+    }
+    state = {
+        "issues": {
+            "review::current::issue": {"status": "open", "detector": "review"},
+            "review::closed::issue": {"status": "closed", "detector": "review"},
+        }
+    }
+
     ok, msg = validate_stage("enrich", plan, state, tmp_path)
     assert ok, msg
 
