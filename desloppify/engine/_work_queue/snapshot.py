@@ -505,21 +505,25 @@ def _build_backlog(
     p: _Partitions,
     execution_ids: set[str],
 ) -> list[WorkQueueItem]:
-    return [
-        item
-        for item in (
-            [
-                *p.objective_items,
-                *p.initial_review_items,
-                *p.postflight_assessment_items,
-                *p.review_issue_items,
-                *p.scan_items,
-                *p.postflight_workflow_items,
-                *p.triage_items,
-            ]
-        )
-        if item.get("id", "") not in execution_ids
+    """Return visible backlog items once, preserving partition priority."""
+    seen_ids: set[str] = set()
+    backlog: list[WorkQueueItem] = []
+    candidates = [
+        *p.objective_items,
+        *p.initial_review_items,
+        *p.postflight_assessment_items,
+        *p.review_issue_items,
+        *p.scan_items,
+        *p.postflight_workflow_items,
+        *p.triage_items,
     ]
+    for item in candidates:
+        item_id = str(item.get("id", ""))
+        if item_id in execution_ids or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        backlog.append(item)
+    return backlog
 
 
 # ---------------------------------------------------------------------------

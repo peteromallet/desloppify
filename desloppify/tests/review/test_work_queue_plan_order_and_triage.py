@@ -530,6 +530,40 @@ def test_backlog_queue_excludes_execution_objective_items():
     assert "workflow::run-scan" not in ids
 
 
+def test_backlog_queue_deduplicates_mechanical_triage_findings():
+    """A mechanical finding shared with triage appears once in the backlog."""
+    from desloppify.engine._plan.schema import empty_plan
+    from desloppify.engine._state.issue_semantics import is_triage_finding
+
+    finding = _issue(
+        "dict_keys::src/a.py::phantom_read::payload::missing",
+        detector="dict_keys",
+        tier=2,
+        confidence="high",
+    )
+    assert is_triage_finding(finding)
+
+    state = _state([finding])
+    plan = empty_plan()
+    # A stale plan puts the snapshot in scan mode, where the finding belongs
+    # in backlog through both the objective and triage partitions.
+    plan["queue_order"] = ["missing::planned"]
+    plan["plan_start_scores"] = {"strict": 80.0}
+    plan["refresh_state"] = {"lifecycle_phase": "execute"}
+
+    queue = build_backlog_queue(
+        state,
+        options=QueueBuildOptions(
+            count=None,
+            include_subjective=False,
+            plan=plan,
+        ),
+    )
+
+    ids = [item["id"] for item in queue["items"]]
+    assert ids == [finding["id"]]
+
+
 def test_unplanned_objective_items_dont_block_postflight():
     """Unplanned objective items don't keep the system in EXECUTE phase.
 
