@@ -4,36 +4,38 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.state_scoring import score_snapshot
 from desloppify.engine._plan.auto_cluster import auto_cluster_issues
 from desloppify.engine._plan.constants import (
     PRE_REVIEW_WORKFLOW_IDS,
     WORKFLOW_COMMUNICATE_SCORE_ID,
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_DEFERRED_DISPOSITION_ID,
-    WORKFLOW_IMPORT_SCORES_ID,
     WORKFLOW_RUN_SCAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
     QueueSyncResult,
     is_synthetic_id,
 )
 from desloppify.engine._plan.operations.meta import append_log_entry
-from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
+from desloppify.engine._plan.operations.queue import remove_queue_entries
 from desloppify.engine._plan.policy.stale import open_review_ids
+from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
 from desloppify.engine._plan.refresh_lifecycle import (
     _set_lifecycle_phase,
     derive_display_phase,
     user_facing_mode,
 )
+from desloppify.engine._plan.schema import live_planned_queue_ids
 from desloppify.engine._plan.sync.dimensions import sync_subjective_dimensions
 from desloppify.engine._plan.sync.phase_cleanup import prune_synthetic_for_phase
 from desloppify.engine._plan.sync.triage import sync_triage_needed
-from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._plan.sync.workflow import (
     ScoreSnapshot,
     sync_communicate_score_needed,
     sync_create_plan_needed,
 )
+from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
+from desloppify.engine._state.issue_semantics import is_assessment_request
+from desloppify.state_scoring import score_snapshot
 
 _SCAN_PHASE_WORKFLOW_IDS = {
     WORKFLOW_DEFERRED_DISPOSITION_ID,
@@ -59,6 +61,7 @@ class ReconcileResult:
     triage: QueueSyncResult | None = None
     lifecycle_phase: str = ""
     lifecycle_phase_changed: bool = False
+    queue_entries_pruned: list[str] | None = None
     phase_cleanup_pruned: list[str] | None = None
     # Snapshot of plan_start_scores captured when communicate_score auto-resolves,
     # before post-reconcile clearing can wipe them.
@@ -79,6 +82,7 @@ class ReconcileResult:
                     self.triage.changes or getattr(self.triage, "deferred", False)
                 ),
                 self.lifecycle_phase_changed,
+                bool(self.queue_entries_pruned),
                 bool(self.phase_cleanup_pruned),
             )
         )
@@ -113,6 +117,7 @@ def _resolve_reconcile_display_phase(
     *,
     result: ReconcileResult,
     policy: object | None,
+    force_rescan: bool = False,
 ) -> str:
     """Derive the display phase from queue contents.
 
@@ -149,15 +154,25 @@ def _resolve_reconcile_display_phase(
         and bool(triage_snapshot.live_open_ids)
     )
 
-    # Check for objective work in the queue.
-    has_real_work = any(
-        not item.startswith(("subjective::", "workflow::", "triage::"))
-        for item in order
-        if item not in (plan.get("skipped") or {})
-    )
+    has_real_work = _has_live_execution_work(plan, state)
     has_review_postflight = triage_gated_review or (
         not has_real_work and bool(open_review_ids(state))
     )
+
+    # Match the snapshot's explicit handoff: a persisted execute board with
+    # live state-backed work must not be preempted by stale postflight queue
+    # residue during an ordinary reconcile.  ``force_rescan`` remains the
+    # deliberate escape hatch for starting a new postflight cycle.
+    if _persisted_execute_board_active(
+        plan,
+        state,
+        force_rescan=force_rescan,
+    ):
+        has_postflight_assessment = False
+        prefer_scan = False
+        has_workflow = False
+        has_triage = False
+        has_review_postflight = False
 
     return derive_display_phase(
         has_initial_review=has_initial_review,
@@ -174,7 +189,7 @@ def _resolve_reconcile_display_phase(
 _MIGRATION_PRUNED_KEY = "_subjective_migration_pruned"
 
 
-def _migrate_prune_stale_subjective(plan: dict) -> None:
+def _migrate_prune_stale_subjective(plan: dict) -> list[str]:
     """One-time migration: remove stale subjective:: items from queue_order.
 
     The old system re-injected stale subjective items on every reconcile
@@ -184,20 +199,95 @@ def _migrate_prune_stale_subjective(plan: dict) -> None:
     """
     refresh_state = plan.get("refresh_state")
     if not isinstance(refresh_state, dict):
-        return
+        return []
     if refresh_state.get(_MIGRATION_PRUNED_KEY):
-        return  # Already done
+        return []  # Already done
     queue_order = plan.get("queue_order")
     if not isinstance(queue_order, list):
-        return
-    cleaned = [
+        return []
+    stale_ids = [
         item_id
         for item_id in queue_order
-        if not (isinstance(item_id, str) and item_id.startswith("subjective::"))
+        if isinstance(item_id, str) and item_id.startswith("subjective::")
     ]
-    if len(cleaned) < len(queue_order):
-        plan["queue_order"] = cleaned
+    pruned = remove_queue_entries(plan, stale_ids)
     refresh_state[_MIGRATION_PRUNED_KEY] = True
+    return pruned
+
+
+def _prune_stale_review_queue_entries(plan: dict, state: dict) -> list[str]:
+    """Drop fixed review findings from queue placement without erasing history."""
+    live_review_ids = open_review_ids(state)
+    stale_ids = [
+        issue_id
+        for issue_id in plan.get("queue_order", [])
+        if isinstance(issue_id, str)
+        and issue_id.startswith(("review::", "concerns::"))
+        and issue_id not in live_review_ids
+    ]
+    return remove_queue_entries(plan, stale_ids)
+
+
+def _prune_execute_synthetic_queue_entries(
+    plan: dict,
+    *,
+    force_rescan: bool,
+) -> list[str]:
+    """Clear planning residue from an ordinary persisted execute handoff."""
+    if force_rescan:
+        return []
+    refresh_state = plan.get("refresh_state")
+    if not (
+        isinstance(refresh_state, dict)
+        and refresh_state.get("lifecycle_phase") == "execute"
+    ):
+        return []
+    return remove_queue_entries(
+        plan,
+        [
+            issue_id
+            for issue_id in plan.get("queue_order", [])
+            if isinstance(issue_id, str) and is_synthetic_id(issue_id)
+        ],
+    )
+
+
+def _has_live_execution_work(plan: dict, state: dict) -> bool:
+    """Return whether an explicit queue entry still maps to open work state."""
+    queued_ids = live_planned_queue_ids(plan)
+    if not queued_ids:
+        return False
+
+    work_items = state.get("work_items") or state.get("issues", {})
+    if not isinstance(work_items, dict):
+        return False
+
+    for issue_id in queued_ids:
+        issue = work_items.get(issue_id)
+        if not isinstance(issue, dict):
+            continue
+        if issue.get("suppressed") or issue.get("status", "open") != "open":
+            continue
+        if is_assessment_request(issue):
+            continue
+        return True
+    return False
+
+
+def _persisted_execute_board_active(
+    plan: dict,
+    state: dict,
+    *,
+    force_rescan: bool,
+) -> bool:
+    """Return whether a persisted execution handoff still owns reconciliation."""
+    if force_rescan or not _has_live_execution_work(plan, state):
+        return False
+    refresh_state = plan.get("refresh_state")
+    return (
+        isinstance(refresh_state, dict)
+        and refresh_state.get("lifecycle_phase") == "execute"
+    )
 
 
 def live_planned_queue_empty(plan: dict) -> bool:
@@ -230,7 +320,20 @@ def reconcile_plan(
     # Migration cleanup: prune stale subjective items from queue_order
     # left by the old mid-cycle re-injection bug.  With boundary-only sync
     # they won't be re-added, so they just block phase resolution.
-    _migrate_prune_stale_subjective(plan)
+    result.queue_entries_pruned = [
+        *_migrate_prune_stale_subjective(plan),
+        *_prune_execute_synthetic_queue_entries(
+            plan,
+            force_rescan=force_rescan,
+        ),
+        *_prune_stale_review_queue_entries(plan, state),
+    ]
+    if result.queue_entries_pruned:
+        _log_gate_changes(
+            plan,
+            "prune_stale_queue_entries",
+            {"pruned": list(result.queue_entries_pruned)},
+        )
 
     policy = compute_subjective_visibility(
         state,
@@ -238,16 +341,25 @@ def reconcile_plan(
         plan=plan,
     )
 
-    result.subjective = sync_subjective_dimensions(
+    # A persisted execution board is deliberate work. Re-injecting stale
+    # assessments before it drains replaces that board with generic review
+    # work on the next reconcile cycle.
+    at_queue_boundary = live_planned_queue_empty(plan) or force_rescan
+    if not _persisted_execute_board_active(
         plan,
         state,
-        policy=policy,
-    )
-    if result.subjective.changes:
-        _log_gate_changes(plan, "sync_subjective", {"changes": True})
+        force_rescan=force_rescan,
+    ):
+        result.subjective = sync_subjective_dimensions(
+            plan,
+            state,
+            policy=policy,
+        )
+        if result.subjective.changes:
+            _log_gate_changes(plan, "sync_subjective", {"changes": True})
 
     # Auto-clustering and heavier workflow reconciliation only runs at queue boundaries.
-    if live_planned_queue_empty(plan) or force_rescan:
+    if at_queue_boundary:
         result.auto_cluster_changes = int(
             auto_cluster_issues(
                 plan,
@@ -294,6 +406,7 @@ def reconcile_plan(
         state,
         result=result,
         policy=policy,
+        force_rescan=force_rescan,
     )
     mode = user_facing_mode(result.lifecycle_phase)
     result.lifecycle_phase_changed = _set_lifecycle_phase(plan, mode)

@@ -10,13 +10,14 @@ from desloppify.engine._plan.cluster_semantics import (
     infer_cluster_action_type,
     infer_cluster_execution_policy,
 )
+from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.engine.plan_ops import (
     get_issue_description,
     get_issue_note,
     get_issue_override,
 )
-from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.state_io import StateModel
+
 
 def new_item_ids(state: StateModel) -> set[str]:
     """Return issue IDs added in the most recent scan."""
@@ -198,7 +199,7 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
     """Replace cluster member items with single cluster meta-items.
 
     Both auto-clusters and manual (triage) clusters are collapsed.  Manual
-    clusters are inserted at the front in plan order so triage-prioritised
+    clusters are inserted at the front in explicit priority order so
     work appears before auto-clustered mechanical items.
     """
     clusters = plan.get("clusters", {})
@@ -231,11 +232,37 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
             cname, members, clusters.get(cname, {})
         )
 
-    # Collect manual cluster names in plan order (for front-insertion)
-    manual_names = [
-        name for name in clusters
-        if not clusters[name].get("auto") and name in meta_items
-    ]
+    # Preserve every visible manual cluster at the front, whether it has one
+    # member or enough members to collapse into a meta-item. A cluster's
+    # explicit priority is the authoritative execution order; falling back to
+    # its first queue position preserves the old plan-order behavior for
+    # historical clusters that predate priority metadata.
+    cluster_insertion_positions = {
+        name: index for index, name in enumerate(clusters)
+    }
+    cluster_positions = {
+        name: min(
+            (
+                index
+                for index, item in enumerate(items)
+                if fid_to_cluster.get(item.get("id", "")) == name
+            ),
+            default=len(items),
+        )
+        for name, cluster in clusters.items()
+        if not cluster.get("auto") and name in cluster_members
+    }
+
+    def _manual_cluster_sort_key(name: str) -> tuple[int, int, int]:
+        priority = clusters[name].get("priority")
+        normalized_priority = priority if isinstance(priority, int) else 1_000_000
+        return (
+            normalized_priority,
+            cluster_positions[name],
+            cluster_insertion_positions[name],
+        )
+
+    manual_names = sorted(cluster_positions, key=_manual_cluster_sort_key)
 
     # Walk in order: replace first auto-cluster member with meta-item,
     # skip subsequent members.  Manual cluster members are always skipped
@@ -244,6 +271,8 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
     rest: list[WorkQueueItem] = []
     for item in items:
         cname = fid_to_cluster.get(item.get("id", ""))
+        if cname and cname in manual_names:
+            continue
         if cname and cname in meta_items:
             if cname not in seen_clusters:
                 seen_clusters.add(cname)
@@ -254,8 +283,15 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
         else:
             rest.append(item)
 
-    # Manual clusters at the front in plan order, then everything else
-    manual_result = [meta_items[name] for name in manual_names if name in seen_clusters]
+    # Manual clusters at the front in priority order, then everything else.
+    # Singleton manual clusters stay as their original issue item so callers
+    # still receive the normal per-finding execution detail.
+    manual_result: list[WorkQueueItem] = []
+    for name in manual_names:
+        if name in meta_items:
+            manual_result.append(meta_items[name])
+        else:
+            manual_result.extend(cluster_members[name])
     return manual_result + rest
 
 

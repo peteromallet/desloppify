@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.engine._plan.promoted_ids import add_promoted_ids
+from desloppify.engine._plan.promoted_ids import add_promoted_ids, prune_promoted_ids
 from desloppify.engine._plan.schema import PlanModel, SkipEntry, ensure_plan_defaults
 
 
@@ -135,4 +135,26 @@ def move_items(
     return len(issue_ids)
 
 
-__all__ = ["move_items", "_remove_id_from_lists"]
+def remove_queue_entries(plan: PlanModel, issue_ids: list[str]) -> list[str]:
+    """Remove queue entries without changing their planning history.
+
+    This is intentionally narrower than :func:`purge_ids`: it removes only
+    queue placement and promotion metadata.  Clusters, overrides, skips,
+    action steps, and state-backed finding history remain intact.
+    """
+    ensure_plan_defaults(plan)
+    removal = set(issue_ids)
+    if not removal:
+        return []
+
+    order: list[str] = plan["queue_order"]
+    removed = [issue_id for issue_id in order if issue_id in removal]
+    if not removed:
+        return []
+
+    order[:] = [issue_id for issue_id in order if issue_id not in removal]
+    prune_promoted_ids(plan, removal)
+    return removed
+
+
+__all__ = ["move_items", "remove_queue_entries", "_remove_id_from_lists"]

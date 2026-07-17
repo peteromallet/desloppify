@@ -27,7 +27,7 @@ from desloppify.engine._plan.operations.meta import (
     append_log_entry,
     describe_issue,
 )
-from desloppify.engine._plan.operations.queue import move_items
+from desloppify.engine._plan.operations.queue import move_items, remove_queue_entries
 from desloppify.engine._plan.operations.skip import (
     backlog_items,
     resurface_stale_skips,
@@ -75,6 +75,7 @@ __all__ = [
     "normalize_step",
     "parse_steps_file",
     "purge_ids",
+    "remove_queue_entries",
     "remove_from_cluster",
     "reset_plan",
     "resurface_stale_skips",
