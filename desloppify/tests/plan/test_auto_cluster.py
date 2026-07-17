@@ -357,6 +357,50 @@ def test_collapse_clusters_skips_manual():
     assert all(i["kind"] == "issue" for i in result)
 
 
+def test_collapse_clusters_orders_manual_clusters_by_explicit_priority():
+    """Manual singleton and grouped work respects the declared priority."""
+    plan = empty_plan()
+    plan["clusters"]["late-group"] = {
+        "name": "late-group",
+        "auto": False,
+        "issue_ids": ["g1", "g2"],
+        "description": "late grouped work",
+        "priority": 9,
+    }
+    plan["clusters"]["first-single"] = {
+        "name": "first-single",
+        "auto": False,
+        "issue_ids": ["s1"],
+        "description": "first work",
+        "priority": 1,
+    }
+    plan["clusters"]["second-single"] = {
+        "name": "second-single",
+        "auto": False,
+        "issue_ids": ["s2"],
+        "description": "second work",
+        "priority": 2,
+    }
+
+    items = [
+        {"id": "g1", "kind": "issue", "tier": 1,
+         "detector": "unused", "confidence": "high", "detail": {}},
+        {"id": "g2", "kind": "issue", "tier": 1,
+         "detector": "unused", "confidence": "high", "detail": {}},
+        {"id": "s1", "kind": "issue", "tier": 1,
+         "detector": "unused", "confidence": "high", "detail": {}},
+        {"id": "s2", "kind": "issue", "tier": 1,
+         "detector": "unused", "confidence": "high", "detail": {}},
+        {"id": "other", "kind": "issue", "tier": 2,
+         "detector": "structural", "confidence": "medium", "detail": {}},
+    ]
+
+    result = _collapse_clusters(items, plan)
+    assert [item["id"] for item in result] == [
+        "s1", "s2", "late-group", "other",
+    ]
+
+
 def test_cluster_sort_key_before_issues():
     cluster_item = {
         "kind": "cluster", "action_type": "auto_fix",

@@ -5,7 +5,8 @@ Persisted markers live in ``plan["refresh_state"]`` and have distinct roles:
 ``lifecycle_phase``
     Valid persisted values are only ``"plan"`` and ``"execute"``. The single
     writer is ``_set_lifecycle_phase()``, called from
-    ``engine._plan.sync.pipeline.reconcile_plan()`` after queue reconciliation.
+    ``engine._plan.sync.pipeline.reconcile_plan()`` after queue reconciliation
+    and from triage completion when a validated plan hands off to execution.
     Legacy fine-grained phase names are migrated at load time by
     ``migrate_legacy_phase()`` from ``engine._plan.persistence._load_validated_plan()``.
     The coarse mode transitions from ``plan`` to ``execute`` when planning work

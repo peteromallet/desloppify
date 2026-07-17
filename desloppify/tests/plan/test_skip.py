@@ -8,7 +8,7 @@ from desloppify.engine._plan.operations.cluster import (
 )
 from desloppify.engine._plan.operations.lifecycle import purge_ids
 from desloppify.engine._plan.operations.meta import append_log_entry
-from desloppify.engine._plan.operations.queue import move_items
+from desloppify.engine._plan.operations.queue import move_items, remove_queue_entries
 from desloppify.engine._plan.operations.skip import (
     resurface_stale_skips,
     skip_items,
@@ -88,6 +88,23 @@ def test_skip_removes_from_queue_order():
     skip_items(plan, ["b"], kind="temporary")
     assert "b" not in plan["queue_order"]
     assert plan["queue_order"] == ["a", "c"]
+
+
+def test_remove_queue_entries_preserves_planning_history():
+    plan = _plan_with_queue("a", "b", "c")
+    plan["promoted_ids"] = ["a", "b"]
+    plan["skipped"] = {"b": {"issue_id": "b", "kind": "temporary"}}
+    plan["clusters"] = {"historic": {"issue_ids": ["b"]}}
+    plan["overrides"] = {"b": {"issue_id": "b", "cluster": "historic"}}
+
+    removed = remove_queue_entries(plan, ["b", "missing"])
+
+    assert removed == ["b"]
+    assert plan["queue_order"] == ["a", "c"]
+    assert plan["promoted_ids"] == ["a"]
+    assert "b" in plan["skipped"]
+    assert plan["clusters"]["historic"]["issue_ids"] == ["b"]
+    assert plan["overrides"]["b"]["cluster"] == "historic"
 
 
 def test_skip_with_reason():

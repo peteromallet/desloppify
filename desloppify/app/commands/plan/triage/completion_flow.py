@@ -8,18 +8,22 @@ from collections import defaultdict
 from typing import Any
 
 from desloppify.base.output.terminal import colorize
-from desloppify.engine._plan.refresh_lifecycle import current_lifecycle_phase
+from desloppify.engine._plan.constants import (
+    WORKFLOW_CREATE_PLAN_ID,
+    WORKFLOW_SCORE_CHECKPOINT_ID,
+    is_synthetic_id,
+)
+from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
+from desloppify.engine._plan.refresh_lifecycle import (
+    _set_lifecycle_phase,
+    current_lifecycle_phase,
+    mark_postflight_scan_completed,
+)
 from desloppify.engine._state.progression import (
     append_progression_event,
     build_triage_complete_event,
 )
-from desloppify.engine._plan.constants import (
-    WORKFLOW_CREATE_PLAN_ID,
-    WORKFLOW_SCORE_CHECKPOINT_ID,
-)
-from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
-from desloppify.engine._plan.refresh_lifecycle import mark_postflight_scan_completed
-from desloppify.engine.plan_ops import purge_ids
+from desloppify.engine.plan_ops import purge_ids, remove_queue_entries
 from desloppify.engine.plan_state import Cluster, PlanModel
 from desloppify.engine.plan_triage import TRIAGE_IDS
 from desloppify.state_io import StateModel, utc_now
@@ -225,6 +229,19 @@ def apply_completion(
     _restore_postflight_scan_completion_for_current_scan(
         plan=plan,
         state=state,
+    )
+    # Completing a valid triage board is the handoff from planning to
+    # implementation. Without this persisted transition, queue snapshots
+    # continue exposing postflight/objective backlog instead of the newly
+    # triaged execution work.
+    _set_lifecycle_phase(plan, "execute")
+    remove_queue_entries(
+        plan,
+        [
+            issue_id
+            for issue_id in plan["queue_order"]
+            if isinstance(issue_id, str) and is_synthetic_id(issue_id)
+        ],
     )
     resolved_services.save_plan(plan)
 

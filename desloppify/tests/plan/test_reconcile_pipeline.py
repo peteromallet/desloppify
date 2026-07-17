@@ -179,8 +179,101 @@ def test_phase_resolves_to_assessment_when_stale_injected_mid_cycle() -> None:
     result = reconcile_plan(plan, state, target_strict=95.0)
 
     assert plan["queue_order"] == ["subjective::naming_quality", "unused::a"]
+    assert result.subjective is not None
     assert result.lifecycle_phase == LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT
     assert result.lifecycle_phase_changed is True
+
+
+def _persisted_execute_board_with_stale_residue() -> tuple[dict, dict]:
+    state = _stale_subjective_state()
+    state["issues"] = {
+        "review::a": _issue("review::a", detector="review"),
+    }
+
+    plan = empty_plan()
+    plan["queue_order"] = [
+        "subjective::naming_quality",
+        "strategy::legacy-narrative",
+        "review::a",
+        "review::stale",
+    ]
+    plan["promoted_ids"] = ["review::stale"]
+    plan["plan_start_scores"] = {"strict": 80.0}
+    plan["refresh_state"] = {
+        "lifecycle_phase": "execute",
+        "_subjective_migration_pruned": True,
+    }
+    plan["epic_triage_meta"] = {
+        "triaged_ids": ["review::a"],
+        "issue_snapshot_hash": "stable",
+    }
+    plan["clusters"] = {
+        "historic-review": {
+            "name": "historic-review",
+            "issue_ids": [
+                "subjective::naming_quality",
+                "strategy::legacy-narrative",
+                "review::stale",
+            ],
+            "execution_status": "done",
+        }
+    }
+    return plan, state
+
+
+def test_persisted_execute_board_survives_stale_queue_residue() -> None:
+    plan, state = _persisted_execute_board_with_stale_residue()
+
+    result = reconcile_plan(plan, state, target_strict=95.0)
+    snapshot = build_queue_snapshot(state, plan=plan)
+
+    assert result.subjective is None
+    assert result.lifecycle_phase == LIFECYCLE_PHASE_EXECUTE
+    assert result.lifecycle_phase_changed is False
+    assert result.queue_entries_pruned == [
+        "subjective::naming_quality",
+        "strategy::legacy-narrative",
+        "review::stale",
+    ]
+    assert result.phase_cleanup_pruned == []
+    assert plan["queue_order"] == ["review::a"]
+    assert plan["promoted_ids"] == []
+    # Queue cleanup intentionally preserves cluster history.
+    assert plan["clusters"]["historic-review"]["issue_ids"] == [
+        "subjective::naming_quality",
+        "strategy::legacy-narrative",
+        "review::stale",
+    ]
+    assert snapshot.phase == LIFECYCLE_PHASE_EXECUTE
+    assert [item["id"] for item in snapshot.execution_items] == ["review::a"]
+
+
+def test_force_rescan_bypasses_persisted_execute_board() -> None:
+    plan, state = _persisted_execute_board_with_stale_residue()
+
+    result = reconcile_plan(plan, state, target_strict=95.0, force_rescan=True)
+    snapshot = build_queue_snapshot(state, plan=plan)
+
+    assert result.subjective is not None
+    assert result.lifecycle_phase == LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT
+    assert plan["refresh_state"]["lifecycle_phase"] == "plan"
+    assert snapshot.phase == LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT
+
+
+def test_fixed_review_queue_entry_does_not_hold_execute_mode() -> None:
+    plan = empty_plan()
+    plan["queue_order"] = ["review::fixed"]
+    plan["refresh_state"] = {
+        "lifecycle_phase": "execute",
+        "_subjective_migration_pruned": True,
+    }
+    state = _stale_subjective_state()
+
+    result = reconcile_plan(plan, state, target_strict=95.0)
+
+    assert result.queue_entries_pruned == ["review::fixed"]
+    assert result.lifecycle_phase == LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT
+    assert plan["refresh_state"]["lifecycle_phase"] == "plan"
 
 
 def test_reconcile_plan_second_call_is_noop() -> None:

@@ -16,7 +16,7 @@ from desloppify.engine._plan.constants import (
 )
 from desloppify.engine._plan.policy.stale import is_triage_stale
 from desloppify.engine._plan.refresh_lifecycle import (
-    LIFECYCLE_PHASE_REVIEW_POSTFLIGHT,
+    LIFECYCLE_PHASE_EXECUTE,
 )
 from desloppify.engine._plan.schema import empty_plan
 from desloppify.engine._work_queue.snapshot import build_queue_snapshot
@@ -219,7 +219,7 @@ class TestApplyCompletionClearsTriageState:
         assert "observe" in last["stages"]
 
     def test_completion_restores_postflight_scan_marker_for_current_scan(self):
-        """Completing triage should not bounce the queue back to workflow::run-scan."""
+        """Completing triage starts the validated execution board."""
         state = _state_with_review_issues("r1", "r2")
         plan = _plan_with_triage_and_workflow("r1", "r2")
         services = _make_services(state)
@@ -228,9 +228,24 @@ class TestApplyCompletionClearsTriageState:
         apply_completion(args, plan, "Test strategy", services=services)
 
         assert plan["refresh_state"]["postflight_scan_completed_at_scan_count"] == 5
+        assert plan["refresh_state"]["lifecycle_phase"] == "execute"
         snapshot = build_queue_snapshot(state, plan=plan)
-        assert snapshot.phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
+        assert snapshot.phase == LIFECYCLE_PHASE_EXECUTE
         assert [item["id"] for item in snapshot.execution_items] == ["r1", "r2"]
+
+    def test_completion_removes_stale_synthetic_queue_residue(self):
+        state = _state_with_review_issues("r1")
+        plan = _plan_with_triage_and_workflow("r1")
+        plan["queue_order"] = [
+            "subjective::naming_quality",
+            "strategy::legacy-narrative",
+            *plan["queue_order"],
+        ]
+        services = _make_services(state)
+
+        apply_completion(argparse.Namespace(), plan, "Test strategy", services=services)
+
+        assert plan["queue_order"] == ["r1"]
 
     def test_completion_does_not_forge_scan_marker_without_scan_history(self):
         """Plans loaded without a scan should still require an actual scan."""
