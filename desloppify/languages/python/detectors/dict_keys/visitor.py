@@ -9,6 +9,7 @@ from desloppify.languages.python.detectors.dict_keys import (
     _get_name,
     _get_str_key,
 )
+
 from .visitor_helpers import (
     analyze_scope_issues,
     mark_assignment_escape,
@@ -90,7 +91,9 @@ class DictKeyVisitor(ast.NodeVisitor):
             target = node.targets[0]
             name = _get_name(target)
             if name:
-                self._check_dict_creation(name, node.value, node.lineno)
+                tracked = self._check_dict_creation(name, node.value, node.lineno)
+                if tracked is not None and isinstance(target, ast.Attribute):
+                    tracked.returned_or_passed = True
         # Also check for subscript writes: d["key"] = val
         for target in node.targets:
             self._check_subscript_write(target, node.lineno)
@@ -112,8 +115,13 @@ class DictKeyVisitor(ast.NodeVisitor):
         self._check_subscript_write(node.target, node.lineno)
         self.generic_visit(node)
 
-    def _check_dict_creation(self, name: str, value: ast.expr, line: int):
-        """Detect d = {}, d = dict(), d = {"k": v, ...}."""
+    def _check_dict_creation(
+        self,
+        name: str,
+        value: ast.expr,
+        line: int,
+    ) -> TrackedDict | None:
+        """Detect local dict literals, dict(), and dict(key=value) constructors."""
         initial_keys: list[str] = []
         is_creation = False
 
@@ -144,11 +152,12 @@ class DictKeyVisitor(ast.NodeVisitor):
             isinstance(value, ast.Call)
             and isinstance(value.func, ast.Name)
             and value.func.id == "dict"
+            and not value.args
+            and all(keyword.arg is not None for keyword in value.keywords)
         ):
             is_creation = True
             for kw in value.keywords:
-                if kw.arg:
-                    initial_keys.append(kw.arg)
+                initial_keys.append(kw.arg)
 
         if is_creation:
             td = self._track(
@@ -157,6 +166,8 @@ class DictKeyVisitor(ast.NodeVisitor):
             # Store as class dict if it's self.x
             if name.startswith("self.") and self._in_init_or_setup:
                 self._class_dicts[name] = td
+            return td
+        return None
 
     def _check_subscript_write(self, target: ast.expr, line: int):
         """Handle d["key"] = val or d["key"] += val."""

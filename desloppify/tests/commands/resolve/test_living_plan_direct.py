@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 import desloppify.app.commands.resolve.living_plan as living_plan_mod
+from desloppify.engine.plan_ops import skip_items
 
 
 def _args(*, status: str = "fixed", note: str | None = None) -> argparse.Namespace:
@@ -103,6 +104,96 @@ def test_update_living_plan_after_resolve_fixed_flow(monkeypatch, capsys) -> Non
     assert "add" in calls and "clear" in calls and "save" in calls
 
 
+def test_update_living_plan_auto_completes_steps_after_fixed_resolve(
+    monkeypatch,
+) -> None:
+    resolved_id = "review::core::fixed_elsewhere"
+    plan = {
+        "queue_order": [resolved_id],
+        "execution_log": [],
+        "overrides": {resolved_id: {"cluster": "core"}},
+        "clusters": {
+            "core": {
+                "issue_ids": [resolved_id],
+                "action_steps": [
+                    {
+                        "title": "Finish the core migration",
+                        "issue_refs": ["fixed_elsewhere"],
+                    }
+                ],
+            }
+        },
+    }
+
+    monkeypatch.setattr(living_plan_mod, "has_living_plan", lambda _p=None: True)
+    monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
+    monkeypatch.setattr(
+        living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        living_plan_mod, "invalidate_postflight_scan", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(living_plan_mod, "save_plan", lambda *_a, **_k: None)
+
+    updated_plan, _ctx = living_plan_mod.update_living_plan_after_resolve(
+        args=_args(status="fixed"),
+        all_resolved=[resolved_id],
+        attestation="attest",
+    )
+
+    assert updated_plan is plan
+    assert plan["execution_log"][0]["detail"]["status"] == "fixed"
+    assert plan["clusters"]["core"]["action_steps"][0]["done"] is True
+
+
+def test_update_living_plan_keeps_temporary_skipped_steps_incomplete(
+    monkeypatch,
+) -> None:
+    blocked_id = "review::core::external_release_gate"
+    resolved_id = "review::other::fixed_elsewhere"
+    plan = {
+        "queue_order": [blocked_id, resolved_id],
+        "execution_log": [],
+        "overrides": {
+            blocked_id: {"cluster": "core"},
+            resolved_id: {"cluster": "other"},
+        },
+        "clusters": {
+            "core": {
+                "issue_ids": [blocked_id],
+                "action_steps": [
+                    {
+                        "title": "Retire the external bridge",
+                        "issue_refs": ["external_release_gate"],
+                    }
+                ],
+            },
+            "other": {"issue_ids": [resolved_id]},
+        },
+    }
+    skip_items(plan, [blocked_id], kind="temporary")
+
+    monkeypatch.setattr(living_plan_mod, "has_living_plan", lambda _p=None: True)
+    monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
+    monkeypatch.setattr(
+        living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        living_plan_mod, "invalidate_postflight_scan", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(living_plan_mod, "save_plan", lambda *_a, **_k: None)
+
+    updated_plan, _ctx = living_plan_mod.update_living_plan_after_resolve(
+        args=_args(status="fixed"),
+        all_resolved=[resolved_id],
+        attestation="attest",
+    )
+
+    assert updated_plan is plan
+    assert plan["skipped"][blocked_id]["kind"] == "temporary"
+    assert plan["clusters"]["core"]["action_steps"][0].get("done") is not True
+
+
 def test_update_living_plan_after_resolve_marks_all_completed_clusters_done(
     monkeypatch,
 ) -> None:
@@ -127,7 +218,9 @@ def test_update_living_plan_after_resolve_marks_all_completed_clusters_done(
     monkeypatch.setattr(
         living_plan_mod,
         "append_log_entry",
-        lambda _plan, event, **kwargs: calls.append((event, kwargs.get("cluster_name"))),
+        lambda _plan, event, **kwargs: calls.append(
+            (event, kwargs.get("cluster_name"))
+        ),
     )
     monkeypatch.setattr(
         living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None

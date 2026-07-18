@@ -5,21 +5,20 @@ from __future__ import annotations
 import argparse
 from types import SimpleNamespace
 
-import pytest
-
 import desloppify.app.commands.plan.triage.stages.strategize as strategize_mod
-from desloppify.app.commands.plan.triage.workflow import run_triage_workflow
 from desloppify.app.cli_support.parser_groups_plan_impl_sections_triage_commit_scan import (
     _add_triage_subparser,
 )
+from desloppify.app.commands.plan.triage.stages.observe import cmd_stage_observe
+from desloppify.app.commands.plan.triage.workflow import run_triage_workflow
 from desloppify.engine._plan.constants import (
     TRIAGE_STAGE_IDS,
     confirmed_triage_stage_names,
     recorded_unconfirmed_triage_stage_names,
 )
+from desloppify.engine._plan.schema import empty_plan, validate_plan
 from desloppify.engine._plan.sync.triage import _inject_pending_triage_stages
 from desloppify.engine.plan_triage import compute_triage_progress
-from desloppify.app.commands.plan.triage.stages.observe import cmd_stage_observe
 
 
 def _services(plan: dict, state: dict):
@@ -76,6 +75,62 @@ def test_cmd_stage_strategize_persists_briefing_and_auto_confirms(monkeypatch, c
     assert record["confirmed_text"] == "auto-confirmed"
     assert events and events[0]["event_type"] == "strategist_complete"
     assert "auto-confirmed" in capsys.readouterr().out
+
+
+def test_create_strategic_work_items_preserves_matching_skipped_strategy_id() -> None:
+    """Generated reports must not silently revive an explicitly skipped ID."""
+    plan = empty_plan()
+    plan["skipped"] = {
+        "strategy::repeat": {
+            "issue_id": "strategy::repeat",
+            "kind": "false_positive",
+        }
+    }
+    state = {"work_items": {}}
+    strategic_issues = [
+        {
+            "identifier": "repeat",
+            "summary": "Fresh strategic concern",
+            "priority": "high",
+            "recommendation": "Work the newly observed concern as a bounded packet.",
+            "dimensions_affected": ["naming"],
+        }
+    ]
+
+    strategize_mod._create_strategic_work_items(
+        state,
+        plan,
+        strategic_issues,
+    )
+
+    validate_plan(plan)
+    assert "strategy::repeat" not in plan["queue_order"]
+    assert "strategy::repeat" in plan["skipped"]
+    assert "strategy::repeat" not in state["work_items"]
+
+
+def test_create_strategic_work_items_queues_new_strategy_id() -> None:
+    plan = empty_plan()
+    state = {"work_items": {}}
+    strategic_issues = [
+        {
+            "identifier": "fresh",
+            "summary": "Fresh strategic concern",
+            "priority": "high",
+            "recommendation": "Work the newly observed concern as a bounded packet.",
+            "dimensions_affected": ["naming"],
+        }
+    ]
+
+    strategize_mod._create_strategic_work_items(
+        state,
+        plan,
+        strategic_issues,
+    )
+
+    validate_plan(plan)
+    assert plan["queue_order"] == ["strategy::fresh"]
+    assert state["work_items"]["strategy::fresh"]["status"] == "open"
 
 
 def test_observe_is_blocked_until_strategize_is_recorded(capsys) -> None:
