@@ -767,6 +767,27 @@ class TestJscpdAdapter:
             result = detect_with_jscpd(tmp_path)
         assert result == []
 
+    def test_detect_command_disables_jscpd_threshold_failure(self, tmp_path):
+        report_file = tmp_path / "jscpd-report.json"
+        report_file.write_text(json.dumps({"duplicates": []}))
+
+        def _fake_run(cmd, **kwargs):
+            assert cmd[cmd.index("--threshold") + 1] == "100"
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch(
+            "desloppify.engine.detectors.jscpd_adapter._run_jscpd_command",
+            side_effect=_fake_run,
+        ), patch("tempfile.TemporaryDirectory") as mock_td:
+            mock_td.return_value.__enter__.return_value = str(tmp_path)
+            mock_td.return_value.__exit__.return_value = None
+            result = detect_with_jscpd(tmp_path)
+
+        assert result == []
+
 
 # ── Extended ruff smells adapter ─────────────────────────────────────────────
 

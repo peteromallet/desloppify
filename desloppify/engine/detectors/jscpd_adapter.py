@@ -248,6 +248,9 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                     "4",
                     "--min-tokens",
                     "50",
+                    # The report is the result; project thresholds must not hide it.
+                    "--threshold",
+                    "100",
                     "--ignore",
                     _jscpd_ignore_arg(path),
                     "--silent",
