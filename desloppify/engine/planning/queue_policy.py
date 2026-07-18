@@ -67,7 +67,11 @@ def build_execution_queue(
     )
     return _build_work_queue_with_visibility(
         state,
-        options=replace(options, context=ctx),
+        options=replace(
+            options,
+            context=ctx,
+            subjective_threshold=ctx.target_strict,
+        ),
         visibility=QueueVisibility.EXECUTION,
     )
 
@@ -86,7 +90,11 @@ def build_backlog_queue(
     )
     return _build_work_queue_with_visibility(
         state,
-        options=replace(options, context=ctx),
+        options=replace(
+            options,
+            context=ctx,
+            subjective_threshold=ctx.target_strict,
+        ),
         visibility=QueueVisibility.BACKLOG,
     )
 

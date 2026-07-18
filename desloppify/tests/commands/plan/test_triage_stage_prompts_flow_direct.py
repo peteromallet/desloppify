@@ -191,6 +191,56 @@ def test_run_stage_enrich_handles_no_queue_and_records_stage(tmp_path, capsys) -
     assert services.save_calls >= 2
 
 
+def test_enrich_activity_gate_ignores_out_of_scope_open_reviews() -> None:
+    """Only live findings from the frozen triage cycle require a post-organize update."""
+    plan = {"epic_triage_meta": {"active_triage_issue_ids": ["review::current"]}}
+    state = {
+        "issues": {
+            "review::current": {"status": "closed", "detector": "review"},
+            "review::legacy": {"status": "open", "detector": "review"},
+        }
+    }
+    stages = {"organize": {"timestamp": "2026-03-09T00:00:00+00:00"}}
+    deps = stage_flow_enrich_mod.EnrichStageDeps(
+        count_log_activity_since=lambda _plan, _timestamp: {},
+    )
+
+    assert stage_flow_enrich_mod._require_cluster_update_activity(
+        plan=plan,
+        state=state,
+        stages=stages,
+        attestation=None,
+        deps=deps,
+    )
+
+
+def test_sense_check_evidence_rejects_legacy_only_cluster_mentions() -> None:
+    """A sense-check report must mention a cluster from the current frozen cycle."""
+    plan = {
+        "epic_triage_meta": {"active_triage_issue_ids": ["review::current"]},
+        "clusters": {
+            "current-packet": {"issue_ids": ["review::current"]},
+            "legacy-packet": {"issue_ids": ["review::legacy"]},
+        },
+    }
+    state = {
+        "issues": {
+            "review::current": {"status": "open", "detector": "review"},
+            "review::legacy": {"status": "open", "detector": "review"},
+        }
+    }
+    report = "Verified src/review_source.py lines 1-20 while reviewing legacy-packet behavior."
+
+    blocking, advisory = stage_flow_sense_mod._sense_check_evidence_failures(
+        report,
+        plan=plan,
+        state=state,
+    )
+
+    assert [failure.code for failure in blocking] == ["no_cluster_mention"]
+    assert advisory == []
+
+
 def test_record_sense_stage_and_run_stage_sense_check(tmp_path, capsys, monkeypatch) -> None:
     stages: dict = {}
     monkeypatch.setattr(
