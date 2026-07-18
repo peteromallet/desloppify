@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.promoted_ids import prune_promoted_ids
 from desloppify.engine._plan.schema import (
     PlanModel,
@@ -30,8 +31,7 @@ def clear_focus(plan: PlanModel) -> None:
 
 
 def clear_focus_if_cluster_empty(plan: PlanModel) -> None:
-    """Clear focus when the active cluster no longer has actionable queue members."""
-    ensure_plan_defaults(plan)
+    """Clear focus when a normalized active cluster has no queue members."""
     active = plan.get("active_cluster")
     if not active:
         return
@@ -77,6 +77,7 @@ def purge_ids(plan: PlanModel, issue_ids: list[str]) -> int:
 
     order: list[str] = plan["queue_order"]
     skipped: dict[str, SkipEntry] = plan["skipped"]
+    removed_by_cluster: dict[str, list[str]] = {}
     for fid in issue_ids:
         was_present = False
         if fid in order:
@@ -85,10 +86,11 @@ def purge_ids(plan: PlanModel, issue_ids: list[str]) -> int:
         if fid in skipped:
             skipped.pop(fid)
             was_present = True
-        for cluster in plan.get("clusters", {}).values():
+        for cluster_name, cluster in plan.get("clusters", {}).items():
             ids = cluster.get("issue_ids", [])
             if fid in ids:
                 ids.remove(fid)
+                removed_by_cluster.setdefault(cluster_name, []).append(fid)
                 was_present = True
         override = plan.get("overrides", {}).get(fid)
         if override and override.get("cluster"):
@@ -97,6 +99,14 @@ def purge_ids(plan: PlanModel, issue_ids: list[str]) -> int:
         if was_present:
             found += 1
 
+    for cluster_name, removed_ids in removed_by_cluster.items():
+        append_log_entry(
+            plan,
+            "cluster_remove",
+            issue_ids=removed_ids,
+            cluster_name=cluster_name,
+            actor="system",
+        )
     clear_focus_if_cluster_empty(plan)
     return found
 

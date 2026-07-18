@@ -43,7 +43,9 @@ def ensure_container_types(plan: dict[str, Any]) -> None:
         ("epic_triage_meta", dict, dict),
     ):
         _ensure_container(plan, key, expected_type, default_factory)
-    _rename_key(plan["epic_triage_meta"], "finding_snapshot_hash", "issue_snapshot_hash")
+    _rename_key(
+        plan["epic_triage_meta"], "finding_snapshot_hash", "issue_snapshot_hash"
+    )
     _ensure_container(plan, "commit_log", list, list)
     _rename_key(plan, "uncommitted_findings", "uncommitted_issues")
     _ensure_container(plan, "uncommitted_issues", list, list)
@@ -92,9 +94,10 @@ def _override_cluster_members(plan: dict[str, Any]) -> dict[str, list[str]]:
 
 def _execution_log_cluster_members(
     plan: dict[str, Any],
-) -> tuple[dict[str, list[str]], dict[str, str]]:
+) -> tuple[dict[str, list[str]], dict[str, str], dict[str, set[str]]]:
     members: dict[str, list[str]] = {}
     hash_lookup: dict[str, str] = {}
+    removed_members: dict[str, set[str]] = {}
 
     for entry in plan.get("execution_log", []):
         cluster_entry = _execution_log_cluster_entry(entry)
@@ -103,18 +106,20 @@ def _execution_log_cluster_members(
         cluster_name, action, normalized_issue_ids = cluster_entry
         if action == "cluster_delete":
             members.pop(cluster_name, None)
+            removed_members.pop(cluster_name, None)
             continue
         if not normalized_issue_ids:
             continue
         _apply_execution_log_cluster_action(
             members,
             hash_lookup,
+            removed_members,
             cluster_name=cluster_name,
             action=action,
             issue_ids=normalized_issue_ids,
         )
 
-    return members, hash_lookup
+    return members, hash_lookup, removed_members
 
 
 def _execution_log_cluster_entry(
@@ -143,12 +148,14 @@ def _normalized_execution_log_issue_ids(entry: dict[str, Any]) -> list[str]:
 def _apply_execution_log_cluster_action(
     members: dict[str, list[str]],
     hash_lookup: dict[str, str],
+    removed_members: dict[str, set[str]],
     *,
     cluster_name: str,
     action: object,
     issue_ids: list[str],
 ) -> None:
     if action == "cluster_remove":
+        removed_members.setdefault(cluster_name, set()).update(issue_ids)
         bucket = members.get(cluster_name, [])
         if bucket:
             remove_set = set(issue_ids)
@@ -157,6 +164,7 @@ def _apply_execution_log_cluster_action(
             ]
         return
     if action in {"cluster_add", "cluster_create", "cluster_update"}:
+        removed_members.get(cluster_name, set()).difference_update(issue_ids)
         _append_execution_log_members(
             members,
             hash_lookup,
@@ -190,7 +198,9 @@ def _record_execution_log_hash(hash_lookup: dict[str, str], issue_id: str) -> No
 
 def normalize_cluster_defaults(plan: dict[str, Any]) -> None:
     """Recover cluster memberships and normalize runtime defaults."""
-    recovered_members, hash_lookup = _execution_log_cluster_members(plan)
+    recovered_members, hash_lookup, removed_members = _execution_log_cluster_members(
+        plan
+    )
     override_members = _override_cluster_members(plan)
 
     for cluster in plan["clusters"].values():
@@ -198,11 +208,18 @@ def normalize_cluster_defaults(plan: dict[str, Any]) -> None:
             continue
         if not isinstance(cluster.get("issue_ids"), list):
             cluster["issue_ids"] = []
+        cluster_name = cluster.get("name")
+        removed_issue_ids = (
+            removed_members.get(cluster_name, set())
+            if isinstance(cluster_name, str)
+            else set()
+        )
         cluster["issue_ids"] = _normalized_cluster_issue_ids(
             cluster,
             recovered_members=recovered_members,
             override_members=override_members,
             hash_lookup=hash_lookup,
+            removed_issue_ids=removed_issue_ids,
         )
         cluster.setdefault("auto", False)
         cluster.setdefault("cluster_key", "")
@@ -217,11 +234,16 @@ def _append_normalized_issue_id(
     normalized_issue_ids: list[str],
     seen: set[str],
     hash_lookup: dict[str, str],
+    removed_issue_ids: set[str],
 ) -> None:
     issue_id = _normalize_cluster_issue_id(raw_id)
-    if issue_id is None and isinstance(raw_id, str) and _HEX_SUFFIX_RE.fullmatch(raw_id):
+    if (
+        issue_id is None
+        and isinstance(raw_id, str)
+        and _HEX_SUFFIX_RE.fullmatch(raw_id)
+    ):
         issue_id = hash_lookup.get(raw_id)
-    if issue_id is None or issue_id in seen:
+    if issue_id is None or issue_id in removed_issue_ids or issue_id in seen:
         return
     seen.add(issue_id)
     normalized_issue_ids.append(issue_id)
@@ -248,6 +270,7 @@ def _normalized_cluster_issue_ids(
     recovered_members: dict[str, list[str]],
     override_members: dict[str, list[str]],
     hash_lookup: dict[str, str],
+    removed_issue_ids: set[str],
 ) -> list[str]:
     normalized_issue_ids: list[str] = []
     seen: set[str] = set()
@@ -261,6 +284,7 @@ def _normalized_cluster_issue_ids(
             normalized_issue_ids=normalized_issue_ids,
             seen=seen,
             hash_lookup=hash_lookup,
+            removed_issue_ids=removed_issue_ids,
         )
     return normalized_issue_ids
 

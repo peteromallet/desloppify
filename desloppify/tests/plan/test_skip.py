@@ -5,6 +5,7 @@ from __future__ import annotations
 from desloppify.engine._plan.operations.cluster import (
     add_to_cluster,
     create_cluster,
+    remove_from_cluster,
 )
 from desloppify.engine._plan.operations.lifecycle import purge_ids
 from desloppify.engine._plan.operations.meta import append_log_entry
@@ -413,6 +414,52 @@ def test_purge_ids_clears_focus_when_active_cluster_becomes_empty():
     assert purged == 1
     assert plan["clusters"]["my-cluster"]["issue_ids"] == []
     assert plan["active_cluster"] is None
+
+
+def test_purge_ids_keeps_resolved_member_out_of_historical_cluster():
+    """A later normalization must not replay a resolved cluster member."""
+    plan = _plan_with_queue("a")
+    ensure_plan_defaults(plan)
+    create_cluster(plan, "my-cluster")
+    add_to_cluster(plan, "my-cluster", ["a"])
+    append_log_entry(
+        plan,
+        "cluster_add",
+        issue_ids=["a"],
+        cluster_name="my-cluster",
+    )
+
+    assert purge_ids(plan, ["a"]) == 1
+    ensure_plan_defaults(plan)
+
+    assert plan["clusters"]["my-cluster"]["issue_ids"] == []
+    assert plan["execution_log"][-1]["action"] == "cluster_remove"
+    assert plan["execution_log"][-1]["actor"] == "system"
+
+
+def test_cluster_remove_survives_normalization_before_its_log_is_appended():
+    """A cluster remove command must not rehydrate its member before save."""
+    plan = _plan_with_queue("a")
+    ensure_plan_defaults(plan)
+    create_cluster(plan, "my-cluster")
+    add_to_cluster(plan, "my-cluster", ["a"])
+    append_log_entry(
+        plan,
+        "cluster_add",
+        issue_ids=["a"],
+        cluster_name="my-cluster",
+    )
+
+    assert remove_from_cluster(plan, "my-cluster", ["a"]) == 1
+    append_log_entry(
+        plan,
+        "cluster_remove",
+        issue_ids=["a"],
+        cluster_name="my-cluster",
+    )
+    ensure_plan_defaults(plan)
+
+    assert plan["clusters"]["my-cluster"]["issue_ids"] == []
 
 
 # ---------------------------------------------------------------------------
