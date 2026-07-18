@@ -4,44 +4,42 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.state_scoring import score_snapshot
 from desloppify.engine._plan.auto_cluster import auto_cluster_issues
 from desloppify.engine._plan.constants import (
     PRE_REVIEW_WORKFLOW_IDS,
     WORKFLOW_COMMUNICATE_SCORE_ID,
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_DEFERRED_DISPOSITION_ID,
-    WORKFLOW_IMPORT_SCORES_ID,
     WORKFLOW_RUN_SCAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
     QueueSyncResult,
     is_synthetic_id,
 )
 from desloppify.engine._plan.operations.meta import append_log_entry
-from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
 from desloppify.engine._plan.policy.stale import open_review_ids
+from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
 from desloppify.engine._plan.refresh_lifecycle import (
     _set_lifecycle_phase,
     derive_display_phase,
+    has_live_triaged_execution_board,
     user_facing_mode,
 )
 from desloppify.engine._plan.sync.dimensions import sync_subjective_dimensions
 from desloppify.engine._plan.sync.phase_cleanup import prune_synthetic_for_phase
 from desloppify.engine._plan.sync.triage import sync_triage_needed
-from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._plan.sync.workflow import (
     ScoreSnapshot,
     sync_communicate_score_needed,
     sync_create_plan_needed,
 )
+from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
+from desloppify.state_scoring import score_snapshot
 
 _SCAN_PHASE_WORKFLOW_IDS = {
     WORKFLOW_DEFERRED_DISPOSITION_ID,
     WORKFLOW_RUN_SCAN_ID,
 }
-_POSTFLIGHT_WORKFLOW_IDS = (
-    PRE_REVIEW_WORKFLOW_IDS - _SCAN_PHASE_WORKFLOW_IDS
-) | {
+_POSTFLIGHT_WORKFLOW_IDS = (PRE_REVIEW_WORKFLOW_IDS - _SCAN_PHASE_WORKFLOW_IDS) | {
     WORKFLOW_SCORE_CHECKPOINT_ID,
     WORKFLOW_COMMUNICATE_SCORE_ID,
     WORKFLOW_CREATE_PLAN_ID,
@@ -113,6 +111,7 @@ def _resolve_reconcile_display_phase(
     *,
     result: ReconcileResult,
     policy: object | None,
+    preserve_triaged_execution: bool = False,
 ) -> str:
     """Derive the display phase from queue contents.
 
@@ -158,6 +157,17 @@ def _resolve_reconcile_display_phase(
     has_review_postflight = triage_gated_review or (
         not has_real_work and bool(open_review_ids(state))
     )
+
+    if preserve_triaged_execution:
+        # Completed triage explicitly owns this live active review packet.
+        # Preserve its execution handoff until the board changes or a forced
+        # rescan starts a new cycle.
+        prefer_scan = False
+        has_initial_review = False
+        has_postflight_assessment = False
+        has_workflow = False
+        has_triage = False
+        has_review_postflight = False
 
     return derive_display_phase(
         has_initial_review=has_initial_review,
@@ -231,6 +241,9 @@ def reconcile_plan(
     # left by the old mid-cycle re-injection bug.  With boundary-only sync
     # they won't be re-added, so they just block phase resolution.
     _migrate_prune_stale_subjective(plan)
+    preserve_triaged_execution = not force_rescan and has_live_triaged_execution_board(
+        plan, state
+    )
 
     policy = compute_subjective_visibility(
         state,
@@ -238,13 +251,14 @@ def reconcile_plan(
         plan=plan,
     )
 
-    result.subjective = sync_subjective_dimensions(
-        plan,
-        state,
-        policy=policy,
-    )
-    if result.subjective.changes:
-        _log_gate_changes(plan, "sync_subjective", {"changes": True})
+    if not preserve_triaged_execution:
+        result.subjective = sync_subjective_dimensions(
+            plan,
+            state,
+            policy=policy,
+        )
+        if result.subjective.changes:
+            _log_gate_changes(plan, "sync_subjective", {"changes": True})
 
     # Auto-clustering and heavier workflow reconciliation only runs at queue boundaries.
     if live_planned_queue_empty(plan) or force_rescan:
@@ -271,7 +285,9 @@ def reconcile_plan(
             # Snapshot rebaseline fields now, before post-reconcile clearing
             if result.communicate_score.auto_resolved:
                 result.checkpoint_plan_start = dict(plan.get("plan_start_scores", {}))
-                result.checkpoint_prev_start = dict(plan.get("previous_plan_start_scores", {}))
+                result.checkpoint_prev_start = dict(
+                    plan.get("previous_plan_start_scores", {})
+                )
 
         result.create_plan = sync_create_plan_needed(
             plan,
@@ -294,6 +310,7 @@ def reconcile_plan(
         state,
         result=result,
         policy=policy,
+        preserve_triaged_execution=preserve_triaged_execution,
     )
     mode = user_facing_mode(result.lifecycle_phase)
     result.lifecycle_phase_changed = _set_lifecycle_phase(plan, mode)

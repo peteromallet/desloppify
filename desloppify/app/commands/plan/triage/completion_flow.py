@@ -7,18 +7,23 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.output.terminal import colorize
-from desloppify.engine._plan.refresh_lifecycle import current_lifecycle_phase
-from desloppify.engine._state.progression import (
-    append_progression_event,
-    build_triage_complete_event,
-)
 from desloppify.engine._plan.constants import (
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
 )
 from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
-from desloppify.engine._plan.refresh_lifecycle import mark_postflight_scan_completed
+from desloppify.engine._plan.refresh_lifecycle import (
+    current_lifecycle_phase,
+    has_live_triaged_execution_board,
+    mark_postflight_scan_completed,
+)
+from desloppify.engine._plan.sync import reconcile_plan
+from desloppify.engine._state.progression import (
+    append_progression_event,
+    build_triage_complete_event,
+)
 from desloppify.engine.plan_ops import purge_ids
 from desloppify.engine.plan_state import Cluster, PlanModel
 from desloppify.engine.plan_triage import TRIAGE_IDS
@@ -146,8 +151,15 @@ def _print_completion_summary(
     completion_mode: str,
     effective_strategy_summary: str,
 ) -> None:
-    cluster_count = len([cluster for cluster in clusters.values() if cluster_issue_ids(cluster)])
-    print(colorize(f"  Triage complete: {organized}/{total} issues in {cluster_count} cluster(s).", "green"))
+    cluster_count = len(
+        [cluster for cluster in clusters.values() if cluster_issue_ids(cluster)]
+    )
+    print(
+        colorize(
+            f"  Triage complete: {organized}/{total} issues in {cluster_count} cluster(s).",
+            "green",
+        )
+    )
     if completion_mode == "confirm_existing":
         print(
             colorize(
@@ -226,6 +238,12 @@ def apply_completion(
         plan=plan,
         state=state,
     )
+    if has_live_triaged_execution_board(plan, state):
+        reconcile_plan(
+            plan,
+            state,
+            target_strict=target_strict_score_from_config(state.get("config")),
+        )
     resolved_services.save_plan(plan)
 
     # --- Progression: triage_complete ---
@@ -243,7 +261,9 @@ def apply_completion(
             )
         )
     except Exception:
-        _logger.warning("Failed to append triage_complete progression event", exc_info=True)
+        _logger.warning(
+            "Failed to append triage_complete progression event", exc_info=True
+        )
 
     _print_completion_summary(
         clusters=clusters,

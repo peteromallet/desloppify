@@ -16,9 +16,12 @@ from desloppify.engine._plan.constants import (
 )
 from desloppify.engine._plan.policy.stale import is_triage_stale
 from desloppify.engine._plan.refresh_lifecycle import (
+    LIFECYCLE_PHASE_EXECUTE,
     LIFECYCLE_PHASE_REVIEW_POSTFLIGHT,
 )
+from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan
 from desloppify.engine._plan.schema import empty_plan
+from desloppify.engine._plan.sync import reconcile_plan
 from desloppify.engine._work_queue.snapshot import build_queue_snapshot
 
 
@@ -228,9 +231,92 @@ class TestApplyCompletionClearsTriageState:
         apply_completion(args, plan, "Test strategy", services=services)
 
         assert plan["refresh_state"]["postflight_scan_completed_at_scan_count"] == 5
+        assert plan["refresh_state"].get("lifecycle_phase") != "execute"
         snapshot = build_queue_snapshot(state, plan=plan)
         assert snapshot.phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
         assert [item["id"] for item in snapshot.execution_items] == ["r1", "r2"]
+
+        result = reconcile_plan(plan, state, target_strict=95.0)
+
+        assert result.lifecycle_phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
+        assert plan["refresh_state"]["lifecycle_phase"] == "plan"
+
+    def test_completion_hands_off_live_active_cluster_to_execute(self):
+        state = _state_with_review_issues("r1", "r2")
+        plan = _plan_with_triage_and_workflow("r1", "r2")
+        plan["clusters"] = {
+            "manual": {
+                "name": "manual",
+                "issue_ids": ["r1", "r2"],
+                "execution_status": "active",
+            }
+        }
+        services = _make_services(state)
+        args = argparse.Namespace()
+
+        apply_completion(args, plan, "Test strategy", services=services)
+
+        assert plan["refresh_state"]["lifecycle_phase"] == "execute"
+        snapshot = build_queue_snapshot(state, plan=plan)
+        assert snapshot.phase == LIFECYCLE_PHASE_EXECUTE
+        assert [item["id"] for item in snapshot.execution_items] == ["r1", "r2"]
+
+        result = reconcile_plan(plan, state, target_strict=95.0)
+
+        assert result.lifecycle_phase == LIFECYCLE_PHASE_EXECUTE
+        assert plan["refresh_state"]["lifecycle_phase"] == "execute"
+        assert build_queue_snapshot(state, plan=plan).phase == LIFECYCLE_PHASE_EXECUTE
+
+    def test_completion_does_not_handoff_nonqueued_active_cluster(self):
+        state = _state_with_review_issues("r1")
+        plan = _plan_with_triage_and_workflow("r1")
+        plan["queue_order"] = [
+            issue_id for issue_id in plan["queue_order"] if issue_id != "r1"
+        ]
+        plan["clusters"] = {
+            "manual": {
+                "name": "manual",
+                "issue_ids": ["r1"],
+                "execution_status": "active",
+            }
+        }
+        services = _make_services(state)
+        args = argparse.Namespace()
+
+        apply_completion(args, plan, "Test strategy", services=services)
+
+        assert plan["refresh_state"].get("lifecycle_phase") != "execute"
+        assert (
+            build_queue_snapshot(state, plan=plan).phase
+            == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
+        )
+
+        result = reconcile_plan(plan, state, target_strict=95.0)
+
+        assert result.lifecycle_phase != LIFECYCLE_PHASE_EXECUTE
+
+    def test_completion_does_not_handoff_stale_active_cluster_member(self):
+        state = _state_with_review_issues("r1")
+        plan = _plan_with_triage_and_workflow("r2")
+        plan["epic_triage_meta"]["active_triage_issue_ids"] = ["r2"]
+        plan["clusters"] = {
+            "manual": {
+                "name": "manual",
+                "issue_ids": ["r2"],
+                "execution_status": "active",
+            }
+        }
+        services = _make_services(state)
+        args = argparse.Namespace()
+
+        apply_completion(args, plan, "Test strategy", services=services)
+
+        assert plan["refresh_state"].get("lifecycle_phase") != "execute"
+
+        reconcile_plan_after_scan(plan, state)
+        result = reconcile_plan(plan, state, target_strict=95.0)
+
+        assert result.lifecycle_phase != LIFECYCLE_PHASE_EXECUTE
 
     def test_completion_does_not_forge_scan_marker_without_scan_history(self):
         """Plans loaded without a scan should still require an actual scan."""
@@ -242,13 +328,19 @@ class TestApplyCompletionClearsTriageState:
 
         apply_completion(args, plan, "Test strategy", services=services)
 
-        assert "postflight_scan_completed_at_scan_count" not in plan.get("refresh_state", {})
+        assert "postflight_scan_completed_at_scan_count" not in plan.get(
+            "refresh_state", {}
+        )
 
-    def test_confirm_existing_rewrites_strategy_summary_to_explicit_reuse_message(self, capsys):
+    def test_confirm_existing_rewrites_strategy_summary_to_explicit_reuse_message(
+        self, capsys
+    ):
         """Confirm-existing completion should not leave the stale prior strategy summary in place."""
         state = _state_with_review_issues("r1")
         plan = _plan_with_triage_and_workflow("r1")
-        plan["epic_triage_meta"]["strategy_summary"] = "Legacy sequencing summary from an older triage run."
+        plan["epic_triage_meta"]["strategy_summary"] = (
+            "Legacy sequencing summary from an older triage run."
+        )
         services = _make_services(state)
         args = argparse.Namespace()
 
@@ -264,7 +356,10 @@ class TestApplyCompletionClearsTriageState:
         meta = plan["epic_triage_meta"]
         assert meta["trigger"] == "confirm_existing"
         assert meta["last_completion_mode"] == "confirm_existing"
-        assert meta["last_completion_note"] == "Existing enriched manual clusters still cover [r1]."
+        assert (
+            meta["last_completion_note"]
+            == "Existing enriched manual clusters still cover [r1]."
+        )
         assert meta["strategy_summary"].startswith(
             "Reused the existing enriched cluster plan after re-review"
         )
@@ -273,6 +368,12 @@ class TestApplyCompletionClearsTriageState:
         last = meta["last_triage"]
         assert last["completion_mode"] == "confirm_existing"
         assert last["reused_existing_plan"] is True
-        assert last["completion_note"] == "Existing enriched manual clusters still cover [r1]."
-        assert last["previous_strategy_summary"] == "Legacy sequencing summary from an older triage run."
+        assert (
+            last["completion_note"]
+            == "Existing enriched manual clusters still cover [r1]."
+        )
+        assert (
+            last["previous_strategy_summary"]
+            == "Legacy sequencing summary from an older triage run."
+        )
         assert last["strategy"] == meta["strategy_summary"]

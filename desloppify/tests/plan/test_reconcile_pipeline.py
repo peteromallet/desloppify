@@ -306,7 +306,9 @@ def test_scan_phase_workflow_ids_resolve_to_scan(workflow_id: str) -> None:
     plan["queue_order"] = [workflow_id]
     plan["plan_start_scores"] = {"strict": 80.0}
 
-    result = reconcile_plan(plan, {"issues": {}, "work_items": {}, "scan_count": 1}, target_strict=95.0)
+    result = reconcile_plan(
+        plan, {"issues": {}, "work_items": {}, "scan_count": 1}, target_strict=95.0
+    )
 
     assert result.lifecycle_phase == LIFECYCLE_PHASE_SCAN
 
@@ -480,6 +482,61 @@ def test_queue_snapshot_executes_review_items_promoted_into_active_cluster() -> 
 
     assert snapshot.phase == LIFECYCLE_PHASE_EXECUTE
     assert [item["id"] for item in snapshot.execution_items] == ["review::a"]
+
+
+def test_reconcile_preserves_completed_live_active_review_board() -> None:
+    state = _review_issue_state("review::a")
+    plan = empty_plan()
+    plan["queue_order"] = ["review::a"]
+    plan["refresh_state"] = {"postflight_scan_completed_at_scan_count": 1}
+    plan["epic_triage_meta"] = {
+        "last_completed_at": "2026-01-01T00:00:00+00:00",
+        "triaged_ids": ["review::a"],
+        "triage_stages": {},
+        "issue_snapshot_hash": review_issue_snapshot_hash(state),
+    }
+    plan["clusters"] = {
+        "manual/review": {
+            "name": "manual/review",
+            "issue_ids": ["review::a"],
+            "execution_status": "active",
+        }
+    }
+
+    first = reconcile_plan(plan, state, target_strict=95.0)
+    second = reconcile_plan(plan, state, target_strict=95.0)
+
+    assert first.lifecycle_phase == LIFECYCLE_PHASE_EXECUTE
+    assert second.lifecycle_phase == LIFECYCLE_PHASE_EXECUTE
+    assert plan["refresh_state"]["lifecycle_phase"] == "execute"
+    snapshot = build_queue_snapshot(state, plan=plan)
+    assert snapshot.phase == LIFECYCLE_PHASE_EXECUTE
+    assert [item["id"] for item in snapshot.execution_items] == ["review::a"]
+
+
+def test_force_rescan_releases_completed_live_active_review_board() -> None:
+    state = _review_issue_state("review::a")
+    plan = empty_plan()
+    plan["queue_order"] = ["review::a"]
+    plan["refresh_state"] = {"lifecycle_phase": "execute"}
+    plan["epic_triage_meta"] = {
+        "last_completed_at": "2026-01-01T00:00:00+00:00",
+        "triaged_ids": ["review::a"],
+        "triage_stages": {},
+        "issue_snapshot_hash": review_issue_snapshot_hash(state),
+    }
+    plan["clusters"] = {
+        "manual/review": {
+            "name": "manual/review",
+            "issue_ids": ["review::a"],
+            "execution_status": "active",
+        }
+    }
+
+    result = reconcile_plan(plan, state, target_strict=95.0, force_rescan=True)
+
+    assert result.lifecycle_phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
+    assert plan["refresh_state"]["lifecycle_phase"] == "plan"
 
 
 def test_queue_snapshot_executes_review_items_explicitly_in_queue_order() -> None:

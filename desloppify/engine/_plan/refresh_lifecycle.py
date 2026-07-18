@@ -33,11 +33,17 @@ non-``execute`` display phases back to the persisted ``"plan"`` mode.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
+from desloppify.engine._plan.cluster_semantics import cluster_is_active
 from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
-from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
+from desloppify.engine._plan.schema import (
+    PlanModel,
+    ensure_plan_defaults,
+    live_planned_queue_ids,
+)
 from desloppify.engine._state.issue_semantics import counts_toward_objective_backlog
+from desloppify.engine._state.schema import StateModel
 
 _POSTFLIGHT_SCAN_KEY = "postflight_scan_completed_at_scan_count"
 _SUBJECTIVE_REVIEW_KEY = "subjective_review_completed_at_scan_count"
@@ -123,7 +129,6 @@ def user_facing_mode(display_phase: str) -> str:
     return "plan"
 
 
-
 def migrate_legacy_phase(plan: PlanModel) -> bool:
     """Normalize legacy persisted lifecycle values in-place once per load."""
     refresh_state = plan.get("refresh_state")
@@ -172,6 +177,51 @@ def current_lifecycle_phase(plan: PlanModel) -> str:
     return "execute"
 
 
+def has_live_triaged_execution_board(plan: PlanModel, state: StateModel) -> bool:
+    """Return whether completed triage owns a live active review packet."""
+    from desloppify.engine._plan.policy.stale import open_review_ids
+
+    meta = plan.get("epic_triage_meta")
+    if not isinstance(meta, dict) or not meta.get("last_completed_at"):
+        return False
+    if meta.get("triage_stages"):
+        return False
+
+    queue_order = plan.get("queue_order", [])
+    if any(
+        isinstance(issue_id, str) and issue_id.startswith("triage::")
+        for issue_id in queue_order
+    ):
+        return False
+
+    triaged_ids = {
+        issue_id
+        for issue_id in meta.get("triaged_ids", [])
+        if isinstance(issue_id, str) and issue_id
+    }
+    open_ids = open_review_ids(state)
+    if not triaged_ids or not open_ids or not open_ids <= triaged_ids:
+        return False
+    live_ids = triaged_ids & open_ids & live_planned_queue_ids(plan)
+    if not live_ids:
+        return False
+
+    clusters = plan.get("clusters", {})
+    if not isinstance(clusters, dict):
+        return False
+    for cluster in clusters.values():
+        if not isinstance(cluster, dict) or not cluster_is_active(cluster):
+            continue
+        issue_ids = cluster.get("issue_ids")
+        if not isinstance(issue_ids, list):
+            continue
+        if any(
+            isinstance(issue_id, str) and issue_id in live_ids for issue_id in issue_ids
+        ):
+            return True
+    return False
+
+
 def derive_display_phase(
     *,
     has_initial_review: bool,
@@ -199,7 +249,6 @@ def derive_display_phase(
     if has_execution:
         return LIFECYCLE_PHASE_EXECUTE
     return LIFECYCLE_PHASE_SCAN
-
 
 
 def _set_lifecycle_phase(plan: PlanModel, phase: str) -> bool:
@@ -328,6 +377,7 @@ __all__ = [
     "invalidate_postflight_scan",
     "current_lifecycle_phase",
     "derive_display_phase",
+    "has_live_triaged_execution_board",
     "mark_postflight_scan_completed",
     "mark_subjective_review_completed",
     "migrate_legacy_phase",
