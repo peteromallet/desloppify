@@ -221,6 +221,14 @@ class TestApplyCompletionClearsTriageState:
     def test_completion_restores_postflight_scan_marker_for_current_scan(self):
         """Completing triage should not bounce the queue back to workflow::run-scan."""
         state = _state_with_review_issues("r1", "r2")
+        state["issues"]["smells::test.py::duplicate_constant"] = {
+            "status": "open",
+            "detector": "smells",
+            "file": "test.py",
+            "summary": "Mechanical smell must remain backlog work",
+            "confidence": "high",
+            "tier": 1,
+        }
         plan = _plan_with_triage_and_workflow("r1", "r2")
         services = _make_services(state)
         args = argparse.Namespace()
@@ -231,6 +239,9 @@ class TestApplyCompletionClearsTriageState:
         snapshot = build_queue_snapshot(state, plan=plan)
         assert snapshot.phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
         assert [item["id"] for item in snapshot.execution_items] == ["r1", "r2"]
+        assert [item["id"] for item in snapshot.backlog_items] == [
+            "smells::test.py::duplicate_constant"
+        ]
 
     def test_completion_does_not_forge_scan_marker_without_scan_history(self):
         """Plans loaded without a scan should still require an actual scan."""
