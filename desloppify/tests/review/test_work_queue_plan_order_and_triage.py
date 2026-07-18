@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from desloppify.engine._plan.refresh_lifecycle import carry_forward_subjective_review
+from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 from desloppify.engine.planning.queue_policy import (
     build_backlog_queue,
     build_execution_queue,
 )
-from desloppify.engine._work_queue.core import QueueBuildOptions
-from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 
 
 def build_work_queue(state, **kwargs):
@@ -528,6 +528,60 @@ def test_backlog_queue_excludes_execution_objective_items():
     assert "smells::src/a.py::planned" not in ids
     assert "smells::src/b.py::unplanned" in ids
     assert "workflow::run-scan" not in ids
+
+
+def test_policy_queues_honor_configured_subjective_threshold():
+    """All plan queue views use the configured strict target, not 100.0."""
+    from desloppify.engine._plan.schema import empty_plan
+
+    state = _state(
+        [],
+        dimension_scores={
+            "Init coupling": {
+                "score": 91.0,
+                "strict": 91.0,
+                "failing": 0,
+                "tier": 4,
+                "detectors": {
+                    "subjective_assessment": {
+                        "dimension_key": "initialization_coupling",
+                        "placeholder": False,
+                    },
+                },
+            },
+            "Dep health": {
+                "score": 94.0,
+                "strict": 94.0,
+                "failing": 0,
+                "tier": 4,
+                "detectors": {
+                    "subjective_assessment": {
+                        "dimension_key": "dependency_health",
+                        "placeholder": False,
+                    },
+                },
+            },
+        },
+    )
+    state["config"] = {"target_strict_score": 85}
+    state["subjective_assessments"] = {
+        "initialization_coupling": {"score": 91.0, "needs_review_refresh": True},
+        "dependency_health": {"score": 94.0, "needs_review_refresh": True},
+    }
+    plan = empty_plan()
+    plan["plan_start_scores"] = {"strict": 81.2}
+    plan["refresh_state"] = {
+        "lifecycle_phase": "plan",
+        "postflight_scan_completed_at_scan_count": 1,
+        "subjective_review_completed_at_scan_count": 1,
+    }
+    options = QueueBuildOptions(count=None, include_subjective=True, plan=plan)
+
+    execution = build_execution_queue(state, options=options)
+    backlog = build_backlog_queue(state, options=options)
+
+    assert execution["items"] == []
+    assert backlog["items"] == []
 
 
 def test_unplanned_objective_items_dont_block_postflight():

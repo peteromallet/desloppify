@@ -458,6 +458,63 @@ def test_plan_aware_queue_breakdown_counts_execution_items_as_live():
     assert breakdown.stale_plan_ordered == 0
 
 
+def test_plan_aware_breakdown_honors_configured_subjective_target():
+    """Scan preflight sees no work when all subjective scores clear the target."""
+    from desloppify.engine._plan.schema import empty_plan
+
+    state = {
+        "config": {"target_strict_score": 85},
+        "issues": {},
+        "dimension_scores": {
+            "Init coupling": {
+                "score": 91.0,
+                "strict": 91.0,
+                "failing": 0,
+                "tier": 4,
+                "detectors": {
+                    "subjective_assessment": {
+                        "dimension_key": "initialization_coupling",
+                        "placeholder": False,
+                    },
+                },
+            },
+            "Dep health": {
+                "score": 94.0,
+                "strict": 94.0,
+                "failing": 0,
+                "tier": 4,
+                "detectors": {
+                    "subjective_assessment": {
+                        "dimension_key": "dependency_health",
+                        "placeholder": False,
+                    },
+                },
+            },
+        },
+        "subjective_assessments": {
+            "initialization_coupling": {
+                "score": 91.0,
+                "needs_review_refresh": True,
+            },
+            "dependency_health": {
+                "score": 94.0,
+                "needs_review_refresh": True,
+            },
+        },
+    }
+    plan = empty_plan()
+    plan["plan_start_scores"] = {"strict": 81.2}
+    plan["refresh_state"] = {
+        "lifecycle_phase": "plan",
+        "postflight_scan_completed_at_scan_count": 1,
+        "subjective_review_completed_at_scan_count": 1,
+    }
+
+    breakdown = plan_aware_queue_breakdown(state, plan=plan)
+
+    assert breakdown.queue_total == 0
+
+
 # ── print_frozen_score_with_queue_context ────────────────────
 
 
