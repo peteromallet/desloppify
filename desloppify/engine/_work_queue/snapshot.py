@@ -14,10 +14,6 @@ from desloppify.engine._plan.constants import (
     WORKFLOW_DEFERRED_DISPOSITION_ID,
     WORKFLOW_RUN_SCAN_ID,
 )
-from desloppify.engine._plan.schema import (
-    executable_objective_ids as _executable_objective_ids,
-    live_planned_queue_ids as _live_planned_queue_ids,
-)
 from desloppify.engine._plan.refresh_lifecycle import (
     LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT,
     LIFECYCLE_PHASE_EXECUTE,
@@ -29,13 +25,18 @@ from desloppify.engine._plan.refresh_lifecycle import (
     current_lifecycle_phase,
     derive_display_phase,
 )
+from desloppify.engine._plan.schema import (
+    executable_objective_ids as _executable_objective_ids,
+)
+from desloppify.engine._plan.schema import (
+    live_planned_queue_ids as _live_planned_queue_ids,
+)
 from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._state.issue_semantics import (
     counts_toward_objective_backlog,
     is_assessment_request,
     is_review_work_item,
-    is_triage_finding,
 )
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.ranking import build_issue_items
@@ -119,7 +120,8 @@ def _is_objective_item(item: WorkQueueItem, *, skipped_ids: set[str]) -> bool:
 
 
 def _review_issue_items(items: Iterable[WorkQueueItem]) -> list[WorkQueueItem]:
-    return [item for item in items if is_triage_finding(item)]
+    """Return subjective review findings eligible for review postflight."""
+    return [item for item in items if is_review_work_item(item)]
 
 
 def _assessment_request_items(items: Iterable[WorkQueueItem]) -> list[WorkQueueItem]:
@@ -165,7 +167,6 @@ def _merge_execution_candidates(
 ) -> tuple[list[WorkQueueItem], list[WorkQueueItem]]:
     """Merge queue-owned execution items with objective defaults."""
     explicit_queue_ids = _live_planned_queue_ids(plan)
-
     queued_non_review_items = [
         item
         for item in all_issue_items

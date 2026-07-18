@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from desloppify.engine._plan.refresh_lifecycle import carry_forward_subjective_review
+from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 from desloppify.engine.planning.queue_policy import (
     build_backlog_queue,
     build_execution_queue,
 )
-from desloppify.engine._work_queue.core import QueueBuildOptions
-from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 
 
 def build_work_queue(state, **kwargs):
@@ -380,8 +380,8 @@ def test_explicit_planned_issue_bypasses_standalone_threshold_filter():
     assert [item["id"] for item in queue["items"]] == ["facade::src/a.py"]
 
 
-def test_triaged_review_findings_stay_postflight_while_objective_work_remains():
-    """Completed triage should not mix review findings into execute."""
+def test_triaged_review_findings_hold_objective_work_in_backlog():
+    """Postflight review work must not leak queued objectives into execution."""
     from desloppify.engine._plan.schema import empty_plan
 
     state = _state(
@@ -409,12 +409,25 @@ def test_triaged_review_findings_stay_postflight_while_objective_work_remains():
         state,
         options=QueueBuildOptions(
             count=None,
-            include_subjective=False,
+            include_subjective=True,
             plan=plan,
         ),
     )
-    ids = [item["id"] for item in queue["items"]]
-    assert ids == ["smells::src/a.py::x"]
+    assert [item["id"] for item in queue["items"]] == [
+        "review::src/a.py::naming"
+    ]
+
+    backlog = build_backlog_queue(
+        state,
+        options=QueueBuildOptions(
+            count=None,
+            include_subjective=True,
+            plan=plan,
+        ),
+    )
+    assert [item["id"] for item in backlog["items"]] == [
+        "smells::src/a.py::x"
+    ]
 
 
 def test_postflight_assessment_precedes_review_findings():

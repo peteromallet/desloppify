@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from ..review_coverage import cluster_issue_ids
 from .enrich_checks import (
     _steps_missing_issue_refs,
     _steps_referencing_skipped_issues,
@@ -14,7 +15,6 @@ from .enrich_checks import (
     _steps_without_effort,
     _underspecified_steps,
 )
-from ..review_coverage import cluster_issue_ids
 
 Severity = Literal["failure", "warning"]
 
@@ -77,17 +77,18 @@ def _active_cluster_names(plan: dict, triage_issue_ids: set[str]) -> set[str]:
     return {
         name
         for name, cluster in plan.get("clusters", {}).items()
-        if not cluster_issue_ids(cluster)
-        or set(cluster_issue_ids(cluster)) & triage_issue_ids
+        if set(cluster_issue_ids(cluster)) & triage_issue_ids
     }
 
 
 def _scoped_plan(plan: dict, triage_issue_ids: set[str] | None) -> dict:
     """Narrow plan to only clusters relevant to the current triage cycle.
 
-    Returns the original plan unchanged when no triage scoping is needed.
+    ``None`` means no triage scoping is needed.  An empty set means a frozen
+    triage cycle has no remaining live issues, so no historical clusters may
+    leak back into validation.
     """
-    if not triage_issue_ids:
+    if triage_issue_ids is None:
         return plan
     active = _active_cluster_names(plan, triage_issue_ids)
     return {
