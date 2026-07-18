@@ -228,6 +228,29 @@ def test_merge_and_finalize_helpers(tmp_path: Path, monkeypatch) -> None:
     assert any("run-finished" in line for line in logs)
 
 
+def test_enforce_import_coverage_allows_unrelated_dimension_gaps() -> None:
+    """A targeted review need only assess the dimensions it requested."""
+    results_mod.enforce_import_coverage(
+        missing_after_import=["naming_quality", "type_safety"],
+        packet_dimensions=["mid_level_elegance"],
+        allow_partial=False,
+        scan_path=".",
+        colorize_fn=lambda text, _tone=None: text,
+    )
+
+
+def test_enforce_import_coverage_blocks_missing_requested_dimension() -> None:
+    """A full packet still cannot import when one of its dimensions is absent."""
+    with pytest.raises(CommandError, match="incomplete selected-dimension coverage"):
+        results_mod.enforce_import_coverage(
+            missing_after_import=["type_safety"],
+            packet_dimensions=["mid_level_elegance", "type_safety"],
+            allow_partial=False,
+            scan_path=".",
+            colorize_fn=lambda text, _tone=None: text,
+        )
+
+
 def test_import_and_finalize_raises_when_followup_scan_fails(tmp_path: Path) -> None:
     merged_path = tmp_path / "merged.json"
     merged_path.write_text("{}")

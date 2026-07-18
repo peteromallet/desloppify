@@ -223,9 +223,15 @@ def enforce_import_coverage(
     scan_path: str,
     colorize_fn,
 ) -> None:
-    """Apply trusted import coverage gate after merge output is written."""
+    """Apply trusted import coverage gate to the requested review dimensions."""
+    requested_dimensions = set(packet_dimensions)
+    missing_requested_dimensions = [
+        dimension
+        for dimension in missing_after_import
+        if dimension in requested_dimensions
+    ]
     enforce_trusted_import_coverage_gate(
-        missing_dims=missing_after_import,
+        missing_dims=missing_requested_dimensions,
         selected_dims=packet_dimensions,
         allow_partial=allow_partial,
         scan_path=scan_path,
