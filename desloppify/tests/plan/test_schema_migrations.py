@@ -97,11 +97,19 @@ def test_normalize_cluster_defaults_restores_issue_ids_from_execution_log() -> N
         "clusters": {
             "manual": {
                 "name": "manual",
-                "issue_ids": [],
+                "issue_ids": [
+                    "review::.::holistic::authorization_consistency::decrypted_api_key_rpc_not_restricted::07c3759c",
+                    "review::.::holistic::test_strategy::untested_shared_request_guards::1d016b7e",
+                ],
                 "action_steps": [
                     {"title": "fix", "issue_refs": ["07c3759c"]},
                 ],
             }
+        },
+        "overrides": {
+            "review::.::holistic::test_strategy::untested_shared_request_guards::1d016b7e": {
+                "cluster": "manual",
+            },
         },
         "execution_log": [
             {
@@ -129,7 +137,61 @@ def test_normalize_cluster_defaults_restores_issue_ids_from_execution_log() -> N
     ]
 
 
-def test_normalize_cluster_defaults_preserves_non_review_ids_and_recovers_overrides() -> None:
+def test_normalize_cluster_defaults_later_add_clears_remove_tombstone() -> None:
+    issue_id = "review::.::holistic::test_strategy::untested_shared_request_guards"
+    plan = {
+        "clusters": {
+            "manual": {
+                "name": "manual",
+                "issue_ids": [issue_id],
+            }
+        },
+        "execution_log": [
+            {
+                "action": "cluster_remove",
+                "cluster_name": "manual",
+                "issue_ids": [issue_id],
+            },
+            {
+                "action": "cluster_add",
+                "cluster_name": "manual",
+                "issue_ids": [issue_id],
+            },
+        ],
+    }
+
+    migrations.normalize_cluster_defaults(plan)
+
+    assert plan["clusters"]["manual"]["issue_ids"] == [issue_id]
+
+
+def test_normalize_cluster_defaults_remove_tombstone_filters_stale_members() -> None:
+    issue_id = "review::.::holistic::test_strategy::untested_shared_request_guards"
+    plan = {
+        "clusters": {
+            "manual": {
+                "name": "manual",
+                "issue_ids": [issue_id],
+            }
+        },
+        "overrides": {issue_id: {"cluster": "manual"}},
+        "execution_log": [
+            {
+                "action": "cluster_remove",
+                "cluster_name": "manual",
+                "issue_ids": [issue_id],
+            },
+        ],
+    }
+
+    migrations.normalize_cluster_defaults(plan)
+
+    assert plan["clusters"]["manual"]["issue_ids"] == []
+
+
+def test_normalize_cluster_defaults_preserves_non_review_ids_and_recovers_overrides() -> (
+    None
+):
     plan = {
         "clusters": {
             "auto/initial-review": {
