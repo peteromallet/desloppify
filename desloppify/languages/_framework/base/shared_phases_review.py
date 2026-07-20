@@ -11,17 +11,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from desloppify.base.discovery.file_paths import rel
 from desloppify.base.output.terminal import log
+from desloppify.engine._state.filtering import make_issue
 from desloppify.engine.detectors.dupes import detect_duplicates
 from desloppify.engine.detectors.jscpd_adapter import detect_with_jscpd
 from desloppify.engine.detectors.security.detector import (
     detect_security_issues as _detect_security_issues_default,
 )
 from desloppify.engine.detectors.test_coverage.detector import detect_test_coverage
-from desloppify.engine._state.filtering import make_issue
 from desloppify.engine.policy.zones import EXCLUDED_ZONES, filter_entries
 from desloppify.languages._framework.base.types import (
     DetectorCoverageStatus,
@@ -41,11 +39,13 @@ from .shared_phases_helpers import (
     _record_detector_coverage,
 )
 
+logger = logging.getLogger(__name__)
+
 # Compatibility export for language phase modules that still import the raw
 # security detector symbol from this module.
 detect_security_issues = _detect_security_issues_default
 
-_DETECTOR_CACHE_VERSION = 1
+_DETECTOR_CACHE_VERSION = 2
 _PREFETCH_ATTR = "_shared_review_prefetch_futures"
 _FUNCTION_CACHE_ATTR = "_shared_review_function_cache"
 _PREFETCH_BOILERPLATE_KEY = "boilerplate"

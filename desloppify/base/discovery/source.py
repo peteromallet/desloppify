@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -139,6 +139,7 @@ def collect_exclude_dirs(
     resolves each against *scan_root*. Filters out glob patterns (``*`` in name)
     since most CLI tools want plain directory paths.
     """
+    scan_root = scan_root.resolve()
     resolved_exclusions = (
         extra_exclusions
         if extra_exclusions is not None

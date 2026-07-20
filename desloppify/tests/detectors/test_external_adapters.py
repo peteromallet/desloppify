@@ -962,6 +962,19 @@ class TestCollectExcludeDirs:
             result = collect_exclude_dirs(tmp_path)
         assert all(p.startswith(str(tmp_path)) for p in result)
 
+    def test_resolves_relative_scan_root_before_building_paths(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions",
+            return_value=("vendor",),
+        ):
+            result = collect_exclude_dirs(Path("."))
+
+        assert all(Path(path).is_absolute() for path in result)
+        assert str(tmp_path / "vendor") in result
+
     def test_includes_default_non_glob_entries(self, tmp_path):
         with patch(
             "desloppify.base.discovery.source.get_exclusions", return_value=()
