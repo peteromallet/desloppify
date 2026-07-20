@@ -293,6 +293,21 @@ def test_phase_security_reuses_lang_security_cache(monkeypatch, tmp_path) -> Non
     assert second_potentials == {"security": 3}
 
 
+def test_security_cache_rejects_previous_detector_version() -> None:
+    cached = review_mod._load_cached_security_result(
+        {
+            "version": 1,
+            "fingerprint": "same",
+            "entries": [],
+            "files_scanned": 1,
+            "coverage": None,
+        },
+        fingerprint="same",
+    )
+
+    assert cached is None
+
+
 def test_phase_security_uses_prefetched_lang_result(monkeypatch, tmp_path) -> None:
     class _ImmediateExecutor:
         def submit(self, fn, *args, **kwargs):

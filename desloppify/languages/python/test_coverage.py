@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 
@@ -16,6 +17,14 @@ _PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+", re.MULTILINE)
 PY_IMPORT_RE = re.compile(
     r"^\s*(?:from\s+([\w.]+)\s+import\s+\(?\s*(\w+)|import\s+([\w.]+))",
     re.MULTILINE,
+)
+PY_SCRIPT_LITERAL_RE = re.compile(
+    r"""(?P<quote>["'])(?P<path>[^"' \t\r\n]+\.py)(?P=quote)"""
+)
+PY_DYNAMIC_TEST_LOADERS = (
+    "spec_from_file_location(",
+    "runpy.run_path(",
+    "run_path(",
 )
 
 ASSERT_PATTERNS = [
@@ -58,6 +67,36 @@ def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
     """Best-effort module-spec to source-file resolution for direct imports."""
+    normalized_spec = spec.strip().replace("\\", "/")
+    if normalized_spec.endswith(".py"):
+        relative_spec = normalized_spec.lstrip("./")
+        exact_matches = {
+            source
+            for source in production_files
+            if source.replace("\\", "/") == relative_spec
+        }
+        if len(exact_matches) == 1:
+            return next(iter(exact_matches))
+
+        if "/" in relative_spec:
+            suffix_matches = {
+                source
+                for source in production_files
+                if source.replace("\\", "/").endswith(f"/{relative_spec}")
+            }
+            if len(suffix_matches) == 1:
+                return next(iter(suffix_matches))
+
+        script_name = normalized_spec.rsplit("/", 1)[-1]
+        script_matches = {
+            source
+            for source in production_files
+            if source.replace("\\", "/").rsplit("/", 1)[-1] == script_name
+        }
+        if len(script_matches) == 1:
+            return next(iter(script_matches))
+        return None
+
     module_path = spec.strip().replace(".", "/")
     if not module_path or module_path.startswith("/"):
         return None
@@ -78,6 +117,18 @@ def resolve_import_spec(
             sibling = os.path.join(os.path.dirname(test_path), candidate)
             if sibling in production_files:
                 return sibling
+
+    # Repository layouts often place an import root below an operational
+    # directory, for example backend/app with tests importing app.*. Resolve
+    # that shape only when the suffix identifies one production module.
+    normalized_candidates = tuple(f"/{candidate}" for candidate in candidates)
+    suffix_matches = {
+        source
+        for source in production_files
+        if source.replace("\\", "/").endswith(normalized_candidates)
+    }
+    if len(suffix_matches) == 1:
+        return next(iter(suffix_matches))
     return None
 
 
@@ -105,7 +156,37 @@ def parse_test_import_specs(content: str) -> list[str]:
             specs.append(package)
             if imported_name:
                 specs.append(f"{package}.{imported_name}")
+    if any(loader in content for loader in PY_DYNAMIC_TEST_LOADERS):
+        specs.extend(_parse_dynamic_script_specs(content))
     return specs
+
+
+def _parse_dynamic_script_specs(content: str) -> list[str]:
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return [
+            match.group("path") for match in PY_SCRIPT_LITERAL_RE.finditer(content)
+        ]
+
+    specs: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value.endswith(".py"):
+                specs.add(node.value)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            parts = _path_literal_parts(node)
+            if parts and parts[-1].endswith(".py"):
+                specs.add("/".join(parts))
+    return sorted(specs)
+
+
+def _path_literal_parts(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return _path_literal_parts(node.left) + _path_literal_parts(node.right)
+    return []
 
 
 def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
