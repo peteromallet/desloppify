@@ -8,7 +8,7 @@
          single-use: 0 found, 0 suppressed (50-200 LOC)
          -> 0 coupling/structural findings total
   [5/14] Test coverage...
-         test coverage: clean (0 production files)
+         test coverage: clean (0 weighted checks)
   [6/14] Code smells...
          -> 0 smell findings
   [7/14] Mutable state...
@@ -81,4 +81,3 @@ Desloppify Scan (python)
     - subjective_review: 1 open — `desloppify review --prepare`
 
   → First scan complete. 1 open findings across 3 dimensions.
-
