@@ -17,7 +17,9 @@ live item partitions. Legacy fine-grained phase names are migrated once by
 `current_lifecycle_phase()` before snapshot resolution.
 
 1. **LIFECYCLE_PHASE_REVIEW_INITIAL** — fresh boundary, no scores yet. Shows subjective review items.
-   Objective items are NOT visible until initial review completes.
+   Objective items are NOT visible until initial review completes, unless the user explicitly
+   promotes live execution work into the active queue. Explicit promotion overrides the normal
+   planning gates until the promoted work drains.
 
 2. **LIFECYCLE_PHASE_EXECUTE** — the main work phase. Shows objective (mechanical defect) items.
    Only issues in `queue_order` are executable (post-triage). Pre-triage: all objectives visible.
