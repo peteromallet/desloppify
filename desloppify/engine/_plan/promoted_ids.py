@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 
@@ -46,8 +47,23 @@ def promoted_insertion_index(order: list[str], plan: dict[str, Any]) -> int:
     return last_idx + 1 if last_idx >= 0 else 0
 
 
+def has_promoted_execution_candidate(
+    plan: dict[str, Any] | None,
+    candidate_ids: Iterable[str],
+) -> bool:
+    """Return whether a live execution candidate was explicitly promoted."""
+    if not isinstance(plan, dict):
+        return False
+    promoted = plan.get("promoted_ids")
+    if not isinstance(promoted, list) or not promoted:
+        return False
+    candidates = set(candidate_ids)
+    return any(issue_id in candidates for issue_id in promoted)
+
+
 __all__ = [
     "add_promoted_ids",
+    "has_promoted_execution_candidate",
     "promoted_insertion_index",
     "prune_promoted_ids",
 ]

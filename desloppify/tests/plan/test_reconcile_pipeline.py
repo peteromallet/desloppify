@@ -879,3 +879,61 @@ def test_fresh_boundary_empty_state_resolves_scan_phase() -> None:
     snapshot = build_queue_snapshot(state, plan=plan)
 
     assert snapshot.phase == LIFECYCLE_PHASE_SCAN
+
+
+def test_promoted_execution_survives_unscored_review_resurfacing() -> None:
+    """A boundary refresh must not let initial review starve promoted work."""
+    objective_id = "unused::obj"
+    subjective_id = "subjective::naming_quality"
+    assessment_id = "subjective_review::.::naming_quality"
+    objective = _issue(objective_id)
+    assessment = _issue(assessment_id, detector="subjective_review")
+    assessment["detail"] = {"dimension": "naming_quality"}
+    state = {
+        "issues": {objective_id: objective, assessment_id: assessment},
+        "work_items": {
+            objective_id: dict(objective),
+            assessment_id: dict(assessment),
+        },
+        "scan_count": 2,
+        "dimension_scores": {
+            "Naming quality": {
+                "score": 0.0,
+                "strict": 0.0,
+                "failing": 0,
+                "checks": 1,
+                "detectors": {
+                    "subjective_assessment": {
+                        "dimension_key": "naming_quality",
+                        "placeholder": True,
+                    }
+                },
+            }
+        },
+        "subjective_assessments": {
+            "naming_quality": {"score": 0.0, "placeholder": True}
+        },
+    }
+    plan = empty_plan()
+    plan["queue_order"] = [objective_id]
+    plan["promoted_ids"] = [objective_id]
+    plan["skipped"] = {
+        subjective_id: {
+            "issue_id": subjective_id,
+            "kind": "temporary",
+            "review_after": None,
+            "skipped_at_scan": 1,
+        }
+    }
+
+    result = reconcile_plan(plan, state, target_strict=95.0)
+    snapshot = build_queue_snapshot(state, plan=plan)
+
+    assert result.subjective is not None
+    assert result.subjective.resurfaced == [subjective_id]
+    assert result.lifecycle_phase == LIFECYCLE_PHASE_EXECUTE
+    assert snapshot.phase == LIFECYCLE_PHASE_EXECUTE
+    assert [item["id"] for item in snapshot.execution_items] == [objective_id]
+    backlog_ids = {item["id"] for item in snapshot.backlog_items}
+    assert subjective_id in backlog_ids
+    assert assessment_id in backlog_ids

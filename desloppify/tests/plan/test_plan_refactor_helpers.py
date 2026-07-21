@@ -10,6 +10,7 @@ from desloppify.engine._plan.annotations import (
 )
 from desloppify.engine._plan.promoted_ids import (
     add_promoted_ids,
+    has_promoted_execution_candidate,
     promoted_insertion_index,
     prune_promoted_ids,
 )
@@ -71,6 +72,8 @@ def test_promoted_helpers_preserve_order_and_prune():
     add_promoted_ids(plan, ["c", "a"])
     assert plan["promoted_ids"] == ["b", "c", "a"]
     assert promoted_insertion_index(order, plan) == 3
+    assert has_promoted_execution_candidate(plan, ["b", "d"]) is True
+    assert has_promoted_execution_candidate(plan, ["d"]) is False
 
     prune_promoted_ids(plan, {"b", "x"})
     assert plan["promoted_ids"] == ["c", "a"]
