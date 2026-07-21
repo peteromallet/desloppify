@@ -3,7 +3,9 @@
 Used by ComplexitySignal definitions in __init__.py for the structural phase.
 """
 
+import io
 import re
+import tokenize
 from math import gcd
 
 
@@ -54,18 +56,36 @@ def _detect_indent_unit(lines: list[str]) -> int:
     return max(unit, 1)
 
 
-def compute_nesting_depth(content: str, lines: list[str]) -> tuple[int, str] | None:
-    """Find maximum nesting depth by indentation. Returns (depth, label) or None."""
-    indent_unit = _detect_indent_unit(lines)
+def _tokenized_nesting_depth(content: str) -> int | None:
+    """Return Python suite depth, or ``None`` when tokenization cannot finish."""
+    depth = 0
     max_depth = 0
-    for line in lines:
-        stripped = line.lstrip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        indent = len(line) - len(stripped)
-        depth = indent // indent_unit
-        if depth > max_depth:
-            max_depth = depth
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(content).readline)
+        for token in tokens:
+            if token.type == tokenize.INDENT:
+                depth += 1
+                max_depth = max(max_depth, depth)
+            elif token.type == tokenize.DEDENT:
+                depth = max(0, depth - 1)
+    except (IndentationError, tokenize.TokenError):
+        return None
+    return max_depth
+
+
+def compute_nesting_depth(content: str, lines: list[str]) -> tuple[int, str] | None:
+    """Find maximum Python suite depth. Returns ``(depth, label)`` or ``None``."""
+    max_depth = _tokenized_nesting_depth(content)
+    if max_depth is None:
+        indent_unit = _detect_indent_unit(lines)
+        max_depth = max(
+            (
+                (len(line) - len(line.lstrip())) // indent_unit
+                for line in lines
+                if line.strip() and not line.lstrip().startswith("#")
+            ),
+            default=0,
+        )
     if max_depth > 4:
         return max_depth, f"nesting depth {max_depth}"
     return None
