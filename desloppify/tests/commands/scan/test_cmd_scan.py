@@ -8,21 +8,21 @@ import desloppify.app.commands.scan.artifacts as scan_artifacts_mod
 import desloppify.app.commands.scan.cmd as scan_cmd_mod
 import desloppify.app.commands.scan.preflight as scan_preflight_mod
 import desloppify.languages as lang_mod
-from desloppify.app.commands.scan.helpers import (
-    audit_excluded_dirs,
-    collect_codebase_metrics,
-    effective_include_slow,
-    resolve_scan_profile,
-    warn_explicit_lang_with_no_files,
-    format_delta,
-)
-from desloppify.app.commands.scan.reporting.summary import (
-    show_strict_target_progress,
-)
 from desloppify.app.commands.scan.cmd import (
     cmd_scan,
     show_diff_summary,
     show_score_delta,
+)
+from desloppify.app.commands.scan.helpers import (
+    audit_excluded_dirs,
+    collect_codebase_metrics,
+    effective_include_slow,
+    format_delta,
+    resolve_scan_profile,
+    warn_explicit_lang_with_no_files,
+)
+from desloppify.app.commands.scan.reporting.summary import (
+    show_strict_target_progress,
 )
 from desloppify.base.exception_sets import CommandError
 
@@ -557,6 +557,23 @@ class TestCollectCodebaseMetrics:
             tmp_path,
             files=[str(file_path)],
         )
+        assert result is not None
+        assert result["total_files"] == 1
+        assert result["total_loc"] == 2
+
+    def test_counts_project_relative_files_for_nested_scan_path(
+        self, set_project_root
+    ):
+        scan_root = set_project_root / "remote-agent-platform"
+        scan_root.mkdir()
+        (scan_root / "a.py").write_text("line1\nline2\n")
+
+        class FakeLang:
+            def file_finder(self, _path):
+                return ["remote-agent-platform/a.py"]
+
+        result = collect_codebase_metrics(FakeLang(), scan_root)
+
         assert result is not None
         assert result["total_files"] == 1
         assert result["total_loc"] == 2
