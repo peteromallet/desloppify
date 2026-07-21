@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from desloppify.languages import framework as lang_api
 from desloppify import state as state_mod
+from desloppify.base.discovery.file_paths import count_lines, resolve_scan_file
 from desloppify.base.discovery.source import (
     DEFAULT_EXCLUSIONS,
     read_file_text,
 )
-from desloppify.base.discovery.file_paths import count_lines
 from desloppify.base.output.terminal import colorize
+from desloppify.languages import framework as lang_api
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +94,12 @@ def collect_codebase_metrics(
     dirs = set()
     for filepath in files:
         try:
-            abs_path = _resolve_scan_file_path(filepath, project_root=scan_root)
-            content = read_file_text(abs_path)
+            abs_path = resolve_scan_file(filepath, scan_root=scan_root)
+            content = read_file_text(str(abs_path))
             if content is not None:
                 total_loc += len(content.splitlines())
             else:
-                total_loc += count_lines(Path(abs_path))
+                total_loc += count_lines(abs_path)
             dirs.add(str(Path(filepath).parent))
         except (OSError, UnicodeDecodeError) as exc:
             logger.debug(
@@ -119,14 +119,6 @@ def _resolve_scan_files(lang, path: Path, *, files: list[str] | None = None) -> 
     if files is not None:
         return files
     return lang.file_finder(path)
-
-
-def _resolve_scan_file_path(filepath: str, *, project_root: Path) -> str:
-    """Resolve relative scan filepaths against the active scan path."""
-    file_path = Path(filepath)
-    if file_path.is_absolute():
-        return str(file_path)
-    return str((project_root / file_path).resolve())
 
 
 def resolve_scan_profile(profile: str | None, lang) -> str:
