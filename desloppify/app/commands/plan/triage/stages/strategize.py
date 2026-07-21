@@ -150,10 +150,13 @@ def _create_strategic_work_items(
             state["work_items"] = work_items
 
     queue_order = plan.setdefault("queue_order", [])
+    skipped_ids = set(plan.get("skipped", {}))
     new_ids: list[str] = []
 
     for entry in strategic_issues:
         issue_id = f"strategy::{entry['identifier']}"
+        if issue_id in skipped_ids:
+            continue
         work_items[issue_id] = {
             "status": "open",
             "detector": "strategy",

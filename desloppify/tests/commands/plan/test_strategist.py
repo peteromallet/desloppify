@@ -78,6 +78,26 @@ def test_cmd_stage_strategize_persists_briefing_and_auto_confirms(monkeypatch, c
     assert "auto-confirmed" in capsys.readouterr().out
 
 
+def test_strategic_work_item_preserves_existing_skip() -> None:
+    issue = {
+        "identifier": "already-dismissed",
+        "priority": "high",
+        "summary": "A previously dismissed narrative item.",
+        "recommendation": "Do not re-enqueue it.",
+        "dimensions_affected": ["design_coherence"],
+    }
+    state = {"work_items": {}}
+    plan = {
+        "queue_order": ["triage::observe"],
+        "skipped": {"strategy::already-dismissed": {"kind": "permanent"}},
+    }
+
+    strategize_mod._create_strategic_work_items(state, plan, [issue])
+
+    assert plan["queue_order"] == ["triage::observe"]
+    assert "strategy::already-dismissed" not in state["work_items"]
+
+
 def test_observe_is_blocked_until_strategize_is_recorded(capsys) -> None:
     plan = {"queue_order": list(TRIAGE_STAGE_IDS), "epic_triage_meta": {"triage_stages": {}}, "execution_log": [], "commit_log": []}
     state = {"work_items": {}}
