@@ -1311,12 +1311,19 @@ def test_orchestrator_pipeline_entrypoint_is_exposed() -> None:
 
 
 def test_orchestrator_pipeline_writes_exact_cli_helper(tmp_path: Path) -> None:
-    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(tmp_path)
+    state_path = tmp_path / "states" / "api.json"
+    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(
+        tmp_path,
+        state_path=state_path,
+    )
     text = helper.read_text(encoding="utf-8")
     assert helper.exists()
     assert helper.stat().st_mode & 0o111
     assert "PYTHONPATH=" in text
     assert "-m desloppify.cli" in text
+    assert f"state_path={state_path.resolve()}" in text
+    assert 'plan --state "$state_path" "$@"' in text
+    assert '"$@" --state "$state_path"' in text
 
 
 def test_load_prior_reports_from_plan_uses_existing_stage_reports() -> None:
@@ -1856,7 +1863,7 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
         "_write_desloppify_cli_helper",
-        lambda run_dir: run_dir / "run_desloppify.sh",
+        lambda run_dir, **_kwargs: run_dir / "run_desloppify.sh",
     )
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
