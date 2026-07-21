@@ -113,6 +113,21 @@ class TestComputeNestingDepth:
         # Max depth is 1 (inside function body), which is <= 4 threshold
         assert compute_nesting_depth(content, lines) is None
 
+    def test_multiline_string_indentation_ignored(self):
+        content = 'SQL = """SELECT\n one-space SQL indentation\n                        aligned SQL continuation\n"""\n'
+
+        assert compute_nesting_depth(content, content.splitlines()) is None
+
+    def test_hanging_indentation_ignored(self):
+        content = textwrap.dedent("""\
+            result = function(
+                            deeply_aligned_argument,
+                            another_argument,
+            )
+        """)
+
+        assert compute_nesting_depth(content, content.splitlines()) is None
+
 
 # ── compute_long_functions ────────────────────────────────
 
