@@ -597,7 +597,10 @@ def phase_test_coverage(
     entries = filter_entries(zone_map, entries, "test_coverage")
 
     results = _entries_to_issues("test_coverage", entries, default_name="")
-    _log_phase_summary("test coverage", results, potential, "production files")
+    # ``potential`` is the LOC-weighted scoring denominator, not a file count.
+    # Label it accordingly so large projects do not appear to contain thousands
+    # more production files than discovery actually found.
+    _log_phase_summary("test coverage", results, potential, "weighted checks")
 
     return results, {"test_coverage": potential}
 
