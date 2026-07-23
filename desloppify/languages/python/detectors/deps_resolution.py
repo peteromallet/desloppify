@@ -107,19 +107,24 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
 
 
 def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
-    parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+    """Resolve an absolute import within scan root first, then project root.
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+    Each root is probed directly (``<root>/<parts>``) and through the
+    conventional src layout (``<root>/src/<parts>``), so packages living
+    under ``src/<package>/`` resolve without special configuration. The
+    scan root is probed before the project root, keeping resolution pinned
+    to the scanned project in monorepos with sibling projects.
+    """
+    parts = module_path.split(".")
+    for root in (scan_root.resolve(), get_project_root()):
+        for base in (root, root / "src"):
+            target_base = base
+            for part in parts:
+                target_base = target_base / part
+            resolved = try_resolve_path(target_base)
+            if resolved:
+                return resolved
+    return None
 
 
 def try_resolve_path(target_base: Path) -> str | None:
