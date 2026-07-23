@@ -257,6 +257,34 @@ def test_guard_cluster_with_stale_members(tmp_path, monkeypatch):
     assert blocked is False
 
 
+def test_guard_ignores_cluster_with_only_auto_resolved_members(
+    tmp_path, monkeypatch
+):
+    state = _state_with_issues("front", "a", "b")
+    state["work_items"]["a"]["status"] = "auto_resolved"
+    state["work_items"]["b"]["status"] = "auto_resolved"
+    _setup_plan(
+        tmp_path,
+        monkeypatch,
+        ["front", "a", "b"],
+        clusters={
+            "resolved-cluster": {
+                "name": "resolved-cluster",
+                "issue_ids": ["a", "b"],
+            }
+        },
+    )
+
+    assert (
+        _check_queue_order_guard(
+            state,
+            ["resolved-cluster"],
+            "fixed",
+        )
+        is False
+    )
+
+
 def test_guard_all_resolved_ids_stale(tmp_path, monkeypatch):
     """If all resolved IDs are stale, guard should not block."""
     state = _state_with_issues("a")

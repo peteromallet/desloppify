@@ -18,7 +18,16 @@ from desloppify.base.output.terminal import colorize
 from desloppify.engine.plan_state import get_uncommitted_issues, suggest_commit_message
 
 
-def _print_resolve_summary(*, status: str, all_resolved: list[str]) -> None:
+def _print_resolve_summary(
+    *, status: str, all_resolved: list[str], reattributed_count: int = 0
+) -> None:
+    if reattributed_count:
+        print(
+            colorize(
+                f"\nRe-attributed {reattributed_count} auto-resolved issue(s) as fixed",
+                "green",
+            )
+        )
     verb = "Reopened" if status == "open" else "Resolved"
     print(colorize(f"\n{verb} {len(all_resolved)} issue(s) as {status}:", "green"))
     for fid in all_resolved[:20]:
