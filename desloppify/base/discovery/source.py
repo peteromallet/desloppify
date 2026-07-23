@@ -138,18 +138,27 @@ def collect_exclude_dirs(
     Combines DEFAULT_EXCLUSIONS (non-glob entries) + get_exclusions() (runtime/config),
     resolves each against *scan_root*. Filters out glob patterns (``*`` in name)
     since most CLI tools want plain directory paths.
+
+    A relative *scan_root* is resolved against the project root first: external
+    tools (e.g. bandit) are handed absolute scan targets, so relative exclude
+    paths would never match and the excludes would be silently ignored.
     """
     resolved_exclusions = (
         extra_exclusions
         if extra_exclusions is not None
         else get_exclusions(runtime=runtime)
     )
+    root = (
+        scan_root
+        if scan_root.is_absolute()
+        else get_project_root(runtime=runtime) / scan_root
+    )
     patterns = set()
     for pat in DEFAULT_EXCLUSIONS:
         if "*" not in pat:
             patterns.add(pat)
     patterns.update(p for p in resolved_exclusions if p and "*" not in p)
-    return [str(scan_root / p) for p in sorted(patterns) if p]
+    return [str(root / p) for p in sorted(patterns) if p]
 
 
 def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:

@@ -1010,3 +1010,22 @@ class TestCollectExcludeDirs:
             result = collect_exclude_dirs(tmp_path)
         node_entries = [p for p in result if p.endswith("/node_modules")]
         assert len(node_entries) == 1
+
+    def test_relative_scan_root_resolves_against_project_root(self, tmp_path):
+        """A relative scan_root must still yield absolute exclude paths.
+
+        External tools (bandit) receive absolute scan targets; relative
+        excludes would silently never match (venv findings leak through).
+        """
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions", return_value=()
+        ), patch(
+            "desloppify.base.discovery.source.get_project_root",
+            return_value=tmp_path,
+        ):
+            result = collect_exclude_dirs(Path("agents/my-agent"))
+        assert result
+        expected_prefix = str(tmp_path / "agents" / "my-agent")
+        assert all(p.startswith(expected_prefix) for p in result)
+        basenames = {p.rsplit("/", 1)[-1] for p in result}
+        assert ".venv" in basenames
