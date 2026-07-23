@@ -188,6 +188,150 @@ class TestCmdResolve:
         assert "Resolved 1" in out
         assert "Scores:" in out or "Score" in out
 
+    def test_attested_resolve_reattributes_auto_resolved_and_keeps_open_behavior(
+        self, monkeypatch, capsys
+    ):
+        from types import SimpleNamespace
+
+        from desloppify.app.commands.resolve.plan_load import (
+            DegradedPlanWarningState,
+            ResolvePlanAccess,
+        )
+        from desloppify.engine._state.filtering import make_issue
+        from desloppify.engine._state.schema import empty_state
+
+        state = empty_state()
+        open_issue = make_issue(
+            "unused",
+            "src/open.py",
+            "open",
+            tier=2,
+            confidence="high",
+            summary="open issue",
+        )
+        auto_issue = make_issue(
+            "unused",
+            "src/auto.py",
+            "auto",
+            tier=2,
+            confidence="high",
+            summary="auto-resolved issue",
+        )
+        auto_issue["status"] = "auto_resolved"
+        auto_issue["note"] = "no longer detected by scan"
+        wontfix_issue = make_issue(
+            "unused",
+            "src/wontfix.py",
+            "wontfix",
+            tier=2,
+            confidence="high",
+            summary="accepted debt",
+        )
+        wontfix_issue["status"] = "wontfix"
+        false_positive_issue = make_issue(
+            "unused",
+            "src/false_positive.py",
+            "false-positive",
+            tier=2,
+            confidence="high",
+            summary="false positive",
+        )
+        false_positive_issue["status"] = "false_positive"
+        state["work_items"] = {
+            open_issue["id"]: open_issue,
+            auto_issue["id"]: auto_issue,
+            wontfix_issue["id"]: wontfix_issue,
+            false_positive_issue["id"]: false_positive_issue,
+        }
+
+        monkeypatch.setattr(resolve_mod, "state_path", lambda _args: "/tmp/fake.json")
+        monkeypatch.setattr(resolve_mod, "load_state", lambda _path: state)
+        monkeypatch.setattr(resolve_mod, "save_state_or_exit", lambda *_args: None)
+        monkeypatch.setattr(
+            resolve_mod, "require_triage_current_or_exit", lambda **_kwargs: None
+        )
+        monkeypatch.setattr(resolve_mod, "_check_queue_order_guard", lambda *_a, **_kw: False)
+        monkeypatch.setattr(
+            resolve_mod,
+            "load_resolve_plan_access",
+            lambda: ResolvePlanAccess(
+                plan=None,
+                degraded=False,
+                error_kind=None,
+                warning_state=DegradedPlanWarningState(),
+            ),
+        )
+        monkeypatch.setattr(
+            resolve_mod,
+            "update_living_plan_after_resolve",
+            lambda **_kwargs: (
+                None,
+                SimpleNamespace(cluster_name=None, cluster_completed=False),
+            ),
+        )
+        monkeypatch.setattr(resolve_mod, "show_score_with_plan_context", lambda *_a: None)
+        monkeypatch.setattr(resolve_mod, "render_commit_guidance", lambda *_a: None)
+        monkeypatch.setattr(resolve_mod, "_print_subjective_reset_hint", lambda **_kw: None)
+        monkeypatch.setattr(resolve_mod, "_print_next_command", lambda _state: "")
+        monkeypatch.setattr(resolve_mod, "_write_resolve_query_entry", lambda _ctx: None)
+        monkeypatch.setattr(resolve_mod, "print_fixed_next_user_message", lambda **_kw: None)
+        monkeypatch.setattr(resolve_mod, "resolve_lang", lambda _args: None)
+        monkeypatch.setattr(
+            narrative_mod,
+            "compute_narrative",
+            lambda *_a, **_kw: {"milestone": None},
+        )
+
+        note = "Removed both unused names and verified the affected modules still run."
+        cmd_resolve(
+            argparse.Namespace(
+                status="fixed",
+                note=note,
+                attest=f"I have actually {note} I am not gaming the score.",
+                patterns=["unused"],
+                force_resolve=False,
+                lang=None,
+                path=".",
+            )
+        )
+
+        assert state["work_items"][open_issue["id"]]["status"] == "fixed"
+        reattributed = state["work_items"][auto_issue["id"]]
+        assert reattributed["status"] == "fixed"
+        assert (
+            reattributed["resolution_attestation"]["previous_status"]
+            == "auto_resolved"
+        )
+        assert wontfix_issue["status"] == "wontfix"
+        assert false_positive_issue["status"] == "false_positive"
+        assert "Re-attributed 1 auto-resolved issue(s) as fixed" in capsys.readouterr().out
+
+    def test_auto_resolved_is_not_reattributed_without_attestation(self):
+        from desloppify.engine._state.filtering import make_issue
+        from desloppify.engine._state.schema import empty_state
+
+        state = empty_state()
+        issue = make_issue(
+            "unused",
+            "src/a.py",
+            "name",
+            tier=2,
+            confidence="high",
+            summary="unused",
+        )
+        issue["status"] = "auto_resolved"
+        state["work_items"] = {issue["id"]: issue}
+
+        assert state_mod.resolve_issues(
+            state,
+            issue["id"],
+            "fixed",
+            note="This note is deliberately long enough to satisfy command requirements.",
+            attestation=None,
+            reattribute_auto_resolved=True,
+        ) == []
+        assert issue["status"] == "auto_resolved"
+
     def test_wontfix_shows_strict_cost_warning(self, monkeypatch, capsys):
         """Wontfix resolution should warn about strict score impact."""
         monkeypatch.setattr(resolve_mod, "state_path", lambda a: "/tmp/fake.json")

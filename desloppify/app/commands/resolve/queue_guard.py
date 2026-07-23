@@ -50,7 +50,13 @@ def _filter_open_or_cluster_targets(
     return {
         issue_id
         for issue_id in resolved_ids
-        if issue_id in clusters
+        if (
+            issue_id in clusters
+            and any(
+                issues.get(member_id, {}).get("status") == "open"
+                for member_id in clusters[issue_id].get("issue_ids", [])
+            )
+        )
         or (issue_id in issues and issues[issue_id].get("status") == "open")
     }
 

@@ -143,7 +143,26 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         cluster_ctx.cluster_name is not None and not cluster_ctx.cluster_completed
     )
 
-    _print_resolve_summary(status=args.status, all_resolved=all_resolved)
+    work_items = state.get("work_items") or state.get("issues", {})
+    reattributed_count = (
+        sum(
+            1
+            for issue_id in all_resolved
+            if (
+                work_items.get(issue_id, {})
+                .get("resolution_attestation", {})
+                .get("previous_status")
+                == "auto_resolved"
+            )
+        )
+        if args.status == "fixed"
+        else 0
+    )
+    _print_resolve_summary(
+        status=args.status,
+        all_resolved=all_resolved,
+        reattributed_count=reattributed_count,
+    )
     _print_wontfix_batch_warning(
         state,
         status=args.status,
