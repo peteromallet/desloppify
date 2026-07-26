@@ -9,8 +9,10 @@ from desloppify.languages.python.detectors.dict_keys import (
     _get_name,
     _get_str_key,
 )
+
 from .visitor_helpers import (
     analyze_scope_issues,
+    dict_source_provenance,
     mark_assignment_escape,
     mark_returned_or_passed,
     record_call_interactions,
@@ -38,9 +40,15 @@ class DictKeyVisitor(ast.NodeVisitor):
         *,
         locally_created: bool,
         initial_keys: list[str] | None = None,
+        keyset_is_open: bool = False,
     ) -> TrackedDict:
         scope = self._current_scope()
-        td = TrackedDict(name=name, created_line=line, locally_created=locally_created)
+        td = TrackedDict(
+            name=name,
+            created_line=line,
+            locally_created=locally_created,
+            keyset_is_open=keyset_is_open,
+        )
         if initial_keys:
             for k in initial_keys:
                 td.writes[k].append(line)
@@ -112,17 +120,24 @@ class DictKeyVisitor(ast.NodeVisitor):
         self._check_subscript_write(node.target, node.lineno)
         self.generic_visit(node)
 
-    def _check_dict_creation(self, name: str, value: ast.expr, line: int):
-        """Detect d = {}, d = dict(), d = {"k": v, ...}."""
-        initial_keys: list[str] = []
-        is_creation = False
+    def _check_dict_creation(self, name: str, value: ast.expr, line: int) -> None:
+        """Track aliases and newly created dict expressions."""
+
+        source_name = _get_name(value)
+        if source_name:
+            tracked = self._get_tracked(source_name)
+            if tracked is not None:
+                self._current_scope()[name] = tracked
+                if name.startswith("self.") and self._in_init_or_setup:
+                    self._class_dicts[name] = tracked
+                return
+
+        provenance = dict_source_provenance(self, value)
+        if provenance is None:
+            return
+        initial_keys, keyset_is_open = provenance
 
         if isinstance(value, ast.Dict):
-            is_creation = True
-            for k in value.keys:
-                sk = _get_str_key(k) if k else None
-                if sk:
-                    initial_keys.append(sk)
             # Collect dict literal for schema drift
             if (
                 all(
@@ -140,23 +155,16 @@ class DictKeyVisitor(ast.NodeVisitor):
                         "keys": frozenset(keys),
                     }
                 )
-        elif (
-            isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id == "dict"
-        ):
-            is_creation = True
-            for kw in value.keywords:
-                if kw.arg:
-                    initial_keys.append(kw.arg)
-
-        if is_creation:
-            td = self._track(
-                name, line, locally_created=True, initial_keys=initial_keys
-            )
-            # Store as class dict if it's self.x
-            if name.startswith("self.") and self._in_init_or_setup:
-                self._class_dicts[name] = td
+        td = self._track(
+            name,
+            line,
+            locally_created=True,
+            initial_keys=initial_keys,
+            keyset_is_open=keyset_is_open,
+        )
+        # Store as class dict if it's self.x
+        if name.startswith("self.") and self._in_init_or_setup:
+            self._class_dicts[name] = td
 
     def _check_subscript_write(self, target: ast.expr, line: int):
         """Handle d["key"] = val or d["key"] += val."""
@@ -173,6 +181,7 @@ class DictKeyVisitor(ast.NodeVisitor):
             td.writes[key].append(line)
         else:
             td.has_dynamic_key = True
+            td.keyset_is_open = True
 
     # -- Dict reads --
 
