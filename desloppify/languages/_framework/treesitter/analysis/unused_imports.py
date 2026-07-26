@@ -48,6 +48,22 @@ _ECMASCRIPT_DECLARATION_NAME_NODE_TYPES = frozenset({
 })
 
 
+def _is_implicitly_used(name: str, body: str, spec: TreeSitterLangSpec) -> bool:
+    """Return True if ``name`` is resolved by language convention rather than by name.
+
+    Some languages resolve imports through syntax that never spells the imported
+    symbol out — Kotlin's property delegation (``var x by remember { ... }``) requires
+    ``getValue``/``setValue`` imports, and destructuring requires ``componentN``.
+    A plain identifier search reports those as unused, and removing them breaks the
+    build. ``spec.implicit_import_uses`` declares those conventions per language.
+    """
+    # getattr keeps duck-typed spec stubs (used in tests) working.
+    for name_pattern, body_pattern in getattr(spec, "implicit_import_uses", ()):
+        if re.search(name_pattern, name) and re.search(body_pattern, body):
+            return True
+    return False
+
+
 def detect_unused_imports(
     file_list: list[str],
     spec: TreeSitterLangSpec,
@@ -108,6 +124,7 @@ def detect_unused_imports(
                 unused_names = [
                     n for n in grouped_names
                     if not re.search(r'\b' + re.escape(n) + r'\b', rest)
+                    and not _is_implicitly_used(n, rest, spec)
                 ]
                 if unused_names:
                     entries.append({
@@ -127,7 +144,10 @@ def detect_unused_imports(
                 continue
 
             # Check if the name appears in the rest of the file.
-            if not re.search(r'\b' + re.escape(name) + r'\b', rest):
+            if (
+                not re.search(r'\b' + re.escape(name) + r'\b', rest)
+                and not _is_implicitly_used(name, rest, spec)
+            ):
                 entries.append({
                     "file": filepath,
                     "line": import_node.start_point[0] + 1,
