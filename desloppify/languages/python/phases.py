@@ -97,6 +97,7 @@ PY_ENTRY_PATTERNS = [
     "config.py",
     "wsgi.py",
     "asgi.py",
+    "gunicorn.conf.py",  # Server config, executed by gunicorn — never imported
     "cli.py",  # CLI entry points (loaded via framework/importlib)
     "/commands/",  # CLI subcommands (loaded dynamically)
     "/fixers/",  # Fixer modules (loaded dynamically)
