@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
+    _detect_django_project,
     _detect_nextjs_project,
     _has_dunder_all,
+    _is_django_convention_entry,
     _is_dynamically_imported,
     _is_nextjs_convention_entry,
     detect_orphaned_files,
@@ -679,6 +681,172 @@ class TestNextjsIntegration:
                 tmp_path,
                 graph,
                 [".tsx"],
+                options=OrphanedDetectionOptions(detect_frameworks=False),
+            )
+
+        assert len(entries) == 1
+
+
+# ===================================================================
+# Django framework awareness
+# ===================================================================
+
+
+class TestDetectDjangoProject:
+    """Unit tests for _detect_django_project."""
+
+    def test_manage_py_at_root(self, tmp_path):
+        (tmp_path / "manage.py").write_text("import django\n")
+        assert _detect_django_project(tmp_path) is True
+
+    def test_settings_with_installed_apps(self, tmp_path):
+        settings = tmp_path / "config" / "settings.py"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("INSTALLED_APPS = ['django.contrib.admin']\n")
+        assert _detect_django_project(tmp_path) is True
+
+    def test_split_settings_package(self, tmp_path):
+        settings = tmp_path / "config" / "settings" / "base.py"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("INSTALLED_APPS = []\n")
+        assert _detect_django_project(tmp_path) is True
+
+    def test_settings_without_installed_apps(self, tmp_path):
+        settings = tmp_path / "pkg" / "settings.py"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("DEBUG = True\n")
+        assert _detect_django_project(tmp_path) is False
+
+    def test_plain_python_project(self, tmp_path):
+        (tmp_path / "setup.py").write_text("from setuptools import setup\n")
+        assert _detect_django_project(tmp_path) is False
+
+
+class TestIsDjangoConventionEntry:
+    """Unit tests for _is_django_convention_entry."""
+
+    def test_urls(self):
+        assert _is_django_convention_entry("connectivity/urls.py") is True
+
+    def test_urls_prefixed_split(self):
+        assert _is_django_convention_entry("sonus/urls_page.py") is True
+
+    def test_urls_suffixed_split(self):
+        assert _is_django_convention_entry("rps/staff_urls.py") is True
+
+    def test_root_urlconf(self):
+        assert _is_django_convention_entry("config/urls.py") is True
+
+    def test_admin(self):
+        assert _is_django_convention_entry("backup/admin.py") is True
+
+    def test_apps_config(self):
+        assert _is_django_convention_entry("core/apps.py") is True
+
+    def test_middleware(self):
+        assert _is_django_convention_entry("core/middleware.py") is True
+
+    def test_celery_tasks(self):
+        assert _is_django_convention_entry("certs/tasks.py") is True
+
+    def test_models(self):
+        assert _is_django_convention_entry("licenses/models.py") is True
+
+    def test_signals(self):
+        assert _is_django_convention_entry("core/signals.py") is True
+
+    def test_context_processors(self):
+        assert _is_django_convention_entry("core/context_processors.py") is True
+
+    def test_database_routers(self):
+        assert _is_django_convention_entry("core/routers.py") is True
+
+    def test_templatetag_module(self):
+        assert _is_django_convention_entry("core/templatetags/perms_tags.py") is True
+
+    def test_management_command(self):
+        assert (
+            _is_django_convention_entry("app/management/commands/prewarm.py") is True
+        )
+
+    def test_migration(self):
+        assert _is_django_convention_entry("core/migrations/0023_auditlog.py") is True
+
+    def test_ordinary_module_not_matched(self):
+        assert _is_django_convention_entry("core/helpers.py") is False
+
+    def test_views_not_matched(self):
+        """views.py is imported by its URLconf, so orphan status is meaningful."""
+        assert _is_django_convention_entry("core/views.py") is False
+
+    def test_forms_not_matched(self):
+        assert _is_django_convention_entry("core/forms.py") is False
+
+    def test_url_substring_not_matched(self):
+        """A module merely containing 'urls' in its name is not a URLconf."""
+        assert _is_django_convention_entry("core/urlshortener.py") is False
+
+    def test_non_python_not_matched(self):
+        assert _is_django_convention_entry("core/templatetags/tags.html") is False
+
+
+class TestDjangoIntegration:
+    """Integration tests for Django orphan detection in detect_orphaned_files."""
+
+    def test_django_convention_files_not_orphaned(self, tmp_path):
+        """Convention modules are excluded when the root looks like Django."""
+        (tmp_path / "manage.py").write_text("import django\n")
+        urls = _write_file(tmp_path / "connectivity" / "urls.py", lines=30)
+        staff_urls = _write_file(tmp_path / "rps" / "staff_urls.py", lines=40)
+        admin = _write_file(tmp_path / "backup" / "admin.py", lines=25)
+        middleware = _write_file(tmp_path / "core" / "middleware.py", lines=60)
+        tags = _write_file(tmp_path / "core" / "templatetags" / "perms.py", lines=20)
+        orphan = _write_file(tmp_path / "core" / "leftover.py", lines=35)
+
+        graph = {
+            str(f): _graph_entry(importer_count=0)
+            for f in (urls, staff_urls, admin, middleware, tags, orphan)
+        }
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, total = detect_orphaned_files(tmp_path, graph, [".py"])
+
+        assert total == 6
+        assert len(entries) == 1
+        assert entries[0]["file"] == str(orphan)
+
+    def test_no_django_markers_no_exclusion(self, tmp_path):
+        """Without Django markers, urls.py IS reported as orphaned."""
+        urls = _write_file(tmp_path / "pkg" / "urls.py", lines=30)
+
+        graph = {str(urls): _graph_entry(importer_count=0)}
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, total = detect_orphaned_files(tmp_path, graph, [".py"])
+
+        assert len(entries) == 1
+
+    def test_detect_frameworks_false_disables_django(self, tmp_path):
+        """Setting detect_frameworks=False skips Django detection."""
+        (tmp_path / "manage.py").write_text("import django\n")
+        urls = _write_file(tmp_path / "pkg" / "urls.py", lines=30)
+
+        graph = {str(urls): _graph_entry(importer_count=0)}
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, total = detect_orphaned_files(
+                tmp_path,
+                graph,
+                [".py"],
                 options=OrphanedDetectionOptions(detect_frameworks=False),
             )
 
