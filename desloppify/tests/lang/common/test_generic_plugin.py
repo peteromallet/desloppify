@@ -20,6 +20,7 @@ from desloppify.languages._framework.generic_support.core import (
     parse_gnu,
     parse_golangci,
     parse_json,
+    parse_ktlint,
     parse_rubocop,
 )
 from desloppify.languages._framework.generic_parts.tool_factories import make_detect_fn
@@ -232,6 +233,59 @@ class TestParseEslint:
     def test_invalid_json(self):
         with pytest.raises(ToolParserError):
             parse_eslint("not json", Path("."))
+
+
+class TestParseKtlint:
+    def test_extracts_errors_with_rule_suffix(self):
+        payload = [
+            {
+                "file": "src/main/Foo.kt",
+                "errors": [
+                    {
+                        "line": 10,
+                        "column": 5,
+                        "message": "Newline expected",
+                        "rule": "standard:class-signature",
+                    }
+                ],
+            }
+        ]
+        entries = parse_ktlint(json.dumps(payload), Path("."))
+        assert entries == [
+            {
+                "file": "src/main/Foo.kt",
+                "line": 10,
+                "message": "Newline expected (standard:class-signature)",
+            }
+        ]
+
+    def test_handles_multiple_files_and_errors(self):
+        payload = [
+            {"file": "a.kt", "errors": [{"line": 1, "message": "m1", "rule": "r1"}]},
+            {
+                "file": "b.kt",
+                "errors": [
+                    {"line": 2, "message": "m2", "rule": "r2"},
+                    {"line": 3, "message": "m3", "rule": "r3"},
+                ],
+            },
+        ]
+        entries = parse_ktlint(json.dumps(payload), Path("."))
+        assert len(entries) == 3
+        assert entries[0]["file"] == "a.kt"
+        assert entries[1]["file"] == "b.kt" and entries[1]["line"] == 2
+        assert entries[2]["line"] == 3
+
+    def test_file_with_no_errors_yields_nothing(self):
+        payload = [{"file": "clean.kt", "errors": []}]
+        assert parse_ktlint(json.dumps(payload), Path(".")) == []
+
+    def test_empty_array(self):
+        assert parse_ktlint("[]", Path(".")) == []
+
+    def test_invalid_json(self):
+        with pytest.raises(ToolParserError):
+            parse_ktlint("not json", Path("."))
 
 
 class TestParsePhpstan:

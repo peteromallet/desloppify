@@ -181,6 +181,35 @@ def parse_eslint(output: str, scan_path: Path) -> list[dict]:
     return entries
 
 
+def parse_ktlint(output: str, scan_path: Path) -> list[dict]:
+    """Parse ktlint `--reporter=json` output.
+
+    Shape: ``[{"file": ..., "errors": [{"line", "column", "message", "rule"}]}]``.
+    This differs from the generic flat ``json`` format (which expects
+    top-level ``file``/``line``/``message`` keys per entry) and from the
+    ESLint format (which nests under ``filePath``/``messages``), so it needs
+    its own parser rather than reusing either.
+    """
+    del scan_path
+    entries: list[dict] = []
+    data = _load_json_output(output, parser_name="ktlint")
+    for fobj in data if isinstance(data, list) else []:
+        if not isinstance(fobj, dict):
+            continue
+        filepath = fobj.get("file", "")
+        for err in fobj.get("errors") or []:
+            if not isinstance(err, dict):
+                continue
+            line = _coerce_line(err.get("line", 0))
+            message = err.get("message", "")
+            rule = err.get("rule", "")
+            if rule:
+                message = f"{message} ({rule})"
+            if filepath and message and line is not None:
+                entries.append({"file": str(filepath), "line": line, "message": str(message)})
+    return entries
+
+
 def parse_phpstan(output: str, scan_path: Path) -> list[dict]:
     """Parse PHPStan JSON: ``{"files": {"<path>": {"messages": [{"message": "...", "line": 42}]}}}``."""
     del scan_path
@@ -314,6 +343,7 @@ PARSERS: dict[str, ToolParser] = {
     "phpstan": parse_phpstan,
     "rubocop": parse_rubocop,
     "cargo": parse_cargo,
+    "ktlint": parse_ktlint,
     "eslint": parse_eslint,
     "next_lint": parse_next_lint,
     "air": parse_air,
@@ -332,6 +362,7 @@ __all__ = [
     "parse_gnu",
     "parse_golangci",
     "parse_json",
+    "parse_ktlint",
     "parse_phpstan",
     "parse_next_lint",
     "parse_rubocop",
