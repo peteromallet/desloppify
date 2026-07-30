@@ -143,23 +143,34 @@ def merge_and_write_results(
         merged_assessment_dims + merged_issue_dims
     )
     review_scope["imported_dimensions"] = merged_imported_dims
-    missing_after_import = print_import_dimension_coverage_notice(
+    missing_scored_dimensions = print_import_dimension_coverage_notice(
         assessed_dims=merged_assessment_dims,
         scored_dims=scored_dimensions,
         scan_path=scan_path,
         colorize_fn=colorize_fn,
     )
+    selected_assessment_dimensions = normalize_dimension_list(packet_dimensions)
+    imported_assessment_dimensions = set(merged_assessment_dims)
+    missing_selected_dimensions = [
+        dimension
+        for dimension in selected_assessment_dimensions
+        if dimension not in imported_assessment_dimensions
+    ]
     merged["assessment_coverage"] = {
         "scored_dimensions": scored_dimensions,
-        "selected_dimensions": packet_dimensions,
+        "selected_dimensions": selected_assessment_dimensions,
         "imported_dimensions": merged_assessment_dims,
-        "missing_dimensions": missing_after_import,
+        # The global gap remains useful review telemetry, but does not make a
+        # complete explicit subset review untrustworthy.
+        "missing_dimensions": missing_scored_dimensions,
+        "missing_selected_dimensions": missing_selected_dimensions,
     }
     merged_path = run_dir / "holistic_issues_merged.json"
     safe_write_text_fn(merged_path, json.dumps(merged, indent=2) + "\n")
     print(colorize_fn(f"\n  Merged outputs: {merged_path}", "bold"))
     print_review_quality(quality, colorize_fn=colorize_fn)
-    return merged_path, missing_after_import
+    # The trusted-import gate must only enforce the selected packet contract.
+    return merged_path, missing_selected_dimensions
 
 
 def import_and_finalize(

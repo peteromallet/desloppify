@@ -203,11 +203,18 @@ def test_merge_and_finalize_helpers(tmp_path: Path, monkeypatch) -> None:
         colorize_fn=lambda text, _tone=None: text,
     )
     assert merged_path.exists()
-    assert missing == ["missing_dim"]
+    assert missing == []
     merged_payload = json.loads(merged_path.read_text())
     assert merged_payload["review_scope"]["reviewed_files_count"] == 2
     assert merged_payload["provenance"]["trusted"] is True
     assert merged_payload["review_quality"]["overall"] == 0.8
+    assert merged_payload["assessment_coverage"] == {
+        "scored_dimensions": ["design_coherence", "type_safety"],
+        "selected_dimensions": ["design_coherence"],
+        "imported_dimensions": ["design_coherence"],
+        "missing_dimensions": ["missing_dim"],
+        "missing_selected_dimensions": [],
+    }
 
     logs: list[str] = []
     args = SimpleNamespace(scan_after_import=True, path=".")
@@ -226,6 +233,45 @@ def test_merge_and_finalize_helpers(tmp_path: Path, monkeypatch) -> None:
         args=args,
     )
     assert any("run-finished" in line for line in logs)
+
+
+def test_merge_reports_missing_selected_assessments_for_trusted_import(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A selected dimension without an assessment must still block import."""
+    monkeypatch.setattr(results_mod, "print_review_quality", lambda *_args, **_kwargs: None)
+
+    merged_path, missing = results_mod.merge_and_write_results(
+        merge_batch_results_fn=lambda _batch_results: {
+            "assessments": {},
+            "issues": [],
+        },
+        build_import_provenance_fn=lambda **_kwargs: {"trusted": True},
+        batch_results=[{"dummy": True}],
+        batches=[{"name": "design_coherence"}],
+        successful_indexes=[0],
+        packet={"dimensions": ["design_coherence"], "total_files": 10},
+        packet_dimensions=["design_coherence"],
+        scored_dimensions=["design_coherence", "type_safety"],
+        scan_path=".",
+        runner="codex",
+        prompt_packet_path=tmp_path / "packet.json",
+        stamp="r1",
+        run_dir=tmp_path / "run",
+        safe_write_text_fn=_safe_write_text,
+        colorize_fn=lambda text, _tone=None: text,
+    )
+
+    assert missing == ["design_coherence"]
+    merged_payload = json.loads(merged_path.read_text())
+    assert merged_payload["assessment_coverage"]["missing_dimensions"] == [
+        "design_coherence",
+        "type_safety",
+    ]
+    assert merged_payload["assessment_coverage"]["missing_selected_dimensions"] == [
+        "design_coherence"
+    ]
 
 
 def test_import_and_finalize_raises_when_followup_scan_fails(tmp_path: Path) -> None:
