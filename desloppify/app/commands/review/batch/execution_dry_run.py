@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .scope import is_prompt_only_runner
+
 
 def maybe_handle_dry_run(
     *,
@@ -23,13 +25,24 @@ def maybe_handle_dry_run(
     append_run_log,
 ) -> bool:
     """Write dry-run artifacts and guidance. Returns True when handled."""
-    if not getattr(args, "dry_run", False):
+    runner = str(getattr(args, "runner", "") or "").strip().lower()
+    prompt_only = is_prompt_only_runner(runner)
+    if not getattr(args, "dry_run", False) and not prompt_only:
         return False
 
+    # Record the runner that will execute these prompts rather than the literal
+    # "dry-run".  The import trust gate matches provenance.runner against the
+    # supported-runner set, so a placeholder here makes the resulting artifact
+    # permanently unimportable for scores -- which silently broke the
+    # prompt-only (Claude subagent) path entirely.  `dry_run` stays in the
+    # summary so the artifact still records that desloppify skipped execution;
+    # assessments from this path are never auto-applied (that requires an
+    # in-process run), so they still demand --attested-external at import.
     dry_summary: dict[str, object] = {
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "run_stamp": stamp,
-        "runner": "dry-run",
+        "runner": runner or "dry-run",
+        "dry_run": True,
         "parallel": False,
         "selected_batches": [idx + 1 for idx in selected_indexes],
         "successful_batches": [idx + 1 for idx in selected_indexes],
@@ -51,11 +64,13 @@ def maybe_handle_dry_run(
     safe_write_text_fn(dry_summary_path, json.dumps(dry_summary, indent=2) + "\n")
 
     n = len(selected_indexes)
-    print(
-        colorize_fn(
-            f"  Dry run: {n} prompt(s) generated, runner execution skipped.", "yellow"
-        )
+    label = (
+        f"  Prompt-only runner '{runner}': {n} prompt(s) generated, "
+        "execution left to the calling harness."
+        if prompt_only
+        else f"  Dry run: {n} prompt(s) generated, runner execution skipped."
     )
+    print(colorize_fn(label, "yellow"))
     print(colorize_fn(f"  Run directory: {run_dir}", "dim"))
     print(colorize_fn(f"  Immutable packet: {immutable_packet_path}", "dim"))
     print(colorize_fn(f"  Blind packet: {prompt_packet_path}", "dim"))
@@ -69,13 +84,16 @@ def maybe_handle_dry_run(
             "bold",
         )
     )
-    print(
-        colorize_fn(
-            f"  Then: desloppify review --import-run {run_dir} --scan-after-import",
-            "bold",
+    import_cmd = f"  Then: desloppify review --import-run {run_dir} --scan-after-import"
+    if prompt_only:
+        # Assessments from a prompt-only run are never auto-applied; without the
+        # attestation the import silently downgrades to issues-only.
+        import_cmd += (
+            ' --attested-external --attest "I validated this review was '
+            'completed without awareness of overall score and is unbiased."'
         )
-    )
-    append_run_log("run-finished dry-run")
+    print(colorize_fn(import_cmd, "bold"))
+    append_run_log(f"run-finished {'prompt-only' if prompt_only else 'dry-run'}")
     return True
 
 

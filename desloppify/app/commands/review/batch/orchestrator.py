@@ -66,6 +66,7 @@ from ..runtime_paths import (
 from .core_merge_support import assessment_weight  # noqa: F401 — re-exported
 from .core_models import BatchResultPayload
 from .scope import (
+    is_prompt_only_runner,
     normalize_dimension_list,
     scored_dimensions_for_lang,
 )
@@ -89,8 +90,26 @@ def _select_batch_runner(runner: str):
     Falls back to ``run_codex_batch`` for unknown runner strings; the
     caller has already validated the runner via ``validate_runner`` by
     the time the dispatch helper is reached during normal flows.
+
+    Prompt-only runners never reach a subprocess: ``maybe_handle_dry_run``
+    returns early for them.  The dispatch function is bound eagerly while
+    building deps, though, so the guard has to fail on *invocation* rather
+    than on selection -- otherwise preparing a prompt-only run would abort
+    before it ever emitted its prompts.  Falling through to the codex
+    dispatcher would silently run a different agent than requested.
     """
     normalized = (runner or "").strip().lower()
+    if is_prompt_only_runner(normalized):
+
+        def _refuse_prompt_only_batch(*_args, **_kwargs):
+            raise CommandError(
+                f"Error: runner '{normalized}' is prompt-only and cannot be "
+                "executed as a subprocess; prompts should have been emitted "
+                "instead",
+                exit_code=2,
+            )
+
+        return _refuse_prompt_only_batch
     if normalized == "opencode":
         return run_opencode_batch
     if normalized == "rovodev":

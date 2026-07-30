@@ -14,9 +14,13 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
     )
     g_batch.add_argument(
         "--runner",
-        choices=["codex", "opencode", "rovodev"],
+        choices=["claude", "codex", "opencode", "rovodev"],
         default="codex",
-        help="Subagent runner backend (default: codex)",
+        help=(
+            "Subagent runner backend (default: codex). 'claude' is prompt-only: "
+            "prompts are written for the calling harness to execute, and the "
+            "results are imported with --import-run --attested-external"
+        ),
     )
     g_batch.add_argument(
         "--parallel", action="store_true", help="Run selected batches in parallel"

@@ -122,7 +122,11 @@ def test_prepare_batch_run_returns_none_for_dry_run(tmp_path: Path) -> None:
     summary_path = run_root / "stamp" / "run_summary.json"
     summary = json.loads(summary_path.read_text())
     assert result is None
-    assert summary["runner"] == "dry-run"
+    # The summary records which runner will execute the prompts (the import
+    # trust gate matches provenance.runner against the supported-runner set);
+    # `dry_run` is what marks that desloppify skipped execution.
+    assert summary["runner"] == "codex"
+    assert summary["dry_run"] is True
     assert summary["selected_batches"] == [1]
     assert summary["successful_batches"] == [1]
     assert summary["failed_batches"] == []

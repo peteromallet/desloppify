@@ -14,7 +14,21 @@ from desloppify.intelligence.review.feedback_contract import (
 )
 
 
-_SUPPORTED_RUNNERS = {"codex", "opencode", "rovodev"}
+# Runners desloppify drives itself as a subprocess.
+_SUBPROCESS_RUNNERS = {"codex", "opencode", "rovodev"}
+
+# Runners whose batches are executed by the calling harness rather than by
+# desloppify: we emit prompts and stop.  Results come back through
+# `--import-run`, and their assessments always require `--attested-external`
+# (see ATTESTED_EXTERNAL_RUNNERS in review/importing/policy.py).
+PROMPT_ONLY_RUNNERS = {"claude"}
+
+_SUPPORTED_RUNNERS = _SUBPROCESS_RUNNERS | PROMPT_ONLY_RUNNERS
+
+
+def is_prompt_only_runner(runner: str) -> bool:
+    """True when the runner's batches are executed outside desloppify."""
+    return (runner or "").strip().lower() in PROMPT_ONLY_RUNNERS
 
 
 def validate_runner(runner: str, *, colorize_fn) -> None:
