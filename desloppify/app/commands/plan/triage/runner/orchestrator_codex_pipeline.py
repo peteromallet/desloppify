@@ -404,7 +404,7 @@ def run_codex_pipeline(
         output_dir=output_dir,
         logs_dir=logs_dir,
         run_log_path=run_log_path,
-        cli_command=str(cli_helper),
+        cli_command=shlex.quote(str(cli_helper)),
         append_run_log=append_run_log,
     )
 

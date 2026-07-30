@@ -1885,3 +1885,36 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
 
     assert excinfo.value.exit_code == 1
     assert "triage stage failed: organize" in excinfo.value.message
+
+
+def test_run_codex_pipeline_quotes_cli_helper_path_with_spaces(monkeypatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo with spaces"
+    repo_root.mkdir()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(orchestrator_pipeline_mod, "get_project_root", lambda: repo_root)
+    monkeypatch.setattr(orchestrator_pipeline_mod, "run_stamp", lambda: "20260309_151500")
+
+    def fail_after_capturing_context(context, *_args, **_kwargs):
+        captured["cli_command"] = context.cli_command
+        return StageExecutionResult(status="failed", payload={"status": "failed", "error": "boom"})
+
+    monkeypatch.setattr(orchestrator_pipeline_mod, "execute_stage_impl", fail_after_capturing_context)
+
+    services = SimpleNamespace(
+        load_plan=lambda: {"epic_triage_meta": {"triage_stages": {}}},
+        command_runtime=lambda _args: SimpleNamespace(state={}),
+        collect_triage_input=lambda _plan, _state: SimpleNamespace(open_issues={}, resolved_issues={}),
+    )
+    monkeypatch.setattr(orchestrator_pipeline_mod, "default_triage_services", lambda: services)
+    monkeypatch.setattr(orchestrator_pipeline_mod, "ensure_triage_started", lambda *_a, **_k: None)
+
+    with pytest.raises(CommandError):
+        orchestrator_pipeline_mod.run_codex_pipeline(
+            argparse.Namespace(stage_timeout_seconds=30, dry_run=False, state=None),
+            stages_to_run=["organize"],
+            services=services,
+        )
+
+    helper = repo_root / ".desloppify" / "triage_runs" / "20260309_151500" / "run_desloppify.sh"
+    assert captured["cli_command"] == f"'{helper}'"
