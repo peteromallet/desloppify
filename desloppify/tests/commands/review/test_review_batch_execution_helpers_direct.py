@@ -12,6 +12,7 @@ from desloppify.app.commands.review.batch import execution_dry_run as dry_run_mo
 from desloppify.app.commands.review.batch import execution_progress as progress_mod
 from desloppify.app.commands.review.batch import execution_results as results_mod
 from desloppify.app.commands.review.batch import orchestrator as orchestrator_mod
+from desloppify.app.commands.review.importing import policy as policy_mod
 from desloppify.app.commands.review.runner_parallel import BatchProgressEvent
 from desloppify.base.exception_sets import CommandError
 
@@ -69,6 +70,64 @@ def test_maybe_handle_dry_run_writes_summary(tmp_path: Path) -> None:
     assert summary["runner"] == "dry-run"
     assert summary["selected_batches"] == [1, 3]
     assert "run-finished dry-run" in logs
+
+
+def _run_prompt_only(tmp_path: Path, args) -> tuple[bool, dict, list[str]]:
+    run_dir = tmp_path / "run"
+    logs: list[str] = []
+    handled = dry_run_mod.maybe_handle_dry_run(
+        args=args,
+        stamp="s3",
+        selected_indexes=[0],
+        run_dir=run_dir,
+        logs_dir=run_dir / "logs",
+        immutable_packet_path=tmp_path / "immutable.json",
+        prompt_packet_path=tmp_path / "prompt.json",
+        prompt_files={0: run_dir / "prompts" / "batch-1.md"},
+        output_files={0: run_dir / "results" / "batch-1.json"},
+        safe_write_text_fn=_safe_write_text,
+        colorize_fn=lambda text, _tone=None: text,
+        append_run_log=logs.append,
+    )
+    summary_path = run_dir / "run_summary.json"
+    summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
+    return handled, summary, logs
+
+
+def test_prompt_only_runner_emits_prompts_without_dry_run_flag(tmp_path: Path) -> None:
+    """`--runner claude` is prompt-only: it must stop before any subprocess."""
+    handled, summary, logs = _run_prompt_only(
+        tmp_path, SimpleNamespace(dry_run=False, runner="claude")
+    )
+    assert handled is True
+    assert summary["dry_run"] is True
+    assert "run-finished prompt-only" in logs
+
+
+def test_prompt_only_runner_provenance_passes_import_trust_gate(tmp_path: Path) -> None:
+    """Regression: the stamped runner must be importable for scores.
+
+    A placeholder runner here makes every Claude-subagent review permanently
+    unimportable, because the import trust gate matches provenance.runner
+    against the supported-runner set.
+    """
+    _handled, summary, _logs = _run_prompt_only(
+        tmp_path, SimpleNamespace(dry_run=True, runner="claude")
+    )
+    assert summary["runner"] == "claude"
+    assert summary["runner"] in policy_mod.SUPPORTED_BLIND_REVIEW_RUNNERS
+    assert summary["runner"] in policy_mod.ATTESTED_EXTERNAL_RUNNERS
+
+
+def test_prompt_only_runner_never_dispatches_a_subprocess() -> None:
+    """Falling through to the codex dispatcher would run the wrong agent.
+
+    Selection happens eagerly while binding deps, so it must stay callable and
+    only refuse when actually invoked.
+    """
+    run_batch = orchestrator_mod._select_batch_runner("claude")
+    with pytest.raises(CommandError):
+        run_batch()
 
 
 def test_progress_reporter_tracks_lifecycle_and_stalls(tmp_path: Path) -> None:
