@@ -1077,6 +1077,44 @@ def test_cmd_plan_reopen_reconciles_after_invalidation(monkeypatch) -> None:
     assert ("emit", "execute") in seen
 
 
+def test_cmd_plan_reopen_keeps_protected_review_hold_out_of_queue(monkeypatch) -> None:
+    state_data = {
+        "config": {},
+        "work_items": {"held": {"id": "held", "status": "fixed", "detector": "review"}},
+    }
+    plan = {
+        "queue_order": [],
+        "skipped": {},
+        "epic_triage_meta": {"protected_review_issue_ids": ["held"]},
+    }
+
+    monkeypatch.setattr(
+        override_misc_mod, "state_path", lambda _args: Path("state.json")
+    )
+    monkeypatch.setattr(override_misc_mod, "load_state", lambda _path: state_data)
+    monkeypatch.setattr(
+        override_misc_mod, "_plan_file_for_state", lambda _path: Path("plan.json")
+    )
+    monkeypatch.setattr(override_misc_mod, "load_plan", lambda _path=None: plan)
+    monkeypatch.setattr(
+        override_misc_mod,
+        "resolve_issues",
+        lambda state, _pattern, _status: state["work_items"]["held"].update(status="open") or ["held"],
+    )
+    monkeypatch.setattr(
+        override_misc_mod, "purge_uncommitted_ids", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(override_misc_mod, "append_log_entry", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        override_misc_mod, "save_plan_state_transactional", lambda **_k: None
+    )
+
+    override_misc_mod.cmd_plan_reopen(argparse.Namespace(patterns=["held"]))
+
+    assert state_data["work_items"]["held"]["status"] == "open"
+    assert plan["queue_order"] == []
+
+
 def test_cmd_plan_skip_invalid_permanent_skip_exits_nonzero(monkeypatch) -> None:
     runtime = SimpleNamespace(
         state={"last_scan": "2026-03-01T00:00:00+00:00", "scan_count": 2, "issues": {}},

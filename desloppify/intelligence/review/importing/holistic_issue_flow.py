@@ -206,8 +206,14 @@ def auto_resolve_stale_holistic(
     *,
     imported_dimensions: set[str] | None = None,
     full_sweep_included: bool | None = None,
+    preserve_open_issue_ids: set[str] | None = None,
 ) -> None:
     """Auto-resolve open holistic issues not present in the latest import."""
+    preserved_ids = {
+        issue_id.strip()
+        for issue_id in (preserve_open_issue_ids or set())
+        if isinstance(issue_id, str) and issue_id.strip()
+    }
     scope_dimensions = {
         normalize_dimension_name(dim)
         for dim in (imported_dimensions or set())
@@ -218,6 +224,8 @@ def auto_resolve_stale_holistic(
         return
 
     def _should_resolve(issue: Issue) -> bool:
+        if str(issue.get("id", "")) in preserved_ids:
+            return False
         if issue.get("detector") not in ("review", "concerns"):
             return False
         detail = issue.get("detail")

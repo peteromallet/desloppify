@@ -13,8 +13,11 @@ import desloppify.app.commands.review.importing.output as import_output_mod
 import desloppify.app.commands.review.importing.plan_sync as plan_sync_mod
 import desloppify.app.commands.review.importing.results as results_mod
 import desloppify.engine._plan.constants as plan_constants_mod
-from desloppify.engine._state.progression import append_progression_event, load_progression
 import desloppify.intelligence.review.importing.holistic as holistic_import_mod
+from desloppify.engine._state.progression import (
+    append_progression_event,
+    load_progression,
+)
 from desloppify.state import empty_state as build_empty_state
 
 
@@ -119,6 +122,23 @@ def test_sync_plan_after_import_no_living_plan(monkeypatch) -> None:
         diff={"new": 1, "reopened": 0},
         assessment_mode="issues_only",
     )
+
+
+def test_protected_review_issue_ids_for_import_reads_living_plan(monkeypatch, tmp_path) -> None:
+    plan_path = tmp_path / "plan.json"
+    monkeypatch.setattr(import_cmd_mod, "plan_path_for_state", lambda _path: plan_path)
+    monkeypatch.setattr(import_cmd_mod, "has_living_plan", lambda _path: True)
+    monkeypatch.setattr(
+        import_cmd_mod,
+        "load_plan",
+        lambda _path: {
+            "epic_triage_meta": {"protected_review_issue_ids": ["review::held"]}
+        },
+    )
+
+    assert import_cmd_mod._protected_review_issue_ids_for_import(
+        tmp_path / "state.json"
+    ) == {"review::held"}
 
 
 def test_sync_plan_after_import_marks_subjective_review_complete_for_current_scan(
