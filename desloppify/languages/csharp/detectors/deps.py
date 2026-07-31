@@ -23,6 +23,18 @@ from desloppify.languages.csharp.detectors.deps_support_projects import (
     parse_csproj_references as _parse_csproj_references,
     parse_project_assets_references as _parse_project_assets_references,
 )
+from desloppify.languages.csharp.detectors.deps_support_razor import (
+    build_component_index as _build_component_index,
+    build_extension_method_index as _build_extension_method_index,
+    build_type_index as _build_type_index,
+    build_view_index as _build_view_index,
+    code_behind_for as _code_behind_for,
+    collect_ambient_usings as _collect_ambient_usings,
+    find_razor_files as _find_razor_files,
+    inherited_usings as _inherited_usings,
+    normalize_view_ref as _normalize_view_ref,
+    parse_razor_metadata as _parse_razor_metadata,
+)
 from desloppify.languages.csharp.detectors.deps_support_render import (
     build_graph_from_edge_map as _build_graph_from_edge_map,
     render_cycles_for_graph as _render_cycles_for_graph,
@@ -30,6 +42,7 @@ from desloppify.languages.csharp.detectors.deps_support_render import (
     safe_resolve_graph_path as _safe_resolve_graph_path,
 )
 from desloppify.languages.csharp.extractors import (
+    CSHARP_FILE_EXCLUSIONS,
     find_csharp_files,
 )
 
@@ -174,6 +187,94 @@ def _build_dep_graph_roslyn(
     return _parse_roslyn_graph_payload(payload)
 
 
+def _link_razor_views(
+    path: Path,
+    *,
+    graph: dict[str, dict],
+    cs_files: list[str],
+    razor_files: list[str],
+    file_to_namespace: dict[str, str | None],
+    projects: list[Path],
+    file_to_project: dict[str, Path],
+    entrypoint_files: set[str],
+) -> None:
+    """Add graph edges contributed by Razor/Blazor views.
+
+    Views are not scored as C# source, but they reference C# that nothing else
+    references. Without these edges a code-behind partial or a component used
+    only from markup looks orphaned.
+
+    Edges resolve by type name rather than by whole namespace. A view's
+    ``@using`` says which namespaces are in scope, not which files it depends
+    on, so linking the whole namespace would mark every file in it as live and
+    hide genuinely dead code.
+    """
+    if not razor_files:
+        return
+
+    file_to_project.update(_map_file_to_project(razor_files, projects))
+    ambient = _collect_ambient_usings(razor_files)
+    component_index = _build_component_index(razor_files)
+    view_index = _build_view_index(razor_files)
+    type_index = _build_type_index(cs_files)
+    extension_index = _build_extension_method_index(cs_files)
+
+    def _link(source: str, target_path: str) -> None:
+        """Record a view's dependency on one file."""
+        target = resolve_path(target_path)
+        if target == source:
+            return
+        graph[source]["imports"].add(target)
+        graph[target]["importers"].add(source)
+
+    def _link_by_name(
+        source: str, names: set[str], index: dict[str, set[str]], in_scope: set[str]
+    ) -> None:
+        """Link a view to files declaring the named symbols, within scope."""
+        for name in names:
+            for target in index.get(name, ()):
+                target_ns = file_to_namespace.get(target)
+                if target_ns and in_scope and target_ns not in in_scope:
+                    continue
+                _link(source, target)
+
+    for filepath in razor_files:
+        source = resolve_path(filepath)
+        graph[source]  # ensure entry exists
+        view = _parse_razor_metadata(filepath)
+        in_scope = view.usings | _inherited_usings(filepath, ambient)
+        if view.namespace:
+            in_scope.add(view.namespace)
+
+        # Link the C# files declaring the types this view actually names, and
+        # the extension methods it calls, which name no type at the call site.
+        _link_by_name(source, view.identifiers, type_index, in_scope)
+        _link_by_name(source, view.invoked_members, extension_index, in_scope)
+        # Tag helpers and view components are reached by naming convention, so
+        # their type name never appears literally in the markup.
+        _link_by_name(source, view.convention_types, type_index, set())
+
+        # Partials and layouts are named as strings rather than types.
+        for view_ref in view.view_refs:
+            referenced = view_index.get(_normalize_view_ref(view_ref))
+            if referenced:
+                _link(source, referenced)
+
+        # A view is the only consumer of its own code-behind partial.
+        code_behind = _code_behind_for(filepath)
+        if code_behind:
+            _link(source, code_behind)
+
+        for component_name in view.component_refs:
+            defining_view = component_index.get(component_name)
+            if defining_view:
+                _link(source, defining_view)
+
+        # A routable page is reachable by URL, so it is a root like Program.cs.
+        if view.is_routable:
+            entrypoint_files.add(source)
+
+
 def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict]:
     """Build a C# dependency graph compatible with shared graph detectors."""
     roslyn_graph = _build_dep_graph_roslyn(path, roslyn_cmd=roslyn_cmd)
@@ -183,7 +284,10 @@ def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict
     graph: dict[str, dict] = defaultdict(lambda: {"imports": set(), "importers": set()})
 
     cs_files = find_csharp_files(path)
-    if not cs_files:
+    # A Razor class library can be almost entirely views, so the absence of C#
+    # sources is not the absence of a graph.
+    razor_files = _find_razor_files(path, tuple(CSHARP_FILE_EXCLUSIONS))
+    if not cs_files and not razor_files:
         return finalize_graph({})
 
     projects = _find_csproj_files(path)
@@ -225,15 +329,20 @@ def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict
         if proj is not None:
             project_to_namespaces[proj].add(ns)
 
-    for source, usings in file_to_usings.items():
+    def _allowed_namespaces_for(source: str) -> set[str] | None:
+        """Namespaces a file may reference, limited to its project's references."""
         proj = file_to_project.get(source)
-        allowed_namespaces: set[str] | None = None
-        if proj is not None:
-            allowed_projects = {proj} | project_refs.get(proj, set())
-            allowed_namespaces = set()
-            for ap in allowed_projects:
-                allowed_namespaces.update(project_to_namespaces.get(ap, set()))
+        if proj is None:
+            return None
+        allowed_projects = {proj} | project_refs.get(proj, set())
+        allowed: set[str] = set()
+        for ap in allowed_projects:
+            allowed.update(project_to_namespaces.get(ap, set()))
+        return allowed
 
+    def _link_usings(source: str, usings: set[str]) -> None:
+        """Add graph edges from one file to every file its usings resolve to."""
+        allowed_namespaces = _allowed_namespaces_for(source)
         for using_ns in usings:
             for target in _expand_namespace_matches(using_ns, namespace_to_files):
                 if target == source:
@@ -247,6 +356,20 @@ def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict
                     continue
                 graph[source]["imports"].add(target)
                 graph[target]["importers"].add(source)
+
+    for source, usings in file_to_usings.items():
+        _link_usings(source, usings)
+
+    _link_razor_views(
+        path,
+        graph=graph,
+        cs_files=cs_files,
+        razor_files=razor_files,
+        file_to_namespace=file_to_namespace,
+        projects=projects,
+        file_to_project=file_to_project,
+        entrypoint_files=entrypoint_files,
+    )
 
     # Mark app bootstrap files as referenced roots to avoid orphan false positives.
     for source in entrypoint_files:
