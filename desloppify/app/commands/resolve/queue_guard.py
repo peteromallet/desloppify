@@ -8,8 +8,8 @@ from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import (
     queue_context,
 )
-from desloppify.engine._work_queue.plan_order import collapse_clusters
 from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine._work_queue.plan_order import collapse_clusters
 from desloppify.engine.planning.queue_policy import build_execution_queue
 
 from .plan_load import ResolvePlanAccess, load_resolve_plan_access
@@ -155,7 +155,7 @@ def _check_queue_order_guard(
         return False
 
     resolved_issue_ids = {issue_id for issue_id in resolved_ids if issue_id in issues}
-    if resolved_issue_ids == resolved_ids:
+    if resolved_issue_ids:
         planned_front_ids = _front_planned_issue_ids(
             queue_order,
             issues=issues,
