@@ -16,8 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.engine._state.schema import StateModel, utc_now
-from desloppify.intelligence.review.importing.contracts_types import ReviewImportPayload
-
 from desloppify.intelligence.integrity import (
     is_holistic_subjective_issue,
     is_subjective_review_open,
@@ -40,6 +38,8 @@ from desloppify.intelligence.review.dimensions.lang import (
     get_lang_guidance,
 )
 from desloppify.intelligence.review.dimensions.selection import resolve_dimensions
+from desloppify.intelligence.review.importing.contracts_types import ReviewImportPayload
+from desloppify.intelligence.review.personas import PERSONAS, Persona, assign_personas
 from desloppify.intelligence.review.policy import (
     DimensionPolicy,
     append_custom_dimensions,
@@ -55,8 +55,9 @@ from desloppify.intelligence.review.prepare import (
     prepare_holistic_review,
     prepare_review,
 )
-from desloppify.intelligence.review.personas import PERSONAS, Persona, assign_personas
-from desloppify.intelligence.review.prepare_batches_builders import build_investigation_batches
+from desloppify.intelligence.review.prepare_batches_builders import (
+    build_investigation_batches,
+)
 from desloppify.intelligence.review.remediation import generate_remediation_plan
 from desloppify.intelligence.review.selection import (
     LOW_VALUE_NAMES,
@@ -94,6 +95,7 @@ def import_holistic_issues(
     lang_name: str,
     *,
     project_root: Path | str | None = None,
+    preserve_open_issue_ids: set[str] | None = None,
     utc_now_fn=utc_now,
 ) -> dict[str, Any]:
     """Lazy wrapper to avoid import cycles during package initialization."""
@@ -106,6 +108,7 @@ def import_holistic_issues(
         state,
         lang_name,
         project_root=project_root,
+        preserve_open_issue_ids=preserve_open_issue_ids,
         utc_now_fn=utc_now_fn,
     )
 
