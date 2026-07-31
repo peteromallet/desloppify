@@ -208,6 +208,7 @@ class EpicTriageMeta(TypedDict, total=False):
 
     triaged_ids: list[str]
     active_triage_issue_ids: list[str]
+    protected_review_issue_ids: list[str]
     dismissed_ids: list[str]
     undispositioned_issue_ids: list[str]
     undispositioned_issue_count: int

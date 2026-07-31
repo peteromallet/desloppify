@@ -33,12 +33,16 @@ def dismiss_triage_issues(
     now: str,
     version: int,
     scan_count: int,
+    protected_issue_ids: set[str] | None = None,
 ) -> tuple[list[str], int]:
     """Move triage-dismissed issues out of queue and into skipped metadata."""
+    protected_ids = protected_issue_ids or set()
     dismissed_ids: list[str] = []
     dismiss_count = 0
     for dismissed in triage.dismissed_issues:
         issue_id = dismissed.issue_id
+        if issue_id in protected_ids:
+            continue
         dismissed_ids.append(issue_id)
         if issue_id in order:
             order.remove(issue_id)
@@ -53,7 +57,7 @@ def dismiss_triage_issues(
 
     for epic_data in triage.clusters:
         for issue_id in epic_data.get("dismissed", []):
-            if issue_id in dismissed_ids or issue_id not in order:
+            if issue_id in protected_ids or issue_id in dismissed_ids or issue_id not in order:
                 continue
             order.remove(issue_id)
             dismissed_ids.append(issue_id)

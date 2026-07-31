@@ -58,6 +58,17 @@ def test_skip_temporary():
     assert plan["skipped"]["b"]["kind"] == "temporary"
 
 
+def test_skip_rejects_explicitly_protected_review_id():
+    plan = _plan_with_queue("held")
+    plan["epic_triage_meta"] = {"protected_review_issue_ids": ["held"]}
+
+    count = skip_items(plan, ["held"], kind="temporary")
+
+    assert count == 0
+    assert "held" not in plan["skipped"]
+    assert "held" not in plan["queue_order"]
+
+
 def test_skip_permanent():
     plan = _plan_with_queue("a", "b")
     count = skip_items(

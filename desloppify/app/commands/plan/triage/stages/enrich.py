@@ -11,8 +11,13 @@ from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
 from desloppify.engine.plan_triage import compute_triage_progress
 
-from .records import record_enrich_stage, resolve_reusable_report
-from ..validation.enrich_quality import evaluate_enrich_quality
+from ..completion_flow import count_log_activity_since
+from ..review_coverage import (
+    active_triage_issue_ids,
+    triage_open_review_ids_from_state,
+)
+from ..services import TriageServices, default_triage_services
+from ..stage_queue import has_triage_in_queue, print_cascade_clear_feedback
 from ..validation.enrich_checks import (
     _enrich_report_or_error,
     _require_organize_stage_for_enrich,
@@ -20,13 +25,8 @@ from ..validation.enrich_checks import (
     _steps_without_effort,
     _underspecified_steps,
 )
-from ..completion_flow import count_log_activity_since
-from ..review_coverage import (
-    active_triage_issue_ids,
-    open_review_ids_from_state,
-)
-from ..stage_queue import has_triage_in_queue, print_cascade_clear_feedback
-from ..services import TriageServices, default_triage_services
+from ..validation.enrich_quality import evaluate_enrich_quality
+from .records import record_enrich_stage, resolve_reusable_report
 
 ColorizeFn = Callable[[str, str], str]
 
@@ -120,7 +120,7 @@ def _require_cluster_update_activity(
         return True
     activity = deps.count_log_activity_since(plan, organize_ts)
     update_ops = activity.get("cluster_update", 0)
-    if update_ops != 0 or not open_review_ids_from_state(state):
+    if update_ops != 0 or not triage_open_review_ids_from_state(plan, state):
         return True
     if attestation and len(attestation.strip()) >= 40:
         print(

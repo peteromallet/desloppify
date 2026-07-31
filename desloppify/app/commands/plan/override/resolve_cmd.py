@@ -12,16 +12,18 @@ from desloppify.app.commands.helpers.attestation import (
     validate_note_length,
 )
 from desloppify.app.commands.helpers.command_runtime import command_runtime
+from desloppify.app.commands.plan.shared.patterns import resolve_ids_from_patterns
 from desloppify.app.commands.resolve.cmd import cmd_resolve
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._work_queue.core import ATTEST_EXAMPLE
+from desloppify.engine.plan_ops import append_log_entry
 from desloppify.engine.plan_state import (
     load_plan,
     save_plan,
 )
-from desloppify.engine.plan_ops import append_log_entry
 
 from .resolve_helpers import (
     check_cluster_guard,
@@ -74,6 +76,19 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
         state = runtime.state
         plan = load_plan()
         if check_cluster_guard(patterns, plan, state):
+            return
+        protected_ids = sorted(
+            set(resolve_ids_from_patterns(state, patterns, plan=plan, status_filter="all"))
+            & protected_review_issue_ids(plan)
+        )
+        if protected_ids:
+            print(
+                colorize(
+                    "  Cannot resolve protected review item(s): "
+                    + ", ".join(protected_ids),
+                    "red",
+                )
+            )
             return
     except PLAN_LOAD_EXCEPTIONS:
         plan = None

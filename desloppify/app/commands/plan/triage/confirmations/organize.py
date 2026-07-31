@@ -7,24 +7,24 @@ import argparse
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
 
-from .basic import MIN_ATTESTATION_LEN, validate_attestation
-from .shared import (
-    StageConfirmationRequest,
-    ensure_stage_is_confirmable,
-    finalize_stage_confirmation,
-)
-from ..display.dashboard import show_plan_summary
 from ..completion_flow import count_log_activity_since
+from ..display.dashboard import show_plan_summary
 from ..review_coverage import (
     cluster_issue_ids,
-    open_review_ids_from_state,
     triage_coverage,
+    triage_open_review_ids_from_state,
 )
 from ..services import TriageServices, default_triage_services
 from ..validation.enrich_checks import (
     _cluster_file_overlaps,
     _clusters_with_directory_scatter,
     _clusters_with_high_step_ratio,
+)
+from .basic import MIN_ATTESTATION_LEN, validate_attestation
+from .shared import (
+    StageConfirmationRequest,
+    ensure_stage_is_confirmable,
+    finalize_stage_confirmation,
 )
 
 
@@ -167,7 +167,10 @@ def confirm_organize(
     all_clusters = plan.get("clusters", {})
     _print_orphaned_cluster_notes(all_clusters)
 
-    organized, total, _ = triage_coverage(plan, open_review_ids=open_review_ids_from_state(state))
+    organized, total, _ = triage_coverage(
+        plan,
+        open_review_ids=triage_open_review_ids_from_state(plan, state),
+    )
     if not finalize_stage_confirmation(
         plan=plan,
         stages=stages,

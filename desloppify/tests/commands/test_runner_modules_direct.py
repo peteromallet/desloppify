@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import desloppify.app.commands.runner.codex_batch as codex_batch_mod
 import desloppify.app.commands.runner.run_logs as run_logs_mod
+from desloppify.app.commands.review.runner_process_impl.types import _ExecutionResult
 
 
 def test_wrap_cmd_c_collapses_arguments_into_single_string() -> None:
@@ -174,7 +175,7 @@ def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_pa
     assert any(c.endswith("codex") or "codex" in c for c in command[:3])
     assert "exec" in command
     assert "--ephemeral" in command
-    assert f'model_reasoning_effort="high"' in command
+    assert 'model_reasoning_effort="high"' in command
     assert str(tmp_path) in command
 
     monkeypatch.setenv("DESLOPPIFY_CODEX_REASONING_EFFORT", "invalid")
@@ -183,7 +184,7 @@ def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_pa
         repo_root=tmp_path,
         output_file=tmp_path / "out.json",
     )
-    assert f'model_reasoning_effort="low"' in command
+    assert 'model_reasoning_effort="low"' in command
 
 
 def test_codex_batch_command_uses_sandbox_env_override(monkeypatch, tmp_path: Path) -> None:
@@ -258,6 +259,54 @@ def test_run_codex_batch_retries_timeout_or_stall_until_success(monkeypatch, tmp
     assert code == 0
     assert attempts == [1, 2]
     assert sleeps == [0.25]
+
+
+def test_run_codex_batch_retries_exit_zero_with_invalid_output(monkeypatch, tmp_path: Path) -> None:
+    """Exit-zero output validation failures consume the configured retry budget."""
+    attempts: list[int] = []
+    sleeps: list[float] = []
+    output_file = tmp_path / "out.json"
+    log_file = tmp_path / "batch.log"
+
+    def fake_run_batch_attempt(**kwargs):
+        attempt = kwargs["attempt"]
+        attempts.append(attempt)
+        output_file.write_text(
+            '{"assessments": {}' if attempt == 1 else '{"assessments": {}}',
+            encoding="utf-8",
+        )
+        return (
+            f"ATTEMPT {attempt}/2",
+            _ExecutionResult(code=0, stdout_text="", stderr_text=""),
+        )
+
+    monkeypatch.setattr(codex_batch_mod, "run_batch_attempt", fake_run_batch_attempt)
+    code = codex_batch_mod.run_codex_batch(
+        prompt="prompt",
+        repo_root=tmp_path,
+        output_file=output_file,
+        log_file=log_file,
+        deps=SimpleNamespace(
+            timeout_seconds=10,
+            max_retries=1,
+            retry_backoff_seconds=0.25,
+            live_log_interval_seconds=0.1,
+            stall_after_output_seconds=5,
+            use_popen_runner=False,
+            subprocess_popen=None,
+            validate_output_fn=None,
+            output_validation_grace_seconds=0.0,
+            output_validation_poll_seconds=0.01,
+            sleep_fn=sleeps.append,
+            safe_write_text_fn=lambda path, text: path.write_text(text, encoding="utf-8"),
+        ),
+        codex_batch_command_fn=lambda **_kwargs: ["codex", "exec"],
+    )
+
+    assert code == 0
+    assert attempts == [1, 2]
+    assert sleeps == [0.25]
+    assert "output validation failed; retrying" in log_file.read_text(encoding="utf-8")
 
 
 def test_run_followup_scan_handles_force_bypass_timeout_and_oserror(

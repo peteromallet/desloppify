@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_ACTIVE
-from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
+from desloppify.engine._plan.policy.stale import triage_review_issue_snapshot_hash
 from desloppify.engine._plan.schema import (
     EPIC_PREFIX,
     Cluster,
@@ -13,6 +13,10 @@ from desloppify.engine._plan.schema import (
     ensure_plan_defaults,
 )
 from desloppify.engine._plan.skip_policy import skip_kind_state_status
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
 from desloppify.engine._state.issue_semantics import is_triage_finding
 from desloppify.engine._state.schema import StateModel, ensure_state_defaults, utc_now
 
@@ -120,10 +124,36 @@ def _upsert_triage_clusters(
     triage: TriageResult,
     now: str,
     version: int,
+    protected_issue_ids: set[str],
 ) -> tuple[int, int]:
     created = 0
     updated = 0
     for epic_data in sorted(triage.clusters, key=_epic_sort_key):
+        filtered_issue_ids = [
+            issue_id
+            for issue_id in epic_data.get("issue_ids", [])
+            if issue_id not in protected_issue_ids
+        ]
+        filtered_dismissed = [
+            issue_id
+            for issue_id in epic_data.get("dismissed", [])
+            if issue_id not in protected_issue_ids
+        ]
+        if (
+            not filtered_issue_ids
+            and not filtered_dismissed
+            and (epic_data.get("issue_ids") or epic_data.get("dismissed"))
+        ):
+            continue
+        if (
+            filtered_issue_ids != epic_data.get("issue_ids", [])
+            or filtered_dismissed != epic_data.get("dismissed", [])
+        ):
+            epic_data = {
+                **epic_data,
+                "issue_ids": filtered_issue_ids,
+                "dismissed": filtered_dismissed,
+            }
         raw_name = epic_data["name"]
         epic_name = _normalized_epic_name(raw_name)
         existing = clusters.get(epic_name)
@@ -146,13 +176,14 @@ def _reorder_queue_by_dependency(
     order: list[str],
     triage: TriageResult,
     dismissed_ids: list[str],
+    protected_issue_ids: set[str],
 ) -> None:
     epic_issue_ids: set[str] = set()
     epic_ordered_ids: list[str] = []
     dismissed_set = set(dismissed_ids)
     for epic_data in sorted(triage.clusters, key=_epic_sort_key):
         for fid in epic_data["issue_ids"]:
-            if fid in epic_issue_ids or fid in dismissed_set:
+            if fid in protected_issue_ids or fid in epic_issue_ids or fid in dismissed_set:
                 continue
             epic_issue_ids.add(fid)
             epic_ordered_ids.append(fid)
@@ -173,15 +204,23 @@ def _set_triage_meta(
     dismissed_ids: list[str],
     trigger: str,
 ) -> None:
-    current_hash = review_issue_snapshot_hash(state)
+    existing_meta = plan.get("epic_triage_meta", {})
+    protected_config = (
+        existing_meta.get("protected_review_issue_ids")
+        if isinstance(existing_meta, dict)
+        else None
+    )
+    current_hash = triage_review_issue_snapshot_hash(plan, state)
+    protected_ids = protected_review_issue_ids(plan)
     open_review_ids = sorted(
-        fid
-        for fid, issue in (state.get("work_items") or state.get("issues", {})).items()
+        issue_id
+        for issue_id, issue in (state.get("work_items") or state.get("issues", {})).items()
         if issue.get("status") == "open"
         and is_triage_finding(issue)
+        and issue_id not in protected_ids
     )
 
-    plan["epic_triage_meta"] = {
+    meta = {
         "triaged_ids": open_review_ids,
         "last_run": now,
         "version": version,
@@ -190,6 +229,9 @@ def _set_triage_meta(
         "strategy_summary": triage.strategy_summary,
         "trigger": trigger,
     }
+    if isinstance(protected_config, list):
+        meta["protected_review_issue_ids"] = protected_config
+    plan["epic_triage_meta"] = meta
 
 
 def _apply_auto_cluster_decisions(
@@ -200,6 +242,7 @@ def _apply_auto_cluster_decisions(
     now: str,
     version: int,
     result: TriageMutationResult,
+    protected_issue_ids: set[str],
 ) -> None:
     """Process auto_cluster_decisions from the triage result.
 
@@ -222,7 +265,11 @@ def _apply_auto_cluster_decisions(
             existing_in_order = set(order)
             new_ids = [
                 fid for fid in issue_ids
-                if isinstance(fid, str) and fid not in existing_in_order
+                if (
+                    isinstance(fid, str)
+                    and fid not in existing_in_order
+                    and fid not in protected_issue_ids
+                )
             ]
             # Determine insertion position based on priority hint
             priority = (decision.priority or "").lower().strip()
@@ -301,6 +348,7 @@ def apply_triage_to_plan(
     4. Updates epic_triage_meta with snapshot hash
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan, state)
     ensure_state_defaults(state)
     now = utc_now()
     result = TriageMutationResult()
@@ -310,6 +358,7 @@ def apply_triage_to_plan(
     skipped: dict = plan["skipped"]
     order: list[str] = plan["queue_order"]
     meta = plan.get("epic_triage_meta", {})
+    protected_ids = protected_review_issue_ids(plan)
     version = int(meta.get("version", 0)) + 1
     result.triage_version = version
 
@@ -318,6 +367,7 @@ def apply_triage_to_plan(
         triage=triage,
         now=now,
         version=version,
+        protected_issue_ids=protected_ids,
     )
     result.epics_created += created
     result.epics_updated += updated
@@ -329,6 +379,7 @@ def apply_triage_to_plan(
         now=now,
         version=version,
         scan_count=int(state.get("scan_count", 0)),
+        protected_issue_ids=protected_ids,
     )
     result.issues_dismissed += dismiss_count
 
@@ -345,6 +396,7 @@ def apply_triage_to_plan(
         order=order,
         triage=triage,
         dismissed_ids=dismissed_ids,
+        protected_issue_ids=protected_ids,
     )
 
     # Process auto-cluster decisions (backward-compatible: no-op if empty)
@@ -356,6 +408,7 @@ def apply_triage_to_plan(
             now=now,
             version=version,
             result=result,
+            protected_issue_ids=protected_ids,
         )
 
     _set_triage_meta(

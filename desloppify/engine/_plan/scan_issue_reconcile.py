@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from desloppify.engine._plan.annotations import get_issue_note
+from desloppify.engine._plan.cluster_semantics import (
+    EXECUTION_STATUS_DONE,
+    cluster_is_active,
+)
 from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
-from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE, cluster_is_active
 from desloppify.engine._plan.operations.lifecycle import clear_focus_if_cluster_empty
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.operations.skip import resurface_stale_skips
@@ -19,6 +22,7 @@ from desloppify.engine._plan.schema import (
     ensure_plan_defaults,
 )
 from desloppify.engine._plan.skip_policy import skip_kind_state_status
+from desloppify.engine._plan.triage.protection import clear_protected_triage_artifacts
 from desloppify.engine._state.schema import StateModel, ensure_state_defaults, utc_now
 
 SUPERSEDED_TTL_DAYS = 90
@@ -378,6 +382,9 @@ def reconcile_plan_after_scan(
     """
     ensure_plan_defaults(plan)
     ensure_state_defaults(state)
+    # A protected ID is a hold, not a skip.  Sanitize before skipped entries
+    # are synchronized into non-open state on this scan boundary.
+    clear_protected_triage_artifacts(plan, state)
     result = ReconcileResult()
     now = utc_now()
     now_dt = datetime.now(UTC)

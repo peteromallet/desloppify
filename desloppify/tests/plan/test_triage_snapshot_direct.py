@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import desloppify.engine._plan.triage.snapshot as snapshot_mod
+from desloppify.engine._plan.triage.lifecycle import ensure_active_triage_issue_ids
 
 
 def test_normalized_issue_id_list_filters_invalid_values() -> None:
@@ -45,6 +46,23 @@ def test_coverage_open_ids_falls_back_to_queue_order_before_first_scan() -> None
         "review::src/foo.py::naming",
         "concerns::src/bar.py::auth",
     }
+
+
+def test_protected_review_ids_are_excluded_from_coverage_and_freeze() -> None:
+    plan = {
+        "epic_triage_meta": {
+            "protected_review_issue_ids": ["review::held", "", "review::held"],
+        }
+    }
+    issues = {
+        "review::held": {"status": "open", "detector": "review"},
+        "review::live": {"status": "open", "detector": "review"},
+    }
+    state = {"issues": issues, "work_items": issues, "last_scan": "now"}
+
+    assert ensure_active_triage_issue_ids(plan, state) == ["review::live"]
+    assert plan["epic_triage_meta"]["active_triage_issue_ids"] == ["review::live"]
+    assert snapshot_mod.coverage_open_ids(plan, state) == {"review::live"}
 
 
 def test_manual_clusters_with_issues_and_find_cluster_for_ignore_auto_clusters() -> None:

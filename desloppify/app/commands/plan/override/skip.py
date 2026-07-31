@@ -14,20 +14,17 @@ from desloppify.app.commands.helpers.attestation import (
 )
 from desloppify.app.commands.helpers.command_runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_issue_inventory
-from .io import (
-    _plan_file_for_state,
-    save_plan_state_transactional,
-)
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.app.commands.plan.shared.patterns import resolve_ids_from_patterns
 from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
-from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.engine._plan.refresh_lifecycle import (
     invalidate_postflight_scan,
 )
 from desloppify.engine._plan.sync import reconcile_plan
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine.plan_ops import (
     SKIP_KIND_LABELS,
     append_log_entry,
@@ -42,6 +39,11 @@ from desloppify.engine.plan_ops import (
 from desloppify.engine.plan_state import (
     load_plan,
     save_plan,
+)
+
+from .io import (
+    _plan_file_for_state,
+    save_plan_state_transactional,
 )
 
 logger = logging.getLogger(__name__)
@@ -223,6 +225,16 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not issue_ids:
         print(colorize("  No matching issues found.", "yellow"))
+        return
+    protected_ids = sorted(set(issue_ids) & protected_review_issue_ids(plan))
+    if protected_ids:
+        print(
+            colorize(
+                "  Cannot skip protected review item(s): "
+                + ", ".join(protected_ids),
+                "red",
+            )
+        )
         return
 
     _warn_or_block_bulk_skip(issue_ids, confirm=bool(getattr(args, "confirm", False)))

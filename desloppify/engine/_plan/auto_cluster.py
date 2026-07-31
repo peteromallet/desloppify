@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 from desloppify.base.config import DEFAULT_TARGET_STRICT_SCORE
-from desloppify.engine._plan.cluster_semantics import cluster_is_active
-from desloppify.engine._plan.constants import AUTO_PREFIX
 from desloppify.engine._plan.auto_cluster_sync import (
     prune_stale_clusters as _prune_stale_clusters,
+)
+from desloppify.engine._plan.auto_cluster_sync import (
     sync_issue_clusters as _sync_issue_clusters,
+)
+from desloppify.engine._plan.auto_cluster_sync import (
     sync_subjective_clusters as _sync_subjective_clusters,
 )
-from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
+from desloppify.engine._plan.cluster_semantics import cluster_is_active
+from desloppify.engine._plan.constants import AUTO_PREFIX
 from desloppify.engine._plan.policy.subjective import SubjectiveVisibility
+from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
 from desloppify.engine._plan.sync.context import is_mid_cycle
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
 from desloppify.engine._state.schema import StateModel, utc_now
 
 # ---------------------------------------------------------------------------
@@ -32,10 +40,16 @@ def _clear_missing_cluster_override(
     return 1
 
 
-def _canonical_cluster_membership(clusters: dict) -> dict[str, str]:
+def _canonical_cluster_membership(
+    clusters: dict,
+    *,
+    protected_issue_ids: set[str],
+) -> dict[str, str]:
     canonical: dict[str, str] = {}
     for name, cluster in clusters.items():
         for issue_id in cluster.get("issue_ids", []):
+            if issue_id in protected_issue_ids:
+                continue
             if issue_id not in canonical or not cluster.get("auto"):
                 canonical[issue_id] = name
     return canonical
@@ -99,7 +113,10 @@ def _repair_ghost_cluster_refs(plan: PlanModel, now: str) -> int:
     for override in overrides.values():
         repaired += _clear_missing_cluster_override(override, clusters, now)
 
-    canonical = _canonical_cluster_membership(clusters)
+    canonical = _canonical_cluster_membership(
+        clusters,
+        protected_issue_ids=protected_review_issue_ids(plan),
+    )
 
     for issue_id, cluster_name in canonical.items():
         repaired += _sync_override_to_canonical_cluster(issue_id, cluster_name, overrides, now)
@@ -162,13 +179,19 @@ def _evictable_auto_cluster_issue_ids(plan: PlanModel) -> set[str]:
 
     active_ids: set[str] = set()
     inactive_ids: set[str] = set()
+    protected_ids = protected_review_issue_ids(plan)
     for cluster in plan.get("clusters", {}).values():
         if not isinstance(cluster, dict):
             continue
         ids = {
             issue_id
             for issue_id in cluster.get("issue_ids", [])
-            if isinstance(issue_id, str) and issue_id and not is_synthetic_id(issue_id)
+            if (
+                isinstance(issue_id, str)
+                and issue_id
+                and issue_id not in protected_ids
+                and not is_synthetic_id(issue_id)
+            )
         }
         if not cluster.get("auto"):
             active_ids |= ids
@@ -184,6 +207,7 @@ def _sync_active_auto_cluster_queue_membership(plan: PlanModel) -> int:
     order: list[str] = plan.get("queue_order", [])
     skipped = set(plan.get("skipped", {}).keys())
     existing = set(order)
+    protected_ids = protected_review_issue_ids(plan)
     changes = 0
 
     # Evict queue_order entries from non-active auto-clusters.
@@ -205,6 +229,7 @@ def _sync_active_auto_cluster_queue_membership(plan: PlanModel) -> int:
                 or not issue_id
                 or issue_id in skipped
                 or issue_id in existing
+                or issue_id in protected_ids
             ):
                 continue
             order.append(issue_id)
@@ -225,6 +250,7 @@ def auto_cluster_issues(
     Returns count of changes made (clusters created, updated, or deleted).
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan, state)
     if is_mid_cycle(plan):
         return 0
 

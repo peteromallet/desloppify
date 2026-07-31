@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 
 from desloppify.base.config import DEFAULT_TARGET_STRICT_SCORE
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.helpers import slugify
 from desloppify.engine.planning.scorecard_projection import all_subjective_entries
+
 
 def open_review_ids(state: StateModel) -> set[str]:
     """Return IDs of open review/concerns issues from state.
@@ -23,6 +25,15 @@ def open_review_ids(state: StateModel) -> set[str]:
         for fid, f in (state.get("work_items") or state.get("issues", {})).items()
         if f.get("status") == "open" and is_review_work_item(f)
     }
+
+
+def triage_open_review_ids(plan: dict, state: StateModel) -> set[str]:
+    """Return open review IDs that are in automated triage scope.
+
+    Explicitly protected IDs remain open in state.  They are excluded here so
+    triage automation cannot re-inject or disposition a user-owned hold.
+    """
+    return open_review_ids(state) - protected_review_issue_ids(plan)
 
 
 def open_mechanical_count(state: StateModel) -> int:
@@ -158,13 +169,21 @@ def review_issue_snapshot_hash(state: StateModel) -> str:
     return hashlib.sha256("|".join(review_ids).encode()).hexdigest()[:16]
 
 
+def triage_review_issue_snapshot_hash(plan: dict, state: StateModel) -> str:
+    """Hash only the review IDs that automated triage is allowed to process."""
+    review_ids = sorted(triage_open_review_ids(plan, state))
+    if not review_ids:
+        return ""
+    return hashlib.sha256("|".join(review_ids).encode()).hexdigest()[:16]
+
+
 def compute_new_issue_ids(plan: dict, state: StateModel) -> set[str]:
     """Return open review/concerns IDs that appeared since the last triage."""
     meta = plan.get("epic_triage_meta", {})
     triaged = set(meta.get("triaged_ids", []))
     active = set(meta.get("active_triage_issue_ids", []))
     known = triaged | active
-    return open_review_ids(state) - known if known else set()
+    return triage_open_review_ids(plan, state) - known if known else set()
 
 
 def is_triage_stale(
@@ -193,7 +212,7 @@ def is_triage_stale(
     known = triaged_ids | active_ids
 
     # Any new review issue → stale
-    if open_review_ids(state) - known:
+    if triage_open_review_ids(plan, state) - known:
         return True
 
     # Check mechanical growth threshold
@@ -219,4 +238,6 @@ __all__ = [
     "open_mechanical_count",
     "open_review_ids",
     "review_issue_snapshot_hash",
+    "triage_open_review_ids",
+    "triage_review_issue_snapshot_hash",
 ]

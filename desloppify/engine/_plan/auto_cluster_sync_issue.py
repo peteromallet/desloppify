@@ -7,9 +7,9 @@ from dataclasses import dataclass
 
 from desloppify.base.registry import DETECTORS
 from desloppify.engine._plan.cluster_semantics import (
+    EXECUTION_POLICY_EPHEMERAL_AUTOPROMOTE,
     EXECUTION_STATUS_ACTIVE,
     EXECUTION_STATUS_REVIEW,
-    EXECUTION_POLICY_EPHEMERAL_AUTOPROMOTE,
     infer_cluster_execution_policy,
     normalize_cluster_semantics,
 )
@@ -25,6 +25,7 @@ from desloppify.engine._plan.cluster_strategy import (
 from desloppify.engine._plan.cluster_strategy import (
     grouping_key as _grouping_key,
 )
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 
 _MIN_CLUSTER_SIZE = 2
 
@@ -65,8 +66,10 @@ def _group_clusterable_issues(
     issues: dict,
     *,
     manual_member_ids: set[str],
+    protected_issue_ids: set[str] | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, dict]]:
     """Group open, non-suppressed, non-manual issues by detector/subtype key."""
+    protected_ids = protected_issue_ids or set()
     groups: dict[str, list[str]] = defaultdict(list)
     issue_data: dict[str, dict] = {}
     for fid, issue in issues.items():
@@ -75,6 +78,8 @@ def _group_clusterable_issues(
         if issue.get("suppressed"):
             continue
         if fid in manual_member_ids:
+            continue
+        if fid in protected_ids:
             continue
 
         detector = issue.get("detector", "")
@@ -214,7 +219,9 @@ def sync_issue_clusters(
     changes = 0
 
     groups, issue_data = _group_clusterable_issues(
-        issues, manual_member_ids=_manual_member_ids(clusters)
+        issues,
+        manual_member_ids=_manual_member_ids(clusters),
+        protected_issue_ids=protected_review_issue_ids(plan),
     )
 
     for key, member_ids in groups.items():

@@ -27,10 +27,12 @@ import desloppify.app.commands.plan.triage.stages.organize as organize_stage_mod
 import desloppify.app.commands.plan.triage.validation.completion_policy as completion_policy_mod
 import desloppify.app.commands.plan.triage.validation.completion_stages as completion_stages_mod
 import desloppify.app.commands.plan.triage.validation.enrich_checks as enrich_checks_mod
+import desloppify.app.commands.plan.triage.validation.organize_policy as organize_policy_mod
 from desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution import (
     StageExecutionResult,
 )
 from desloppify.base.exception_sets import CommandError
+from desloppify.engine._plan.schema import empty_plan
 from desloppify.engine.plan_triage import build_triage_snapshot
 
 
@@ -70,8 +72,8 @@ def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, cap
     monkeypatch.setattr(completion_policy_mod, "active_triage_issue_scope", lambda _plan, _state=None: None)
     monkeypatch.setattr(
         completion_policy_mod,
-        "open_review_ids_from_state",
-        lambda _state: {"review::a.py::id1"},
+        "triage_open_review_ids_from_state",
+        lambda _plan, _state: {"review::a.py::id1"},
     )
     monkeypatch.setattr(completion_policy_mod, "triage_coverage", lambda _plan, open_review_ids: (1, 1, []))
     monkeypatch.setattr(completion_policy_mod, "unenriched_clusters", lambda _plan, _state=None: [])
@@ -130,6 +132,21 @@ def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, cap
 
     out = capsys.readouterr().out
     assert "Strategy too short" in out
+
+
+def test_completion_gate_ignores_only_protected_open_review_ids() -> None:
+    plan = empty_plan()
+    plan["epic_triage_meta"] = {"protected_review_issue_ids": ["review::held"]}
+    state = {
+        "issues": {
+            "review::held": {"status": "open", "detector": "review"},
+        },
+    }
+
+    readiness = completion_policy_mod.evaluate_completion_readiness(plan, state)
+
+    assert readiness.ok is True
+    assert readiness.open_review_ids == frozenset()
 
 
 def test_runner_validate_completion_uses_shared_completion_boundary(monkeypatch, tmp_path: Path) -> None:
@@ -275,7 +292,11 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
     captured: dict[str, object] = {}
     state = {"issues": {"review::closed-only": {"status": "closed", "detector": "review"}}}
 
-    monkeypatch.setattr(organize_stage_mod, "open_review_ids_from_state", lambda _state: set())
+    monkeypatch.setattr(
+        organize_stage_mod,
+        "triage_open_review_ids_from_state",
+        lambda _plan, _state: set(),
+    )
     monkeypatch.setattr(
         organize_stage_mod, "auto_confirm_reflect_for_organize", lambda **_kwargs: True
     )
@@ -327,6 +348,45 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
 
     assert result == (["manual"], "x" * 120)
     assert captured["state"] is state
+
+
+def test_validate_backlog_promotions_accepts_active_or_queued_members() -> None:
+    plan = {
+        "queue_order": ["review::ready"],
+        "epic_triage_meta": {"protected_review_issue_ids": ["review::held"]},
+        "clusters": {
+            "auto/active-empty": {
+                "issue_ids": [],
+                "execution_status": "active",
+            },
+            "auto/queued-members": {
+                "issue_ids": ["review::ready", "review::held"],
+                "execution_status": "review",
+            },
+            "auto/empty-review": {
+                "issue_ids": [],
+                "execution_status": "review",
+            },
+        },
+    }
+    stages = {
+        "reflect": {
+            "backlog_decisions": [
+                {"cluster_name": "auto/active-empty", "decision": "promote"},
+                {"cluster_name": "auto/queued-members", "decision": "promote"},
+                {"cluster_name": "auto/empty-review", "decision": "promote"},
+            ]
+        }
+    }
+
+    warnings = organize_policy_mod.validate_backlog_promotions_executed(
+        plan=plan,
+        stages=stages,
+    )
+
+    assert warnings == [
+        "Reflect requested promoting auto/empty-review but it was not promoted during organize."
+    ]
 
 
 def test_confirm_organize_passes_state_to_enrichment_gate(monkeypatch) -> None:
@@ -1885,6 +1945,41 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
 
     assert excinfo.value.exit_code == 1
     assert "triage stage failed: organize" in excinfo.value.message
+
+
+def test_run_codex_pipeline_fails_when_triage_start_is_blocked(monkeypatch, tmp_path: Path) -> None:
+    """A startup guard must not look like a successful no-artifact runner pass."""
+    monkeypatch.setattr(orchestrator_pipeline_mod, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        orchestrator_pipeline_mod,
+        "ensure_triage_started",
+        lambda *_args, **_kwargs: triage_lifecycle_mod.TriageStartOutcome(
+            status="blocked",
+            reason="unfinished_triage_stage_records",
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator_pipeline_mod,
+        "_run_stage_sequence",
+        lambda *_args, **_kwargs: pytest.fail("blocked startup must not launch a stage"),
+    )
+
+    services = SimpleNamespace(
+        load_plan=lambda: {"epic_triage_meta": {"triage_stages": {}}},
+        command_runtime=lambda _args: SimpleNamespace(state={}),
+    )
+
+    with pytest.raises(CommandError) as excinfo:
+        orchestrator_pipeline_mod.run_codex_pipeline(
+            argparse.Namespace(stage_timeout_seconds=30, dry_run=False, state=None),
+            stages_to_run=["reflect"],
+            services=services,
+        )
+
+    assert excinfo.value.exit_code == 1
+    assert "unfinished_triage_stage_records" in excinfo.value.message
+    assert "before executing any stage" in excinfo.value.message.lower()
+    assert not (tmp_path / ".desloppify" / "triage_runs").exists()
 
 
 def test_run_codex_pipeline_quotes_cli_helper_path_with_spaces(monkeypatch, tmp_path: Path) -> None:

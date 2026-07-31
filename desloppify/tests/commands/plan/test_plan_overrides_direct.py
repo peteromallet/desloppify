@@ -155,6 +155,81 @@ def test_override_resolve_cmd_confirm_requires_note(capsys) -> None:
     assert "--confirm requires --note" in out
 
 
+def test_override_resolve_cmd_rejects_protected_review_id(monkeypatch, capsys) -> None:
+    state = {
+        "issues": {
+            "held": {"id": "held", "status": "open", "detector": "review"},
+        }
+    }
+    plan = {"epic_triage_meta": {"protected_review_issue_ids": ["held"]}}
+    delegated: list[argparse.Namespace] = []
+
+    monkeypatch.setattr(
+        override_resolve_cmd_mod,
+        "command_runtime",
+        lambda _args: SimpleNamespace(state=state),
+    )
+    monkeypatch.setattr(override_resolve_cmd_mod, "load_plan", lambda: plan)
+    monkeypatch.setattr(override_resolve_cmd_mod, "cmd_resolve", delegated.append)
+
+    override_resolve_cmd_mod.cmd_plan_resolve(
+        argparse.Namespace(
+            patterns=["held"],
+            attest=None,
+            note="Kept this review finding out of the automated triage queue",
+            confirm=True,
+            force_resolve=False,
+            state=None,
+            lang=None,
+            path=".",
+            exclude=None,
+        )
+    )
+
+    assert delegated == []
+    assert "Cannot resolve protected review item" in capsys.readouterr().out
+
+
+def test_override_skip_cmd_rejects_protected_review_id(monkeypatch, capsys) -> None:
+    state = {
+        "scan_metadata": {"source": "scan"},
+        "last_scan": "2026-07-31T00:00:00+00:00",
+        "issues": {
+            "held": {"id": "held", "status": "open", "detector": "review"},
+        }
+    }
+    plan = {"epic_triage_meta": {"protected_review_issue_ids": ["held"]}}
+    state_transitions: list[str] = []
+
+    monkeypatch.setattr(
+        override_skip_mod,
+        "command_runtime",
+        lambda _args: SimpleNamespace(state=state, state_path=Path("state.json")),
+    )
+    monkeypatch.setattr(override_skip_mod, "load_plan", lambda _path=None: plan)
+    monkeypatch.setattr(
+        override_skip_mod,
+        "_apply_state_skip_resolution",
+        lambda **_kwargs: state_transitions.append("resolved"),
+    )
+
+    override_skip_mod.cmd_plan_skip(
+        argparse.Namespace(
+            patterns=["held"],
+            reason="later",
+            review_after=None,
+            permanent=False,
+            false_positive=False,
+            note=None,
+            attest=None,
+            confirm=False,
+        )
+    )
+
+    assert state_transitions == []
+    assert "Cannot skip protected review item" in capsys.readouterr().out
+
+
 def test_override_resolve_cmd_handles_synthetic_only_resolution(
     monkeypatch, capsys
 ) -> None:
@@ -354,7 +429,9 @@ def test_resolve_workflow_patterns_reconciles_when_create_plan_drains_queue(
         resolve_workflow_mod, "live_planned_queue_empty", lambda _plan: True
     )
     monkeypatch.setattr(
-        resolve_workflow_mod, "has_open_review_issues", lambda _state: True
+        resolve_workflow_mod,
+        "has_open_review_issues",
+        lambda _state, _plan=None: True,
     )
     monkeypatch.setattr(
         resolve_workflow_mod,

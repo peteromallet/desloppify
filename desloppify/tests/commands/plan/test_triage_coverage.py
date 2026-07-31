@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from desloppify.app.commands.plan.triage.review_coverage import triage_coverage
-from desloppify.engine._plan.schema import empty_plan
+from desloppify.app.commands.plan.triage.review_coverage import (
+    has_open_review_issues,
+    triage_coverage,
+)
 from desloppify.engine._plan.constants import TRIAGE_STAGE_IDS
+from desloppify.engine._plan.schema import empty_plan
 
 
 def _plan_with_queue(*issue_ids: str, clustered: list[str] | None = None) -> dict:
@@ -28,6 +31,13 @@ def _review_ids(*ids: str) -> set[str]:
 
 
 class TestTriageCoverage:
+    def test_workflow_review_gate_ignores_protected_only_review_ids(self):
+        plan = empty_plan()
+        plan["epic_triage_meta"] = {"protected_review_issue_ids": ["held"]}
+        state = {"issues": {"held": {"status": "open", "detector": "review"}}}
+
+        assert has_open_review_issues(state, plan) is False
+
     def test_coverage_excludes_non_review_items(self):
         """Non-review queue items (mechanical issues) don't inflate total."""
         plan = _plan_with_queue(

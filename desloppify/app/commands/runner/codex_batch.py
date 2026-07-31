@@ -16,7 +16,9 @@ from desloppify.app.commands.review.runner_process_impl.attempts import (
     resolve_retry_config,
     run_batch_attempt,
 )
-from desloppify.app.commands.review.runner_process_impl.io import extract_payload_from_log
+from desloppify.app.commands.review.runner_process_impl.io import (
+    extract_payload_from_log,
+)
 from desloppify.app.commands.review.runner_process_impl.types import (
     CodexBatchRunnerDeps,
     FollowupScanDeps,
@@ -193,6 +195,22 @@ def run_codex_batch(
             log_sections=log_sections,
         )
         if success_code is not None:
+            if success_code == 1 and attempt < config.max_attempts:
+                delay = config.retry_backoff_seconds * (2 ** (attempt - 1))
+                log_sections.append(
+                    "Runner exited 0 but output validation failed; "
+                    f"retrying in {delay:.1f}s (attempt {attempt + 1}/{config.max_attempts})."
+                )
+                try:
+                    if delay > 0:
+                        deps.sleep_fn(delay)
+                except (OSError, RuntimeError, ValueError, TypeError) as exc:
+                    log_sections.append(
+                        f"Retry delay hook failed: {exc} — aborting remaining retries."
+                    )
+                    deps.safe_write_text_fn(log_file, "\n\n".join(log_sections))
+                    return 1
+                continue
             return success_code
         failure_code = handle_failed_attempt(
             result=result,

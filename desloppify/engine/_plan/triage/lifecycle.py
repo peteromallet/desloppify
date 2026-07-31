@@ -13,6 +13,7 @@ from desloppify.engine._plan.constants import (
     TRIAGE_STAGE_IDS,
     normalize_queue_workflow_and_triage_prefix,
 )
+from desloppify.engine._plan.triage.protection import clear_protected_triage_artifacts
 from desloppify.engine._plan.triage.snapshot import coverage_open_ids
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine.plan_state import EpicTriageMeta, PlanModel, SkipEntry
@@ -81,6 +82,7 @@ def inject_triage_stages(plan: PlanModel) -> list[str]:
 
 def ensure_active_triage_issue_ids(plan: PlanModel, state: StateModel) -> list[str]:
     """Freeze the current triage issue set for validation across stage reruns."""
+    clear_protected_triage_artifacts(plan, state)
     meta = ensure_triage_meta(plan)
     active_ids = sorted(coverage_open_ids(plan, state))
     meta[_ACTIVE_TRIAGE_ISSUE_IDS_KEY] = active_ids

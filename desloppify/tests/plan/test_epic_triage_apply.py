@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
+from desloppify.engine._plan.schema import empty_plan
 from desloppify.engine._plan.triage.apply import (
     TriageMutationResult,
     apply_triage_to_plan,
 )
 from desloppify.engine._plan.triage.prompt import DismissedIssue, TriageResult
-from desloppify.engine._plan.schema import empty_plan
-from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -514,6 +514,60 @@ class TestTriageMeta:
 
         assert sorted(plan["epic_triage_meta"]["triaged_ids"]) == ["r1", "r2"]
 
+    def test_apply_reopens_and_removes_all_automated_protected_artifacts(self):
+        """A protected hold cleans old automation before direct triage apply."""
+        plan = empty_plan()
+        plan["queue_order"] = ["held", "live"]
+        plan["promoted_ids"] = ["held"]
+        plan["overrides"]["held"] = {"issue_id": "held", "cluster": "auto/review"}
+        plan["skipped"]["held"] = {
+            "issue_id": "held",
+            "kind": "triage_observe_auto",
+        }
+        plan["issue_dispositions"] = {
+            "held": {"decision_source": "observe_auto", "decision": "skip"},
+        }
+        plan["clusters"] = {
+            "auto/review": {
+                "name": "auto/review",
+                "auto": True,
+                "issue_ids": ["held", "live"],
+            },
+            "source-verified-review-dispositions": {
+                "name": "source-verified-review-dispositions",
+                "auto": False,
+                "issue_ids": ["held"],
+            },
+        }
+        plan["epic_triage_meta"] = {
+            "protected_review_issue_ids": ["held"],
+            "active_triage_issue_ids": ["held", "live"],
+            "issue_dispositions": {
+                "held": {"decision_source": "observe_auto", "decision": "skip"},
+            },
+        }
+        state = _state_with_review_issues("held", "live")
+        state["issues"]["held"]["status"] = "false_positive"
+
+        apply_triage_to_plan(
+            plan,
+            state,
+            _triage_with_epics(_epic("live-work", ["held", "live"])),
+        )
+
+        assert state["issues"]["held"]["status"] == "open"
+        assert "held" not in plan["skipped"]
+        assert "held" not in plan["issue_dispositions"]
+        assert "held" not in plan["queue_order"]
+        assert "held" not in plan["promoted_ids"]
+        assert "held" not in plan["overrides"]
+        assert "held" not in plan["clusters"]["auto/review"]["issue_ids"]
+        assert plan["clusters"]["source-verified-review-dispositions"]["issue_ids"] == [
+            "held"
+        ]
+        assert plan["clusters"]["epic/live-work"]["issue_ids"] == ["live"]
+        assert "held" not in plan["epic_triage_meta"].get("issue_dispositions", {})
+
     def test_dismissed_ids_recorded(self):
         plan = empty_plan()
         plan["queue_order"] = ["r1", "r2"]
@@ -605,4 +659,3 @@ class TestTriageMeta:
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
-

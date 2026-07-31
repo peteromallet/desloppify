@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from desloppify.engine._plan.cluster_semantics import (
     ACTION_TYPE_MANUAL_FIX,
-    EXECUTION_STATUS_ACTIVE,
     EXECUTION_POLICY_PLANNED_ONLY,
+    EXECUTION_STATUS_ACTIVE,
 )
 from desloppify.engine._plan.operations.lifecycle import clear_focus_if_cluster_empty
 from desloppify.engine._plan.operations.queue import move_items
 from desloppify.engine._plan.schema import Cluster, PlanModel, ensure_plan_defaults
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._state.schema import utc_now
 
 
@@ -27,6 +28,8 @@ def _upsert_cluster_override(
     cluster_name: str,
     timestamp: str,
 ) -> None:
+    if issue_id in protected_review_issue_ids(plan):
+        return
     overrides = plan["overrides"]
     if issue_id not in overrides:
         overrides[issue_id] = {"issue_id": issue_id, "created_at": timestamp}
@@ -108,6 +111,7 @@ def add_to_cluster(
     member_ids: list[str] = cluster["issue_ids"]
     queue_order: list[str] = plan.get("queue_order", [])
     is_manual = not cluster.get("auto")
+    protected_ids = protected_review_issue_ids(plan)
     count = 0
     now = utc_now()
     for fid in issue_ids:
@@ -115,7 +119,7 @@ def add_to_cluster(
             member_ids.append(fid)
             count += 1
         # Ensure manual cluster members are in the queue
-        if is_manual and fid not in queue_order:
+        if is_manual and fid not in protected_ids and fid not in queue_order:
             queue_order.append(fid)
         _upsert_cluster_override(
             plan,

@@ -6,15 +6,11 @@ import argparse
 
 from desloppify.base.output.terminal import colorize
 
-from ..display.dashboard import print_organize_result
 from ..completion_flow import count_log_activity_since
-from ..review_coverage import open_review_ids_from_state
-from ..stage_queue import has_triage_in_queue
+from ..display.dashboard import print_organize_result
+from ..review_coverage import triage_open_review_ids_from_state
 from ..services import TriageServices, default_triage_services
-from ..validation.stage_policy import (
-    ReflectAutoConfirmDeps,
-    auto_confirm_reflect_for_organize,
-)
+from ..stage_queue import has_triage_in_queue
 from ..validation.organize_policy import (
     _clusters_enriched_or_error,
     _manual_clusters_or_error,
@@ -23,7 +19,11 @@ from ..validation.organize_policy import (
     _validate_organize_against_ledger_or_error,
     validate_backlog_promotions_executed,
 )
-from ..validation.stage_policy import require_prerequisite
+from ..validation.stage_policy import (
+    ReflectAutoConfirmDeps,
+    auto_confirm_reflect_for_organize,
+    require_prerequisite,
+)
 from .records import record_organize_stage
 
 
@@ -110,7 +110,7 @@ def _validate_organize_submission(
     is_reuse: bool,
     services: TriageServices,
 ) -> tuple[list[str], str] | None:
-    open_review_ids = open_review_ids_from_state(state)
+    open_review_ids = triage_open_review_ids_from_state(plan, state)
     triage_input = services.collect_triage_input(plan, state)
     if not auto_confirm_reflect_for_organize(
         args=args,
@@ -233,7 +233,7 @@ def _cmd_stage_organize(
 
     runtime = resolved_services.command_runtime(args)
     state = runtime.state
-    open_review_ids = open_review_ids_from_state(state)
+    open_review_ids = triage_open_review_ids_from_state(plan, state)
 
     validated = _validate_organize_submission(
         args=args,
