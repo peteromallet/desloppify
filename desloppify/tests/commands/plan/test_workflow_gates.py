@@ -16,12 +16,11 @@ import argparse
 import desloppify.app.commands.plan.override.misc as misc_mod
 import desloppify.app.commands.plan.override.resolve_cmd as resolve_mod
 import desloppify.app.commands.plan.override.resolve_workflow as resolve_workflow_mod
-from desloppify.engine._plan.schema import empty_plan
 from desloppify.engine._plan.constants import (
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
 )
-
+from desloppify.engine._plan.schema import empty_plan
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -101,7 +100,12 @@ def _mock_plan_io(monkeypatch, plan):
     monkeypatch.setattr(resolve_workflow_mod, "load_plan", lambda *a, **kw: plan)
     monkeypatch.setattr(misc_mod, "load_plan", lambda *a, **kw: plan)
     saved = []
-    monkeypatch.setattr(resolve_mod, "save_plan", lambda p, *a, **kw: saved.append(p))
+    monkeypatch.setattr(
+        resolve_mod,
+        "save_plan",
+        lambda p, *a, **kw: saved.append(p),
+        raising=False,
+    )
     monkeypatch.setattr(resolve_workflow_mod, "save_plan", lambda p, *a, **kw: saved.append(p))
     monkeypatch.setattr(misc_mod, "save_plan", lambda p, *a, **kw: saved.append(p))
     return saved
