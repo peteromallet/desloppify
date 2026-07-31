@@ -469,8 +469,9 @@ def test_guard_uses_configured_target_to_match_next_packet(
     observed_targets = []
 
     def queue_for_target(_state, *, options):
-        observed_targets.append(options.context.target_strict)
-        if options.context.target_strict == 85.0:
+        target = (options.context.target_strict, options.subjective_threshold)
+        observed_targets.append(target)
+        if target == (85.0, 85.0):
             return {
                 "items": [
                     {"id": "review::a", "kind": "issue"},
@@ -493,4 +494,4 @@ def test_guard_uses_configured_target_to_match_next_packet(
     blocked = _check_queue_order_guard(state, ["planned-review"], "fixed")
 
     assert blocked is False
-    assert observed_targets == [85.0]
+    assert observed_targets == [(85.0, 85.0)]

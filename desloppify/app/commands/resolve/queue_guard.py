@@ -138,6 +138,7 @@ def _check_queue_order_guard(
         options=QueueBuildOptions(
             count=None,
             include_subjective=True,
+            subjective_threshold=ctx.target_strict,
             context=ctx,
         ),
     )
