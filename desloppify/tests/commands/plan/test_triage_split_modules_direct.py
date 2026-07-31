@@ -23,6 +23,7 @@ import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_co
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution as orchestrator_pipeline_execution_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_sense as orchestrator_sense_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_common as orchestrator_common_mod
+import desloppify.app.commands.plan.triage.stages.commands as stage_commands_mod
 import desloppify.app.commands.plan.triage.stages.organize as organize_stage_mod
 import desloppify.app.commands.plan.triage.validation.completion_policy as completion_policy_mod
 import desloppify.app.commands.plan.triage.validation.completion_stages as completion_stages_mod
@@ -1908,6 +1909,58 @@ def test_execute_stage_fails_when_handler_does_not_persist_stage(monkeypatch, tm
 
     assert result.status == "failed"
     assert result.payload["error"] == "stage_not_recorded"
+
+
+def test_record_reflect_report_forwards_rejection(monkeypatch) -> None:
+    monkeypatch.setattr(stage_commands_mod, "cmd_stage_reflect", lambda *_a, **_k: False)
+
+    accepted = orchestrator_pipeline_execution_mod._record_reflect_report(
+        "reflect report",
+        argparse.Namespace(state=None),
+        SimpleNamespace(),
+    )
+
+    assert accepted is False
+
+
+def test_execute_stage_reports_reflect_record_validation_rejection(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(orchestrator_pipeline_mod, "build_stage_prompt", lambda *a, **k: "prompt")
+    monkeypatch.setattr(
+        orchestrator_pipeline_mod,
+        "run_triage_stage",
+        lambda **_kwargs: codex_runner_mod.TriageStageRunResult(exit_code=0),
+    )
+    monkeypatch.setitem(
+        orchestrator_pipeline_mod._STAGE_HANDLERS,
+        "reflect",
+        orchestrator_pipeline_mod.StageHandler(record_report=lambda *_a, **_k: False),
+    )
+
+    run_log: list[str] = []
+    services = SimpleNamespace(load_plan=lambda: {"epic_triage_meta": {"triage_stages": {}}})
+    result = orchestrator_pipeline_execution_mod.execute_stage(
+        _make_stage_context(
+            tmp_path,
+            stage="reflect",
+            services=services,
+            plan={"epic_triage_meta": {"triage_stages": {"observe": {"report": "ok"}}}},
+            triage_input=SimpleNamespace(open_issues={}),
+            prior_reports={"observe": "ok"},
+            append_run_log=run_log.append,
+        ),
+        handlers=orchestrator_pipeline_mod._STAGE_HANDLERS,
+        dependencies=orchestrator_pipeline_mod.StageExecutionDependencies(
+            build_stage_prompt=lambda *_a, **_k: "prompt",
+            run_triage_stage=lambda **_kwargs: codex_runner_mod.TriageStageRunResult(exit_code=0),
+            read_stage_output=lambda _path: "x" * 120,
+            analyze_reflect_issue_accounting=orchestrator_pipeline_mod._analyze_reflect_issue_accounting,
+            validate_reflect_issue_accounting=orchestrator_pipeline_mod._validate_reflect_issue_accounting,
+        ),
+    )
+
+    assert result.status == "failed"
+    assert result.payload["error"] == "reflect_report_rejected"
+    assert any("stage-record-rejected stage=reflect" in line for line in run_log)
 
 
 def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path) -> None:

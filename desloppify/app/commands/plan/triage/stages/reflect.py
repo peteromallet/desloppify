@@ -263,8 +263,8 @@ def _cmd_stage_reflect(
     args: argparse.Namespace,
     *,
     services: TriageServices | None = None,
-) -> None:
-    """Record the REFLECT stage: compare current issues against completed work."""
+) -> bool:
+    """Record the REFLECT stage and report whether the submission was accepted."""
     report: str | None = getattr(args, "report", None)
     attestation: str | None = getattr(args, "attestation", None)
 
@@ -275,7 +275,7 @@ def _cmd_stage_reflect(
 
     if not has_triage_in_queue(plan):
         print(colorize("  No planning stages in the queue — nothing to reflect on.", "yellow"))
-        return
+        return False
 
     meta = plan.get("epic_triage_meta", {})
     stages = meta.get("triage_stages", {})
@@ -284,7 +284,7 @@ def _cmd_stage_reflect(
     report, is_reuse = resolve_reusable_report(report, existing_stage)
     if not report:
         _print_reflect_report_requirement()
-        return
+        return False
 
     submission = _validate_reflect_submission(
         report=report,
@@ -295,7 +295,7 @@ def _cmd_stage_reflect(
         services=resolved_services,
     )
     if submission is None:
-        return
+        return False
     (
         triage_input, issue_count, recurring, recurring_dims,
         cited_ids, missing_ids, duplicate_ids, disposition_ledger,
@@ -327,15 +327,16 @@ def _cmd_stage_reflect(
         cleared=cleared,
         stages=stages,
     )
+    return True
 
 
 def cmd_stage_reflect(
     args: argparse.Namespace,
     *,
     services: TriageServices | None = None,
-) -> None:
+) -> bool:
     """Public entrypoint for reflect stage recording."""
-    _cmd_stage_reflect(args, services=services)
+    return _cmd_stage_reflect(args, services=services)
 
 
 __all__ = ["_cmd_stage_reflect", "cmd_stage_reflect"]

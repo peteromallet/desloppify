@@ -99,9 +99,38 @@ def test_reflect_exits_when_triage_not_in_queue(monkeypatch, capsys) -> None:
     services, _saved, _logs = _services(plan)
     monkeypatch.setattr(reflect_mod, "has_triage_in_queue", lambda _plan: False)
 
-    reflect_mod._cmd_stage_reflect(_args(report="r" * 120), services=services)
+    accepted = reflect_mod._cmd_stage_reflect(_args(report="r" * 120), services=services)
     out = capsys.readouterr().out
+    assert accepted is False
     assert "No planning stages in the queue" in out
+
+
+def test_reflect_rejects_humanized_recurring_dimension_name(monkeypatch) -> None:
+    plan = {
+        "epic_triage_meta": {
+            "triage_stages": {
+                "observe": {
+                    "report": "x" * 120,
+                    "confirmed_at": "2026-03-09T00:00:00Z",
+                }
+            }
+        }
+    }
+    services, _saved, _logs = _services(plan, open_issues={"review::type_safety::aabbccdd": {}})
+    services.detect_recurring_patterns = lambda _open, _resolved: {
+        "type_safety": {"open": ["review::type_safety::aabbccdd"], "resolved": []}
+    }
+    monkeypatch.setattr(reflect_mod, "has_triage_in_queue", lambda _plan: True)
+    monkeypatch.setattr(reflect_mod, "auto_confirm_observe_if_attested", lambda **_kwargs: True)
+    monkeypatch.setattr(reflect_mod, "validate_stage_report_length", lambda **_kwargs: True)
+
+    accepted = reflect_mod._cmd_stage_reflect(
+        _args(report="Type safety remains important, but this does not use the validator key."),
+        services=services,
+    )
+
+    assert accepted is False
+    assert "reflect" not in plan["epic_triage_meta"]["triage_stages"]
 
 
 def test_organize_exits_when_reflect_requirement_not_met(monkeypatch) -> None:
@@ -180,7 +209,7 @@ def test_reflect_rejects_incomplete_issue_accounting(monkeypatch, capsys) -> Non
     services, _saved, _logs = _services(plan, open_issues=open_issues)
     monkeypatch.setattr(reflect_mod, "has_triage_in_queue", lambda _plan: True)
 
-    reflect_mod._cmd_stage_reflect(
+    accepted = reflect_mod._cmd_stage_reflect(
         _args(
             report=(
                 "Cluster alpha will handle aaaabbbb in src/a.ts after reviewing the current "
@@ -191,6 +220,7 @@ def test_reflect_rejects_incomplete_issue_accounting(monkeypatch, capsys) -> Non
     )
 
     out = capsys.readouterr().out
+    assert accepted is False
     assert "account for every open review issue exactly once" in out
     assert "reflect" not in plan["epic_triage_meta"]["triage_stages"]
 
@@ -226,7 +256,7 @@ def test_reflect_preserves_observe_auto_disposition_during_fresh_persist(
     monkeypatch.setattr(reflect_mod, "validate_stage_report_length", lambda **_kwargs: True)
     monkeypatch.setattr(reflect_mod, "_validate_recurring_dimension_mentions", lambda **_kwargs: True)
 
-    reflect_mod._cmd_stage_reflect(
+    accepted = reflect_mod._cmd_stage_reflect(
         _args(
             report=(
                 "## Coverage Ledger\n"
@@ -239,6 +269,7 @@ def test_reflect_preserves_observe_auto_disposition_during_fresh_persist(
         services=services,
     )
 
+    assert accepted is True
     dispositions = plan["epic_triage_meta"]["issue_dispositions"]
     assert dispositions["review::complexity::aaaa1111"]["decision"] == "cluster"
     assert dispositions["review::complexity::aaaa1111"]["target"] == "cluster-alpha"
