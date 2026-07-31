@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from desloppify.base.config import load_config
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import (
     queue_context,
@@ -128,7 +129,10 @@ def _check_queue_order_guard(
     if not queue_order:
         return False
 
-    ctx = queue_context(state, plan=plan)
+    # Resolve with the same configured threshold as ``desloppify next``.
+    # Otherwise a project target below the default 95 can make resolve see
+    # synthetic re-review work while next correctly presents its planned packet.
+    ctx = queue_context(state, plan=plan, config=load_config())
     result = build_work_queue(
         state,
         options=QueueBuildOptions(
