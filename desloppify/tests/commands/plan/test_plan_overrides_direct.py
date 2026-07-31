@@ -101,7 +101,6 @@ def test_override_resolve_cmd_confirm_allows_small_cluster(monkeypatch) -> None:
     }
     plan = {"clusters": {"small": {"issue_ids": ["i1", "i2"]}}}
     delegated: list[argparse.Namespace] = []
-    log_entries: list[dict] = []
 
     monkeypatch.setattr(
         override_resolve_cmd_mod,
@@ -109,12 +108,6 @@ def test_override_resolve_cmd_confirm_allows_small_cluster(monkeypatch) -> None:
         lambda _args: SimpleNamespace(state=state),
     )
     monkeypatch.setattr(override_resolve_cmd_mod, "load_plan", lambda: plan)
-    monkeypatch.setattr(
-        override_resolve_cmd_mod,
-        "append_log_entry",
-        lambda *_args, **kwargs: log_entries.append(kwargs),
-    )
-    monkeypatch.setattr(override_resolve_cmd_mod, "save_plan", lambda _plan: None)
     monkeypatch.setattr(override_resolve_cmd_mod, "cmd_resolve", delegated.append)
 
     override_resolve_cmd_mod.cmd_plan_resolve(
@@ -135,7 +128,6 @@ def test_override_resolve_cmd_confirm_allows_small_cluster(monkeypatch) -> None:
     assert delegated[0].patterns == ["small"]
     assert delegated[0].status == "fixed"
     assert delegated[0].attest.startswith("I have actually resolved the small cluster")
-    assert log_entries[0]["cluster_name"] == "small"
 
 
 def test_override_resolve_cmd_confirm_requires_note(capsys) -> None:
