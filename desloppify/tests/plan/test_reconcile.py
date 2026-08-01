@@ -196,6 +196,25 @@ def test_reconcile_supersedes_resolved_action_references():
     assert "b" in plan["promoted_ids"]
 
 
+def test_reconcile_supersedes_system_false_positive_without_skip():
+    """Detector corrections leave a supersession record, never a user skip."""
+    plan = _plan_with_queue("schema-drift")
+    ensure_plan_defaults(plan)
+    plan["uncommitted_issues"] = ["schema-drift"]
+    state = _state_with_issues("schema-drift", status="false_positive")
+    state["issues"]["schema-drift"]["resolution_attestation"] = {
+        "kind": "detector_semantic_correction",
+    }
+
+    result = reconcile_plan_after_scan(plan, state)
+
+    assert "schema-drift" in result.superseded
+    assert "schema-drift" not in plan["queue_order"]
+    assert "schema-drift" in plan["superseded"]
+    assert "schema-drift" not in plan["skipped"]
+    assert "schema-drift" not in plan["uncommitted_issues"]
+
+
 # ---------------------------------------------------------------------------
 # Active clusters completed when all items resolved
 # ---------------------------------------------------------------------------

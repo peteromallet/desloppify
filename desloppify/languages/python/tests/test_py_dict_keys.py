@@ -2,11 +2,16 @@
 
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
+from desloppify.languages.python import phases_quality as phases_quality_mod
 from desloppify.languages.python.detectors import dict_keys as dict_keys_mod
 from desloppify.languages.python.detectors.dict_keys import (
     detect_dict_key_flow,
     detect_schema_drift,
+)
+from desloppify.languages.python.detectors.dict_keys.schema import (
+    detect_schema_drift_with_semantic_corrections,
 )
 
 # ── Helpers ────────────────────────────────────────────────
@@ -344,6 +349,153 @@ class TestSchemaDrift:
         entries, _ = detect_schema_drift(path)
         assert len(entries) == 0
 
+    def test_does_not_compare_validation_schema_with_returned_payloads(self, tmp_path):
+        """Constructor schemas and runtime snapshots can intentionally differ."""
+        code = textwrap.dedent("""\
+            ValidationSchema(
+                {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "analyzer_id": 9,
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+            )
+
+            def legacy_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+
+            def canonical_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+
+            def normalized_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+        """)
+        path = _write_py(tmp_path, code)
+
+        entries, count, corrections = (
+            detect_schema_drift_with_semantic_corrections(path)
+        )
+
+        assert count == 4
+        assert entries == []
+        assert len(corrections) == 1
+        assert corrections[0]["key"] == "analyzer_id"
+        assert (
+            corrections[0]["comparison_scope"]
+            == "schema-constructor:ValidationSchema"
+        )
+
+    def test_detects_drift_within_validation_schema_constructor(self, tmp_path):
+        code = textwrap.dedent("""\
+            ValidationSchema(
+                {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+            )
+            ValidationSchema(
+                {
+                    "event_id": 2,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+            )
+            ValidationSchema(
+                {
+                    "event_id": 3,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+            )
+            ValidationSchema(
+                {
+                    "event_id": 4,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                    "analyzer_id": 9,
+                }
+            )
+        """)
+        path = _write_py(tmp_path, code)
+
+        entries, count, corrections = (
+            detect_schema_drift_with_semantic_corrections(path)
+        )
+
+        assert count == 4
+        assert any(entry["key"] == "analyzer_id" for entry in entries)
+        assert corrections == []
+
+    def test_detects_drift_within_returned_payloads(self, tmp_path):
+        code = textwrap.dedent("""\
+            def first_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+
+            def second_snapshot():
+                return {
+                    "event_id": 2,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+
+            def third_snapshot():
+                return {
+                    "event_id": 3,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+
+            def fourth_snapshot():
+                return {
+                    "event_id": 4,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                    "analyzer_id": 9,
+                }
+        """)
+        path = _write_py(tmp_path, code)
+
+        entries, count, corrections = (
+            detect_schema_drift_with_semantic_corrections(path)
+        )
+
+        assert count == 4
+        assert any(entry["key"] == "analyzer_id" for entry in entries)
+        assert corrections == []
+
     def test_too_few_literals_no_issues(self, tmp_path):
         code = textwrap.dedent("""\
             d1 = {"name": "a", "age": 1, "city": "x"}
@@ -353,6 +505,39 @@ class TestSchemaDrift:
         entries, count = detect_schema_drift(path)
         # Fewer than 3 literals -> no issues
         assert len(entries) == 0
+
+    def test_phase_records_proven_semantic_correction(self, monkeypatch, tmp_path):
+        correction_entry = {
+            "file": "schemas.py",
+            "line": 12,
+            "key": "analyzer_id",
+            "tier": 3,
+            "confidence": "medium",
+            "summary": "Legacy-only schema drift",
+            "comparison_scope": "schema-constructor:ValidationSchema",
+            "rule": "python.dict_keys.schema_drift.schema_constructor_scope.v1",
+        }
+        monkeypatch.setattr(
+            phases_quality_mod.dict_keys_detector_mod,
+            "detect_dict_key_flow",
+            lambda _path: ([], 1),
+        )
+        monkeypatch.setattr(
+            phases_quality_mod,
+            "detect_schema_drift_with_semantic_corrections",
+            lambda _path: ([], 1, [correction_entry]),
+        )
+        lang = SimpleNamespace(zone_map=None, semantic_corrections={})
+
+        entries, potentials = phases_quality_mod.phase_dict_keys(tmp_path, lang)
+
+        assert entries == []
+        assert potentials == {"dict_keys": 1}
+        correction_id, correction = next(iter(lang.semantic_corrections.items()))
+        assert correction_id.endswith("::schema_drift::analyzer_id::12")
+        assert correction["kind"] == "schema_drift"
+        assert correction["rule"] == correction_entry["rule"]
+        assert "schema-constructor:ValidationSchema" in correction["evidence"]
 
 
 # ── Output structure ──────────────────────────────────────

@@ -673,6 +673,148 @@ class TestMissingIssuesResolved:
 
 
 # ---------------------------------------------------------------------------
+# Detector semantic corrections
+# ---------------------------------------------------------------------------
+
+
+class TestDetectorSemanticCorrections:
+    _issue_id = "dict_keys::schemas.py::schema_drift::analyzer_id::12"
+
+    @classmethod
+    def _corrections(cls) -> dict[str, dict[str, str]]:
+        return {
+            cls._issue_id: {
+                "detector": "dict_keys",
+                "kind": "schema_drift",
+                "file": "schemas.py",
+                "key": "analyzer_id",
+                "line": "12",
+                "rule": "python.dict_keys.schema_drift.schema_constructor_scope.v1",
+                "evidence": "schemas.py:12 is schema-constructor:ValidationSchema",
+            }
+        }
+
+    @classmethod
+    def _state_with_open_issue(cls):
+        state = empty_state()
+        issue = _make_raw_issue(
+            cls._issue_id,
+            detector="dict_keys",
+            file="schemas.py",
+            lang="python",
+        )
+        issue["detail"] = {
+            "kind": "schema_drift",
+            "key": "analyzer_id",
+            "line": 12,
+        }
+        state["issues"][issue["id"]] = issue
+        return state
+
+    def test_full_confirmed_scan_marks_proven_correction_false_positive(self):
+        state = self._state_with_open_issue()
+
+        diff = merge_scan(
+            state,
+            [],
+            MergeScanOptions(
+                lang="python",
+                scan_path=".",
+                potentials={"dict_keys": 20},
+                semantic_corrections=self._corrections(),
+            ),
+        )
+
+        issue = state["issues"][self._issue_id]
+        assert diff["auto_resolved"] == 0
+        assert issue["status"] == "false_positive"
+        assert issue["resolution_attestation"]["kind"] == "detector_semantic_correction"
+        assert issue["resolution_attestation"]["scan_verified"] is True
+        assert "schema_constructor_scope.v1" in issue["note"]
+
+    def test_correction_requires_full_confirmed_scan(self):
+        state = self._state_with_open_issue()
+
+        merge_scan(
+            state,
+            [],
+            MergeScanOptions(
+                lang="python",
+                scan_path="src",
+                potentials={"dict_keys": 20},
+                semantic_corrections=self._corrections(),
+            ),
+        )
+
+        assert state["issues"][self._issue_id]["status"] == "open"
+
+    def test_correction_requires_the_detector_to_be_confirmed(self):
+        state = self._state_with_open_issue()
+
+        merge_scan(
+            state,
+            [],
+            MergeScanOptions(
+                lang="python",
+                scan_path=".",
+                potentials={"smells": 20},
+                semantic_corrections=self._corrections(),
+            ),
+        )
+
+        assert state["issues"][self._issue_id]["status"] == "open"
+
+    def test_correction_requires_the_exact_schema_drift_fingerprint(self):
+        state = self._state_with_open_issue()
+        state["issues"][self._issue_id]["detail"]["line"] = 13
+
+        merge_scan(
+            state,
+            [],
+            MergeScanOptions(
+                lang="python",
+                scan_path=".",
+                potentials={"dict_keys": 20},
+                semantic_corrections=self._corrections(),
+            ),
+        )
+
+        assert state["issues"][self._issue_id]["status"] == "auto_resolved"
+
+    def test_reemitted_issue_remains_open(self):
+        state = self._state_with_open_issue()
+        correction_options = MergeScanOptions(
+            lang="python",
+            scan_path=".",
+            potentials={"dict_keys": 20},
+            semantic_corrections=self._corrections(),
+        )
+        merge_scan(state, [], correction_options)
+        assert state["issues"][self._issue_id]["status"] == "false_positive"
+
+        current = _make_raw_issue(
+            self._issue_id,
+            detector="dict_keys",
+            file="schemas.py",
+            lang="python",
+        )
+
+        merge_scan(
+            state,
+            [current],
+            MergeScanOptions(
+                lang="python",
+                scan_path=".",
+                potentials={"dict_keys": 20},
+            ),
+        )
+
+        issue = state["issues"][self._issue_id]
+        assert issue["status"] == "open"
+        assert "resolution_attestation" not in issue
+
+
+# ---------------------------------------------------------------------------
 # #53: Wontfix auto-resolution via potentials (ran_detectors)
 # ---------------------------------------------------------------------------
 

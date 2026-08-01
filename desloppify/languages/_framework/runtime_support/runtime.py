@@ -36,6 +36,7 @@ class LangRuntimeState:
     props_threshold_override: int = 0
     detector_coverage: dict[str, DetectorCoverageRecord] = field(default_factory=dict)
     coverage_warnings: list[DetectorCoverageRecord] = field(default_factory=list)
+    semantic_corrections: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass

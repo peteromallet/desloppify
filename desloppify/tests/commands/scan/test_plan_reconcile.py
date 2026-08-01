@@ -96,6 +96,11 @@ class TestPlanHasUserContent:
         }}
         assert reconcile_mod._plan_has_user_content(plan) is True
 
+    def test_plan_with_uncommitted_issues(self):
+        plan = empty_plan()
+        plan["uncommitted_issues"] = ["issue-1"]
+        assert reconcile_mod._plan_has_user_content(plan) is True
+
     def test_empty_collections_are_falsy(self):
         """Empty queue_order, overrides, clusters, skipped all return False."""
         plan = empty_plan()
@@ -210,6 +215,26 @@ class TestApplyPlanReconciliation:
         state = _make_state()
         changed = reconcile_mod._apply_plan_reconciliation(plan, state)
         assert changed is False
+
+    def test_purges_semantic_correction_from_uncommitted_only(self):
+        plan = empty_plan()
+        plan["uncommitted_issues"] = ["schema-drift"]
+        state = _make_state(issues={
+            "schema-drift": _make_issue(
+                status="false_positive",
+                resolution_attestation={
+                    "kind": "detector_semantic_correction",
+                },
+            ),
+        })
+
+        changed = reconcile_mod._apply_plan_reconciliation(plan, state)
+
+        assert changed is True
+        assert plan["uncommitted_issues"] == []
+        assert plan["queue_order"] == []
+        assert plan["superseded"] == {}
+        assert plan["skipped"] == {}
 
 
 # ---------------------------------------------------------------------------

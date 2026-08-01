@@ -87,6 +87,7 @@ def _plan_has_user_content(plan: dict[str, object]) -> bool:
         or plan.get("overrides")
         or plan.get("clusters")
         or plan.get("skipped")
+        or plan.get("uncommitted_issues")
     )
 
 

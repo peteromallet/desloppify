@@ -367,6 +367,35 @@ def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
             issue["status"] = target_status
 
 
+def _purge_semantic_correction_uncommitted(
+    plan: PlanModel,
+    state: StateModel,
+    *,
+    result: ReconcileResult,
+) -> None:
+    """Drop system-invalidated findings from the pending commit ledger."""
+
+    issues = state.get("work_items") or state.get("issues", {})
+    uncommitted = plan.get("uncommitted_issues", [])
+    retained: list[str] = []
+    removed = 0
+    for issue_id in uncommitted:
+        issue = issues.get(issue_id)
+        attestation = issue.get("resolution_attestation", {}) if issue else {}
+        if (
+            issue
+            and issue.get("status") == "false_positive"
+            and isinstance(attestation, dict)
+            and attestation.get("kind") == "detector_semantic_correction"
+        ):
+            removed += 1
+            continue
+        retained.append(issue_id)
+    if removed:
+        plan["uncommitted_issues"] = retained
+        result.changes += removed
+
+
 def reconcile_plan_after_scan(
     plan: PlanModel,
     state: StateModel,
@@ -397,6 +426,7 @@ def reconcile_plan_after_scan(
     # Sync state status for issues in plan.skipped that are still "open" in state.
     # This migrates existing data: temporary skips → deferred, triaged_out skips → triaged_out.
     _sync_skipped_issue_statuses(plan, state)
+    _purge_semantic_correction_uncommitted(plan, state, result=result)
 
     _supersede_dead_references(
         plan,

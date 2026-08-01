@@ -79,6 +79,80 @@ def _mark_scan_verified(
     existing["scan_verification_text"] = attestation_text
 
 
+def apply_semantic_corrections(
+    existing: dict,
+    current_ids: set[str],
+    corrections: Mapping[str, Mapping[str, str]] | None,
+    now: str,
+    *,
+    lang: str | None,
+    scan_path: str | None,
+    confirmed_detectors: set[str],
+    suspect_detectors: set[str],
+) -> set[str]:
+    """Apply detector-proven false-positive corrections from a full scan.
+
+    Corrections are scanner-owned evidence, not a generic replacement for a
+    user disposition: the item must still be open, absent from the current
+    detector output, and produced by a confirmed non-suspect detector.
+    """
+
+    if scan_path != "." or not corrections:
+        return set()
+
+    corrected_issue_ids: set[str] = set()
+    for issue_id, correction in corrections.items():
+        previous = existing.get(issue_id)
+        if not isinstance(previous, dict) or issue_id in current_ids:
+            continue
+        if previous.get("status") != "open" or previous.get("suppressed"):
+            continue
+        detector = str(correction.get("detector", ""))
+        correction_kind = str(correction.get("kind", "")).strip()
+        correction_file = str(correction.get("file", "")).strip()
+        correction_key = str(correction.get("key", "")).strip()
+        correction_line = str(correction.get("line", "")).strip()
+        detail = previous.get("detail")
+        if (
+            not detector
+            or not correction_kind
+            or not correction_file
+            or not correction_key
+            or not correction_line
+            or previous.get("detector") != detector
+            or previous.get("file") != correction_file
+            or detector not in confirmed_detectors
+            or detector in suspect_detectors
+            or not isinstance(detail, dict)
+            or detail.get("kind") != correction_kind
+            or str(detail.get("key", "")) != correction_key
+            or str(detail.get("line", "")) != correction_line
+        ):
+            continue
+        if lang and previous.get("lang") not in (None, lang):
+            continue
+        rule = str(correction.get("rule", "")).strip()
+        evidence = str(correction.get("evidence", "")).strip()
+        if not rule or not evidence:
+            continue
+
+        previous.update(
+            status="false_positive",
+            resolved_at=now,
+            note=f"Detector semantic correction ({rule}): {evidence}",
+            resolution_attestation={
+                "kind": "detector_semantic_correction",
+                "rule": rule,
+                "scan_verified": True,
+                "scan_verified_at": now,
+                "scan_verification_text": evidence,
+            },
+        )
+        corrected_issue_ids.add(issue_id)
+
+    return corrected_issue_ids
+
+
 def verify_disappeared(
     existing: dict,
     current_ids: set[str],
@@ -91,6 +165,7 @@ def verify_disappeared(
     project_root: str | None = None,
     zone_map=None,
     confirmed_detectors: set[str] | None = None,
+    semantic_correction_ids: set[str] | None = None,
 ) -> tuple[int, int, int, set[str]]:
     """Update scan corroboration for issues absent from scan.
 
@@ -103,6 +178,8 @@ def verify_disappeared(
     resolved_detectors: set[str] = set()
 
     for issue_id, previous in existing.items():
+        if semantic_correction_ids and issue_id in semantic_correction_ids:
+            continue
         previous_status = previous.get("status")
         if issue_id in current_ids or previous_status not in (
             "open",
@@ -325,6 +402,7 @@ def _suppression_metadata_from_state(
 
 
 __all__ = [
+    "apply_semantic_corrections",
     "verify_disappeared",
     "find_suspect_detectors",
     "upsert_issues",
