@@ -64,11 +64,16 @@ def active_triage_issue_scope(
     `None` means "do not scope" for legacy/non-triage flows.
     An empty set means a frozen triage run exists but none of its issues are live.
     """
-    frozen = active_triage_issue_ids(plan, state)
     meta = plan.get("epic_triage_meta", {})
-    has_explicit_scope = isinstance(meta, dict) and isinstance(
-        meta.get("active_triage_issue_ids"), list
+    raw_scope = meta.get("active_triage_issue_ids") if isinstance(meta, dict) else None
+    has_explicit_scope = isinstance(raw_scope, list)
+    has_explicit_issue = has_explicit_scope and any(
+        isinstance(issue_id, str) and issue_id.strip() for issue_id in raw_scope
     )
+    if has_explicit_scope and not has_explicit_issue:
+        return set()
+
+    frozen = active_triage_issue_ids(plan, state)
     if not frozen:
         if has_explicit_scope:
             return set()
@@ -174,10 +179,9 @@ def unclustered_review_issues(plan: dict, state: dict | None = None) -> list[str
             and is_review_work_item(finding)
             and fid not in protected_ids
         ]
-        frozen_ids = (plan.get("epic_triage_meta", {}) or {}).get("active_triage_issue_ids")
-        if isinstance(frozen_ids, list) and frozen_ids:
-            frozen_id_set = live_active_triage_issue_ids(plan, state)
-            review_ids = [fid for fid in review_ids if fid in frozen_id_set]
+        triage_scope = active_triage_issue_scope(plan, state)
+        if triage_scope is not None:
+            review_ids = [fid for fid in review_ids if fid in triage_scope]
     else:
         review_ids = [
             fid for fid in plan.get("queue_order", [])

@@ -10,7 +10,6 @@ from desloppify.engine.plan_triage import TriageInput
 from ..completion_flow import count_log_activity_since
 from ..observe_batches import observe_dimension_breakdown
 from ..review_coverage import (
-    active_triage_issue_ids,
     cluster_issue_ids,
     triage_open_review_ids_from_state,
 )
@@ -242,7 +241,7 @@ def _validate_enrich_stage(
         plan,
         repo_root,
         phase_label="enrich",
-        triage_issue_ids=active_triage_issue_ids(plan, state) or None,
+        triage_issue_ids=active_triage_issue_scope(plan, state),
     )
     if failures:
         return False, failures[0].message
@@ -264,8 +263,8 @@ def _validate_sense_check_stage(
     if len(report) < 100:
         return False, f"Sense-check report too short ({len(report)} chars, need 100+)."
     manual_clusters = scoped_manual_clusters_with_issues(plan, state)
-    triage_issue_ids = active_triage_issue_ids(plan, state) or None
     triage_scope = active_triage_issue_scope(plan, state)
+    triage_issue_ids = triage_scope
     open_review_ids = (
         triage_open_review_ids_from_state(plan, state)
         if triage_scope is None

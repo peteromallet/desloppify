@@ -71,6 +71,55 @@ def test_active_triage_scope_stays_empty_when_protected_items_exhaust_it() -> No
     assert stage_helpers_mod.active_triage_issue_scope(plan, {"last_scan": "now"}) == set()
 
 
+def test_active_triage_scope_does_not_absorb_new_reviews_after_empty_freeze() -> None:
+    plan = {"epic_triage_meta": {"active_triage_issue_ids": []}}
+    state = {
+        "last_scan": "now",
+        "work_items": {"review::new.py::late": {"detector": "review", "status": "open"}},
+    }
+
+    assert stage_helpers_mod.active_triage_issue_scope(plan, state) == set()
+    assert stage_helpers_mod.unclustered_review_issues(plan, state) == []
+
+
+def test_enrich_quality_empty_triage_scope_ignores_historical_clusters(tmp_path: Path) -> None:
+    import desloppify.app.commands.plan.triage.validation.enrich_quality as enrich_quality_mod
+
+    plan = {
+        "clusters": {
+            "historical": {
+                "auto": False,
+                "issue_ids": ["review::old.py::historic"],
+                "action_steps": [{"title": "Historic step"}],
+            }
+        }
+    }
+    kwargs = {
+        "phase_label": "enrich",
+        "bad_paths_severity": "warning",
+        "missing_effort_severity": "warning",
+        "include_missing_issue_refs": False,
+        "include_vague_detail": False,
+        "stale_issue_refs_severity": None,
+    }
+
+    scoped = enrich_quality_mod.evaluate_enrich_quality(
+        plan,
+        tmp_path,
+        triage_issue_ids=set(),
+        **kwargs,
+    )
+    unscoped = enrich_quality_mod.evaluate_enrich_quality(
+        plan,
+        tmp_path,
+        triage_issue_ids=None,
+        **kwargs,
+    )
+
+    assert scoped.failures == []
+    assert unscoped.failure("underspecified").total == 1
+
+
 def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         completion_policy_mod,

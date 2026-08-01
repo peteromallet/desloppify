@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from ..review_coverage import cluster_issue_ids
 from .enrich_checks import (
     _steps_missing_issue_refs,
     _steps_referencing_skipped_issues,
@@ -14,7 +15,6 @@ from .enrich_checks import (
     _steps_without_effort,
     _underspecified_steps,
 )
-from ..review_coverage import cluster_issue_ids
 
 Severity = Literal["failure", "warning"]
 
@@ -85,10 +85,13 @@ def _active_cluster_names(plan: dict, triage_issue_ids: set[str]) -> set[str]:
 def _scoped_plan(plan: dict, triage_issue_ids: set[str] | None) -> dict:
     """Narrow plan to only clusters relevant to the current triage cycle.
 
-    Returns the original plan unchanged when no triage scoping is needed.
+    ``None`` means no triage scoping is needed. An empty set is an explicitly
+    frozen empty scope and therefore excludes historical clusters.
     """
-    if not triage_issue_ids:
+    if triage_issue_ids is None:
         return plan
+    if not triage_issue_ids:
+        return {**plan, "clusters": {}}
     active = _active_cluster_names(plan, triage_issue_ids)
     return {
         **plan,
