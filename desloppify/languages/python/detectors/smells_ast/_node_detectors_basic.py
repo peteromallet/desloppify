@@ -16,6 +16,15 @@ def _is_test_file(filepath: str) -> bool:
     return normalized.startswith("tests/") or "/tests/" in normalized
 
 
+def _is_explicit_return_none(stmt: ast.AST) -> bool:
+    """Return whether a statement explicitly returns the ``None`` literal."""
+    return (
+        isinstance(stmt, ast.Return)
+        and isinstance(stmt.value, ast.Constant)
+        and stmt.value.value is None
+    )
+
+
 def _detect_monster_functions(
     filepath: str,
     node: ast.AST,
@@ -41,8 +50,16 @@ def _detect_dead_functions(
     filepath: str,
     node: ast.AST,
     tree: ast.Module | None = None,
+    *,
+    return_none_callable_default_providers: frozenset[tuple[str, str]] = frozenset(),
 ) -> list[dict]:
-    """Flag functions whose body is only pass, return, or return None."""
+    """Flag functions whose body is only pass, return, or return None.
+
+    A provider that is explicitly used as a typed dataclass callable default is
+    allowed to fail closed with ``return None``.  The exemption is intentionally
+    limited to the exact provider pairs prepared by the project-level scanner;
+    ``pass`` implementations remain dead-function findings.
+    """
     del tree
     if node.decorator_list:
         return []
@@ -50,6 +67,11 @@ def _detect_dead_functions(
     if len(body) == 1:
         stmt = body[0]
         if isinstance(stmt, ast.Pass) or _is_return_none(stmt):
+            if _is_explicit_return_none(stmt) and (
+                filepath,
+                node.name,
+            ) in return_none_callable_default_providers:
+                return []
             return [
                 {
                     "file": filepath,
@@ -64,6 +86,11 @@ def _detect_dead_functions(
         if isinstance(second, ast.Pass):
             desc = "docstring + pass"
         elif _is_return_none(second):
+            if _is_explicit_return_none(second) and (
+                filepath,
+                node.name,
+            ) in return_none_callable_default_providers:
+                return []
             desc = "docstring + return None"
         else:
             return []

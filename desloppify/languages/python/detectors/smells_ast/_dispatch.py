@@ -111,6 +111,8 @@ def detect_ast_smells(
     filepath: str,
     content: str,
     smell_counts: SmellCounts,
+    *,
+    return_none_callable_default_providers: frozenset[tuple[str, str]] = frozenset(),
 ) -> None:
     """Detect AST-based code smells using registry-driven collector dispatch."""
     try:
@@ -129,7 +131,19 @@ def detect_ast_smells(
     for spec in NODE_DETECTORS:
         matches: list[SmellMatch] = []
         for fn_node in fn_nodes:
-            matches.extend(spec.collect(filepath, fn_node, tree))
+            if spec.smell_id == "dead_function":
+                matches.extend(
+                    _detect_dead_functions(
+                        filepath,
+                        fn_node,
+                        tree,
+                        return_none_callable_default_providers=(
+                            return_none_callable_default_providers
+                        ),
+                    )
+                )
+            else:
+                matches.extend(spec.collect(filepath, fn_node, tree))
         merge_smell_matches(smell_counts, spec.smell_id, matches)
 
     for spec in TREE_DETECTORS:
