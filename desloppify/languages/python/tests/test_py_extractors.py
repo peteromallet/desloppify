@@ -359,9 +359,146 @@ class TestDetectPassthrough:
         """)
         )
         entries = detect_passthrough_functions(tmp_path)
-        if entries:
-            assert entries[0]["function"] == "wrapper"
-            assert entries[0]["passthrough"] >= 4
+        wrapper = next(entry for entry in entries if entry["function"] == "wrapper")
+        assert wrapper["passthrough"] >= 4
+
+    def test_documented_passthrough_detected(self, tmp_path):
+        fp = tmp_path / "documented.py"
+        fp.write_text(
+            textwrap.dedent('''\
+            def wrapper(a, b, c, d, e):
+                """Backward-compatible forwarding alias."""
+                return inner(a=a, b=b, c=c, d=d, e=e)
+        ''')
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "wrapper" in names
+
+    def test_decorated_entrypoint_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "entrypoint.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            @register_command
+            @with_application_context
+            def seed(a, b, c, d, e):
+                request = SeedRequest(a=a, b=b, c=c, d=d, e=e)
+                run_seed(request)
+        """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "seed" not in names
+
+    def test_decorated_pure_wrapper_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "decorated_wrapper.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            @register_command
+            def callback(a, b, c, d, e):
+                return handle(a=a, b=b, c=c, d=d, e=e)
+        """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "callback" not in names
+
+    def test_multi_step_decision_router_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "decision.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            def decide(model, *, receiver_ip3, threshold, evidence, profile_required, unmodeled_orders):
+                power_informed = power_decision(
+                    model,
+                    threshold=threshold,
+                    evidence=evidence,
+                    profile_required=profile_required,
+                )
+                if power_informed is not None:
+                    return power_informed
+                return fallback_decision(
+                    model,
+                    receiver_ip3=receiver_ip3,
+                    threshold=threshold,
+                    evidence=evidence,
+                    profile_required=profile_required,
+                    unmodeled_orders=unmodeled_orders,
+                )
+        """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "decide" not in names
+
+    def test_looping_validator_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "validator.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            def validate_regions(shaped, *, errors, point_to_xy_fn, polygon_points_fn, point_in_polygon_fn):
+                region_keys = set()
+                for region in shaped.regions:
+                    polygon = polygon_points_fn(region)
+                    point = point_to_xy_fn(region.get("representative_point"))
+                    if point is not None and not point_in_polygon_fn(point, polygon):
+                        errors.append("representative point outside polygon")
+                    validate_region(
+                        region,
+                        errors=errors,
+                        point_to_xy_fn=point_to_xy_fn,
+                        polygon_points_fn=polygon_points_fn,
+                        point_in_polygon_fn=point_in_polygon_fn,
+                    )
+                    region_keys.add(region["region_key"])
+                return region_keys
+        """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "validate_regions" not in names
+
+    def test_request_construction_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "request_builder.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            def build_request(a, b, c, d, e):
+                return submit(Request(a=a, b=b, c=c, d=d, e=e))
+        """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "build_request" not in names
+
+    def test_constructed_call_target_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "request_submitter.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            def submit_via_request(a, b, c, d, e):
+                return Request(a=a, b=b, c=c, d=d, e=e).submit(
+                    a=a, b=b, c=c, d=d, e=e,
+                )
+            """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "submit_via_request" not in names
+
+    def test_syntax_error_file_is_skipped(self, tmp_path):
+        (tmp_path / "broken.py").write_text("def broken(\n")
+        (tmp_path / "wrapper.py").write_text(
+            "def wrapper(a, b, c, d, e):\n"
+            "    return inner(a=a, b=b, c=c, d=d, e=e)\n"
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert names == ["wrapper"]
 
     def test_non_passthrough_not_flagged(self, tmp_path):
         fp = tmp_path / "real.py"
