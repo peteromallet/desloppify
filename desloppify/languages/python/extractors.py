@@ -1,5 +1,6 @@
 """Python extraction: function bodies, class structure, param patterns."""
 
+import ast
 import hashlib
 import re
 from pathlib import Path
@@ -125,42 +126,131 @@ def py_passthrough_pattern(name: str) -> str:
     return rf"\b{escaped}\s*=\s*{escaped}\b"
 
 
-_PY_DEF_RE = re.compile(r"^def\s+(\w+)\s*\(", re.MULTILINE)
+def _function_param_names(node: ast.FunctionDef) -> list[str]:
+    """Return the explicit parameter names that count toward wrapper forwarding."""
+
+    arguments = [
+        *node.args.posonlyargs,
+        *node.args.args,
+        *node.args.kwonlyargs,
+    ]
+    if node.args.vararg is not None:
+        arguments.append(node.args.vararg)
+    if node.args.kwarg is not None:
+        arguments.append(node.args.kwarg)
+    return [
+        argument.arg for argument in arguments if argument.arg not in {"self", "cls"}
+    ]
+
+
+def _is_docstring_expr(statement: ast.stmt) -> bool:
+    """Return whether a statement is a function docstring expression."""
+
+    return (
+        isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Constant)
+        and isinstance(statement.value.value, str)
+    )
+
+
+def _is_direct_parameter_value(value: ast.expr, parameter_names: set[str]) -> bool:
+    """Return whether a call argument directly forwards one function parameter."""
+
+    if isinstance(value, ast.Name):
+        return value.id in parameter_names
+    return (
+        isinstance(value, ast.Starred)
+        and isinstance(value.value, ast.Name)
+        and value.value.id in parameter_names
+    )
+
+
+def _is_direct_call_target(target: ast.expr) -> bool:
+    """Return whether a call target is a direct non-constructor name chain.
+
+    A forwarding call to a lower-case function can be redundant, while a
+    Capitalized target conventionally constructs a value.  Constructor
+    factories are meaningful transformations, even when every field is
+    supplied from a same-named parameter.
+    """
+
+    names: list[str] = []
+    while isinstance(target, ast.Attribute):
+        names.append(target.attr)
+        target = target.value
+    if not isinstance(target, ast.Name):
+        return False
+    names.append(target.id)
+    return not any(name[:1].isupper() for name in names)
+
+
+def _passthrough_return_statement(
+    node: ast.FunctionDef,
+    parameter_names: list[str],
+) -> ast.Return | None:
+    """Return the sole direct-forwarding return statement for a pure wrapper.
+
+    Decorated entrypoints and multi-step functions can forward many arguments
+    while still constructing requests, making decisions, or retaining state.
+    They are not the redundant wrappers this detector is meant to surface.
+    """
+
+    if node.decorator_list:
+        return None
+    statements = list(node.body)
+    if statements and _is_docstring_expr(statements[0]):
+        statements = statements[1:]
+    if len(statements) != 1 or not isinstance(statements[0], ast.Return):
+        return None
+    statement = statements[0]
+    if not isinstance(statement.value, ast.Call):
+        return None
+    if not _is_direct_call_target(statement.value.func):
+        return None
+
+    values = [
+        *statement.value.args,
+        *(keyword.value for keyword in statement.value.keywords),
+    ]
+    if not values:
+        return None
+    parameter_name_set = set(parameter_names)
+    if not all(
+        _is_direct_parameter_value(value, parameter_name_set) for value in values
+    ):
+        return None
+    return statement
 
 
 def detect_passthrough_functions(path: Path) -> list[dict]:
-    """Detect Python functions where most params are same-name forwarded."""
+    """Detect pure Python wrappers where most params are same-name forwarded."""
     entries = []
     for filepath in find_py_files(path):
         content = read_file(filepath)
         if content is None:
             continue
-        for m in _PY_DEF_RE.finditer(content):
-            name = m.group(1)
-            depth = 1
-            i = m.end()
-            while i < len(content) and depth > 0:
-                ch = content[i]
-                if ch == "(":
-                    depth += 1
-                elif ch == ")":
-                    depth -= 1
-                i += 1
-            if depth != 0:
+        try:
+            tree = ast.parse(content, filename=filepath)
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
                 continue
-            param_str = content[m.end() : i - 1]
-            params = extract_py_params(param_str)
+            name = node.name
+            params = _function_param_names(node)
             if len(params) < 4:
                 continue
-            rest_after_paren = content[i:]
-            colon_m = re.search(r":", rest_after_paren)
-            if not colon_m:
+            return_statement = _passthrough_return_statement(node, params)
+            if return_statement is None:
                 continue
-            rest = rest_after_paren[colon_m.end() :]
-            bm = re.search(r"\n(?=[^\s\n#])", rest)
-            body = rest[: bm.start()] if bm else rest
+            body = ast.get_source_segment(content, return_statement)
+            if body is None:
+                continue
+            call = return_statement.value
+            if not isinstance(call, ast.Call):
+                continue
 
-            has_kwargs_spread = bool(re.search(r"\*\*kwargs\b", body))
+            has_kwargs_spread = any(keyword.arg is None for keyword in call.keywords)
             pt, direct = classify_params(
                 params, body, py_passthrough_pattern, occurrences_per_match=2
             )
@@ -183,7 +273,7 @@ def detect_passthrough_functions(path: Path) -> list[dict]:
                     "passthrough": len(pt),
                     "direct": len(direct),
                     "ratio": round(ratio, 2),
-                    "line": content[: m.start()].count("\n") + 1,
+                    "line": node.lineno,
                     "tier": tier,
                     "confidence": confidence,
                     "passthrough_params": sorted(pt),
