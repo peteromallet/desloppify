@@ -63,6 +63,34 @@ def _extract_literal_keyset(node: ast.Dict) -> frozenset[str] | None:
     return frozenset(literal_keys)
 
 
+def _call_context_name(node: ast.Call) -> str:
+    """Return a stable callee label for a call containing a dict literal."""
+
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return "<dynamic>"
+
+
+def _literal_comparison_scope(node: ast.Dict, parents: dict[ast.AST, ast.AST]) -> str:
+    """Return the drift-comparison scope for a dict literal.
+
+    A dict passed to a named ``*Schema`` constructor declares a validation
+    contract, whereas ordinary dict literals commonly carry runtime payloads.
+    Keep each schema constructor family out of the generic payload cluster;
+    preserve the detector's historical global comparison for every other
+    literal.
+    """
+
+    parent = parents.get(node)
+    if isinstance(parent, ast.Call):
+        callee_name = _call_context_name(parent)
+        if callee_name.endswith("Schema"):
+            return f"schema-constructor:{callee_name}"
+    return "generic"
+
+
 def _collect_schema_literals(files: list[str]) -> list[dict]:
     literals: list[dict] = []
     for filepath in files:
@@ -72,6 +100,11 @@ def _collect_schema_literals(files: list[str]) -> list[dict]:
         tree = _parse_python_ast(source, filepath=filepath)
         if tree is None:
             continue
+        parents = {
+            child: parent
+            for parent in ast.walk(tree)
+            for child in ast.iter_child_nodes(parent)
+        }
 
         for node in ast.walk(tree):
             if not isinstance(node, ast.Dict):
@@ -79,7 +112,14 @@ def _collect_schema_literals(files: list[str]) -> list[dict]:
             keyset = _extract_literal_keyset(node)
             if keyset is None:
                 continue
-            literals.append({"file": filepath, "line": node.lineno, "keys": keyset})
+            literals.append(
+                {
+                    "file": filepath,
+                    "line": node.lineno,
+                    "keys": keyset,
+                    "comparison_scope": _literal_comparison_scope(node, parents),
+                }
+            )
     return literals
 
 
@@ -97,6 +137,10 @@ def _cluster_by_jaccard(literals: list[dict], *, threshold: float = 0.8) -> list
             if assigned[probe_idx]:
                 continue
             candidate = literals[probe_idx]
+            if candidate.get("comparison_scope", "generic") != literal.get(
+                "comparison_scope", "generic"
+            ):
+                continue
             if any(
                 _jaccard(member["keys"], candidate["keys"]) >= threshold
                 for member in cluster

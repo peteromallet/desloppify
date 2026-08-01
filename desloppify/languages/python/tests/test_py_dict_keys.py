@@ -344,6 +344,124 @@ class TestSchemaDrift:
         entries, _ = detect_schema_drift(path)
         assert len(entries) == 0
 
+    def test_does_not_compare_validation_schema_with_returned_payloads(self, tmp_path):
+        """Constructor schemas and runtime snapshots can intentionally differ."""
+        code = textwrap.dedent("""\
+            ValidationSchema(
+                {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "analyzer_id": 9,
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+            )
+
+            def legacy_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+
+            def canonical_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+
+            def normalized_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "existing_assignments": [],
+                    "options": {},
+                }
+        """)
+        path = _write_py(tmp_path, code)
+
+        entries, count = detect_schema_drift(path)
+
+        assert count == 4
+        assert entries == []
+
+    def test_detects_drift_within_validation_schema_constructor(self, tmp_path):
+        code = textwrap.dedent("""\
+            ValidationSchema(
+                {"event_id": 1, "requested_frequencies": [], "frequency_range": [], "options": {}}
+            )
+            ValidationSchema(
+                {"event_id": 2, "requested_frequencies": [], "frequency_range": [], "options": {}}
+            )
+            ValidationSchema(
+                {"event_id": 3, "requested_frequencies": [], "frequency_range": [], "options": {}}
+            )
+            ValidationSchema(
+                {
+                    "event_id": 4,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                    "analyzer_id": 9,
+                }
+            )
+        """)
+        path = _write_py(tmp_path, code)
+
+        entries, count = detect_schema_drift(path)
+
+        assert count == 4
+        assert any(entry["key"] == "analyzer_id" for entry in entries)
+
+    def test_detects_drift_within_returned_payloads(self, tmp_path):
+        code = textwrap.dedent("""\
+            def first_snapshot():
+                return {
+                    "event_id": 1,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+
+            def second_snapshot():
+                return {
+                    "event_id": 2,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+
+            def third_snapshot():
+                return {
+                    "event_id": 3,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                }
+
+            def fourth_snapshot():
+                return {
+                    "event_id": 4,
+                    "requested_frequencies": [],
+                    "frequency_range": [],
+                    "options": {},
+                    "analyzer_id": 9,
+                }
+        """)
+        path = _write_py(tmp_path, code)
+
+        entries, count = detect_schema_drift(path)
+
+        assert count == 4
+        assert any(entry["key"] == "analyzer_id" for entry in entries)
+
     def test_too_few_literals_no_issues(self, tmp_path):
         code = textwrap.dedent("""\
             d1 = {"name": "a", "age": 1, "city": "x"}
