@@ -78,6 +78,59 @@ def test_cmd_stage_strategize_persists_briefing_and_auto_confirms(monkeypatch, c
     assert "auto-confirmed" in capsys.readouterr().out
 
 
+def test_cmd_stage_strategize_forwards_auto_start_attestation(monkeypatch) -> None:
+    plan = {
+        "queue_order": [],
+        "epic_triage_meta": {"triage_stages": {}},
+        "execution_log": [],
+        "commit_log": [],
+    }
+    state = {"scan_count": 1, "scan_history": [], "dimension_scores": {}, "work_items": {}}
+    captured: dict[str, object] = {}
+
+    def start_triage(_plan, **kwargs):
+        captured["attestation"] = kwargs["attestation"]
+        plan["queue_order"] = list(TRIAGE_STAGE_IDS)
+        return SimpleNamespace(status="started")
+
+    monkeypatch.setattr(strategize_mod, "ensure_triage_started", start_triage)
+    monkeypatch.setattr(strategize_mod, "load_progression", lambda: [])
+    monkeypatch.setattr(
+        strategize_mod,
+        "collect_strategist_input",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            rework_loops=[],
+            score_trajectory=SimpleNamespace(trend="stable"),
+            debt_trajectory=SimpleNamespace(trend="stable"),
+        ),
+    )
+
+    strategize_mod.cmd_stage_strategize(
+        argparse.Namespace(
+            attestation="I reviewed the objective backlog before starting triage.",
+            report=(
+                '{"score_trend":"stable","debt_trend":"stable",'
+                '"executive_summary":"'
+                + ("x" * 120)
+                + '","observe_guidance":"'
+                + ("y" * 60)
+                + '","reflect_guidance":"'
+                + ("z" * 60)
+                + '","organize_guidance":"'
+                + ("o" * 60)
+                + '","sense_check_guidance":"'
+                + ("s" * 60)
+                + '","focus_dimensions":[{"name":"naming"}]}'
+            ),
+        ),
+        services=_services(plan, state),
+    )
+
+    assert captured == {
+        "attestation": "I reviewed the objective backlog before starting triage."
+    }
+
+
 def test_observe_is_blocked_until_strategize_is_recorded(capsys) -> None:
     plan = {"queue_order": list(TRIAGE_STAGE_IDS), "epic_triage_meta": {"triage_stages": {}}, "execution_log": [], "commit_log": []}
     state = {"work_items": {}}
