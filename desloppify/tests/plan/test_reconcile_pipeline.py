@@ -30,7 +30,7 @@ from desloppify.engine._plan.refresh_lifecycle import (
     LIFECYCLE_PHASE_TRIAGE_POSTFLIGHT,
     LIFECYCLE_PHASE_WORKFLOW_POSTFLIGHT,
 )
-from desloppify.engine._plan.schema import empty_plan
+from desloppify.engine._plan.schema import empty_plan, executable_objective_ids
 from desloppify.engine._plan.sync import live_planned_queue_empty, reconcile_plan
 from desloppify.engine._plan.sync.pipeline import (
     ReconcileResult,
@@ -123,6 +123,20 @@ def test_live_planned_queue_empty_ignores_synthetic_items() -> None:
     ]
 
     assert live_planned_queue_empty(plan) is True
+
+
+@pytest.mark.parametrize(
+    "synthetic_id",
+    ["subjective::design_coherence", "strategy::review-refresh"],
+)
+def test_executable_objective_ids_ignore_synthetic_only_queue(
+    synthetic_id: str,
+) -> None:
+    plan = empty_plan()
+    plan["queue_order"] = [synthetic_id]
+    objective_ids = {"smells::src/a.py::complexity", "unused::src/b.py::symbol"}
+
+    assert executable_objective_ids(objective_ids, plan) == objective_ids
 
 
 def test_live_planned_queue_empty_ignores_skipped_items() -> None:
