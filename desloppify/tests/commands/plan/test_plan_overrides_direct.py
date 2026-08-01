@@ -101,7 +101,6 @@ def test_override_resolve_cmd_confirm_allows_small_cluster(monkeypatch) -> None:
     }
     plan = {"clusters": {"small": {"issue_ids": ["i1", "i2"]}}}
     delegated: list[argparse.Namespace] = []
-    log_entries: list[dict] = []
 
     monkeypatch.setattr(
         override_resolve_cmd_mod,
@@ -109,12 +108,6 @@ def test_override_resolve_cmd_confirm_allows_small_cluster(monkeypatch) -> None:
         lambda _args: SimpleNamespace(state=state),
     )
     monkeypatch.setattr(override_resolve_cmd_mod, "load_plan", lambda: plan)
-    monkeypatch.setattr(
-        override_resolve_cmd_mod,
-        "append_log_entry",
-        lambda *_args, **kwargs: log_entries.append(kwargs),
-    )
-    monkeypatch.setattr(override_resolve_cmd_mod, "save_plan", lambda _plan: None)
     monkeypatch.setattr(override_resolve_cmd_mod, "cmd_resolve", delegated.append)
 
     override_resolve_cmd_mod.cmd_plan_resolve(
@@ -135,7 +128,6 @@ def test_override_resolve_cmd_confirm_allows_small_cluster(monkeypatch) -> None:
     assert delegated[0].patterns == ["small"]
     assert delegated[0].status == "fixed"
     assert delegated[0].attest.startswith("I have actually resolved the small cluster")
-    assert log_entries[0]["cluster_name"] == "small"
 
 
 def test_override_resolve_cmd_confirm_requires_note(capsys) -> None:
@@ -153,6 +145,81 @@ def test_override_resolve_cmd_confirm_requires_note(capsys) -> None:
     override_resolve_cmd_mod.cmd_plan_resolve(args)
     out = capsys.readouterr().out
     assert "--confirm requires --note" in out
+
+
+def test_override_resolve_cmd_rejects_protected_review_id(monkeypatch, capsys) -> None:
+    state = {
+        "issues": {
+            "held": {"id": "held", "status": "open", "detector": "review"},
+        }
+    }
+    plan = {"epic_triage_meta": {"protected_review_issue_ids": ["held"]}}
+    delegated: list[argparse.Namespace] = []
+
+    monkeypatch.setattr(
+        override_resolve_cmd_mod,
+        "command_runtime",
+        lambda _args: SimpleNamespace(state=state),
+    )
+    monkeypatch.setattr(override_resolve_cmd_mod, "load_plan", lambda: plan)
+    monkeypatch.setattr(override_resolve_cmd_mod, "cmd_resolve", delegated.append)
+
+    override_resolve_cmd_mod.cmd_plan_resolve(
+        argparse.Namespace(
+            patterns=["held"],
+            attest=None,
+            note="Kept this review finding out of the automated triage queue",
+            confirm=True,
+            force_resolve=False,
+            state=None,
+            lang=None,
+            path=".",
+            exclude=None,
+        )
+    )
+
+    assert delegated == []
+    assert "Cannot resolve protected review item" in capsys.readouterr().out
+
+
+def test_override_skip_cmd_rejects_protected_review_id(monkeypatch, capsys) -> None:
+    state = {
+        "scan_metadata": {"source": "scan"},
+        "last_scan": "2026-07-31T00:00:00+00:00",
+        "issues": {
+            "held": {"id": "held", "status": "open", "detector": "review"},
+        }
+    }
+    plan = {"epic_triage_meta": {"protected_review_issue_ids": ["held"]}}
+    state_transitions: list[str] = []
+
+    monkeypatch.setattr(
+        override_skip_mod,
+        "command_runtime",
+        lambda _args: SimpleNamespace(state=state, state_path=Path("state.json")),
+    )
+    monkeypatch.setattr(override_skip_mod, "load_plan", lambda _path=None: plan)
+    monkeypatch.setattr(
+        override_skip_mod,
+        "_apply_state_skip_resolution",
+        lambda **_kwargs: state_transitions.append("resolved"),
+    )
+
+    override_skip_mod.cmd_plan_skip(
+        argparse.Namespace(
+            patterns=["held"],
+            reason="later",
+            review_after=None,
+            permanent=False,
+            false_positive=False,
+            note=None,
+            attest=None,
+            confirm=False,
+        )
+    )
+
+    assert state_transitions == []
+    assert "Cannot skip protected review item" in capsys.readouterr().out
 
 
 def test_override_resolve_cmd_handles_synthetic_only_resolution(
@@ -354,7 +421,9 @@ def test_resolve_workflow_patterns_reconciles_when_create_plan_drains_queue(
         resolve_workflow_mod, "live_planned_queue_empty", lambda _plan: True
     )
     monkeypatch.setattr(
-        resolve_workflow_mod, "has_open_review_issues", lambda _state: True
+        resolve_workflow_mod,
+        "has_open_review_issues",
+        lambda _state, _plan=None: True,
     )
     monkeypatch.setattr(
         resolve_workflow_mod,
@@ -998,6 +1067,44 @@ def test_cmd_plan_reopen_reconciles_after_invalidation(monkeypatch) -> None:
     assert ("target", {"target_strict_score": 94}) in seen
     assert ("reconcile", state_data, 94.0) in seen
     assert ("emit", "execute") in seen
+
+
+def test_cmd_plan_reopen_keeps_protected_review_hold_out_of_queue(monkeypatch) -> None:
+    state_data = {
+        "config": {},
+        "work_items": {"held": {"id": "held", "status": "fixed", "detector": "review"}},
+    }
+    plan = {
+        "queue_order": [],
+        "skipped": {},
+        "epic_triage_meta": {"protected_review_issue_ids": ["held"]},
+    }
+
+    monkeypatch.setattr(
+        override_misc_mod, "state_path", lambda _args: Path("state.json")
+    )
+    monkeypatch.setattr(override_misc_mod, "load_state", lambda _path: state_data)
+    monkeypatch.setattr(
+        override_misc_mod, "_plan_file_for_state", lambda _path: Path("plan.json")
+    )
+    monkeypatch.setattr(override_misc_mod, "load_plan", lambda _path=None: plan)
+    monkeypatch.setattr(
+        override_misc_mod,
+        "resolve_issues",
+        lambda state, _pattern, _status: state["work_items"]["held"].update(status="open") or ["held"],
+    )
+    monkeypatch.setattr(
+        override_misc_mod, "purge_uncommitted_ids", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(override_misc_mod, "append_log_entry", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        override_misc_mod, "save_plan_state_transactional", lambda **_k: None
+    )
+
+    override_misc_mod.cmd_plan_reopen(argparse.Namespace(patterns=["held"]))
+
+    assert state_data["work_items"]["held"]["status"] == "open"
+    assert plan["queue_order"] == []
 
 
 def test_cmd_plan_skip_invalid_permanent_skip_exits_nonzero(monkeypatch) -> None:

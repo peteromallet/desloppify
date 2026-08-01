@@ -5,11 +5,19 @@ from __future__ import annotations
 import argparse
 
 from desloppify.base.output.terminal import colorize
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
 from desloppify.state_io import utc_now
 
 from ..display.dashboard import print_reflect_result
-from ..stage_queue import cascade_clear_dispositions, cascade_clear_later_confirmations, has_triage_in_queue
 from ..services import TriageServices, default_triage_services
+from ..stage_queue import (
+    cascade_clear_dispositions,
+    cascade_clear_later_confirmations,
+    has_triage_in_queue,
+)
 from ..validation.reflect_accounting import (
     BacklogDecision,
     ReflectDisposition,
@@ -198,6 +206,8 @@ def _persist_reflect_stage(
     services: TriageServices,
 ) -> tuple[dict, list[str]]:
     stages = meta.setdefault("triage_stages", {})
+    clear_protected_triage_artifacts(plan)
+    protected_ids = protected_review_issue_ids(plan)
 
     # On fresh reflect run, cascade-clear reflect decisions from dispositions
     if not is_reuse:
@@ -213,11 +223,16 @@ def _persist_reflect_stage(
         "duplicate_issue_ids": duplicate_ids,
         "recurring_dims": recurring_dims,
     }
-    if disposition_ledger:
-        reflect_stage["disposition_ledger"] = [d.to_dict() for d in disposition_ledger]
+    scoped_ledger = [
+        disposition
+        for disposition in disposition_ledger
+        if disposition.issue_id not in protected_ids
+    ]
+    if scoped_ledger:
+        reflect_stage["disposition_ledger"] = [d.to_dict() for d in scoped_ledger]
         # Write reflect decisions to the disposition map
         dispositions = meta.setdefault("issue_dispositions", {})
-        for d in disposition_ledger:
+        for d in scoped_ledger:
             entry = dispositions.setdefault(d.issue_id, {})
             decision = "skip" if d.decision == "permanent_skip" else d.decision
             entry["decision"] = decision
@@ -248,8 +263,8 @@ def _cmd_stage_reflect(
     args: argparse.Namespace,
     *,
     services: TriageServices | None = None,
-) -> None:
-    """Record the REFLECT stage: compare current issues against completed work."""
+) -> bool:
+    """Record the REFLECT stage and report whether the submission was accepted."""
     report: str | None = getattr(args, "report", None)
     attestation: str | None = getattr(args, "attestation", None)
 
@@ -260,7 +275,7 @@ def _cmd_stage_reflect(
 
     if not has_triage_in_queue(plan):
         print(colorize("  No planning stages in the queue — nothing to reflect on.", "yellow"))
-        return
+        return False
 
     meta = plan.get("epic_triage_meta", {})
     stages = meta.get("triage_stages", {})
@@ -269,7 +284,7 @@ def _cmd_stage_reflect(
     report, is_reuse = resolve_reusable_report(report, existing_stage)
     if not report:
         _print_reflect_report_requirement()
-        return
+        return False
 
     submission = _validate_reflect_submission(
         report=report,
@@ -280,7 +295,7 @@ def _cmd_stage_reflect(
         services=resolved_services,
     )
     if submission is None:
-        return
+        return False
     (
         triage_input, issue_count, recurring, recurring_dims,
         cited_ids, missing_ids, duplicate_ids, disposition_ledger,
@@ -312,15 +327,16 @@ def _cmd_stage_reflect(
         cleared=cleared,
         stages=stages,
     )
+    return True
 
 
 def cmd_stage_reflect(
     args: argparse.Namespace,
     *,
     services: TriageServices | None = None,
-) -> None:
+) -> bool:
     """Public entrypoint for reflect stage recording."""
-    _cmd_stage_reflect(args, services=services)
+    return _cmd_stage_reflect(args, services=services)
 
 
 __all__ = ["_cmd_stage_reflect", "cmd_stage_reflect"]

@@ -38,7 +38,9 @@ from desloppify.intelligence.review.prepare_batches_builders import (
 from desloppify.intelligence.review.prepare_batches_builders import (
     build_investigation_batches as _build_investigation_batches,
 )
-from desloppify.intelligence.review.prepare_batches_builders import filter_batches_to_dimensions
+from desloppify.intelligence.review.prepare_batches_builders import (
+    filter_batches_to_dimensions,
+)
 from desloppify.state import empty_state, path_scoped_issues
 
 
@@ -699,6 +701,36 @@ class TestImportHolisticIssues:
         assert "holistic" in rc
         assert rc["holistic"]["issue_count"] == 1
         assert "reviewed_at" in rc["holistic"]
+
+    def test_public_facade_preserves_explicit_open_issue_ids(self):
+        state = empty_state()
+        issues_data = [
+            {
+                "dimension": "naming_quality",
+                "identifier": "held_issue",
+                "summary": "Legacy runtime loader reads like a predicate",
+                "confidence": "high",
+                "related_files": ["src/runtime.py"],
+                "evidence": ["The loader name does not communicate its import side effect."],
+                "suggestion": "Name the loader for its runtime-loading responsibility.",
+            }
+        ]
+
+        _call_import_holistic_issues(issues_data, state, "python")
+        held_id = next(iter(state["work_items"]))
+
+        diff = _call_import_holistic_issues(
+            {
+                "issues": [],
+                "review_scope": {"full_sweep_included": True},
+            },
+            state,
+            "python",
+            preserve_open_issue_ids={held_id},
+        )
+
+        assert diff["auto_resolved"] == 0
+        assert state["work_items"][held_id]["status"] == "open"
 
     def test_reviewed_files_refreshes_per_file_cache(self, tmp_path):
         state = empty_state()
@@ -1662,4 +1694,3 @@ class TestFilterBatchesToDimensions:
         assert filtered[0]["name"] == "low_level_elegance"
         assert filtered[0]["dimensions"] == ["low_level_elegance"]
         assert "files_to_read" not in filtered[0]
-

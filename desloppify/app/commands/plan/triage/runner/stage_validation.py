@@ -7,26 +7,19 @@ from pathlib import Path
 
 from desloppify.engine.plan_triage import TriageInput
 
+from ..completion_flow import count_log_activity_since
+from ..observe_batches import observe_dimension_breakdown
+from ..review_coverage import (
+    cluster_issue_ids,
+    triage_open_review_ids_from_state,
+)
 from ..stages.evidence_parsing import (
     parse_observe_evidence,
+    parse_value_check_decision_ledger,
     validate_observe_evidence,
     validate_reflect_skip_evidence,
     validate_report_has_file_paths,
     validate_report_references_clusters,
-)
-from ..validation.enrich_quality import evaluate_enrich_quality
-from ..validation.completion_policy import evaluate_completion_readiness
-from ..validation.enrich_checks import (
-    _cluster_file_overlaps,
-    _clusters_with_directory_scatter,
-    _clusters_with_high_step_ratio,
-)
-from ..completion_flow import count_log_activity_since
-from ..observe_batches import observe_dimension_breakdown
-from ..review_coverage import (
-    active_triage_issue_ids,
-    cluster_issue_ids,
-    open_review_ids_from_state,
 )
 from ..stages.helpers import (
     active_triage_issue_scope,
@@ -35,7 +28,13 @@ from ..stages.helpers import (
     unenriched_clusters,
     value_check_targets,
 )
-from ..stages.evidence_parsing import parse_value_check_decision_ledger
+from ..validation.completion_policy import evaluate_completion_readiness
+from ..validation.enrich_checks import (
+    _cluster_file_overlaps,
+    _clusters_with_directory_scatter,
+    _clusters_with_high_step_ratio,
+)
+from ..validation.enrich_quality import evaluate_enrich_quality
 
 
 @dataclass(frozen=True)
@@ -185,7 +184,11 @@ def _validate_organize_stage(plan: dict, state: dict, stages: dict) -> tuple[boo
     if "organize" not in stages:
         return False, "Organize stage not recorded."
     triage_scope = active_triage_issue_scope(plan, state)
-    open_review_ids = open_review_ids_from_state(state) if triage_scope is None else triage_scope
+    open_review_ids = (
+        triage_open_review_ids_from_state(plan, state)
+        if triage_scope is None
+        else triage_scope
+    )
     manual = scoped_manual_clusters_with_issues(plan, state)
     if not open_review_ids and not manual:
         report = stages["organize"].get("report", "")
@@ -238,7 +241,7 @@ def _validate_enrich_stage(
         plan,
         repo_root,
         phase_label="enrich",
-        triage_issue_ids=active_triage_issue_ids(plan, state) or None,
+        triage_issue_ids=active_triage_issue_scope(plan, state),
     )
     if failures:
         return False, failures[0].message
@@ -260,9 +263,13 @@ def _validate_sense_check_stage(
     if len(report) < 100:
         return False, f"Sense-check report too short ({len(report)} chars, need 100+)."
     manual_clusters = scoped_manual_clusters_with_issues(plan, state)
-    triage_issue_ids = active_triage_issue_ids(plan, state) or None
     triage_scope = active_triage_issue_scope(plan, state)
-    open_review_ids = open_review_ids_from_state(state) if triage_scope is None else triage_scope
+    triage_issue_ids = triage_scope
+    open_review_ids = (
+        triage_open_review_ids_from_state(plan, state)
+        if triage_scope is None
+        else triage_scope
+    )
     if not open_review_ids and not manual_clusters:
         return True, ""
     failures = run_enrich_quality_checks(

@@ -11,6 +11,10 @@ from desloppify.engine._plan.sync.triage import (
     compute_open_issue_ids,
     sync_triage_needed,
 )
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
 from desloppify.engine._state.issue_semantics import is_triage_finding
 from desloppify.engine._state.schema import StateModel
 
@@ -49,7 +53,8 @@ def _review_issue_ids_for_import_sync(
     """
     if _has_triage_baseline(plan):
         return compute_new_issue_ids(plan, state)
-    return set(open_review_ids) if open_review_ids is not None else compute_open_issue_ids(state)
+    current_ids = set(open_review_ids) if open_review_ids is not None else compute_open_issue_ids(state)
+    return current_ids - protected_review_issue_ids(plan)
 
 
 def _is_review_queue_id(issue_id: str, state: StateModel) -> bool:
@@ -162,6 +167,7 @@ def sync_plan_after_review_import(
     changes are required.
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan, state)
     open_review_ids = compute_open_issue_ids(state)
     stale_pruned_from_queue = _prune_stale_review_ids_from_plan(
         plan,

@@ -10,9 +10,9 @@ import desloppify.intelligence.review.importing.holistic_cache as holistic_cache
 import desloppify.intelligence.review.importing.holistic_issue_flow as issue_flow_mod
 import desloppify.intelligence.review.importing.resolution as resolution_mod
 import desloppify.intelligence.review.importing.state_helpers as state_helpers_mod
-import desloppify.intelligence.review.prepare_batches_core as prepare_batches_core_mod
 import desloppify.intelligence.review.prepare_batches_collectors_quality as collectors_quality_mod
 import desloppify.intelligence.review.prepare_batches_collectors_structure as collectors_structure_mod
+import desloppify.intelligence.review.prepare_batches_core as prepare_batches_core_mod
 import desloppify.intelligence.review.prepare_holistic_batches as holistic_batches_mod
 import desloppify.intelligence.review.prepare_holistic_orchestration as orchestration_mod
 import desloppify.intelligence.review.prepare_holistic_payload_parts as payload_parts_mod
@@ -169,6 +169,42 @@ def test_issue_flow_build_collect_and_auto_resolve_paths(monkeypatch) -> None:
     )
     assert diff["auto_resolved"] == 1
     assert state["work_items"]["review::old"]["status"] == "fixed"
+
+
+def test_auto_resolve_stale_holistic_preserves_explicit_review_holds() -> None:
+    state = {
+        "issues": {
+            "review::held": {
+                "id": "review::held",
+                "detector": "review",
+                "status": "open",
+                "detail": {"holistic": True, "dimension": "naming_quality"},
+            },
+            "review::ordinary": {
+                "id": "review::ordinary",
+                "detector": "review",
+                "status": "open",
+                "detail": {"holistic": True, "dimension": "naming_quality"},
+            },
+        }
+    }
+    diff = {"auto_resolved": 0}
+
+    issue_flow_mod.auto_resolve_stale_holistic(
+        state,
+        new_ids=set(),
+        diff=diff,
+        utc_now_fn=lambda: "2026-03-09T00:00:00+00:00",
+        imported_dimensions={"naming_quality"},
+        full_sweep_included=False,
+        preserve_open_issue_ids={"review::held"},
+    )
+
+    assert diff["auto_resolved"] == 1
+    assert state["work_items"]["review::held"]["status"] == "open"
+    assert "resolved_at" not in state["work_items"]["review::held"]
+    assert "resolution_attestation" not in state["work_items"]["review::held"]
+    assert state["work_items"]["review::ordinary"]["status"] == "fixed"
 
 
 def test_resolution_and_state_helper_utilities() -> None:

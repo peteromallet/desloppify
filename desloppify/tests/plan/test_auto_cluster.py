@@ -31,6 +31,7 @@ from desloppify.engine._work_queue.plan_order import (
     filter_cluster_focus,
 )
 from desloppify.engine._work_queue.ranking import item_sort_key
+from desloppify.engine._work_queue.snapshot import build_queue_snapshot
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,6 +76,49 @@ def test_grouping_key_review():
     meta = DETECTORS.get("review")
     key = grouping_key(f, meta)
     assert key == "review::abstraction_fitness"
+
+
+def test_auto_cluster_excludes_protected_review_ids_from_membership_and_queue():
+    plan = empty_plan()
+    plan["epic_triage_meta"] = {"protected_review_issue_ids": ["r1", "r2"]}
+    state = _state_with(
+        _issue(
+            "r1",
+            "review",
+            detail={"dimension": "abstraction_fitness"},
+        ),
+        _issue(
+            "r2",
+            "review",
+            detail={"dimension": "abstraction_fitness"},
+        ),
+    )
+
+    auto_cluster_issues(plan, state)
+
+    assert "auto/review-abstraction_fitness" not in plan["clusters"]
+    assert "r1" not in plan["queue_order"]
+    assert "r2" not in plan["queue_order"]
+    assert "r1" not in plan["overrides"]
+    assert "r2" not in plan["overrides"]
+
+
+def test_queue_snapshot_does_not_surface_protected_review_ids():
+    plan = empty_plan()
+    plan["epic_triage_meta"] = {
+        "protected_review_issue_ids": ["held"],
+        "triaged_ids": ["live"],
+    }
+    state = _state_with(
+        _issue("held", "review", detail={"dimension": "naming"}),
+        _issue("live", "review", detail={"dimension": "naming"}),
+        _issue("mechanical", "smells"),
+    )
+
+    snapshot = build_queue_snapshot(state, plan=plan)
+
+    assert {item["id"] for item in snapshot.all_postflight_review_items} == {"live"}
+    assert snapshot.objective_execution_count == 0
 
 
 def test_grouping_key_judgment_required_returns_none():

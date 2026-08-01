@@ -6,11 +6,14 @@ from dataclasses import dataclass
 
 from desloppify.engine._plan.cluster_membership import cluster_issue_ids
 from desloppify.engine._plan.constants import TRIAGE_IDS, is_synthetic_id
-from desloppify.engine._plan.policy.stale import open_review_ids
+from desloppify.engine._plan.policy.stale import triage_open_review_ids
 from desloppify.engine._plan.schema import Cluster, PlanModel
-from desloppify.engine._plan.triage.playbook import TriageProgress, compute_triage_progress
+from desloppify.engine._plan.triage.playbook import (
+    TriageProgress,
+    compute_triage_progress,
+)
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._state.schema import StateModel
-
 
 _cluster_issue_ids = cluster_issue_ids
 
@@ -45,22 +48,24 @@ def plan_review_ids(plan: PlanModel) -> list[str]:
 def coverage_open_ids(plan: PlanModel, state: StateModel) -> set[str]:
     """Return the frozen or live open review IDs covered by this triage run."""
     meta = plan.get("epic_triage_meta", {})
+    protected_ids = protected_review_issue_ids(plan)
     active_ids = _normalized_issue_id_list(meta.get("active_triage_issue_ids"))
     if active_ids:
-        return set(active_ids)
+        return set(active_ids) - protected_ids
     has_completed_scan = bool(state.get("last_scan"))
-    review_ids = open_review_ids(state)
+    review_ids = triage_open_review_ids(plan, state)
     if not has_completed_scan and not review_ids:
-        return set(plan_review_ids(plan))
+        return set(plan_review_ids(plan)) - protected_ids
     return review_ids
 
 
 def active_triage_issue_ids(plan: PlanModel, state: StateModel | None = None) -> set[str]:
     """Return the frozen review issue set for the current triage run."""
     meta = plan.get("epic_triage_meta", {})
+    protected_ids = protected_review_issue_ids(plan)
     active_ids = _normalized_issue_id_list(meta.get("active_triage_issue_ids"))
     if active_ids:
-        return set(active_ids)
+        return set(active_ids) - protected_ids
     if state is None:
         return set()
     return coverage_open_ids(plan, state)
@@ -68,7 +73,7 @@ def active_triage_issue_ids(plan: PlanModel, state: StateModel | None = None) ->
 
 def _explicit_active_triage_issue_ids(plan: PlanModel) -> set[str]:
     meta = plan.get("epic_triage_meta", {})
-    return set(_normalized_issue_id_list(meta.get("active_triage_issue_ids")))
+    return set(_normalized_issue_id_list(meta.get("active_triage_issue_ids"))) - protected_review_issue_ids(plan)
 
 
 def live_active_triage_issue_ids(plan: PlanModel, state: StateModel | None = None) -> set[str]:
@@ -76,7 +81,7 @@ def live_active_triage_issue_ids(plan: PlanModel, state: StateModel | None = Non
     frozen_ids = active_triage_issue_ids(plan, state)
     if state is None or not frozen_ids:
         return frozen_ids
-    return frozen_ids & open_review_ids(state)
+    return frozen_ids & triage_open_review_ids(plan, state)
 
 
 def undispositioned_triage_issue_ids(plan: PlanModel, state: StateModel | None = None) -> list[str]:
@@ -156,9 +161,10 @@ class TriageSnapshot:
 def build_triage_snapshot(plan: PlanModel, state: StateModel) -> TriageSnapshot:
     """Build a canonical triage snapshot from plan and state."""
     meta = plan.get("epic_triage_meta", {})
-    triaged_ids = set(_normalized_issue_id_list(meta.get("triaged_ids")))
-    frozen_ids = _explicit_active_triage_issue_ids(plan) & open_review_ids(state)
-    live_open = open_review_ids(state)
+    protected_ids = protected_review_issue_ids(plan)
+    triaged_ids = set(_normalized_issue_id_list(meta.get("triaged_ids"))) - protected_ids
+    frozen_ids = _explicit_active_triage_issue_ids(plan) & triage_open_review_ids(plan, state)
+    live_open = triage_open_review_ids(plan, state)
     known_ids = triaged_ids | frozen_ids
     new_since = live_open - known_ids if known_ids else set()
     in_scope_ids = coverage_open_ids(plan, state)

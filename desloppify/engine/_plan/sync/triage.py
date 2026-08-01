@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from desloppify.engine._plan.policy import stale as stale_policy_mod
 from desloppify.engine._plan.constants import (
     TRIAGE_IDS,
     TRIAGE_STAGE_IDS,
@@ -11,12 +10,14 @@ from desloppify.engine._plan.constants import (
     normalize_queue_workflow_and_triage_prefix,
     recorded_unconfirmed_triage_stage_names,
 )
-from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
+from desloppify.engine._plan.policy import stale as stale_policy_mod
 from desloppify.engine._plan.policy.subjective import SubjectiveVisibility
+from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
 from desloppify.engine._plan.triage.lifecycle import (
     ensure_active_triage_issue_ids,
     inject_triage_stages,
 )
+from desloppify.engine._plan.triage.protection import clear_protected_triage_artifacts
 from desloppify.engine._state.schema import StateModel
 
 from .defer_policy import (
@@ -39,6 +40,7 @@ _WORKFLOW_PLAN_JUST_RESOLVED_KEY = "workflow_plan_just_resolved"
 
 
 def _new_review_ids_since_triage(
+    plan: PlanModel,
     state: StateModel,
     meta: dict,
 ) -> set[str]:
@@ -46,7 +48,8 @@ def _new_review_ids_since_triage(
     triaged_ids = set(meta.get("triaged_ids", []))
     active_ids = set(meta.get("active_triage_issue_ids", []))
     known_ids = triaged_ids | active_ids
-    return stale_policy_mod.open_review_ids(state) - known_ids if known_ids else set()
+    review_ids = stale_policy_mod.triage_open_review_ids(plan, state)
+    return review_ids - known_ids if known_ids else set()
 
 
 def _baseline_triage_issue_ids(meta: dict) -> set[str]:
@@ -157,14 +160,14 @@ def _prune_stale_present_stages(
     result = QueueSyncResult()
     if not last_hash or confirmed or recorded_unconfirmed:
         return result
-    if not _baseline_triage_issue_ids(meta) and stale_policy_mod.open_review_ids(state):
+    if not _baseline_triage_issue_ids(meta) and stale_policy_mod.triage_open_review_ids(plan, state):
         return result
-    new_since_triage = _new_review_ids_since_triage(state, meta)
+    new_since_triage = _new_review_ids_since_triage(plan, state, meta)
     if new_since_triage:
         return result
     _prune_all_triage_stages(order)
     _clear_triage_defer_tracking(meta)
-    current_hash = stale_policy_mod.review_issue_snapshot_hash(state)
+    current_hash = stale_policy_mod.triage_review_issue_snapshot_hash(plan, state)
     if current_hash:
         meta["issue_snapshot_hash"] = current_hash
         plan["epic_triage_meta"] = meta
@@ -185,10 +188,10 @@ def _backfill_partial_triage_snapshot(
     )
     if not has_completed_stage or meta.get("triaged_ids") or last_hash:
         return
-    current_review = sorted(stale_policy_mod.open_review_ids(state))
+    current_review = sorted(stale_policy_mod.triage_open_review_ids(plan, state))
     if current_review:
         meta["triaged_ids"] = current_review
-        meta["issue_snapshot_hash"] = stale_policy_mod.review_issue_snapshot_hash(state)
+        meta["issue_snapshot_hash"] = stale_policy_mod.triage_review_issue_snapshot_hash(plan, state)
         plan["epic_triage_meta"] = meta
 
 
@@ -265,9 +268,9 @@ def _sync_hash_change(
     policy: SubjectiveVisibility | None,
     current_hash: str,
 ) -> QueueSyncResult:
-    new_since_triage = _new_review_ids_since_triage(state, meta)
+    new_since_triage = _new_review_ids_since_triage(plan, state, meta)
     if not new_since_triage and not _baseline_triage_issue_ids(meta):
-        new_since_triage = stale_policy_mod.open_review_ids(state)
+        new_since_triage = stale_policy_mod.triage_open_review_ids(plan, state)
     if new_since_triage:
         return _defer_or_inject_triage(
             plan=plan,
@@ -345,6 +348,7 @@ def sync_triage_needed(
     is needed since the user is working through the plan.
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan, state)
     result = QueueSyncResult()
     order: list[str] = plan["queue_order"]
     meta = plan.get("epic_triage_meta", {})
@@ -355,7 +359,7 @@ def sync_triage_needed(
     recorded_unconfirmed = recorded_unconfirmed_triage_stage_names(meta)
 
     if _consume_workflow_plan_resolution_marker(plan, meta):
-        if stale_policy_mod.open_review_ids(state):
+        if stale_policy_mod.triage_open_review_ids(plan, state):
             ensure_active_triage_issue_ids(plan, state)
             _mark_triage_ready(plan, meta)
             injected = inject_triage_stages(plan)
@@ -365,7 +369,7 @@ def sync_triage_needed(
     # Check if any triage stage is already in queue
     already_present = any(sid in order for sid in TRIAGE_IDS)
 
-    current_hash = stale_policy_mod.review_issue_snapshot_hash(state)
+    current_hash = stale_policy_mod.triage_review_issue_snapshot_hash(plan, state)
     last_hash = meta.get("issue_snapshot_hash", "")
 
     if already_present:

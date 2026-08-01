@@ -3,20 +3,36 @@
 from __future__ import annotations
 
 from desloppify.app.commands.plan.shared.cluster_membership import cluster_issue_ids
+from desloppify.engine._plan.policy.stale import open_review_ids, triage_open_review_ids
 from desloppify.engine._plan.triage.lifecycle import ensure_active_triage_issue_ids
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine.plan_state import Cluster, PlanModel
 from desloppify.engine.plan_triage import (
     active_triage_issue_ids as _active_triage_issue_ids,
+)
+from desloppify.engine.plan_triage import (
     coverage_open_ids as _coverage_open_ids,
+)
+from desloppify.engine.plan_triage import (
     find_cluster_for as _find_cluster_for,
+)
+from desloppify.engine.plan_triage import (
     live_active_triage_issue_ids as _live_active_triage_issue_ids,
+)
+from desloppify.engine.plan_triage import (
     manual_clusters_with_issues as _manual_clusters_with_issues,
+)
+from desloppify.engine.plan_triage import (
     plan_review_ids as _plan_review_ids,
+)
+from desloppify.engine.plan_triage import (
     triage_coverage as _triage_coverage,
+)
+from desloppify.engine.plan_triage import (
     undispositioned_triage_issue_ids as _undispositioned_triage_issue_ids,
 )
-from desloppify.engine._plan.policy.stale import open_review_ids
+
 from .plan_state_access import ensure_triage_meta
 
 _ACTIVE_TRIAGE_ISSUE_IDS_KEY = "active_triage_issue_ids"
@@ -29,9 +45,20 @@ def open_review_ids_from_state(state: StateModel) -> set[str]:
     return open_review_ids(state)
 
 
-def has_open_review_issues(state: StateModel | dict | None) -> bool:
-    """Return True when any open review issues exist."""
-    return bool(open_review_ids_from_state(state or {}))
+def triage_open_review_ids_from_state(plan: PlanModel, state: StateModel) -> set[str]:
+    """Return live review IDs that remain in automated triage scope."""
+    return open_review_ids_from_state(state) - protected_review_issue_ids(plan)
+
+
+def has_open_review_issues(
+    state: StateModel | dict | None,
+    plan: PlanModel | None = None,
+) -> bool:
+    """Return True when any review issues remain eligible for triage work."""
+    state_data = state or {}
+    if plan is None:
+        return bool(open_review_ids_from_state(state_data))
+    return bool(triage_open_review_ids(plan, state_data))
 
 
 def plan_review_ids(plan: PlanModel) -> list[str]:
@@ -123,6 +150,7 @@ __all__ = [
     "open_review_ids_from_state",
     "plan_review_ids",
     "sync_undispositioned_triage_meta",
+    "triage_open_review_ids_from_state",
     "triage_coverage",
     "undispositioned_triage_issue_ids",
 ]

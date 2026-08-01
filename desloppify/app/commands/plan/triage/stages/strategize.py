@@ -188,6 +188,7 @@ def cmd_stage_strategize(
 ) -> None:
     """Record the STRATEGIZE stage: big-picture cross-cycle analysis."""
     report: str | None = getattr(args, "report", None)
+    attestation: str | None = getattr(args, "attestation", None)
 
     resolved_services = services or default_triage_services()
     runtime = resolved_services.command_runtime(args)
@@ -199,6 +200,7 @@ def cmd_stage_strategize(
             plan,
             services=resolved_services,
             state=state,
+            attestation=attestation,
             start_message="  Planning mode auto-started (7 stages queued).",
             deps=TriageLifecycleDeps(
                 has_triage_in_queue=has_triage_in_queue,

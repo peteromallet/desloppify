@@ -9,6 +9,10 @@ from desloppify.engine._plan.operations.queue import _remove_id_from_lists
 from desloppify.engine._plan.promoted_ids import prune_promoted_ids
 from desloppify.engine._plan.schema import PlanModel, SkipEntry, ensure_plan_defaults
 from desloppify.engine._plan.skip_policy import skip_kind_needs_state_reopen
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
 from desloppify.engine._state.schema import utc_now
 
 
@@ -75,6 +79,9 @@ def skip_items(
         legacy_kwargs=legacy_kwargs,
     )
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan)
+    protected_ids = protected_review_issue_ids(plan)
+    issue_ids = [issue_id for issue_id in issue_ids if issue_id not in protected_ids]
     now = utc_now()
     count = 0
     skipped: dict[str, SkipEntry] = plan["skipped"]
@@ -123,11 +130,16 @@ def unskip_items(
     ``include_protected=True``).
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan)
+    protected_ids = protected_review_issue_ids(plan)
     count = 0
     need_reopen: list[str] = []
     protected_kept: list[str] = []
     skipped: dict[str, SkipEntry] = plan["skipped"]
     for fid in issue_ids:
+        if fid in protected_ids:
+            protected_kept.append(fid)
+            continue
         entry = skipped.get(fid)
         if entry is None:
             continue
@@ -151,9 +163,13 @@ def resurface_stale_skips(
     Returns list of resurfaced issue IDs.
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan)
+    protected_ids = protected_review_issue_ids(plan)
     skipped: dict[str, SkipEntry] = plan["skipped"]
     resurfaced: list[str] = []
     for fid in list(skipped):
+        if fid in protected_ids:
+            continue
         entry = skipped[fid]
         if entry.get("kind") != "temporary":
             continue
@@ -176,6 +192,7 @@ def backlog_items(plan: PlanModel, issue_ids: list[str]) -> list[str]:
     Returns the IDs that were actually removed.
     """
     ensure_plan_defaults(plan)
+    clear_protected_triage_artifacts(plan)
     removed: list[str] = []
     for fid in issue_ids:
         if fid in plan["skipped"]:

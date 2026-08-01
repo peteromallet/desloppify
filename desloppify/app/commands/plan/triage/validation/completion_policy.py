@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.engine.plan_triage import TRIAGE_CMD_ORGANIZE
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan_triage import extract_issue_citations
+from desloppify.engine.plan_triage import TRIAGE_CMD_ORGANIZE, extract_issue_citations
 
 from ..display.dashboard import show_plan_summary
 from ..review_coverage import (
     cluster_issue_ids,
-    open_review_ids_from_state,
     triage_coverage,
+    triage_open_review_ids_from_state,
 )
 from ..stages.helpers import (
     active_triage_issue_scope,
@@ -142,7 +141,9 @@ def evaluate_completion_readiness(
 
     triage_scope = active_triage_issue_scope(plan, state)
     in_scope_open_ids = (
-        open_review_ids_from_state(state) if state is not None and triage_scope is None else (triage_scope or set())
+        triage_open_review_ids_from_state(plan, state)
+        if state is not None and triage_scope is None
+        else (triage_scope or set())
     )
     if state is not None and not in_scope_open_ids:
         return CompletionReadiness(ok=True)

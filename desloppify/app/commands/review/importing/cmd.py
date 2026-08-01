@@ -6,10 +6,10 @@ import copy
 from pathlib import Path
 from types import SimpleNamespace
 
+from desloppify.app.commands.scan.artifacts import emit_scorecard_badge
 from desloppify.app.commands.scan.reporting import (
     dimensions as reporting_dimensions_mod,
 )
-from desloppify.app.commands.scan.artifacts import emit_scorecard_badge
 from desloppify.base.exception_sets import CommandError, PacketValidationError
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import WORKFLOW_IMPORT_SCORES_ID
@@ -22,19 +22,21 @@ from desloppify.engine._plan.sync.workflow_gates import (
     import_scores_meta_matches,
     pending_import_scores_meta,
 )
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._state.persistence import load_state, save_state
 from desloppify.engine._state.schema import utc_now
 from desloppify.intelligence import integrity as subjective_integrity_mod
-from desloppify.intelligence.review.importing.holistic import import_holistic_issues
 from desloppify.intelligence.review.importing.contracts_models import (
     AssessmentImportPolicyModel,
 )
+from desloppify.intelligence.review.importing.holistic import import_holistic_issues
 from desloppify.state_score_snapshot import score_snapshot
 
 from ..assessment_integrity import (
     bind_scorecard_subjective_at_target,
     subjective_at_target_dimensions,
 )
+from ..state_payloads import append_assessment_import_audit
 from .flags import (
     ReviewImportConfig,
     build_import_load_config,
@@ -47,14 +49,13 @@ from .output import (
     print_assessment_policy_notice,
     print_import_load_errors,
 )
-from ..state_payloads import append_assessment_import_audit
-from .policy import assessment_policy_model_from_payload
 from .parse import (
     ImportPayloadLoadError,
     load_import_issues_data,
     resolve_override_context,
 )
 from .plan_sync import PlanImportSyncRequest, sync_plan_after_import
+from .policy import assessment_policy_model_from_payload
 from .results import report_review_import_outcome
 
 _SCORECARD_SUBJECTIVE_AT_TARGET = bind_scorecard_subjective_at_target(
@@ -267,6 +268,16 @@ def _has_refreshable_scorecard_context(state: dict) -> bool:
     return False
 
 
+def _protected_review_issue_ids_for_import(state_file) -> set[str]:
+    """Return user-held review IDs that an import must never auto-resolve."""
+    if state_file is None:
+        return set()
+    plan_path = plan_path_for_state(Path(state_file))
+    if not has_living_plan(plan_path):
+        return set()
+    return protected_review_issue_ids(load_plan(plan_path))
+
+
 def _refresh_scorecard_after_import(
     *,
     state: dict,
@@ -326,7 +337,12 @@ def do_import(
     prev = score_snapshot(state)
     working_state = _build_working_state(state, state_file)
 
-    diff = import_holistic_issues(issues_data, working_state, lang.name)
+    diff = import_holistic_issues(
+        issues_data,
+        working_state,
+        lang.name,
+        preserve_open_issue_ids=_protected_review_issue_ids_for_import(state_file),
+    )
     label = "Holistic review"
     provisional_count = _apply_assessment_policy(
         working_state=working_state,

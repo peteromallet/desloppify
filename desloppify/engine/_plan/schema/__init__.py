@@ -208,6 +208,7 @@ class EpicTriageMeta(TypedDict, total=False):
 
     triaged_ids: list[str]
     active_triage_issue_ids: list[str]
+    protected_review_issue_ids: list[str]
     dismissed_ids: list[str]
     undispositioned_issue_ids: list[str]
     undispositioned_issue_count: int
@@ -335,27 +336,20 @@ def executable_objective_ids(
 ) -> set[str]:
     """Return objective IDs eligible for execution.
 
-    Before the plan tracks any queue work at all, all objective IDs are
-    implicitly executable. Once *any* queue items exist — including synthetic
-    review/workflow/triage items — execution becomes queue-driven and only
-    objective IDs explicitly present in ``plan["queue_order"]`` remain
-    eligible for ``next``.
+    Before the plan tracks substantive objective queue work, all objective IDs
+    are implicitly executable. Synthetic review, workflow, triage, and
+    strategy IDs coordinate lifecycle work but must not hide objective backlog.
+    Once a substantive queue item exists, only objective IDs explicitly
+    present in ``plan["queue_order"]`` remain eligible for ``next``.
     """
     if not isinstance(plan, dict):
         return set(all_objective_ids)
     skipped_ids = set(plan.get("skipped", {}).keys())
-    queued_ids = {
-        issue_id
-        for issue_id in plan.get("queue_order", [])
-        if isinstance(issue_id, str)
-        and issue_id
-        and issue_id not in skipped_ids
-    }
     live_queue_ids = live_planned_queue_ids(plan)
     queued_objective_ids = all_objective_ids & live_queue_ids
     if queued_objective_ids:
         return queued_objective_ids
-    if not queued_ids:
+    if not live_queue_ids:
         return set(all_objective_ids) - skipped_ids
     return set()
 

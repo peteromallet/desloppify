@@ -6,13 +6,14 @@ from typing import Any
 
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.triage.lifecycle import (
-    clear_triage_stage_skips,
     has_triage_in_queue,
     inject_triage_stages,
 )
+from desloppify.engine._plan.triage.protection import (
+    protected_review_issue_ids_from_meta,
+)
 from desloppify.engine.plan_ops import purge_ids
 from desloppify.engine.plan_state import PlanModel
-from desloppify.engine.plan_triage import TRIAGE_STAGE_IDS
 
 STAGE_ORDER = ["strategize", "observe", "reflect", "organize", "enrich", "sense-check"]
 
@@ -32,6 +33,9 @@ def cascade_clear_dispositions(meta: dict[str, Any], from_stage: str) -> None:
     dispositions = meta.get("issue_dispositions")
     if not dispositions:
         return
+    protected_ids = protected_review_issue_ids_from_meta(meta)
+    for issue_id in protected_ids:
+        dispositions.pop(issue_id, None)
     if from_stage == "observe":
         meta["issue_dispositions"] = {}
     elif from_stage == "reflect":

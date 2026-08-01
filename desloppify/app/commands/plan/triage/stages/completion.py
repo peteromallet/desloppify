@@ -7,8 +7,15 @@ import argparse
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
 
-from .records import record_confirm_existing_completion
-from .rendering import _print_complete_summary
+from ..completion_flow import apply_completion
+from ..review_coverage import (
+    manual_clusters_with_issues,
+    sync_undispositioned_triage_meta,
+    triage_coverage,
+    triage_open_review_ids_from_state,
+)
+from ..services import TriageServices, default_triage_services
+from ..stage_queue import has_triage_in_queue
 from ..validation.completion_policy import (
     _completion_strategy_valid,
     _confirm_existing_stages_valid,
@@ -29,16 +36,9 @@ from ..validation.completion_stages import (
     _require_sense_check_stage_for_complete,
 )
 from ..validation.enrich_checks import _underspecified_steps
-from ..completion_flow import apply_completion
-from ..review_coverage import (
-    manual_clusters_with_issues,
-    open_review_ids_from_state,
-    sync_undispositioned_triage_meta,
-    triage_coverage,
-)
-from ..stage_queue import has_triage_in_queue
-from ..services import TriageServices, default_triage_services
 from .helpers import active_triage_issue_scope, triage_scoped_plan
+from .records import record_confirm_existing_completion
+from .rendering import _print_complete_summary
 
 
 def _print_completion_coverage_warning(*, organized: int, total: int) -> None:
@@ -171,7 +171,11 @@ def _cmd_triage_complete(
 
     state = resolved_services.command_runtime(args).state
     triage_scope = active_triage_issue_scope(plan, state)
-    review_ids = open_review_ids_from_state(state) if triage_scope is None else triage_scope
+    review_ids = (
+        triage_open_review_ids_from_state(plan, state)
+        if triage_scope is None
+        else triage_scope
+    )
 
     # Organize gate
     if not _require_organize_stage_for_complete(plan=plan, meta=meta, stages=stages):

@@ -6,16 +6,20 @@ import argparse
 
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
 
+from ..lifecycle import TriageLifecycleDeps, ensure_triage_started
+from ..observe_batches import observe_dimension_breakdown
+from ..services import TriageServices, default_triage_services
 from ..stage_queue import (
     cascade_clear_dispositions,
     has_triage_in_queue,
     inject_triage_stages,
     print_cascade_clear_feedback,
 )
-from ..lifecycle import TriageLifecycleDeps, ensure_triage_started
-from ..observe_batches import observe_dimension_breakdown
-from ..services import TriageServices, default_triage_services
 from .flow_helpers import validate_stage_report_length
 from .records import record_observe_stage, resolve_reusable_report
 from .rendering import _print_observe_report_requirement
@@ -53,6 +57,8 @@ def cmd_stage_observe(
             return
 
     meta = plan.setdefault("epic_triage_meta", {})
+    protected_ids = protected_review_issue_ids(plan)
+    clear_protected_triage_artifacts(plan, state)
     stages = meta.setdefault("triage_stages", {})
     existing_stage = stages.get("observe")
 
@@ -142,7 +148,7 @@ def cmd_stage_observe(
     dispositions: dict[str, dict] = {}
     for entry in evidence.entries:
         full_id = resolve_short_hash_to_full_id(entry.issue_hash, valid_ids)
-        if full_id:
+        if full_id and full_id not in protected_ids:
             dispositions[full_id] = {
                 "verdict": entry.verdict,
                 "verdict_reasoning": entry.verdict_reasoning,

@@ -3,13 +3,7 @@
 from __future__ import annotations
 
 from desloppify.engine._plan.constants import TRIAGE_STAGE_IDS
-from desloppify.engine._plan.triage.core import (
-    DismissedIssue,
-    TriageResult,
-    apply_triage_to_plan,
-    collect_triage_input,
-    parse_triage_result,
-)
+from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
 from desloppify.engine._plan.schema import (
     EPIC_PREFIX,
     VALID_EPIC_DIRECTIONS,
@@ -17,10 +11,16 @@ from desloppify.engine._plan.schema import (
     empty_plan,
     ensure_plan_defaults,
 )
-from desloppify.engine._plan.policy.stale import review_issue_snapshot_hash
 from desloppify.engine._plan.sync.triage import (
     is_triage_stale,
     sync_triage_needed,
+)
+from desloppify.engine._plan.triage.core import (
+    DismissedIssue,
+    TriageResult,
+    apply_triage_to_plan,
+    collect_triage_input,
+    parse_triage_result,
 )
 from desloppify.engine._work_queue.synthetic import build_triage_stage_items
 
@@ -667,6 +667,41 @@ class TestCollectTriageInput:
         si = collect_triage_input(plan, state)
         assert si.new_since_last == {"r2"}
         assert si.resolved_since_last == set()
+
+    def test_excludes_explicitly_protected_review_ids_from_prompt_input(self):
+        plan = empty_plan()
+        plan["epic_triage_meta"] = {"protected_review_issue_ids": ["r1"]}
+        plan["clusters"]["epic/test"] = {
+            "name": "epic/test",
+            "thesis": "test",
+            "direction": "delete",
+            "issue_ids": ["r1", "r2"],
+            "auto": True,
+            "cluster_key": "epic::epic/test",
+        }
+        plan["clusters"]["auto/review"] = {
+            "name": "auto/review",
+            "auto": True,
+            "issue_ids": ["r1", "u1"],
+        }
+        state = _state_with_review_issues("r1", "r2")
+
+        si = collect_triage_input(plan, state)
+
+        assert set(si.review_issues) == {"r2"}
+        assert si.existing_clusters["epic/test"]["issue_ids"] == ["r2"]
+        assert si.auto_clusters["auto/review"]["issue_ids"] == ["u1"]
+
+
+class TestProtectedReviewIssueQueueScope:
+    def test_sync_does_not_inject_triage_for_only_protected_review_ids(self):
+        plan = empty_plan()
+        plan["epic_triage_meta"] = {"protected_review_issue_ids": ["r1"]}
+
+        result = sync_triage_needed(plan, _state_with_review_issues("r1"))
+
+        assert result.injected == []
+        assert not any(stage_id in plan["queue_order"] for stage_id in TRIAGE_STAGE_IDS)
 
 
 # ---------------------------------------------------------------------------

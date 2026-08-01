@@ -9,26 +9,16 @@ from typing import Literal
 
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.state import state_path
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.app.commands.plan.triage.review_coverage import (
     has_open_review_issues,
 )
-from desloppify.app.commands.helpers.transition_messages import emit_transition_message
-from desloppify.base.config import target_strict_score_from_config
-from .resolve_helpers import blocked_triage_stages
 from desloppify.app.commands.plan.triage.stage_queue import (
     has_triage_in_queue,
     inject_triage_stages,
 )
+from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan_state import (
-    load_plan,
-    save_plan,
-)
-from desloppify.engine.plan_ops import (
-    append_log_entry,
-    auto_complete_steps,
-    purge_ids,
-)
 from desloppify.engine._plan.constants import (
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
@@ -42,12 +32,23 @@ from desloppify.engine._state.progression import (
     maybe_append_entered_planning,
     maybe_append_execution_drain,
 )
-
-_logger = logging.getLogger(__name__)
+from desloppify.engine.plan_ops import (
+    append_log_entry,
+    auto_complete_steps,
+    purge_ids,
+)
+from desloppify.engine.plan_state import (
+    load_plan,
+    save_plan,
+)
 from desloppify.engine.plan_triage import (
     triage_manual_stage_command,
     triage_runner_commands,
 )
+
+from .resolve_helpers import blocked_triage_stages
+
+_logger = logging.getLogger(__name__)
 
 WORKFLOW_GATE_IDS = frozenset({WORKFLOW_SCORE_CHECKPOINT_ID, WORKFLOW_CREATE_PLAN_ID})
 _WORKFLOW_PLAN_JUST_RESOLVED_KEY = "workflow_plan_just_resolved"
@@ -375,7 +376,9 @@ def _reconcile_if_queue_drained(
         return
     resolved_state_path = state_path(args)
     state_data = state_mod.load_state(resolved_state_path)
-    if WORKFLOW_CREATE_PLAN_ID in synthetic_ids and has_open_review_issues(state_data):
+    if WORKFLOW_CREATE_PLAN_ID in synthetic_ids and has_open_review_issues(
+        state_data, plan
+    ):
         plan.setdefault("refresh_state", {})[_WORKFLOW_PLAN_JUST_RESOLVED_KEY] = True
     result = reconcile_plan(
         plan,

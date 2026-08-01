@@ -7,6 +7,7 @@ from typing import Literal
 
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.cluster_semantics import cluster_is_active
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 
 from ..review_coverage import cluster_issue_ids, manual_clusters_with_issues
 from ..stages.helpers import unclustered_review_issues, unenriched_clusters
@@ -296,17 +297,28 @@ def validate_backlog_promotions_executed(
         return []
 
     # Check which promoted clusters actually got promoted (are in queue_order
-    # or have execution_status set to active)
+    # or have execution_status set to active).
     clusters = plan.get("clusters", {})
+    queue_order = plan.get("queue_order")
+    queued_ids = {
+        issue_id
+        for issue_id in queue_order
+        if isinstance(issue_id, str)
+    } if isinstance(queue_order, list) else set()
+    protected_ids = protected_review_issue_ids(plan)
     warnings: list[str] = []
     for decision in promote_decisions:
         cluster = clusters.get(decision.cluster_name)
         if cluster is None:
             continue
-        # A promoted cluster should have been activated.
+        member_ids = set(cluster_issue_ids(cluster)) - protected_ids
+        queued_members = bool(member_ids) and member_ids.issubset(queued_ids)
+        # `plan promote` expands a cluster into its member IDs in queue_order
+        # without necessarily setting its execution status. An empty cluster
+        # must not pass the queue-membership check via vacuous truth.
         # Note: "in_progress" is a cluster *lifecycle* status (pending→in_progress→completed),
         # not an execution status. The old check accepted it here by mistake.
-        if not cluster_is_active(cluster):
+        if not (cluster_is_active(cluster) or queued_members):
             warnings.append(
                 f"Reflect requested promoting {decision.cluster_name} "
                 f"but it was not promoted during organize."

@@ -42,7 +42,7 @@ class StageHandler:
     """Per-stage execution/record hooks for the codex triage pipeline."""
 
     run_parallel: Callable[[StageRunContext], TriageStageRunResult] | None = None
-    record_report: Callable[[str, argparse.Namespace, TriageServices], None] | None = None
+    record_report: Callable[[str, argparse.Namespace, TriageServices], bool | None] | None = None
     prompt_mode: PromptMode = "output_only"
 
 
@@ -80,7 +80,7 @@ def _record_reflect_report(
     report: str,
     args: argparse.Namespace,
     services: TriageServices,
-) -> None:
+) -> bool:
     from ..stages.commands import cmd_stage_reflect
 
     record_args = argparse.Namespace(
@@ -88,7 +88,7 @@ def _record_reflect_report(
         report=report,
         state=getattr(args, "state", None),
     )
-    cmd_stage_reflect(record_args, services=services)
+    return cmd_stage_reflect(record_args, services=services)
 
 
 def _record_sense_check_report(
@@ -646,7 +646,19 @@ def _record_stage_report_if_needed(
                 append_run_log=context.append_run_log,
             )
 
-    handler.record_report(report, context.args, context.services)
+    record_result = handler.record_report(report, context.args, context.services)
+    if record_result is False:
+        return _failure_result(
+            stage=stage,
+            elapsed=elapsed,
+            error="reflect_report_rejected",
+            append_run_log=context.append_run_log,
+            log_event="stage-record-rejected",
+            printed_message=(
+                f"  Stage {stage}: report was rejected by record-time validation. "
+                "See the validation output above."
+            ),
+        )
     plan_after_record = context.services.load_plan()
     if not stage_report_recorded(plan_after_record, stage):
         return _failure_result(

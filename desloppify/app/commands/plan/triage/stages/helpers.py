@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import is_synthetic_id
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
+from desloppify.engine._state.issue_semantics import (
+    is_review_work_item,
+)
 from desloppify.engine.plan_triage import TRIAGE_IDS
 
 from ..review_coverage import (
@@ -61,8 +64,19 @@ def active_triage_issue_scope(
     `None` means "do not scope" for legacy/non-triage flows.
     An empty set means a frozen triage run exists but none of its issues are live.
     """
+    meta = plan.get("epic_triage_meta", {})
+    raw_scope = meta.get("active_triage_issue_ids") if isinstance(meta, dict) else None
+    has_explicit_scope = isinstance(raw_scope, list)
+    has_explicit_issue = has_explicit_scope and any(
+        isinstance(issue_id, str) and issue_id.strip() for issue_id in raw_scope
+    )
+    if has_explicit_scope and not has_explicit_issue:
+        return set()
+
     frozen = active_triage_issue_ids(plan, state)
     if not frozen:
+        if has_explicit_scope:
+            return set()
         return None
     if state is None:
         return frozen
@@ -153,6 +167,7 @@ def unclustered_review_issues(plan: dict, state: dict | None = None) -> list[str
     skipped_ids = {
         fid for fid in (plan.get("skipped", {}) or {}).keys() if isinstance(fid, str)
     }
+    protected_ids = protected_review_issue_ids(plan)
 
     if state is not None:
         # Only count review-type issues for ledger purposes — mechanical
@@ -162,16 +177,17 @@ def unclustered_review_issues(plan: dict, state: dict | None = None) -> list[str
             fid for fid, finding in (state.get("work_items") or state.get("issues", {})).items()
             if finding.get("status") == "open"
             and is_review_work_item(finding)
+            and fid not in protected_ids
         ]
-        frozen_ids = (plan.get("epic_triage_meta", {}) or {}).get("active_triage_issue_ids")
-        if isinstance(frozen_ids, list) and frozen_ids:
-            frozen_id_set = live_active_triage_issue_ids(plan, state)
-            review_ids = [fid for fid in review_ids if fid in frozen_id_set]
+        triage_scope = active_triage_issue_scope(plan, state)
+        if triage_scope is not None:
+            review_ids = [fid for fid in review_ids if fid in triage_scope]
     else:
         review_ids = [
             fid for fid in plan.get("queue_order", [])
             if not is_synthetic_id(fid)
             and (fid.startswith("review::") or fid.startswith("concerns::"))
+            and fid not in protected_ids
         ]
 
     return [

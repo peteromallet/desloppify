@@ -9,6 +9,7 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.query import (
     write_query_best_effort as _write_query_best_effort,
 )
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 
 from .plan_load import ResolvePlanAccess, load_resolve_plan_access
 from .selection import ResolveQueryContext
@@ -46,11 +47,18 @@ def _resolve_all_patterns(
     plan_access: ResolvePlanAccess | None = None,
 ) -> list[str]:
     all_resolved: list[str] = []
+    resolved_plan_access = plan_access or load_resolve_plan_access()
+    plan = resolved_plan_access.usable_plan(
+        behavior="Protected review holds are unavailable until plan loading succeeds.",
+    )
+    protected_ids = protected_review_issue_ids(plan)
     for pattern in args.patterns:
         # Check if pattern is a cluster name — expand to member IDs
-        cluster_ids = _try_expand_cluster(pattern, plan_access=plan_access)
+        cluster_ids = _try_expand_cluster(pattern, plan_access=resolved_plan_access)
         if cluster_ids:
             for fid in cluster_ids:
+                if fid in protected_ids:
+                    continue
                 resolved = state_mod.resolve_issues(
                     state,
                     fid,
@@ -61,6 +69,8 @@ def _resolve_all_patterns(
                 all_resolved.extend(resolved)
             continue
 
+        if pattern in protected_ids:
+            continue
         resolved = state_mod.resolve_issues(
             state,
             pattern,

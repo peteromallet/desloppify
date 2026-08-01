@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from desloppify.engine._plan.promoted_ids import add_promoted_ids
 from desloppify.engine._plan.schema import PlanModel, SkipEntry, ensure_plan_defaults
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 
 
 def _remove_id_from_lists(plan: PlanModel, issue_id: str) -> None:
@@ -104,7 +105,10 @@ def move_items(
     # Triage stage IDs are workflow-managed and cannot be manually reordered.
     from desloppify.engine._plan.constants import TRIAGE_IDS
 
-    issue_ids = [fid for fid in issue_ids if fid not in TRIAGE_IDS]
+    protected_ids = protected_review_issue_ids(plan)
+    issue_ids = [
+        fid for fid in issue_ids if fid not in TRIAGE_IDS and fid not in protected_ids
+    ]
     if not issue_ids:
         return 0
 

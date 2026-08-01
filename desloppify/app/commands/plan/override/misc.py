@@ -7,18 +7,19 @@ from pathlib import Path
 
 from desloppify.app.commands.helpers.command_runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_issue_inventory, state_path
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.app.commands.plan.shared.patterns import resolve_ids_from_patterns
-from .io import (
-    _plan_file_for_state,
-    save_plan_state_transactional,
-)
 from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan_state import (
-    load_plan,
-    purge_uncommitted_ids,
-    save_plan,
+from desloppify.engine._plan.refresh_lifecycle import (
+    invalidate_postflight_scan,
 )
+from desloppify.engine._plan.sync import reconcile_plan
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids,
+)
+from desloppify.engine._state.resolution import resolve_issues
 from desloppify.engine.plan_ops import (
     annotate_issue,
     append_log_entry,
@@ -26,13 +27,17 @@ from desloppify.engine.plan_ops import (
     describe_issue,
     set_focus,
 )
-from desloppify.app.commands.helpers.transition_messages import emit_transition_message
-from desloppify.engine._plan.refresh_lifecycle import (
-    invalidate_postflight_scan,
+from desloppify.engine.plan_state import (
+    load_plan,
+    purge_uncommitted_ids,
+    save_plan,
 )
-from desloppify.engine._plan.sync import reconcile_plan
-from desloppify.engine._state.resolution import resolve_issues
 from desloppify.state_io import load_state
+
+from .io import (
+    _plan_file_for_state,
+    save_plan_state_transactional,
+)
 
 
 def cmd_plan_describe(args: argparse.Namespace) -> None:
@@ -111,12 +116,16 @@ def cmd_plan_reopen(args: argparse.Namespace) -> None:
         return
 
     plan = load_plan(plan_file)
+    protected_ids = protected_review_issue_ids(plan)
+    clear_protected_triage_artifacts(plan, state_data)
     purge_uncommitted_ids(plan, reopened)
 
     skipped = plan.get("skipped", {})
     count = 0
     order = set(plan.get("queue_order", []))
     for fid in reopened:
+        if fid in protected_ids:
+            continue
         if fid in skipped:
             skipped.pop(fid)
             count += 1
@@ -127,7 +136,12 @@ def cmd_plan_reopen(args: argparse.Namespace) -> None:
 
     append_log_entry(plan, "reopen", issue_ids=reopened, actor="user")
     transition_phase: str | None = None
-    if invalidate_postflight_scan(plan, issue_ids=reopened, state=state_data):
+    executable_reopened = [fid for fid in reopened if fid not in protected_ids]
+    if executable_reopened and invalidate_postflight_scan(
+        plan,
+        issue_ids=executable_reopened,
+        state=state_data,
+    ):
         result = reconcile_plan(
             plan,
             state_data,

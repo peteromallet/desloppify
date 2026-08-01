@@ -146,6 +146,24 @@ def test_reconcile_no_log_when_no_changes():
     assert len(reconcile_entries) == 0
 
 
+def test_reconcile_clears_protected_skip_before_status_sync():
+    """A scan boundary must not turn a protected hold into triaged_out."""
+    plan = empty_plan()
+    plan["skipped"]["held"] = {
+        "issue_id": "held",
+        "kind": "triaged_out",
+    }
+    plan["epic_triage_meta"] = {
+        "protected_review_issue_ids": ["held"],
+    }
+    state = _state_with_issues("held")
+
+    reconcile_plan_after_scan(plan, state)
+
+    assert state["issues"]["held"]["status"] == "open"
+    assert "held" not in plan["skipped"]
+
+
 def test_reconcile_prunes_existing_superseded_references():
     """Already-superseded IDs should not linger in queue_order or clusters."""
     plan = _plan_with_queue("a", "b")

@@ -7,12 +7,13 @@ from typing import Any
 
 from desloppify.engine._plan.cluster_semantics import cluster_autofix_hint
 from desloppify.engine._plan.schema import (
-    Cluster,
     EPIC_PREFIX,
+    Cluster,
     PlanModel,
     ensure_plan_defaults,
     triage_clusters,
 )
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
 from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._state.issue_semantics import is_triage_finding
 from desloppify.engine._state.schema import StateModel
@@ -212,20 +213,47 @@ def collect_triage_input(plan: PlanModel, state: StateModel) -> TriageInput:
     ensure_plan_defaults(plan)
     issues = (state.get("work_items") or state.get("issues", {}))
     meta = plan.get("epic_triage_meta", {})
-    epics = triage_clusters(plan)
+    protected_ids = protected_review_issue_ids(plan)
+    epics = {
+        name: {
+            **cluster,
+            "issue_ids": [
+                issue_id
+                for issue_id in cluster.get("issue_ids", [])
+                if isinstance(issue_id, str) and issue_id not in protected_ids
+            ],
+        }
+        for name, cluster in triage_clusters(plan).items()
+    }
     auto_clusters = {
-        name: cluster
+        name: {
+            **cluster,
+            "issue_ids": [
+                issue_id
+                for issue_id in cluster.get("issue_ids", [])
+                if isinstance(issue_id, str) and issue_id not in protected_ids
+            ],
+        }
         for name, cluster in plan.get("clusters", {}).items()
         if cluster.get("auto") and not name.startswith(EPIC_PREFIX)
     }
     open_review, open_mechanical = _split_open_issue_buckets(issues)
+    open_review = {
+        issue_id: issue
+        for issue_id, issue in open_review.items()
+        if issue_id not in protected_ids
+    }
     snapshot = build_triage_snapshot(plan, state)
 
-    triaged_ids = set(meta.get("triaged_ids", []))
+    triaged_ids = set(meta.get("triaged_ids", [])) - protected_ids
     current_review_ids = set(open_review.keys())
     new_since = set(snapshot.new_since_triage_ids)
     resolved_since = triaged_ids - current_review_ids
-    previously_dismissed = list(meta.get("dismissed_ids", []))
+    previously_dismissed = [
+        issue_id
+        for issue_id in meta.get("dismissed_ids", [])
+        if issue_id not in protected_ids
+    ]
     version = int(meta.get("version", 0)) + 1
 
     # Resolved issue objects (for REFLECT stage)

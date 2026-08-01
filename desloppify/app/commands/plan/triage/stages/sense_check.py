@@ -9,9 +9,9 @@ from pathlib import Path
 
 from desloppify.base.output.terminal import colorize
 
-from .records import record_sense_check_stage, resolve_reusable_report
-from .helpers import value_check_targets
-from ..validation.enrich_quality import evaluate_enrich_quality
+from ..review_coverage import triage_open_review_ids_from_state
+from ..services import TriageServices, default_triage_services
+from ..stage_queue import has_triage_in_queue, print_cascade_clear_feedback
 from ..validation.enrich_checks import (
     _steps_missing_issue_refs,
     _steps_with_bad_paths,
@@ -19,10 +19,14 @@ from ..validation.enrich_checks import (
     _steps_without_effort,
     _underspecified_steps,
 )
-from ..review_coverage import active_triage_issue_ids, open_review_ids_from_state
-from ..stage_queue import has_triage_in_queue, print_cascade_clear_feedback
-from ..services import TriageServices, default_triage_services
+from ..validation.enrich_quality import evaluate_enrich_quality
 from .enrich import ColorizeFn
+from .helpers import (
+    active_triage_issue_scope,
+    scoped_manual_clusters_with_issues,
+    value_check_targets,
+)
+from .records import record_sense_check_stage, resolve_reusable_report
 
 
 @dataclass(frozen=True)
@@ -66,7 +70,7 @@ def _sense_check_quality_problems(
         from desloppify.base.discovery.paths import get_project_root
 
     repo_root = get_project_root()
-    triage_ids = active_triage_issue_ids(plan, state) or None
+    triage_ids = active_triage_issue_scope(plan, state)
     quality_report = evaluate_enrich_quality(
         plan,
         repo_root,
@@ -118,13 +122,18 @@ def _sense_check_evidence_failures(
         validate_report_has_file_paths,
         validate_report_references_clusters,
     )
-    from ..review_coverage import manual_clusters_with_issues
 
     failures: list[object] = []
-    if open_review_ids_from_state(state):
+    triage_scope = active_triage_issue_scope(plan, state)
+    open_review_ids = (
+        triage_open_review_ids_from_state(plan, state)
+        if triage_scope is None
+        else triage_scope
+    )
+    if open_review_ids:
         failures.extend(validate_report_has_file_paths(report) or [])
 
-    cluster_names = manual_clusters_with_issues(plan)
+    cluster_names = scoped_manual_clusters_with_issues(plan, state)
     if cluster_names:
         failures.extend(validate_report_references_clusters(report, cluster_names) or [])
 

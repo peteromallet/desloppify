@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from desloppify.engine._plan.triage.protection import protected_review_issue_ids
+
 
 def _promoted_ids(plan: dict[str, Any]) -> list[str]:
     promoted = plan.get("promoted_ids")
@@ -18,8 +20,9 @@ def add_promoted_ids(plan: dict[str, Any], issue_ids: list[str]) -> None:
     """Append issue IDs to promoted_ids preserving existing order."""
     promoted = _promoted_ids(plan)
     existing = set(promoted)
+    protected_ids = protected_review_issue_ids(plan)
     for issue_id in issue_ids:
-        if issue_id in existing:
+        if issue_id in existing or issue_id in protected_ids:
             continue
         promoted.append(issue_id)
         existing.add(issue_id)

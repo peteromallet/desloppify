@@ -23,14 +23,18 @@ import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_co
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution as orchestrator_pipeline_execution_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_sense as orchestrator_sense_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_common as orchestrator_common_mod
+import desloppify.app.commands.plan.triage.stages.commands as stage_commands_mod
+import desloppify.app.commands.plan.triage.stages.helpers as stage_helpers_mod
 import desloppify.app.commands.plan.triage.stages.organize as organize_stage_mod
 import desloppify.app.commands.plan.triage.validation.completion_policy as completion_policy_mod
 import desloppify.app.commands.plan.triage.validation.completion_stages as completion_stages_mod
 import desloppify.app.commands.plan.triage.validation.enrich_checks as enrich_checks_mod
+import desloppify.app.commands.plan.triage.validation.organize_policy as organize_policy_mod
 from desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_execution import (
     StageExecutionResult,
 )
 from desloppify.base.exception_sets import CommandError
+from desloppify.engine._plan.schema import empty_plan
 from desloppify.engine.plan_triage import build_triage_snapshot
 
 
@@ -61,6 +65,61 @@ def _make_stage_context(
     return orchestrator_pipeline_context_mod.StageRunContext(**defaults)
 
 
+def test_active_triage_scope_stays_empty_when_protected_items_exhaust_it() -> None:
+    plan = {"epic_triage_meta": {"active_triage_issue_ids": []}}
+
+    assert stage_helpers_mod.active_triage_issue_scope(plan, {"last_scan": "now"}) == set()
+
+
+def test_active_triage_scope_does_not_absorb_new_reviews_after_empty_freeze() -> None:
+    plan = {"epic_triage_meta": {"active_triage_issue_ids": []}}
+    state = {
+        "last_scan": "now",
+        "work_items": {"review::new.py::late": {"detector": "review", "status": "open"}},
+    }
+
+    assert stage_helpers_mod.active_triage_issue_scope(plan, state) == set()
+    assert stage_helpers_mod.unclustered_review_issues(plan, state) == []
+
+
+def test_enrich_quality_empty_triage_scope_ignores_historical_clusters(tmp_path: Path) -> None:
+    import desloppify.app.commands.plan.triage.validation.enrich_quality as enrich_quality_mod
+
+    plan = {
+        "clusters": {
+            "historical": {
+                "auto": False,
+                "issue_ids": ["review::old.py::historic"],
+                "action_steps": [{"title": "Historic step"}],
+            }
+        }
+    }
+    kwargs = {
+        "phase_label": "enrich",
+        "bad_paths_severity": "warning",
+        "missing_effort_severity": "warning",
+        "include_missing_issue_refs": False,
+        "include_vague_detail": False,
+        "stale_issue_refs_severity": None,
+    }
+
+    scoped = enrich_quality_mod.evaluate_enrich_quality(
+        plan,
+        tmp_path,
+        triage_issue_ids=set(),
+        **kwargs,
+    )
+    unscoped = enrich_quality_mod.evaluate_enrich_quality(
+        plan,
+        tmp_path,
+        triage_issue_ids=None,
+        **kwargs,
+    )
+
+    assert scoped.failures == []
+    assert unscoped.failure("underspecified").total == 1
+
+
 def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         completion_policy_mod,
@@ -70,8 +129,8 @@ def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, cap
     monkeypatch.setattr(completion_policy_mod, "active_triage_issue_scope", lambda _plan, _state=None: None)
     monkeypatch.setattr(
         completion_policy_mod,
-        "open_review_ids_from_state",
-        lambda _state: {"review::a.py::id1"},
+        "triage_open_review_ids_from_state",
+        lambda _plan, _state: {"review::a.py::id1"},
     )
     monkeypatch.setattr(completion_policy_mod, "triage_coverage", lambda _plan, open_review_ids: (1, 1, []))
     monkeypatch.setattr(completion_policy_mod, "unenriched_clusters", lambda _plan, _state=None: [])
@@ -130,6 +189,21 @@ def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, cap
 
     out = capsys.readouterr().out
     assert "Strategy too short" in out
+
+
+def test_completion_gate_ignores_only_protected_open_review_ids() -> None:
+    plan = empty_plan()
+    plan["epic_triage_meta"] = {"protected_review_issue_ids": ["review::held"]}
+    state = {
+        "issues": {
+            "review::held": {"status": "open", "detector": "review"},
+        },
+    }
+
+    readiness = completion_policy_mod.evaluate_completion_readiness(plan, state)
+
+    assert readiness.ok is True
+    assert readiness.open_review_ids == frozenset()
 
 
 def test_runner_validate_completion_uses_shared_completion_boundary(monkeypatch, tmp_path: Path) -> None:
@@ -275,7 +349,11 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
     captured: dict[str, object] = {}
     state = {"issues": {"review::closed-only": {"status": "closed", "detector": "review"}}}
 
-    monkeypatch.setattr(organize_stage_mod, "open_review_ids_from_state", lambda _state: set())
+    monkeypatch.setattr(
+        organize_stage_mod,
+        "triage_open_review_ids_from_state",
+        lambda _plan, _state: set(),
+    )
     monkeypatch.setattr(
         organize_stage_mod, "auto_confirm_reflect_for_organize", lambda **_kwargs: True
     )
@@ -327,6 +405,45 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
 
     assert result == (["manual"], "x" * 120)
     assert captured["state"] is state
+
+
+def test_validate_backlog_promotions_accepts_active_or_queued_members() -> None:
+    plan = {
+        "queue_order": ["review::ready"],
+        "epic_triage_meta": {"protected_review_issue_ids": ["review::held"]},
+        "clusters": {
+            "auto/active-empty": {
+                "issue_ids": [],
+                "execution_status": "active",
+            },
+            "auto/queued-members": {
+                "issue_ids": ["review::ready", "review::held"],
+                "execution_status": "review",
+            },
+            "auto/empty-review": {
+                "issue_ids": [],
+                "execution_status": "review",
+            },
+        },
+    }
+    stages = {
+        "reflect": {
+            "backlog_decisions": [
+                {"cluster_name": "auto/active-empty", "decision": "promote"},
+                {"cluster_name": "auto/queued-members", "decision": "promote"},
+                {"cluster_name": "auto/empty-review", "decision": "promote"},
+            ]
+        }
+    }
+
+    warnings = organize_policy_mod.validate_backlog_promotions_executed(
+        plan=plan,
+        stages=stages,
+    )
+
+    assert warnings == [
+        "Reflect requested promoting auto/empty-review but it was not promoted during organize."
+    ]
 
 
 def test_confirm_organize_passes_state_to_enrichment_gate(monkeypatch) -> None:
@@ -1850,6 +1967,58 @@ def test_execute_stage_fails_when_handler_does_not_persist_stage(monkeypatch, tm
     assert result.payload["error"] == "stage_not_recorded"
 
 
+def test_record_reflect_report_forwards_rejection(monkeypatch) -> None:
+    monkeypatch.setattr(stage_commands_mod, "cmd_stage_reflect", lambda *_a, **_k: False)
+
+    accepted = orchestrator_pipeline_execution_mod._record_reflect_report(
+        "reflect report",
+        argparse.Namespace(state=None),
+        SimpleNamespace(),
+    )
+
+    assert accepted is False
+
+
+def test_execute_stage_reports_reflect_record_validation_rejection(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(orchestrator_pipeline_mod, "build_stage_prompt", lambda *a, **k: "prompt")
+    monkeypatch.setattr(
+        orchestrator_pipeline_mod,
+        "run_triage_stage",
+        lambda **_kwargs: codex_runner_mod.TriageStageRunResult(exit_code=0),
+    )
+    monkeypatch.setitem(
+        orchestrator_pipeline_mod._STAGE_HANDLERS,
+        "reflect",
+        orchestrator_pipeline_mod.StageHandler(record_report=lambda *_a, **_k: False),
+    )
+
+    run_log: list[str] = []
+    services = SimpleNamespace(load_plan=lambda: {"epic_triage_meta": {"triage_stages": {}}})
+    result = orchestrator_pipeline_execution_mod.execute_stage(
+        _make_stage_context(
+            tmp_path,
+            stage="reflect",
+            services=services,
+            plan={"epic_triage_meta": {"triage_stages": {"observe": {"report": "ok"}}}},
+            triage_input=SimpleNamespace(open_issues={}),
+            prior_reports={"observe": "ok"},
+            append_run_log=run_log.append,
+        ),
+        handlers=orchestrator_pipeline_mod._STAGE_HANDLERS,
+        dependencies=orchestrator_pipeline_mod.StageExecutionDependencies(
+            build_stage_prompt=lambda *_a, **_k: "prompt",
+            run_triage_stage=lambda **_kwargs: codex_runner_mod.TriageStageRunResult(exit_code=0),
+            read_stage_output=lambda _path: "x" * 120,
+            analyze_reflect_issue_accounting=orchestrator_pipeline_mod._analyze_reflect_issue_accounting,
+            validate_reflect_issue_accounting=orchestrator_pipeline_mod._validate_reflect_issue_accounting,
+        ),
+    )
+
+    assert result.status == "failed"
+    assert result.payload["error"] == "reflect_report_rejected"
+    assert any("stage-record-rejected stage=reflect" in line for line in run_log)
+
+
 def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(orchestrator_pipeline_mod, "get_project_root", lambda: tmp_path)
     monkeypatch.setattr(orchestrator_pipeline_mod, "run_stamp", lambda: "20260309_151500")
@@ -1885,3 +2054,71 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
 
     assert excinfo.value.exit_code == 1
     assert "triage stage failed: organize" in excinfo.value.message
+
+
+def test_run_codex_pipeline_fails_when_triage_start_is_blocked(monkeypatch, tmp_path: Path) -> None:
+    """A startup guard must not look like a successful no-artifact runner pass."""
+    monkeypatch.setattr(orchestrator_pipeline_mod, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        orchestrator_pipeline_mod,
+        "ensure_triage_started",
+        lambda *_args, **_kwargs: triage_lifecycle_mod.TriageStartOutcome(
+            status="blocked",
+            reason="unfinished_triage_stage_records",
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator_pipeline_mod,
+        "_run_stage_sequence",
+        lambda *_args, **_kwargs: pytest.fail("blocked startup must not launch a stage"),
+    )
+
+    services = SimpleNamespace(
+        load_plan=lambda: {"epic_triage_meta": {"triage_stages": {}}},
+        command_runtime=lambda _args: SimpleNamespace(state={}),
+    )
+
+    with pytest.raises(CommandError) as excinfo:
+        orchestrator_pipeline_mod.run_codex_pipeline(
+            argparse.Namespace(stage_timeout_seconds=30, dry_run=False, state=None),
+            stages_to_run=["reflect"],
+            services=services,
+        )
+
+    assert excinfo.value.exit_code == 1
+    assert "unfinished_triage_stage_records" in excinfo.value.message
+    assert "before executing any stage" in excinfo.value.message.lower()
+    assert not (tmp_path / ".desloppify" / "triage_runs").exists()
+
+
+def test_run_codex_pipeline_quotes_cli_helper_path_with_spaces(monkeypatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo with spaces"
+    repo_root.mkdir()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(orchestrator_pipeline_mod, "get_project_root", lambda: repo_root)
+    monkeypatch.setattr(orchestrator_pipeline_mod, "run_stamp", lambda: "20260309_151500")
+
+    def fail_after_capturing_context(context, *_args, **_kwargs):
+        captured["cli_command"] = context.cli_command
+        return StageExecutionResult(status="failed", payload={"status": "failed", "error": "boom"})
+
+    monkeypatch.setattr(orchestrator_pipeline_mod, "execute_stage_impl", fail_after_capturing_context)
+
+    services = SimpleNamespace(
+        load_plan=lambda: {"epic_triage_meta": {"triage_stages": {}}},
+        command_runtime=lambda _args: SimpleNamespace(state={}),
+        collect_triage_input=lambda _plan, _state: SimpleNamespace(open_issues={}, resolved_issues={}),
+    )
+    monkeypatch.setattr(orchestrator_pipeline_mod, "default_triage_services", lambda: services)
+    monkeypatch.setattr(orchestrator_pipeline_mod, "ensure_triage_started", lambda *_a, **_k: None)
+
+    with pytest.raises(CommandError):
+        orchestrator_pipeline_mod.run_codex_pipeline(
+            argparse.Namespace(stage_timeout_seconds=30, dry_run=False, state=None),
+            stages_to_run=["organize"],
+            services=services,
+        )
+
+    helper = repo_root / ".desloppify" / "triage_runs" / "20260309_151500" / "run_desloppify.sh"
+    assert captured["cli_command"] == f"'{helper}'"

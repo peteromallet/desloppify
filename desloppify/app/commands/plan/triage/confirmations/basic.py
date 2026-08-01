@@ -6,14 +6,18 @@ import argparse
 
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
+from desloppify.engine._plan.triage.protection import (
+    clear_protected_triage_artifacts,
+    protected_review_issue_ids_from_meta,
+)
 
+from ..services import TriageServices, default_triage_services
+from ..stages.records import TriageStages
 from .shared import (
     StageConfirmationRequest,
     ensure_stage_is_confirmable,
     finalize_stage_confirmation,
 )
-from ..services import TriageServices, default_triage_services
-from ..stages.records import TriageStages
 
 # Observe verdicts that trigger auto-skip on confirmation
 _AUTO_SKIP_VERDICTS = frozenset({"false positive", "exaggerated"})
@@ -150,15 +154,19 @@ def _apply_observe_auto_skips(
     """
     from desloppify.state_io import utc_now
 
+    clear_protected_triage_artifacts(plan)
     dispositions = meta.get("issue_dispositions", {})
     if not dispositions:
         return 0
 
     skipped = plan.setdefault("skipped", {})
     queue_order = plan.get("queue_order", [])
+    protected_ids = protected_review_issue_ids_from_meta(meta)
     count = 0
 
     for issue_id, disp in dispositions.items():
+        if issue_id in protected_ids:
+            continue
         verdict = disp.get("verdict", "")
         if verdict not in _AUTO_SKIP_VERDICTS:
             continue
@@ -198,8 +206,10 @@ def _undo_observe_auto_skips(plan: dict, meta: dict) -> int:
 
     Returns the number of entries un-skipped.
     """
+    clear_protected_triage_artifacts(plan)
     dispositions = meta.get("issue_dispositions", {})
     skipped = plan.get("skipped", {})
+    protected_ids = protected_review_issue_ids_from_meta(meta)
     count = 0
 
     # Find all entries with decision_source == "observe_auto"
@@ -208,6 +218,8 @@ def _undo_observe_auto_skips(plan: dict, meta: dict) -> int:
         if disp.get("decision_source") == "observe_auto"
     }
     for issue_id in auto_skipped_ids:
+        if issue_id in protected_ids:
+            continue
         entry = skipped.get(issue_id)
         if entry and entry.get("kind") == "triage_observe_auto":
             del skipped[issue_id]

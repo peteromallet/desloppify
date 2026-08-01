@@ -7,13 +7,15 @@ import copy
 
 import pytest
 
+import desloppify.engine._plan.persistence as plan_persistence
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.command_runtime import CommandRuntime
 from desloppify.app.commands.plan.override import io as override_io
+from desloppify.app.commands.plan.override import resolve_cmd as override_resolve
 from desloppify.app.commands.plan.override import skip as override_skip
 from desloppify.base.exception_sets import CommandError
-from desloppify.engine.plan_state import empty_plan, load_plan, save_plan
 from desloppify.engine.plan_ops import skip_items
+from desloppify.engine.plan_state import empty_plan, load_plan, save_plan
 
 _ATTEST = "I have actually reviewed this and I am not gaming the score."
 
@@ -133,3 +135,57 @@ def test_cmd_plan_skip_permanent_rollback_when_plan_write_fails(
     assert state_after["issues"][issue_id]["status"] == "open"
     assert plan_after.get("queue_order", []) == [issue_id]
     assert plan_after.get("skipped", {}) == {}
+
+
+def test_cmd_plan_resolve_out_of_order_keeps_state_and_plan_unchanged(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state_file = tmp_path / "state.json"
+    plan_file = tmp_path / "plan.json"
+
+    state, first_id = _seed_state()
+    second = state_mod.make_issue(
+        "review",
+        "src/example.py",
+        "second-sample-issue",
+        tier=1,
+        confidence="high",
+        summary="second sample",
+    )
+    second_id = second["id"]
+    state["work_items"][second_id] = second
+    plan = _seed_plan(first_id)
+    plan["queue_order"] = [first_id, second_id]
+    state_mod.save_state(state, state_file)
+    save_plan(plan, plan_file)
+    before_plan = load_plan(plan_file)
+    monkeypatch.setattr(plan_persistence, "PLAN_FILE", plan_file)
+
+    runtime = CommandRuntime(
+        config={},
+        state=copy.deepcopy(state),
+        state_path=state_file,
+    )
+    override_resolve.cmd_plan_resolve(
+        argparse.Namespace(
+            runtime=runtime,
+            patterns=[second_id],
+            note="Verified the requested item but it is not at the front of the plan queue",
+            attest=_ATTEST,
+            confirm=False,
+            force_resolve=False,
+            state=state_file,
+            lang=None,
+            path=".",
+            exclude=None,
+        )
+    )
+
+    assert "Queue order violation" in capsys.readouterr().out
+    state_after = state_mod.load_state(state_file)
+    plan_after = load_plan(plan_file)
+    assert state_after["work_items"][second_id]["status"] == "open"
+    assert plan_after["queue_order"] == before_plan["queue_order"]
+    assert plan_after["execution_log"] == before_plan["execution_log"]

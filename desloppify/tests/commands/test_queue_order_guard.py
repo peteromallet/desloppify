@@ -388,3 +388,110 @@ def test_guard_allows_front_planned_review_ids_even_if_synthetic_items_render_fi
 
     blocked = _check_queue_order_guard(state, ["review::a", "review::b"], "fixed")
     assert blocked is False
+
+
+def test_guard_allows_front_planned_cluster_when_synthetic_items_render_first(
+    tmp_path, monkeypatch,
+):
+    """A front planned cluster must not be blocked by an unplanned synthetic row."""
+    state = {
+        "issues": {
+            "review::a": {
+                "id": "review::a",
+                "status": "open",
+                "detector": "review",
+                "file": "a.py",
+                "tier": 1,
+                "confidence": "high",
+                "summary": "Review issue a",
+            },
+            "review::b": {
+                "id": "review::b",
+                "status": "open",
+                "detector": "review",
+                "file": "b.py",
+                "tier": 1,
+                "confidence": "high",
+                "summary": "Review issue b",
+            },
+        },
+        "scan_count": 5,
+    }
+    _setup_plan(
+        tmp_path,
+        monkeypatch,
+        ["review::a", "review::b"],
+        clusters={
+            "planned-review": {
+                "name": "planned-review",
+                "auto": False,
+                "issue_ids": ["review::a", "review::b"],
+            },
+        },
+    )
+
+    import desloppify.app.commands.resolve.queue_guard as queue_guard_mod
+
+    monkeypatch.setattr(
+        queue_guard_mod,
+        "build_work_queue",
+        lambda *_args, **_kwargs: {
+            "items": [
+                {"id": "subjective::contract_coherence", "kind": "subjective_dimension"},
+            ]
+        },
+    )
+
+    blocked = _check_queue_order_guard(state, ["planned-review"], "fixed")
+    assert blocked is False
+
+
+def test_guard_uses_configured_target_to_match_next_packet(
+    tmp_path, monkeypatch,
+):
+    """A lower project target must not make resolve invent a re-review gate."""
+    state = _state_with_issues("preceding", "review::a", "review::b")
+    _setup_plan(
+        tmp_path,
+        monkeypatch,
+        ["preceding", "review::a", "review::b"],
+        clusters={
+            "planned-review": {
+                "name": "planned-review",
+                "auto": False,
+                "issue_ids": ["review::a", "review::b"],
+            },
+        },
+    )
+
+    import desloppify.app.commands.resolve.queue_guard as queue_guard_mod
+
+    observed_targets = []
+
+    def queue_for_target(_state, *, options):
+        target = (options.context.target_strict, options.subjective_threshold)
+        observed_targets.append(target)
+        if target == (85.0, 85.0):
+            return {
+                "items": [
+                    {"id": "review::a", "kind": "issue"},
+                    {"id": "review::b", "kind": "issue"},
+                ]
+            }
+        return {
+            "items": [
+                {"id": "subjective::contract_coherence", "kind": "subjective_dimension"},
+            ]
+        }
+
+    monkeypatch.setattr(
+        queue_guard_mod,
+        "load_config",
+        lambda: {"target_strict_score": 85},
+    )
+    monkeypatch.setattr(queue_guard_mod, "build_work_queue", queue_for_target)
+
+    blocked = _check_queue_order_guard(state, ["planned-review"], "fixed")
+
+    assert blocked is False
+    assert observed_targets == [(85.0, 85.0)]
