@@ -5,6 +5,9 @@ from pathlib import Path
 
 from desloppify.languages.python.detectors import smells as smells_mod
 from desloppify.languages.python.detectors.smells import detect_smells
+from desloppify.languages.python.detectors.smells_ast._source_detectors import (
+    collect_module_constants,
+)
 
 # ── Helpers ────────────────────────────────────────────────
 
@@ -104,6 +107,31 @@ class TestDuplicateConstants:
         (tmp_path / "b.py").write_text("MAX_RETRIES = 3\n")
         entries, _ = detect_smells(tmp_path)
         assert "duplicate_constant" in _smell_ids(entries)
+
+    def test_versioned_migration_constant_is_ignored(self, tmp_path):
+        migration_dir = tmp_path / "migrations" / "versions"
+        migration_dir.mkdir(parents=True)
+        (migration_dir / "a1_add_constraint.py").write_text("SHA256_CHECK = 'sql'\n")
+        (tmp_path / "model.py").write_text("SHA256_CHECK = 'sql'\n")
+
+        entries, _ = detect_smells(tmp_path)
+
+        assert "duplicate_constant" not in _smell_ids(entries)
+
+    def test_versioned_migration_paths_are_separator_independent(self):
+        for filepath in (
+            "migrations/versions/a1.py",
+            r"migrations\versions\a1.py",
+            "alembic/versions/a1.py",
+            r"alembic\versions\a1.py",
+        ):
+            constants_by_key = {}
+
+            collect_module_constants(
+                filepath, "SHA256_CHECK = 'sql'\n", constants_by_key
+            )
+
+            assert constants_by_key == {}
 
     def test_different_constants_ok(self, tmp_path):
         (tmp_path / "a.py").write_text("MAX_RETRIES = 3\n")
