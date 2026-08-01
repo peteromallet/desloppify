@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
 from desloppify.engine._state.merge_issues import verify_disappeared
+from desloppify.engine.policy.zones import FileZoneMap, Zone, ZoneRule
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -171,6 +172,37 @@ class TestAutoResolveOutOfScope:
         )
         assert "smells" in detectors
 
+    def test_generated_zone_issue_auto_resolves_when_absent(self):
+        """A scan clears historical issues that current zone policy excludes."""
+        generated_file = "client/migrations/versions/revision.py"
+        existing = {
+            "generated-smells": {
+                "id": "generated-smells",
+                "status": "open",
+                "file": generated_file,
+                "detector": "smells",
+            },
+        }
+        zone_map = FileZoneMap(
+            [generated_file], [ZoneRule(Zone.GENERATED, ["/migrations/"])]
+        )
+
+        resolved, _lang, out_of_scope, detectors = verify_disappeared(
+            existing,
+            current_ids=set(),
+            suspect_detectors=set(),
+            now="2026-08-01T00:00:00+00:00",
+            lang=None,
+            scan_path=".",
+            zone_map=zone_map,
+        )
+
+        assert resolved == 1
+        assert out_of_scope == 0
+        assert detectors == {"smells"}
+        assert existing["generated-smells"]["status"] == "auto_resolved"
+        assert "zone policy now skips smells" in existing["generated-smells"]["note"]
+
 
 # ---------------------------------------------------------------------------
 # Fix 2: queue counting functions pass scan_path
@@ -236,6 +268,74 @@ class TestQueueCountingScanPath:
             state,
             options=QueueBuildOptions(status="open", count=None),
         )
+        assert result["total"] == 2
+
+    def test_queue_hides_historical_zone_policy_skipped_issues(self):
+        """Stored generated findings cannot re-enter the active queue."""
+        from desloppify.engine._work_queue.core import (
+            QueueBuildOptions,
+            build_work_queue,
+        )
+
+        state: dict = {
+            "issues": {
+                "generated-smells": {
+                    "id": "generated-smells",
+                    "detector": "smells",
+                    "status": "open",
+                    "file": "client/migrations/versions/revision.py",
+                    "zone": "generated",
+                    "tier": 1,
+                    "confidence": "high",
+                    "summary": "historical generated smell",
+                    "detail": {},
+                },
+                "generated-structural": {
+                    "id": "generated-structural",
+                    "detector": "structural",
+                    "status": "open",
+                    "file": "client/migrations/versions/revision.py",
+                    "zone": "generated",
+                    "tier": 1,
+                    "confidence": "high",
+                    "summary": "historical generated structural finding",
+                    "detail": {},
+                },
+                "test-unused": {
+                    "id": "test-unused",
+                    "detector": "unused",
+                    "status": "open",
+                    "file": "tests/test_live.py",
+                    "zone": "test",
+                    "tier": 1,
+                    "confidence": "high",
+                    "summary": "allowed test-zone detector",
+                    "detail": {},
+                },
+                "production-smells": {
+                    "id": "production-smells",
+                    "detector": "smells",
+                    "status": "open",
+                    "file": "src/live.py",
+                    "zone": "production",
+                    "tier": 1,
+                    "confidence": "high",
+                    "summary": "production finding",
+                    "detail": {},
+                },
+            },
+            "scan_count": 5,
+        }
+
+        result = build_work_queue(
+            state,
+            options=QueueBuildOptions(status="open", count=None),
+        )
+
+        assert {item["id"] for item in result["items"]} == {
+            "test-unused",
+            "production-smells",
+        }
         assert result["total"] == 2
 
     def test_explicit_scan_path_overrides_state(self):
@@ -772,11 +872,11 @@ class TestQueueGuardScanPath:
     def test_queue_guard_respects_scan_path_from_state(self):
         """_check_queue_order_guard uses build_work_queue which auto-reads
         scan_path from state, so out-of-scope items don't appear in the queue."""
-        from desloppify.app.commands.resolve.queue_guard import _check_queue_order_guard
         from desloppify.app.commands.resolve.plan_load import (
             DegradedPlanWarningState,
             ResolvePlanAccess,
         )
+        from desloppify.app.commands.resolve.queue_guard import _check_queue_order_guard
 
         state = {
             "issues": {
