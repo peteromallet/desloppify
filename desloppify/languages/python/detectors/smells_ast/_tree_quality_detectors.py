@@ -73,6 +73,50 @@ def _detect_unreachable_code(
     return results
 
 
+def _is_main_module_guard(node: ast.AST) -> bool:
+    """Return whether a statement is exactly ``if __name__ == "__main__"``."""
+    return (
+        isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Name)
+        and node.test.left.id == "__name__"
+        and len(node.test.ops) == 1
+        and isinstance(node.test.ops[0], ast.Eq)
+        and len(node.test.comparators) == 1
+        and isinstance(node.test.comparators[0], ast.Constant)
+        and node.test.comparators[0].value == "__main__"
+    )
+
+
+def _main_guard_invokes_main(guard: ast.If) -> bool:
+    """Return whether a module-main guard directly executes ``main()``."""
+    stack: list[ast.AST] = list(reversed(guard.body))
+    while stack:
+        current = stack.pop()
+        if isinstance(current, ast.Call) and isinstance(current.func, ast.Name):
+            if current.func.id == "main":
+                return True
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
+            continue
+        stack.extend(reversed(list(ast.iter_child_nodes(current))))
+    return False
+
+
+def _find_top_level_cli_main(
+    tree: ast.Module,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Return the top-level ``main`` invoked by a module-main guard, if any."""
+    if not any(
+        _is_main_module_guard(statement) and _main_guard_invokes_main(statement)
+        for statement in tree.body
+    ):
+        return None
+    for statement in reversed(tree.body):
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef) and statement.name == "main":
+            return statement
+    return None
+
+
 def _detect_constant_return(
     filepath: str,
     tree: ast.Module,
@@ -95,8 +139,11 @@ def _detect_constant_return(
             for child in reversed(list(ast.iter_child_nodes(current))):
                 stack.append(child)
 
+    cli_main = _find_top_level_cli_main(tree)
     results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if node is cli_main:
+            continue
         # Skip tiny functions (stubs/pass-only already caught by dead_function)
         if not hasattr(node, "end_lineno") or not node.end_lineno:
             continue
