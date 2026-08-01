@@ -13,6 +13,9 @@ from desloppify.engine.detectors.orphaned import (
     _is_nextjs_convention_entry,
     detect_orphaned_files,
 )
+from desloppify.languages.python.detectors.deps_dynamic import (
+    find_python_dynamic_imports,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -250,6 +253,61 @@ class TestDetectOrphanedFiles:
         assert len(entries) == 1
         assert entries[0]["file"] == str(f2)
 
+    def test_explicit_legacy_module_alias_not_orphaned(self, tmp_path):
+        """A physical compatibility alias remains an import entry point."""
+        alias = tmp_path / "legacy.py"
+        alias.write_text(
+            "from pkg.compat import install_legacy_module_alias\n"
+            "install_legacy_module_alias(__name__, 'pkg.canonical')\n"
+        )
+        graph = {str(alias): _graph_entry(importer_count=0)}
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, _ = detect_orphaned_files(
+                tmp_path,
+                graph,
+                [".py"],
+                options=OrphanedDetectionOptions(
+                    dynamic_import_finder=find_python_dynamic_imports
+                ),
+            )
+
+        assert entries == []
+
+    def test_literal_lazy_package_export_not_orphaned(self, tmp_path):
+        """A static lazy-export table keeps its selected child module reachable."""
+        package = tmp_path / "auth"
+        package.mkdir()
+        (package / "__init__.py").write_text(
+            "from importlib import import_module\n"
+            "_LAZY_EXPORTS = {'Service': ('service', 'Service')}\n"
+            "def __getattr__(name):\n"
+            "    module_name, attr_name = _LAZY_EXPORTS[name]\n"
+            "    module = import_module(f'{__name__}.{module_name}')\n"
+            "    return getattr(module, attr_name)\n"
+        )
+        service = package / "service.py"
+        service.write_text("class Service:\n    pass\n")
+        graph = {str(service): _graph_entry(importer_count=0)}
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, _ = detect_orphaned_files(
+                tmp_path,
+                graph,
+                [".py"],
+                options=OrphanedDetectionOptions(
+                    dynamic_import_finder=find_python_dynamic_imports
+                ),
+            )
+
+        assert entries == []
+
     def test_results_sorted_by_loc_descending(self, tmp_path):
         """Results are sorted by LOC descending (largest files first)."""
         f_small = _write_file(tmp_path / "small.py", lines=20)
@@ -414,8 +472,7 @@ class TestDetectOrphanedFiles:
         """Files defining __all__ are public API surfaces and not orphaned."""
         api_file = tmp_path / "api.py"
         api_file.write_text(
-            "__all__ = ['Foo', 'Bar']\n"
-            + "\n".join(f"line {i}" for i in range(30))
+            "__all__ = ['Foo', 'Bar']\n" + "\n".join(f"line {i}" for i in range(30))
         )
         orphan_file = _write_file(tmp_path / "orphan.py", lines=30)
 
@@ -438,8 +495,7 @@ class TestDetectOrphanedFiles:
         """Files using ``__all__: list[str] = [...]`` syntax are also excluded."""
         api_file = tmp_path / "api.py"
         api_file.write_text(
-            "__all__: list[str] = ['Foo']\n"
-            + "\n".join(f"line {i}" for i in range(30))
+            "__all__: list[str] = ['Foo']\n" + "\n".join(f"line {i}" for i in range(30))
         )
 
         graph = {
