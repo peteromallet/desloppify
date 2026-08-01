@@ -24,6 +24,7 @@ import desloppify.app.commands.plan.triage.runner.orchestrator_codex_pipeline_ex
 import desloppify.app.commands.plan.triage.runner.orchestrator_codex_sense as orchestrator_sense_mod
 import desloppify.app.commands.plan.triage.runner.orchestrator_common as orchestrator_common_mod
 import desloppify.app.commands.plan.triage.stages.commands as stage_commands_mod
+import desloppify.app.commands.plan.triage.stages.helpers as stage_helpers_mod
 import desloppify.app.commands.plan.triage.stages.organize as organize_stage_mod
 import desloppify.app.commands.plan.triage.validation.completion_policy as completion_policy_mod
 import desloppify.app.commands.plan.triage.validation.completion_stages as completion_stages_mod
@@ -62,6 +63,12 @@ def _make_stage_context(
     }
     defaults.update(overrides)
     return orchestrator_pipeline_context_mod.StageRunContext(**defaults)
+
+
+def test_active_triage_scope_stays_empty_when_protected_items_exhaust_it() -> None:
+    plan = {"epic_triage_meta": {"active_triage_issue_ids": []}}
+
+    assert stage_helpers_mod.active_triage_issue_scope(plan, {"last_scan": "now"}) == set()
 
 
 def test_completion_policy_helpers_cover_success_and_fail_paths(monkeypatch, capsys) -> None:

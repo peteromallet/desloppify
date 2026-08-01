@@ -65,7 +65,13 @@ def active_triage_issue_scope(
     An empty set means a frozen triage run exists but none of its issues are live.
     """
     frozen = active_triage_issue_ids(plan, state)
+    meta = plan.get("epic_triage_meta", {})
+    has_explicit_scope = isinstance(meta, dict) and isinstance(
+        meta.get("active_triage_issue_ids"), list
+    )
     if not frozen:
+        if has_explicit_scope:
+            return set()
         return None
     if state is None:
         return frozen
