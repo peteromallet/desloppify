@@ -166,11 +166,22 @@ def _is_direct_parameter_value(value: ast.expr, parameter_names: set[str]) -> bo
 
 
 def _is_direct_call_target(target: ast.expr) -> bool:
-    """Return whether a call target has a static name or attribute-chain root."""
+    """Return whether a call target is a direct non-constructor name chain.
 
+    A forwarding call to a lower-case function can be redundant, while a
+    Capitalized target conventionally constructs a value.  Constructor
+    factories are meaningful transformations, even when every field is
+    supplied from a same-named parameter.
+    """
+
+    names: list[str] = []
     while isinstance(target, ast.Attribute):
+        names.append(target.attr)
         target = target.value
-    return isinstance(target, ast.Name)
+    if not isinstance(target, ast.Name):
+        return False
+    names.append(target.id)
+    return not any(name[:1].isupper() for name in names)
 
 
 def _passthrough_return_statement(

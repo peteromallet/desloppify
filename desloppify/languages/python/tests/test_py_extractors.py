@@ -350,7 +350,7 @@ class TestExtractPyClasses:
 
 
 class TestDetectPassthrough:
-    def test_passthrough_detected(self, tmp_path):
+    def test_lowercase_function_wrapper_detected(self, tmp_path):
         fp = tmp_path / "pt.py"
         fp.write_text(
             textwrap.dedent("""\
@@ -473,6 +473,46 @@ class TestDetectPassthrough:
         names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
 
         assert "build_request" not in names
+
+    def test_typed_dataclass_fixture_factory_is_not_flagged(self, tmp_path):
+        fp = tmp_path / "runtime_hooks.py"
+        fp.write_text(
+            textwrap.dedent("""\
+            from dataclasses import dataclass
+
+
+            @dataclass(frozen=True)
+            class AutoCoordinationRunRuntimeHooks:
+                command_bus: object
+                coordinator: object
+                event_store: object
+                logger: object
+                metrics: object
+                run_id: object
+
+
+            def make_runtime_hooks(
+                command_bus: object,
+                coordinator: object,
+                event_store: object,
+                logger: object,
+                metrics: object,
+                run_id: object,
+            ) -> AutoCoordinationRunRuntimeHooks:
+                return AutoCoordinationRunRuntimeHooks(
+                    command_bus=command_bus,
+                    coordinator=coordinator,
+                    event_store=event_store,
+                    logger=logger,
+                    metrics=metrics,
+                    run_id=run_id,
+                )
+            """)
+        )
+
+        names = [entry["function"] for entry in detect_passthrough_functions(tmp_path)]
+
+        assert "make_runtime_hooks" not in names
 
     def test_constructed_call_target_is_not_flagged(self, tmp_path):
         fp = tmp_path / "request_submitter.py"
