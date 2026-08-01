@@ -88,6 +88,7 @@ class LangRuntimeContract(Protocol):
     subjective_assessments: dict[str, Any]
     detector_coverage: dict[str, DetectorCoverageRecord]
     coverage_warnings: list[DetectorCoverageRecord]
+    semantic_corrections: dict[str, dict[str, str]]
 
     def runtime_setting(self, key: str, default: Any = None) -> Any: ...
 

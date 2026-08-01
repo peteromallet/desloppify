@@ -507,6 +507,21 @@ class TestComputeHealthScore:
 
 
 class TestComputeScoreBundle:
+    def test_auto_resolved_and_false_positive_have_distinct_strict_semantics(self):
+        auto_resolved = compute_score_bundle(
+            _issues_dict(_issue("unused", status="auto_resolved")),
+            {"unused": 10},
+        )
+        false_positive = compute_score_bundle(
+            _issues_dict(_issue("unused", status="false_positive")),
+            {"unused": 10},
+        )
+
+        assert auto_resolved.strict_dimension_scores["Code quality"]["score"] == 90.0
+        assert auto_resolved.verified_strict_dimension_scores["Code quality"]["score"] == 100.0
+        assert false_positive.strict_dimension_scores["Code quality"]["score"] == 100.0
+        assert false_positive.verified_strict_dimension_scores["Code quality"]["score"] == 90.0
+
     def test_bundle_mode_dimensions(self):
         issues = _issues_dict(
             _issue("unused", status="open", confidence="high"),
@@ -880,5 +895,4 @@ class TestReviewScoringExclusion:
 # ===================================================================
 # Subjective dimension scoring
 # ===================================================================
-
 

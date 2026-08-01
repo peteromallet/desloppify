@@ -20,6 +20,7 @@ from desloppify.engine._state.merge_history import (
     _record_scan_metadata,
 )
 from desloppify.engine._state.merge_issues import (
+    apply_semantic_corrections,
     verify_disappeared,
     find_suspect_detectors,
     upsert_issues,
@@ -149,6 +150,7 @@ class MergeScanOptions:
     subjective_integrity_target: float | None = None
     project_root: str | None = None
     zone_map: Any | None = None
+    semantic_corrections: dict[str, dict[str, str]] | None = None
 
 
 def merge_scan(
@@ -219,6 +221,16 @@ def merge_scan(
         resolved_options.force_resolve,
         ran_detectors,
     )
+    semantic_correction_ids = apply_semantic_corrections(
+        existing,
+        current_ids,
+        resolved_options.semantic_corrections,
+        now,
+        lang=resolved_options.lang,
+        scan_path=resolved_options.scan_path,
+        confirmed_detectors=confirmed_detectors,
+        suspect_detectors=suspect_detectors,
+    )
     auto_resolved, skipped_other_lang, resolved_out_of_scope, resolve_changed = verify_disappeared(
         existing,
         current_ids,
@@ -230,6 +242,7 @@ def merge_scan(
         project_root=resolved_options.project_root,
         zone_map=resolved_options.zone_map,
         confirmed_detectors=confirmed_detectors,
+        semantic_correction_ids=semantic_correction_ids,
     )
 
     # Mark subjective assessments stale when mechanical issues changed.

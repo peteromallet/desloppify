@@ -119,6 +119,16 @@ class LangRunStateAccessors:
         self.state.coverage_warnings = value
 
     @property
+    def semantic_corrections(self) -> dict[str, dict[str, str]]:
+        """Detector-proven historical findings invalidated during this scan."""
+
+        return self.state.semantic_corrections
+
+    @semantic_corrections.setter
+    def semantic_corrections(self, value: dict[str, dict[str, str]]) -> None:
+        self.state.semantic_corrections = value
+
+    @property
     def large_threshold(self) -> int:
         override = self.state.large_threshold_override
         if isinstance(override, int) and override > 0:

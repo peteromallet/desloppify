@@ -470,6 +470,11 @@ def merge_scan_results(
             subjective_integrity_target=target_score,
             project_root=str(get_project_root()),
             zone_map=runtime.lang.zone_map if runtime.lang else None,
+            semantic_corrections=(
+                runtime.lang.semantic_corrections
+                if runtime.lang is not None and scan_path_rel == "."
+                else None
+            ),
         ),
     )
 
