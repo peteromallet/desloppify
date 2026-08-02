@@ -6,9 +6,14 @@ import shutil
 
 from desloppify.base.config import load_config
 from desloppify.base.discovery.source import collect_exclude_dirs
-from desloppify.languages._framework.base.types import DetectorCoverageStatus, LangSecurityResult
-from desloppify.languages.python.detectors.bandit_adapter import detect_with_bandit
+from desloppify.languages._framework.base.types import (
+    DetectorCoverageStatus,
+    LangSecurityResult,
+)
 from desloppify.languages.python._helpers import scan_root_from_files
+from desloppify.languages.python.detectors.bandit_adapter import (
+    detect_with_bandit_files,
+)
 
 
 def missing_bandit_coverage() -> DetectorCoverageStatus:
@@ -51,8 +56,11 @@ def detect_python_security(files, zone_map) -> LangSecurityResult:
 
     exclude_dirs = collect_exclude_dirs(scan_root)
     skip_tests = _load_bandit_skip_tests()
-    result = detect_with_bandit(
-        scan_root, zone_map, exclude_dirs=exclude_dirs, skip_tests=skip_tests,
+    result = detect_with_bandit_files(
+        files,
+        zone_map,
+        exclude_dirs=exclude_dirs,
+        skip_tests=skip_tests,
     )
     coverage = result.status.coverage()
     return LangSecurityResult(
