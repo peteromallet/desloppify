@@ -23,6 +23,7 @@ import json
 import logging
 import subprocess  # nosec B404
 import sys
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -196,6 +197,7 @@ def _run_bandit(
     timeout: int = 120,
     exclude_dirs: list[str] | None = None,
     skip_tests: list[str] | None = None,
+    require_target_metrics: bool = False,
 ) -> BanditScanResult:
     """Run Bandit for one non-empty set of explicit targets."""
     cmd = [
@@ -262,8 +264,13 @@ def _run_bandit(
             status=BanditRunStatus(state="parse_error", detail=str(exc)),
         )
 
-    raw_results: list[dict] = data.get("results", [])
-    metrics: dict = data.get("metrics", {})
+    raw_results = data.get("results", [])
+    metrics = data.get("metrics", {})
+    errors = data.get("errors", [])
+    if not isinstance(raw_results, list):
+        raw_results = []
+    if not isinstance(metrics, dict):
+        metrics = {}
 
     # Count scanned files from metrics (bandit reports per-file stats).
     files_scanned = sum(
@@ -274,15 +281,43 @@ def _run_bandit(
 
     entries: list[dict] = []
     for res in raw_results:
+        if not isinstance(res, dict):
+            continue
         entry = _to_security_entry(res, zone_map)
         if entry is not None:
             entries.append(entry)
 
-    logger.debug("bandit: %d issues from %d files", len(entries), files_scanned)
+    status = BanditRunStatus(state="ok")
+    if errors:
+        error_count = len(errors) if isinstance(errors, list) else 1
+        status = BanditRunStatus(
+            state="error",
+            detail=f"bandit reported {error_count} file error(s)",
+        )
+    elif require_target_metrics:
+        project_root = get_project_root()
+        metric_paths = {
+            (Path(path) if Path(path).is_absolute() else project_root / path).resolve()
+            for path in metrics
+            if path != "_totals" and not path.endswith("_totals")
+        }
+        missing_targets = [target for target in targets if target.resolve() not in metric_paths]
+        if missing_targets:
+            status = BanditRunStatus(
+                state="error",
+                detail=f"bandit omitted metrics for {len(missing_targets)} target(s)",
+            )
+
+    logger.debug(
+        "bandit: %d issues from %d files (%s)",
+        len(entries),
+        files_scanned,
+        status.state,
+    )
     return BanditScanResult(
         entries=entries,
         files_scanned=files_scanned,
-        status=BanditRunStatus(state="ok"),
+        status=status,
     )
 
 
@@ -334,17 +369,26 @@ def detect_with_bandit_files(
         targets[index : index + batch_size]
         for index in range(0, len(targets), batch_size)
     ]
+    deadline = time.monotonic() + timeout
     entries_by_name: dict[str, dict] = {}
     files_scanned = 0
     first_failure: BanditRunStatus | None = None
 
     for batch_number, batch in enumerate(batches, start=1):
+        remaining_timeout = deadline - time.monotonic()
+        if remaining_timeout <= 0:
+            first_failure = first_failure or BanditRunStatus(
+                state="timeout",
+                detail=f"total timeout={timeout}s before batch {batch_number}/{len(batches)}",
+            )
+            break
         result = _run_bandit(
             batch,
             zone_map,
-            timeout=timeout,
+            timeout=remaining_timeout,
             exclude_dirs=exclude_dirs,
             skip_tests=skip_tests,
+            require_target_metrics=True,
         )
         files_scanned += result.files_scanned
         for entry in result.entries:

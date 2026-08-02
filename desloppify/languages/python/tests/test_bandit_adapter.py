@@ -188,7 +188,8 @@ def test_detect_with_bandit_files_retains_completed_batches_on_timeout(monkeypat
     result = adapter_mod.detect_with_bandit_files(files, zone_map=None, batch_size=1)
 
     assert result.status.state == "timeout"
-    assert result.status.detail == "batch 2/2: timeout=120s"
+    assert result.status.detail.startswith("batch 2/2: timeout=")
+    assert result.status.detail.endswith("s")
     assert result.files_scanned == 1
     assert len(result.entries) == 1
 
@@ -204,3 +205,63 @@ def test_detect_with_bandit_files_skips_subprocess_for_empty_input(monkeypatch):
     assert result.status.state == "ok"
     assert result.files_scanned == 0
     assert result.entries == []
+
+
+def test_detect_with_bandit_files_marks_bandit_errors_as_reduced_coverage(monkeypatch, tmp_path):
+    file = tmp_path / "missing.py"
+
+    class _FakeCompleted:
+        stdout = json.dumps(
+            {
+                "errors": [{"filename": str(file), "reason": "No such file"}],
+                "metrics": {},
+                "results": [],
+            }
+        )
+
+    monkeypatch.setattr(adapter_mod.subprocess, "run", lambda *_args, **_kwargs: _FakeCompleted())
+
+    result = adapter_mod.detect_with_bandit_files([file], zone_map=None)
+
+    assert result.status.state == "error"
+    assert result.status.detail == "batch 1/1: bandit reported 1 file error(s)"
+    assert result.status.coverage() is not None
+
+
+def test_detect_with_bandit_files_rejects_missing_target_metrics(monkeypatch, tmp_path):
+    file = tmp_path / "module.py"
+
+    class _FakeCompleted:
+        stdout = json.dumps({"errors": [], "metrics": {}, "results": []})
+
+    monkeypatch.setattr(adapter_mod.subprocess, "run", lambda *_args, **_kwargs: _FakeCompleted())
+
+    result = adapter_mod.detect_with_bandit_files([file], zone_map=None)
+
+    assert result.status.state == "error"
+    assert result.status.detail == "batch 1/1: bandit omitted metrics for 1 target(s)"
+    assert result.status.coverage() is not None
+
+
+def test_detect_with_bandit_files_keeps_the_original_total_timeout(monkeypatch, tmp_path):
+    files = [tmp_path / "first.py", tmp_path / "second.py"]
+    observed_timeouts: list[float] = []
+    ticks = iter([100.0, 100.0, 221.0])
+
+    def _fake_run(_targets, _zone_map, *, timeout, **_kwargs):
+        observed_timeouts.append(timeout)
+        return adapter_mod.BanditScanResult(
+            entries=[],
+            files_scanned=1,
+            status=adapter_mod.BanditRunStatus(state="ok"),
+        )
+
+    monkeypatch.setattr(adapter_mod, "_run_bandit", _fake_run)
+    monkeypatch.setattr(adapter_mod.time, "monotonic", lambda: next(ticks))
+
+    result = adapter_mod.detect_with_bandit_files(files, zone_map=None, batch_size=1, timeout=120)
+
+    assert observed_timeouts == [120.0]
+    assert result.files_scanned == 1
+    assert result.status.state == "timeout"
+    assert result.status.detail == "total timeout=120s before batch 2/2"
