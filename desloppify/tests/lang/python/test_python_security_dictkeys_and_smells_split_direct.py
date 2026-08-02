@@ -38,21 +38,29 @@ def test_python_security_prerequisites_and_detection_flow(monkeypatch, tmp_path)
 
     monkeypatch.setattr(py_security_mod, "scan_root_from_files", lambda _files: tmp_path)
     monkeypatch.setattr(py_security_mod, "collect_exclude_dirs", lambda _root: [".venv", "build"])
-    monkeypatch.setattr(
-        py_security_mod,
-        "detect_with_bandit",
-        lambda _root, _zone_map, *, exclude_dirs, skip_tests=None: SimpleNamespace(
+
+    captured_files: list[str] = []
+
+    def _fake_bandit(detected_files, _zone_map, *, exclude_dirs, skip_tests=None):
+        captured_files.extend(detected_files)
+        return SimpleNamespace(
             entries=[{"file": "a.py", "line": 1}],
             files_scanned=3,
             status=_Status(),
             exclude_dirs=exclude_dirs,
-        ),
+        )
+
+    monkeypatch.setattr(
+        py_security_mod,
+        "detect_with_bandit_files",
+        _fake_bandit,
     )
 
     result = py_security_mod.detect_python_security(["a.py", "b.py"], zone_map=None)
     assert len(result.entries) == 1
     assert result.files_scanned == 3
     assert result.coverage["status"] == "full"
+    assert captured_files == ["a.py", "b.py"]
 
 
 def test_dict_key_shared_helpers_cover_names_keys_and_distance() -> None:
