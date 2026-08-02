@@ -228,6 +228,44 @@ def test_detect_with_bandit_files_marks_bandit_errors_as_reduced_coverage(monkey
     assert result.status.coverage() is not None
 
 
+def test_detect_with_bandit_files_rejects_empty_output(monkeypatch, tmp_path):
+    file = tmp_path / "module.py"
+
+    class _FakeCompleted:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr(adapter_mod.subprocess, "run", lambda *_args, **_kwargs: _FakeCompleted())
+
+    result = adapter_mod.detect_with_bandit_files([file], zone_map=None)
+
+    assert result.status.state == "error"
+    assert result.status.detail == "batch 1/1: bandit produced no output for 1 target(s)"
+    assert result.status.coverage() is not None
+
+
+def test_detect_with_bandit_files_rejects_fatal_bandit_exit(monkeypatch, tmp_path):
+    file = tmp_path / "module.py"
+
+    class _FakeCompleted:
+        returncode = 2
+        stdout = json.dumps(
+            {
+                "errors": [],
+                "metrics": {str(file): {}},
+                "results": [],
+            }
+        )
+
+    monkeypatch.setattr(adapter_mod.subprocess, "run", lambda *_args, **_kwargs: _FakeCompleted())
+
+    result = adapter_mod.detect_with_bandit_files([file], zone_map=None)
+
+    assert result.status.state == "error"
+    assert result.status.detail == "batch 1/1: bandit exited with status 2"
+    assert result.status.coverage() is not None
+
+
 def test_detect_with_bandit_files_rejects_missing_target_metrics(monkeypatch, tmp_path):
     file = tmp_path / "module.py"
 

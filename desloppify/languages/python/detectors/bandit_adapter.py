@@ -245,13 +245,28 @@ def _run_bandit(
             status=BanditRunStatus(state="error", detail=str(exc)),
         )
 
+    returncode = getattr(result, "returncode", 0)
+    fatal_returncode = isinstance(returncode, int) and returncode > 1
     stdout = result.stdout.strip()
     if not stdout:
-        # Bandit exits 0 with no output when there's nothing to scan.
+        if fatal_returncode:
+            status = BanditRunStatus(
+                state="error",
+                detail=f"bandit exited with status {returncode}",
+            )
+        elif require_target_metrics:
+            status = BanditRunStatus(
+                state="error",
+                detail=f"bandit produced no output for {len(targets)} target(s)",
+            )
+        else:
+            # Bandit exits 0 with no output when a legacy recursive call has
+            # nothing to scan.
+            status = BanditRunStatus(state="ok")
         return BanditScanResult(
             entries=[],
             files_scanned=0,
-            status=BanditRunStatus(state="ok"),
+            status=status,
         )
 
     try:
@@ -288,7 +303,12 @@ def _run_bandit(
             entries.append(entry)
 
     status = BanditRunStatus(state="ok")
-    if errors:
+    if fatal_returncode:
+        status = BanditRunStatus(
+            state="error",
+            detail=f"bandit exited with status {returncode}",
+        )
+    elif errors:
         error_count = len(errors) if isinstance(errors, list) else 1
         status = BanditRunStatus(
             state="error",
