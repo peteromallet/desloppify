@@ -8,9 +8,11 @@ from unittest.mock import patch
 from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
     _detect_nextjs_project,
+    _detect_react_router_project,
     _has_dunder_all,
     _is_dynamically_imported,
     _is_nextjs_convention_entry,
+    _is_react_router_convention_entry,
     detect_orphaned_files,
 )
 
@@ -683,3 +685,74 @@ class TestNextjsIntegration:
             )
 
         assert len(entries) == 1
+
+
+# ===================================================================
+# React Router / Remix framework awareness
+# ===================================================================
+
+
+class TestDetectReactRouterProject:
+    """Unit tests for _detect_react_router_project."""
+
+    def test_react_router_config(self, tmp_path):
+        (tmp_path / "react-router.config.ts").write_text("export default {}")
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_remix_config(self, tmp_path):
+        (tmp_path / "remix.config.js").write_text("module.exports = {}")
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_dependency_in_package_json(self, tmp_path):
+        # The framework template ships a Vite config rather than a
+        # react-router.config file, so the dependency is the reliable signal.
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"@react-router/node": "^7.0.0"}}'
+        )
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_remix_dependency(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"@remix-run/node": "^2.0.0"}}'
+        )
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_unrelated_project(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"dependencies": {"express": "^4.0.0"}}')
+        assert _detect_react_router_project(tmp_path) is False
+
+    def test_no_package_json(self, tmp_path):
+        assert _detect_react_router_project(tmp_path) is False
+
+
+class TestIsReactRouterConventionEntry:
+    """Unit tests for _is_react_router_convention_entry."""
+
+    def test_route_module(self):
+        assert _is_react_router_convention_entry("app/routes/app.settings.jsx") is True
+
+    def test_nested_route_module(self):
+        assert _is_react_router_convention_entry("app/routes/_index/route.jsx") is True
+
+    def test_src_routes(self):
+        assert _is_react_router_convention_entry("src/routes/dashboard.tsx") is True
+
+    def test_root_module(self):
+        assert _is_react_router_convention_entry("app/root.jsx") is True
+
+    def test_server_entry(self):
+        # `.stem` strips only the last suffix, so this stems to "entry.server".
+        assert _is_react_router_convention_entry("app/entry.server.jsx") is True
+
+    def test_client_entry(self):
+        assert _is_react_router_convention_entry("app/entry.client.tsx") is True
+
+    def test_ordinary_module_is_not_an_entry(self):
+        # The whole point: a genuinely orphaned file must still be reported.
+        assert _is_react_router_convention_entry("app/db.server.js") is False
+
+    def test_a_file_merely_named_root_deeper_in_the_tree(self):
+        assert _is_react_router_convention_entry("app/lib/nested/root.js") is False
+
+    def test_non_javascript_extension(self):
+        assert _is_react_router_convention_entry("app/routes/styles.css") is False
