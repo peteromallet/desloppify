@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import builtins
 from pathlib import Path
 from types import SimpleNamespace
@@ -317,3 +318,52 @@ def test_script_import_cache_reset_invalidates_php_lookup_state(tmp_path: Path) 
     scripts_mod.reset_script_import_caches(str(tmp_path))
 
     assert scripts_mod.resolve_php_import("User", "", str(tmp_path)) == str(second_file)
+
+
+def test_graph_edges_survive_a_relative_file_list(monkeypatch, tmp_path: Path) -> None:
+    """Regression: edges were dropped when ``file_list`` held relative paths.
+
+    ``resolve_import`` returns a path in the same space as the ``source_file``
+    it was handed, so a relative ``file_list`` yields relative results. The
+    builder then joined those onto the absolute ``scan_path`` and tested
+    membership against the relative ``file_set``, so every edge was discarded
+    and every file looked orphaned.
+    """
+    source_file = tmp_path / "src" / "main.js"
+    dep_file = tmp_path / "src" / "support.js"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("import './support.js';\n", encoding="utf-8")
+    dep_file.write_text("export const x = 1;\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    file_list = ["src/main.js", "src/support.js"]
+
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(
+        graph_mod,
+        "get_or_parse_tree",
+        lambda filepath, *_a, **_k: (b"", SimpleNamespace(root_node=filepath)),
+    )
+    matches = {
+        "src/main.js": [(0, {"path": FakeNode("string", text="'./support.js'")})],
+        "src/support.js": [],
+    }
+    monkeypatch.setattr(graph_mod, "_run_query", lambda _query, root: matches[root])
+    monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        # What resolve_js_import actually does: join onto the source file's
+        # directory, in whatever space the source file was given in.
+        resolve_import=lambda text, source, _scan: os.path.normpath(
+            os.path.join(os.path.dirname(source), text)
+        ),
+    )
+
+    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, file_list)
+
+    assert graph["src/main.js"]["imports"] == {"src/support.js"}
+    assert graph["src/support.js"]["importers"] == {"src/main.js"}
+    assert graph["src/support.js"]["importer_count"] == 1
