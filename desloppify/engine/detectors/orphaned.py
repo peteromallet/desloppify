@@ -45,6 +45,79 @@ _NEXTJS_ROOT_CONVENTIONS: set[str] = {
 _NEXTJS_EXTENSIONS: set[str] = {".ts", ".tsx", ".js", ".jsx"}
 
 
+# ---------------------------------------------------------------------------
+# React Router / Remix convention files
+# ---------------------------------------------------------------------------
+
+# Everything under app/routes/ is a route module, loaded by the framework's
+# file-based router and imported by nothing.
+_REACT_ROUTER_ROUTE_DIRS: tuple[str, ...] = ("routes",)
+
+# Framework entry points that sit beside the routes directory.
+_REACT_ROUTER_CONVENTIONS: set[str] = {
+    "root",
+    "entry.client",
+    "entry.server",
+}
+
+_REACT_ROUTER_CONFIGS: tuple[str, ...] = (
+    "react-router.config.js",
+    "react-router.config.mjs",
+    "react-router.config.ts",
+    "remix.config.js",
+    "remix.config.mjs",
+    "remix.config.ts",
+)
+
+
+def _detect_react_router_project(path: Path) -> bool:
+    """Return True if the scan root looks like a React Router or Remix project.
+
+    A config file is the cheap signal. Failing that, the dependency is checked,
+    because the framework's own template ships a Vite config rather than a
+    react-router.config file.
+    """
+    for name in _REACT_ROUTER_CONFIGS:
+        if (path / name).exists():
+            return True
+
+    package_json = path / "package.json"
+    if package_json.exists():
+        try:
+            text = package_json.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return '"@react-router/' in text or '"@remix-run/' in text
+    return False
+
+
+def _is_react_router_convention_entry(rel_path: str) -> bool:
+    """Return True if *rel_path* is a React Router / Remix convention file.
+
+    Route modules and the framework entry points have no importers by design —
+    the router loads them from the filesystem — so reporting them as orphaned
+    is a false positive on every project of this shape.
+    """
+    p = Path(rel_path)
+    if p.suffix not in _NEXTJS_EXTENSIONS:
+        return False
+
+    parts = p.parts
+
+    # Any file beneath an app/routes/ (or src/routes/) directory.
+    for routes_dir in _REACT_ROUTER_ROUTE_DIRS:
+        if routes_dir in parts[:-1]:
+            return True
+
+    # root.jsx, entry.client.jsx, entry.server.jsx beside the routes directory.
+    # `.stem` only strips the last suffix, so entry.client.jsx stems to
+    # "entry.client", which is exactly what is being matched.
+    if p.stem in _REACT_ROUTER_CONVENTIONS and len(parts) <= 3:
+        return True
+
+    return False
+
+
 def _detect_nextjs_project(path: Path) -> bool:
     """Return True if the scan root looks like a Next.js project."""
     for name in ("next.config.js", "next.config.mjs", "next.config.ts"):
@@ -143,6 +216,9 @@ def detect_orphaned_files(
     is_nextjs = (
         resolved_options.detect_frameworks and _detect_nextjs_project(path)
     )
+    is_react_router = (
+        resolved_options.detect_frameworks and _detect_react_router_project(path)
+    )
 
     dynamic_targets = (
         dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
@@ -164,6 +240,9 @@ def detect_orphaned_files(
             continue
 
         if is_nextjs and _is_nextjs_convention_entry(r):
+            continue
+
+        if is_react_router and _is_react_router_convention_entry(r):
             continue
 
         if dynamic_targets and _is_dynamically_imported(
