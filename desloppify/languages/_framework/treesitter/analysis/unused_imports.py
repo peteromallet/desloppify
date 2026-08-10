@@ -7,6 +7,7 @@ imports whose names don't appear elsewhere in the file.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ECMASCRIPT_IMPORT_NODE_TYPE = "import_statement"
+
+# Symbols a sourced Bash file defines for the sourcing script: functions
+# (both `name() {}` and `function name {}` forms, global regardless of
+# nesting) and top-level variable assignments (including `export`/`declare`
+# wrappers). Function-local `local`/`declare` assignments are excluded.
+_BASH_DEFINITION_QUERY = """
+    (function_definition
+        name: (word) @name)
+    (program
+        (variable_assignment
+            name: (variable_name) @name))
+    (program
+        (declaration_command
+            (variable_assignment
+                name: (variable_name) @name)))
+"""
 
 # Identifier-ish nodes that represent a reference to a binding in JavaScript/TypeScript.
 # JSX tag names are typically represented as `identifier` in tree-sitter-javascript/tsx,
@@ -72,6 +89,7 @@ def detect_unused_imports(
 
     query = _make_query(language, spec.import_query)
     entries: list[dict] = []
+    sourced_symbol_cache: dict[str, frozenset[str]] = {}
 
     for filepath in file_list:
         cached = get_or_parse_tree(filepath, parser, spec.grammar)
@@ -126,6 +144,21 @@ def detect_unused_imports(
             if not name:
                 continue
 
+            # Bash `source`/`.` loads a library whose *defined* functions and
+            # variables are what the sourcing script uses — the sourced file's
+            # basename almost never reappears in the script body. Treat the
+            # import as used when any symbol the library defines is referenced.
+            if spec.grammar == "bash":
+                symbols = _bash_sourced_symbols(
+                    raw_path, filepath, spec, parser, language,
+                    sourced_symbol_cache,
+                )
+                if any(
+                    re.search(r'\b' + re.escape(symbol) + r'\b', rest)
+                    for symbol in symbols
+                ):
+                    continue
+
             # Check if the name appears in the rest of the file.
             if not re.search(r'\b' + re.escape(name) + r'\b', rest):
                 entries.append({
@@ -135,6 +168,54 @@ def detect_unused_imports(
                 })
 
     return entries
+
+
+def _bash_sourced_symbols(
+    raw_path: str,
+    filepath: str,
+    spec: TreeSitterLangSpec,
+    parser,
+    language,
+    cache: dict[str, frozenset[str]],
+) -> frozenset[str]:
+    """Extract the function/variable names a sourced Bash file defines.
+
+    Resolves ``raw_path`` relative to the sourcing script. Returns an empty
+    set when the sourced file cannot be resolved (variable-based paths,
+    missing files) so the caller falls back to the basename heuristic.
+    """
+    resolver = spec.resolve_import
+    if resolver is None:
+        return frozenset()
+    try:
+        resolved = resolver(raw_path, filepath, os.path.dirname(filepath))
+    except (OSError, ValueError):
+        return frozenset()
+    if not resolved:
+        return frozenset()
+
+    resolved = os.path.abspath(resolved)
+    cached_symbols = cache.get(resolved)
+    if cached_symbols is not None:
+        return cached_symbols
+
+    symbols: frozenset[str] = frozenset()
+    parsed = get_or_parse_tree(resolved, parser, spec.grammar)
+    if parsed is not None:
+        _source, tree = parsed
+        definition_query = _make_query(language, _BASH_DEFINITION_QUERY)
+        names: set[str] = set()
+        for _pattern_idx, captures in _run_query(definition_query, tree.root_node):
+            name_node = _unwrap_node(captures.get("name"))
+            if name_node is None:
+                continue
+            text = _node_text(name_node)
+            if text:
+                names.add(text)
+        symbols = frozenset(names)
+
+    cache[resolved] = symbols
+    return symbols
 
 
 def _detect_unused_imports_ecmascript(
