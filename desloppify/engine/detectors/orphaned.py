@@ -7,78 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from desloppify.base.discovery.file_paths import rel
-from desloppify.base.discovery.file_paths import count_lines
+from desloppify.base.discovery.file_paths import count_lines, rel
+from desloppify.engine.detectors.orphaned_frameworks import build_framework_context
 
 _DUNDER_ALL_RE = re.compile(r"^__all__\s*[:=]", re.MULTILINE)
-
-# ---------------------------------------------------------------------------
-# Next.js App Router convention files
-# ---------------------------------------------------------------------------
-
-# Files that are entry points when inside an app/ directory
-_NEXTJS_APP_DIR_CONVENTIONS: set[str] = {
-    "page",
-    "layout",
-    "loading",
-    "error",
-    "not-found",
-    "global-error",
-    "route",
-    "template",
-    "default",
-    "opengraph-image",
-    "twitter-image",
-    "sitemap",
-    "robots",
-    "icon",
-    "apple-icon",
-}
-
-# Files that are entry points at the project root (or src/)
-_NEXTJS_ROOT_CONVENTIONS: set[str] = {
-    "middleware",
-    "instrumentation",
-    "instrumentation-client",
-}
-
-_NEXTJS_EXTENSIONS: set[str] = {".ts", ".tsx", ".js", ".jsx"}
-
-
-def _detect_nextjs_project(path: Path) -> bool:
-    """Return True if the scan root looks like a Next.js project."""
-    for name in ("next.config.js", "next.config.mjs", "next.config.ts"):
-        if (path / name).exists():
-            return True
-    return False
-
-
-def _is_nextjs_convention_entry(rel_path: str) -> bool:
-    """Return True if *rel_path* is a Next.js App Router convention file.
-
-    Checks:
-    - Files with convention names inside any ``app/`` directory segment
-    - Root-level convention files (middleware, instrumentation)
-    """
-    p = Path(rel_path)
-    ext = p.suffix
-    if ext not in _NEXTJS_EXTENSIONS:
-        return False
-
-    stem = p.stem
-    parts = p.parts
-
-    # Root-level conventions: middleware.ts, instrumentation.ts, etc.
-    # These can live at the project root or inside src/
-    if stem in _NEXTJS_ROOT_CONVENTIONS and len(parts) <= 2:
-        return True
-
-    # App directory conventions: any file inside an app/ segment
-    if stem in _NEXTJS_APP_DIR_CONVENTIONS:
-        if "app" in parts:
-            return True
-
-    return False
 
 
 @dataclass
@@ -139,9 +71,12 @@ def detect_orphaned_files(
     dynamic_import_finder = resolved_options.dynamic_import_finder
     alias_resolver = resolved_options.alias_resolver
 
-    # Framework convention detection
-    is_nextjs = (
-        resolved_options.detect_frameworks and _detect_nextjs_project(path)
+    # Framework convention detection: a file-based router loads its handlers,
+    # pages, plugins and layouts by path, so they have no importers by design.
+    framework_context = (
+        build_framework_context(path)
+        if resolved_options.detect_frameworks
+        else None
     )
 
     dynamic_targets = (
@@ -163,7 +98,7 @@ def detect_orphaned_files(
         if basename in all_barrel_names:
             continue
 
-        if is_nextjs and _is_nextjs_convention_entry(r):
+        if framework_context is not None and framework_context.covers_file(filepath):
             continue
 
         if dynamic_targets and _is_dynamically_imported(

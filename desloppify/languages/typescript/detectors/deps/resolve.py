@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterator
 
 from desloppify.base.output.fallbacks import log_best_effort_failure
+from desloppify.languages.typescript.detectors.deps.framework_aliases import (
+    framework_alias_paths,
+)
 
 _RESOLVE_EXTENSIONS = ("", ".ts", ".tsx", "/index.ts", "/index.tsx")
 _JS_SPECIFIER_EXTENSIONS = {".js", ".mjs", ".cjs"}
@@ -53,7 +56,12 @@ def find_tsconfig_root(scan_path: Path, project_root: Path) -> Path:
 
 def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
     """Parse tsconfig paths from disk. Internal — use ``load_tsconfig_paths``."""
-    fallback = {"@/": "src/"}
+    framework_paths = framework_alias_paths(project_root)
+    fallback = framework_paths or {"@/": "src/"}
+
+    def merged(explicit: dict[str, str]) -> dict[str, str]:
+        """Explicit tsconfig mappings win; framework defaults fill the gaps."""
+        return {**framework_paths, **explicit}
 
     for name in ("tsconfig.json", "tsconfig.app.json", "jsconfig.json"):
         config_path = project_root / name
@@ -70,7 +78,7 @@ def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
             continue
         result = extract_paths(data, project_root)
         if result is not None:
-            return result
+            return merged(result)
         extends = data.get("extends")
         if isinstance(extends, str) and not extends.startswith("@"):
             parent_path = (config_path.parent / extends).resolve()
@@ -81,7 +89,7 @@ def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
                     return fallback
                 parent_result = extract_paths(parent_data, parent_path.parent)
                 if parent_result is not None:
-                    return parent_result
+                    return merged(parent_result)
         return fallback
 
     return fallback

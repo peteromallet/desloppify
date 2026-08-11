@@ -7,12 +7,11 @@ from unittest.mock import patch
 
 from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
-    _detect_nextjs_project,
     _has_dunder_all,
     _is_dynamically_imported,
-    _is_nextjs_convention_entry,
     detect_orphaned_files,
 )
+from desloppify.engine.detectors.orphaned_frameworks import detect_nextjs
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -525,95 +524,106 @@ class TestHasDunderAll:
 
 
 class TestDetectNextjsProject:
-    """Unit tests for _detect_nextjs_project."""
+    """A Next.js project is recognised by its config file or its dependency."""
 
     def test_next_config_js(self, tmp_path):
         (tmp_path / "next.config.js").write_text("module.exports = {}")
-        assert _detect_nextjs_project(tmp_path) is True
+        assert detect_nextjs(tmp_path) is not None
 
     def test_next_config_mjs(self, tmp_path):
         (tmp_path / "next.config.mjs").write_text("export default {}")
-        assert _detect_nextjs_project(tmp_path) is True
+        assert detect_nextjs(tmp_path) is not None
 
     def test_next_config_ts(self, tmp_path):
         (tmp_path / "next.config.ts").write_text("export default {}")
-        assert _detect_nextjs_project(tmp_path) is True
+        assert detect_nextjs(tmp_path) is not None
 
     def test_no_next_config(self, tmp_path):
-        assert _detect_nextjs_project(tmp_path) is False
+        assert detect_nextjs(tmp_path) is None
 
 
 class TestIsNextjsConventionEntry:
-    """Unit tests for _is_nextjs_convention_entry."""
+    """App Router convention files are entry points; ordinary modules are not."""
 
-    def test_page_in_app_dir(self):
-        assert _is_nextjs_convention_entry("app/dashboard/page.tsx") is True
+    @staticmethod
+    def _covers(tmp_path, rel_path: str) -> bool:
+        (tmp_path / "next.config.js").write_text("module.exports = {}")
+        found = detect_nextjs(tmp_path)
+        assert found is not None
+        return found.covers(rel_path)
 
-    def test_layout_in_app_dir(self):
-        assert _is_nextjs_convention_entry("app/layout.tsx") is True
+    def test_page_in_app_dir(self, tmp_path):
+        assert self._covers(tmp_path, "app/dashboard/page.tsx") is True
 
-    def test_loading_in_nested_app_dir(self):
-        assert _is_nextjs_convention_entry("app/shop/items/loading.jsx") is True
+    def test_layout_in_app_dir(self, tmp_path):
+        assert self._covers(tmp_path, "app/layout.tsx") is True
 
-    def test_route_handler(self):
-        assert _is_nextjs_convention_entry("app/api/users/route.ts") is True
+    def test_loading_in_nested_app_dir(self, tmp_path):
+        assert self._covers(tmp_path, "app/shop/items/loading.jsx") is True
 
-    def test_error_boundary(self):
-        assert _is_nextjs_convention_entry("app/error.tsx") is True
+    def test_route_handler(self, tmp_path):
+        assert self._covers(tmp_path, "app/api/users/route.ts") is True
 
-    def test_not_found(self):
-        assert _is_nextjs_convention_entry("app/not-found.tsx") is True
+    def test_error_boundary(self, tmp_path):
+        assert self._covers(tmp_path, "app/error.tsx") is True
 
-    def test_global_error(self):
-        assert _is_nextjs_convention_entry("app/global-error.tsx") is True
+    def test_not_found(self, tmp_path):
+        assert self._covers(tmp_path, "app/not-found.tsx") is True
 
-    def test_template(self):
-        assert _is_nextjs_convention_entry("app/template.tsx") is True
+    def test_global_error(self, tmp_path):
+        assert self._covers(tmp_path, "app/global-error.tsx") is True
 
-    def test_default_parallel_route(self):
-        assert _is_nextjs_convention_entry("app/@modal/default.tsx") is True
+    def test_template(self, tmp_path):
+        assert self._covers(tmp_path, "app/template.tsx") is True
 
-    def test_opengraph_image(self):
-        assert _is_nextjs_convention_entry("app/opengraph-image.tsx") is True
+    def test_default_parallel_route(self, tmp_path):
+        assert self._covers(tmp_path, "app/@modal/default.tsx") is True
 
-    def test_sitemap(self):
-        assert _is_nextjs_convention_entry("app/sitemap.ts") is True
+    def test_opengraph_image(self, tmp_path):
+        assert self._covers(tmp_path, "app/opengraph-image.tsx") is True
 
-    def test_robots(self):
-        assert _is_nextjs_convention_entry("app/robots.ts") is True
+    def test_sitemap(self, tmp_path):
+        assert self._covers(tmp_path, "app/sitemap.ts") is True
 
-    def test_middleware_at_root(self):
-        assert _is_nextjs_convention_entry("middleware.ts") is True
+    def test_robots(self, tmp_path):
+        assert self._covers(tmp_path, "app/robots.ts") is True
 
-    def test_middleware_in_src(self):
-        assert _is_nextjs_convention_entry("src/middleware.ts") is True
+    def test_middleware_at_root(self, tmp_path):
+        assert self._covers(tmp_path, "middleware.ts") is True
 
-    def test_instrumentation_at_root(self):
-        assert _is_nextjs_convention_entry("instrumentation.ts") is True
+    def test_middleware_in_src(self, tmp_path):
+        assert self._covers(tmp_path, "src/middleware.ts") is True
 
-    def test_instrumentation_client(self):
-        assert _is_nextjs_convention_entry("src/instrumentation-client.js") is True
+    def test_instrumentation_at_root(self, tmp_path):
+        assert self._covers(tmp_path, "instrumentation.ts") is True
 
-    def test_page_in_src_app(self):
-        assert _is_nextjs_convention_entry("src/app/page.tsx") is True
+    def test_instrumentation_client(self, tmp_path):
+        assert self._covers(tmp_path, "src/instrumentation-client.js") is True
 
-    def test_regular_file_in_app_not_matched(self):
+    def test_page_in_src_app(self, tmp_path):
+        assert self._covers(tmp_path, "src/app/page.tsx") is True
+
+    def test_pages_router_directory(self, tmp_path):
+        """The Pages Router routes everything under pages/."""
+        assert self._covers(tmp_path, "pages/blog/[slug].tsx") is True
+
+    def test_regular_file_in_app_not_matched(self, tmp_path):
         """A non-convention file inside app/ is NOT treated as entry."""
-        assert _is_nextjs_convention_entry("app/utils/helpers.ts") is False
+        assert self._covers(tmp_path, "app/utils/helpers.ts") is False
 
-    def test_page_outside_app_not_matched(self):
+    def test_page_outside_app_not_matched(self, tmp_path):
         """page.tsx outside an app/ directory is NOT treated as entry."""
-        assert _is_nextjs_convention_entry("src/components/page.tsx") is False
+        assert self._covers(tmp_path, "src/components/page.tsx") is False
 
-    def test_middleware_too_deep_not_matched(self):
+    def test_middleware_too_deep_not_matched(self, tmp_path):
         """middleware.ts nested more than one level deep is not an entry."""
-        assert _is_nextjs_convention_entry("src/lib/middleware.ts") is False
+        assert self._covers(tmp_path, "src/lib/middleware.ts") is False
 
-    def test_non_js_extension_not_matched(self):
-        assert _is_nextjs_convention_entry("app/page.py") is False
+    def test_non_js_extension_not_matched(self, tmp_path):
+        assert self._covers(tmp_path, "app/page.py") is False
 
-    def test_css_extension_not_matched(self):
-        assert _is_nextjs_convention_entry("app/page.css") is False
+    def test_css_extension_not_matched(self, tmp_path):
+        assert self._covers(tmp_path, "app/page.css") is False
 
 
 class TestNextjsIntegration:

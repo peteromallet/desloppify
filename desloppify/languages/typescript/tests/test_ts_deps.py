@@ -427,6 +427,91 @@ class TestTsconfigPaths:
         assert paths == {"@/": "src/"}
 
 
+class TestNuxtAliases:
+    """Nuxt keeps its path aliases in a generated, gitignored tsconfig.
+
+    The committed tsconfig.json is a list of project references, so relying on
+    ``compilerOptions.paths`` leaves every ``~/…`` and ``~~/…`` import
+    unresolved and makes the modules behind them look unimported.
+    """
+
+    def _nuxt4(self, tmp_path):
+        _write(tmp_path, "nuxt.config.ts", "export default defineNuxtConfig({})\n")
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"files": [], "references": [{"path": "./.nuxt/tsconfig.json"}]}),
+        )
+        (tmp_path / "app").mkdir(exist_ok=True)
+        (tmp_path / "shared").mkdir(exist_ok=True)
+
+    def test_tilde_points_at_the_src_dir_and_double_tilde_at_the_root(self, tmp_path):
+        """~/ resolves against srcDir, ~~/ against the project root."""
+        self._nuxt4(tmp_path)
+
+        paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
+
+        assert paths["~/"] == "app/"
+        assert paths["@/"] == "app/"
+        assert paths["~~/"] == ""
+        assert paths["#shared/"] == "shared/"
+
+    def test_type_only_import_through_a_nuxt_alias_creates_an_edge(self, tmp_path):
+        """`import type { X } from '~~/shared/types/x'` still counts as an importer."""
+        self._nuxt4(tmp_path)
+        _write(tmp_path, "shared/types/today.ts", "export type TodayResponse = {}\n")
+        _write(
+            tmp_path,
+            "app/composables/useDailyToday.ts",
+            "import type { TodayResponse } from '~~/shared/types/today'\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        types_key = str((tmp_path / "shared/types/today.ts").resolve())
+        composable_key = str((tmp_path / "app/composables/useDailyToday.ts").resolve())
+        assert graph[types_key]["importer_count"] == 1
+        assert composable_key in graph[types_key]["importers"]
+
+    def test_a_vue_component_importing_through_tilde_counts_as_an_importer(
+        self, tmp_path
+    ):
+        """Auto-imported components still declare explicit `~/` imports."""
+        self._nuxt4(tmp_path)
+        _write(tmp_path, "app/constants/game-icons.ts", "export const GAME_ICONS = {}\n")
+        _write(
+            tmp_path,
+            "app/components/RosterNavRail.vue",
+            "<script setup>\nimport { GAME_ICONS } from '~/constants/game-icons'\n</script>\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        icons_key = str((tmp_path / "app/constants/game-icons.ts").resolve())
+        assert graph[icons_key]["importer_count"] == 1
+
+    def test_explicit_tsconfig_paths_win_over_the_framework_defaults(self, tmp_path):
+        """A project that does commit its paths keeps them."""
+        _write(tmp_path, "nuxt.config.ts", "export default defineNuxtConfig({})\n")
+        (tmp_path / "app").mkdir(exist_ok=True)
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"~/*": ["./custom/*"]}}}),
+        )
+
+        paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
+
+        assert paths["~/"] == "custom/"
+        assert paths["~~/"] == ""
+
+    def test_a_non_nuxt_project_gains_no_tilde_aliases(self, tmp_path):
+        """The defaults are Nuxt's; a plain TS project keeps the old fallback."""
+        paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
+
+        assert paths == {"@/": "src/"}
+
+
 # ── Framework file support ──────────────────────────────────────
 
 
