@@ -219,3 +219,46 @@ def test_unused_import_helpers_and_detection(monkeypatch) -> None:
     spec = SimpleNamespace(grammar="py", import_query="query")
     entries = unused_imports_mod.detect_unused_imports(["src/app.py"], spec)
     assert entries == [{"file": "src/app.py", "line": 1, "name": "module"}]
+
+
+def test_go_blank_and_dot_import_detection_helper() -> None:
+    blank_import = FakeNode(
+        "import_spec", children=[FakeNode("blank_identifier", text="_")]
+    )
+    dot_import = FakeNode("import_spec", children=[FakeNode("dot", text=".")])
+    plain_import = FakeNode(
+        "import_spec", children=[FakeNode("interpreted_string_literal", text='"fmt"')]
+    )
+    aliased_import = FakeNode(
+        "import_spec", children=[FakeNode("package_identifier", text="myyaml")]
+    )
+
+    assert unused_imports_mod._is_go_blank_or_dot_import(blank_import) is True
+    assert unused_imports_mod._is_go_blank_or_dot_import(dot_import) is True
+    assert unused_imports_mod._is_go_blank_or_dot_import(plain_import) is False
+    assert unused_imports_mod._is_go_blank_or_dot_import(aliased_import) is False
+
+
+def test_go_package_name_resolution_helper() -> None:
+    resolve = unused_imports_mod._extract_go_package_name
+
+    # Plain path: package name is the last segment.
+    assert resolve("fmt") == "fmt"
+    assert resolve("os") == "os"
+
+    # gopkg.in-style versioning embeds the version in the last segment.
+    assert resolve("gopkg.in/yaml.v3") == "yaml"
+    assert resolve("gopkg.in/mgo.v2") == "mgo"
+
+    # Go modules major-version suffix is its own path segment.
+    assert resolve("math/rand/v2") == "rand"
+    assert resolve("github.com/go-playground/validator/v10") == "validator"
+
+    # Hyphenated path segments can never be valid Go identifiers, and the
+    # real package name isn't derivable from the path alone -- don't guess.
+    assert resolve("github.com/anthropics/anthropic-sdk-go") is None
+
+    # A bare major-version-looking segment with no previous path segment to
+    # fall back to is left as-is; "v2" alone is a syntactically valid Go
+    # identifier, so it is returned rather than stripped to nothing.
+    assert resolve("v2") == "v2"
