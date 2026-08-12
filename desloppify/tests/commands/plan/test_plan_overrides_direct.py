@@ -692,6 +692,32 @@ def test_override_skip_helpers_and_commands(monkeypatch, capsys) -> None:
         lambda *_a, **_k: [f"i{n}" for n in range(6)],
     )
 
+    monkeypatch.setattr(
+        override_skip_mod,
+        "resolve_ids_from_patterns",
+        lambda *_a, **_k: [],
+    )
+    with pytest.raises(CommandError) as excinfo:
+        override_skip_mod.cmd_plan_skip(
+            argparse.Namespace(
+                patterns=["missing"],
+                reason=None,
+                review_after=None,
+                permanent=False,
+                false_positive=False,
+                note=None,
+                attest=None,
+                confirm=False,
+            )
+        )
+    assert excinfo.value.exit_code == 1
+
+    monkeypatch.setattr(
+        override_skip_mod,
+        "resolve_ids_from_patterns",
+        lambda *_a, **_k: [f"i{n}" for n in range(6)],
+    )
+
     with pytest.raises(CommandError):
         override_skip_mod.cmd_plan_skip(
             argparse.Namespace(
