@@ -65,3 +65,27 @@ def test_auto_complete_steps_ignores_done_steps_and_invalid_step_shapes() -> Non
 
     assert messages == []
     assert plan["clusters"]["epic/mixed"]["action_steps"][0]["done"] is True
+
+
+def test_auto_complete_steps_ignores_unrelated_stale_refs() -> None:
+    plan = {
+        "queue_order": [],
+        "clusters": {
+            "target": {
+                "action_steps": [
+                    {"title": "Target step", "issue_refs": ["target-id"]},
+                ]
+            },
+            "unrelated": {
+                "action_steps": [
+                    {"title": "Unrelated step", "issue_refs": ["stale-id"]},
+                ]
+            },
+        },
+    }
+
+    messages = auto_complete_steps(plan, resolved_ids=["target-id"])
+
+    assert plan["clusters"]["target"]["action_steps"][0]["done"] is True
+    assert plan["clusters"]["unrelated"]["action_steps"][0].get("done") is not True
+    assert messages == ["  Step 1 of 'target' auto-completed: Target step"]

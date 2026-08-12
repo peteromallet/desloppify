@@ -354,7 +354,7 @@ def _finalize_workflow_resolution(
     note: str | None,
 ) -> None:
     purge_ids(plan, synthetic_ids)
-    step_messages = auto_complete_steps(plan)
+    step_messages = auto_complete_steps(plan, resolved_ids=synthetic_ids)
     for message in step_messages:
         print(colorize(message, "green"))
     append_log_entry(plan, "done", issue_ids=synthetic_ids, actor="user", note=note)

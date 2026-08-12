@@ -171,7 +171,7 @@ def test_override_resolve_cmd_handles_synthetic_only_resolution(
     monkeypatch.setattr(
         resolve_workflow_mod,
         "auto_complete_steps",
-        lambda _plan: ["step complete"],
+        lambda _plan, resolved_ids=None: ["step complete"],
     )
     monkeypatch.setattr(
         resolve_workflow_mod,

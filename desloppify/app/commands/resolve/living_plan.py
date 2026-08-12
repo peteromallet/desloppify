@@ -115,7 +115,7 @@ def update_living_plan_after_resolve(
         completed_clusters = _completed_cluster_names(plan, all_resolved)
         phase_before = current_lifecycle_phase(plan)
         purged = purge_ids(plan, all_resolved)
-        step_messages = auto_complete_steps(plan)
+        step_messages = auto_complete_steps(plan, resolved_ids=all_resolved)
         for msg in step_messages:
             print(colorize(msg, "green"))
         append_log_entry(

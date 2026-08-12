@@ -71,7 +71,9 @@ def test_update_living_plan_after_resolve_fixed_flow(monkeypatch, capsys) -> Non
     monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
     monkeypatch.setattr(living_plan_mod, "purge_ids", lambda _plan, _ids: 1)
     monkeypatch.setattr(
-        living_plan_mod, "auto_complete_steps", lambda _plan: ["step complete"]
+        living_plan_mod,
+        "auto_complete_steps",
+        lambda _plan, resolved_ids=None: ["step complete"],
     )
     monkeypatch.setattr(
         living_plan_mod, "append_log_entry", lambda *_a, **_k: calls.append("log")
@@ -123,7 +125,9 @@ def test_update_living_plan_after_resolve_marks_all_completed_clusters_done(
     monkeypatch.setattr(living_plan_mod, "has_living_plan", lambda _p=None: True)
     monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
     monkeypatch.setattr(living_plan_mod, "purge_ids", lambda _plan, _ids: 2)
-    monkeypatch.setattr(living_plan_mod, "auto_complete_steps", lambda _plan: [])
+    monkeypatch.setattr(
+        living_plan_mod, "auto_complete_steps", lambda _plan, resolved_ids=None: []
+    )
     monkeypatch.setattr(
         living_plan_mod,
         "append_log_entry",
@@ -174,7 +178,9 @@ def test_update_living_plan_after_resolve_reconciles_when_queue_drains(
         return 1
 
     monkeypatch.setattr(living_plan_mod, "purge_ids", _purge)
-    monkeypatch.setattr(living_plan_mod, "auto_complete_steps", lambda _plan: [])
+    monkeypatch.setattr(
+        living_plan_mod, "auto_complete_steps", lambda _plan, resolved_ids=None: []
+    )
     monkeypatch.setattr(living_plan_mod, "append_log_entry", lambda *_a, **_k: None)
     monkeypatch.setattr(
         living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
@@ -226,7 +232,9 @@ def test_update_living_plan_after_resolve_skips_reconcile_without_state(
     monkeypatch.setattr(living_plan_mod, "has_living_plan", lambda _p=None: True)
     monkeypatch.setattr(living_plan_mod, "load_plan", lambda _p=None: plan)
     monkeypatch.setattr(living_plan_mod, "purge_ids", lambda _plan, _ids: 1)
-    monkeypatch.setattr(living_plan_mod, "auto_complete_steps", lambda _plan: [])
+    monkeypatch.setattr(
+        living_plan_mod, "auto_complete_steps", lambda _plan, resolved_ids=None: []
+    )
     monkeypatch.setattr(living_plan_mod, "append_log_entry", lambda *_a, **_k: None)
     monkeypatch.setattr(
         living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
@@ -270,7 +278,9 @@ def test_update_living_plan_after_resolve_reconciles_once_when_invalidated_and_d
         return 1
 
     monkeypatch.setattr(living_plan_mod, "purge_ids", _purge)
-    monkeypatch.setattr(living_plan_mod, "auto_complete_steps", lambda _plan: [])
+    monkeypatch.setattr(
+        living_plan_mod, "auto_complete_steps", lambda _plan, resolved_ids=None: []
+    )
     monkeypatch.setattr(living_plan_mod, "append_log_entry", lambda *_a, **_k: None)
     monkeypatch.setattr(
         living_plan_mod, "add_uncommitted_issues", lambda *_a, **_k: None
