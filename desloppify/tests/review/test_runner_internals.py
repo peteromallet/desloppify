@@ -90,6 +90,11 @@ class TestOutputFileHasJsonPayload:
         p.write_text('{"assessments": {}}')
         assert _output_file_has_json_payload(p) is True
 
+    def test_valid_json_dict_with_codex_token_footer(self, tmp_path):
+        p = tmp_path / "out.json"
+        p.write_text('{"assessments": {}, "issues": []}\ntokens used\n1,234')
+        assert _output_file_has_json_payload(p) is True
+
     def test_json_array_rejected(self, tmp_path):
         p = tmp_path / "out.json"
         p.write_text("[1, 2, 3]")

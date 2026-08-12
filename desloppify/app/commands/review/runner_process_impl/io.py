@@ -37,7 +37,8 @@ def _output_file_has_json_payload(output_file: Path) -> bool:
     if not output_file.exists():
         return False
     try:
-        payload = json.loads(output_file.read_text(encoding="utf-8", errors="replace"))
+        text = output_file.read_text(encoding="utf-8", errors="replace").lstrip()
+        payload, _ = json.JSONDecoder().raw_decode(text)
     except (OSError, json.JSONDecodeError):
         return False
     return isinstance(payload, dict)
