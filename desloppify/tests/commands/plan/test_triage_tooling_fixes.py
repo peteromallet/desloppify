@@ -230,6 +230,52 @@ def test_depends_on_persisted(monkeypatch, capsys, tmp_path: Path) -> None:
     assert test_plan["clusters"]["cluster-b"]["depends_on_clusters"] == ["cluster-a"]
 
 
+def test_depends_on_repeated_updates_append(monkeypatch) -> None:
+    """Repeated --depends-on updates should preserve existing dependencies."""
+    from desloppify.app.commands.plan.cluster import dispatch as cluster_handlers
+
+    test_plan = {
+        "clusters": {
+            "cluster-a": {"issue_ids": [], "action_steps": []},
+            "cluster-b": {"issue_ids": [], "action_steps": []},
+            "cluster-c": {"issue_ids": [], "action_steps": []},
+        },
+        "queue_order": [],
+        "execution_log": [],
+    }
+    monkeypatch.setattr(cluster_update_mod, "load_plan", lambda: test_plan)
+    monkeypatch.setattr(cluster_update_mod, "save_plan", lambda _plan: None)
+    monkeypatch.setattr(cluster_update_mod, "append_log_entry", lambda *_args, **_kwargs: None)
+
+    def update(*dependencies: str) -> None:
+        args = argparse.Namespace(
+            cluster_name="cluster-c",
+            description=None,
+            steps=None,
+            steps_file=None,
+            add_step=None,
+            detail=None,
+            update_step=None,
+            remove_step=None,
+            done_step=None,
+            undone_step=None,
+            priority=None,
+            effort=None,
+            depends_on=list(dependencies),
+            issue_refs=None,
+            state=None,
+        )
+        cluster_handlers._cmd_cluster_update(args)
+
+    update("cluster-a")
+    update("cluster-b")
+
+    assert test_plan["clusters"]["cluster-c"]["depends_on_clusters"] == [
+        "cluster-a",
+        "cluster-b",
+    ]
+
+
 def test_depends_on_invalid_cluster(monkeypatch, capsys) -> None:
     """--depends-on with invalid cluster name should error."""
     from desloppify.app.commands.plan.cluster import dispatch as cluster_handlers

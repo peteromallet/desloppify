@@ -195,8 +195,11 @@ def _apply_cluster_metadata(
     if bad:
         print(services.colorize_fn(f"  Unknown cluster(s): {', '.join(bad)}", "red"))
         return False
-    cluster["depends_on_clusters"] = request.depends_on
-    print(services.colorize_fn(f"  Dependencies set: {', '.join(request.depends_on)}", "dim"))
+    dependencies = list(
+        dict.fromkeys([*cluster.get("depends_on_clusters", []), *request.depends_on])
+    )
+    cluster["depends_on_clusters"] = dependencies
+    print(services.colorize_fn(f"  Dependencies set: {', '.join(dependencies)}", "dim"))
     return True
 
 
