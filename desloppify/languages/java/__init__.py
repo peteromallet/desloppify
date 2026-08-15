@@ -22,7 +22,7 @@ def _pmd_threads_arg(raw: str | None = None) -> str:
 
 PMD_COMMAND = (
     "pmd check -d . -R rulesets/java/quickstart.xml "
-    f"{_pmd_threads_arg()} -f textcolor 2>&1"
+    f"{_pmd_threads_arg()} -f text 2>&1"
 )
 
 generic_lang(
