@@ -132,25 +132,25 @@ def _framework_smells_phase(spec: FrameworkSpec) -> DetectorPhase:
 
 
 def _framework_tool_phase(spec: FrameworkSpec, tool: ToolIntegration) -> DetectorPhase:
-    tool_phase = make_tool_phase(
-        tool.label,
-        tool.cmd,
-        tool.fmt,
-        tool.id,
-        tool.tier,
-        confidence=tool.confidence,
-    )
-    tool_phase.slow = bool(tool.slow)
-
     def run(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], dict[str, int]]:
         detection = detect_ecosystem_frameworks(path, lang, spec.ecosystem)
         if spec.id not in detection.present:
             return [], {}
 
         scan_root = detection.package_root
+        cmd = tool.cmd(scan_root) if callable(tool.cmd) else tool.cmd
+        tool_phase = make_tool_phase(
+            tool.label,
+            cmd,
+            tool.fmt,
+            tool.id,
+            tool.tier,
+            confidence=tool.confidence,
+        )
+        tool_phase.slow = bool(tool.slow)
         return tool_phase.run(scan_root, lang)
 
-    return DetectorPhase(tool_phase.label, run, slow=tool_phase.slow)
+    return DetectorPhase(tool.label, run, slow=bool(tool.slow))
 
 
 def framework_phases(lang_name: str) -> list[DetectorPhase]:

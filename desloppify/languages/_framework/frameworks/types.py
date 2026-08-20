@@ -46,7 +46,7 @@ class ToolIntegration:
 
     id: str  # detector id (e.g. "next_lint")
     label: str
-    cmd: str
+    cmd: str | Callable[[Path], str]
     fmt: str
     tier: int
     slow: bool = False

@@ -9,6 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from desloppify.languages._framework.frameworks.phases import _framework_tool_phase
+from desloppify.languages._framework.frameworks.specs.nextjs import (
+    NEXTJS_SPEC,
+    next_lint_cmd,
+)
 from desloppify.languages._framework.generic_parts.parsers import (
     ToolParserError,
     parse_next_lint,
@@ -184,3 +189,100 @@ def test_next_lint_tool_phase_records_coverage_warning_on_parser_error(monkeypat
     assert signals == {}
     assert lang.detector_coverage["next_lint"]["reason"] == "parser_error"
     assert lang.coverage_warnings and lang.coverage_warnings[0]["detector"] == "next_lint"
+
+
+def _write_next_project(root: Path, *, declared: str, installed: str | None) -> Path:
+    package_root = root / "app"
+    package_root.mkdir(parents=True)
+    (package_root / "package.json").write_text(
+        json.dumps({"dependencies": {"next": declared}}),
+        encoding="utf-8",
+    )
+    if installed is not None:
+        next_pkg = package_root / "node_modules" / "next"
+        next_pkg.mkdir(parents=True)
+        (next_pkg / "package.json").write_text(
+            json.dumps({"version": installed}),
+            encoding="utf-8",
+        )
+    return package_root
+
+
+def test_next_lint_cmd_runs_eslint_directly_on_next_16(tmp_path):
+    package_root = _write_next_project(tmp_path, declared="^15.0.0", installed="16.3.0")
+    assert next_lint_cmd(package_root) == "npx --no-install eslint --format json ."
+
+
+def test_next_lint_cmd_keeps_next_lint_on_next_15(tmp_path):
+    package_root = _write_next_project(tmp_path, declared="^15.0.0", installed="15.4.0")
+    assert next_lint_cmd(package_root) == "npx --no-install next lint --format json"
+
+
+def test_next_lint_cmd_falls_back_when_next_not_installed(tmp_path):
+    package_root = _write_next_project(tmp_path, declared="^15.0.0", installed=None)
+    assert next_lint_cmd(package_root) == "npx --no-install next lint --format json"
+
+
+def test_next_lint_cmd_falls_back_on_malformed_package_json(tmp_path):
+    package_root = _write_next_project(tmp_path, declared="^15.0.0", installed=None)
+    next_pkg = package_root / "node_modules" / "next"
+    next_pkg.mkdir(parents=True)
+    (next_pkg / "package.json").write_text("not json", encoding="utf-8")
+    assert next_lint_cmd(package_root) == "npx --no-install next lint --format json"
+
+
+def test_framework_tool_phase_uses_eslint_on_next_16(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    package_root = _write_next_project(tmp_path, declared="^15.0.0", installed="16.3.0")
+
+    seen_argv: list[str] = []
+
+    def fake_run(argv, *, shell, cwd, capture_output, text, timeout):
+        seen_argv.extend(argv)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=json.dumps(
+                [{"filePath": str(package_root / "a.js"), "messages": []}]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
+
+    phase = _framework_tool_phase(NEXTJS_SPEC, NEXTJS_SPEC.tools[0])
+    lang = SimpleNamespace(detector_coverage={}, coverage_warnings=[])
+
+    issues, signals = phase.run(package_root, lang)
+    assert issues == []
+    assert signals == {"next_lint": 1}
+    assert "eslint" in seen_argv
+    assert "lint" not in seen_argv
+
+
+def test_framework_tool_phase_uses_next_lint_on_next_15(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    package_root = _write_next_project(tmp_path, declared="^15.0.0", installed="15.4.0")
+
+    seen_argv: list[str] = []
+
+    def fake_run(argv, *, shell, cwd, capture_output, text, timeout):
+        seen_argv.extend(argv)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=json.dumps(
+                [{"filePath": str(package_root / "a.js"), "messages": []}]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
+
+    phase = _framework_tool_phase(NEXTJS_SPEC, NEXTJS_SPEC.tools[0])
+    lang = SimpleNamespace(detector_coverage={}, coverage_warnings=[])
+
+    issues, signals = phase.run(package_root, lang)
+    assert issues == []
+    assert signals == {"next_lint": 1}
+    assert "next" in seen_argv and "lint" in seen_argv

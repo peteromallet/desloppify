@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -522,6 +523,24 @@ NEXTJS_SCANNERS: tuple[ScannerRule, ...] = (
 )
 
 
+def next_lint_cmd(scan_root: Path) -> str:
+    """Resolve the lint command for the installed Next.js version.
+
+    Next.js 16 removed the ``next lint`` subcommand, so ``next lint`` is
+    parsed as ``next <dir>`` and exits without linting. On Next.js >= 16,
+    run ESLint directly instead (its JSON output has the same shape).
+    """
+    package_json = scan_root / "node_modules" / "next" / "package.json"
+    try:
+        data = json.loads(package_json.read_text(encoding="utf-8"))
+        major = int(str(data.get("version", "0")).split(".", 1)[0])
+    except (OSError, ValueError, TypeError):
+        major = 0
+    if major >= 16:
+        return "npx --no-install eslint --format json ."
+    return "npx --no-install next lint --format json"
+
+
 NEXTJS_SPEC = FrameworkSpec(
     id="nextjs",
     label="Next.js",
@@ -544,7 +563,7 @@ NEXTJS_SPEC = FrameworkSpec(
         ToolIntegration(
             id="next_lint",
             label="next lint",
-            cmd="npx --no-install next lint --format json",
+            cmd=next_lint_cmd,
             fmt="next_lint",
             tier=2,
             slow=True,
@@ -554,4 +573,4 @@ NEXTJS_SPEC = FrameworkSpec(
 )
 
 
-__all__ = ["NEXTJS_SPEC"]
+__all__ = ["NEXTJS_SPEC", "next_lint_cmd"]
