@@ -47,6 +47,23 @@ def _has_inline_tests(filepath: str, lang_name: str) -> bool:
     return False
 
 
+def _expand_direct_test_targets(
+    directly_tested: set[str],
+    production_files: set[str],
+    lang_name: str,
+) -> set[str]:
+    """Apply a language's semantic direct-test ownership expansion."""
+    mod = _load_lang_test_coverage_module(lang_name)
+    expand = getattr(mod, "expand_direct_test_targets", None)
+    if not callable(expand):
+        return set()
+    try:
+        return set(expand(directly_tested, production_files))
+    except (OSError, TypeError, ValueError):
+        logger.debug("direct test target expansion failed", exc_info=True)
+        return set()
+
+
 def _is_runtime_entrypoint(filepath: str, lang_name: str) -> bool:
     """Best-effort runtime entrypoint detection for no-tests classification."""
     read_result = read_coverage_file(filepath, context="runtime_entrypoint")

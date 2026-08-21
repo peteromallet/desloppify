@@ -165,3 +165,14 @@ support = { package = "support-utils", path = "../support" }
         {str(source.resolve())},
     )
     assert resolved == str(source.resolve())
+
+
+def test_direct_test_targets_expand_through_recursive_literal_includes(tmp_path):
+    owner = _write(tmp_path, "src/lib.rs", 'include!("internal.rs");\n')
+    internal = _write(tmp_path, "src/internal.rs", 'include!("nested/codec.rs");\n')
+    codec = _write(tmp_path, "src/nested/codec.rs", "pub fn decode() {}\n")
+    production = {str(owner.resolve()), str(internal.resolve()), str(codec.resolve())}
+
+    expanded = rust_cov.expand_direct_test_targets({str(owner.resolve())}, production)
+
+    assert expanded == {str(internal.resolve()), str(codec.resolve())}

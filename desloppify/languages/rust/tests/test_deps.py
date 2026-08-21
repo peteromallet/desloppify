@@ -159,3 +159,15 @@ def test_build_dep_graph_can_exclude_mod_edges_for_cycle_analysis(tmp_path):
     assert graph["src/lib.rs"]["imports"] == set()
     assert graph["src/foo.rs"]["imports"] == {"src/bar.rs"}
     assert graph["src/bar.rs"]["imports"] == {"src/foo.rs"}
+
+
+def test_build_dep_graph_resolves_literal_include_files(tmp_path):
+    _write(tmp_path, "Cargo.toml", "[package]\nname = 'demo-app'\nversion = '0.1.0'\n")
+    _write(tmp_path, "src/lib.rs", 'include!("internal/codec.rs");\n')
+    _write(tmp_path, "src/internal/codec.rs", "pub fn decode() {}\n")
+
+    with runtime_scope(RuntimeContext(project_root=tmp_path)):
+        graph = build_dep_graph(tmp_path)
+
+    assert graph["src/lib.rs"]["imports"] == {"src/internal/codec.rs"}
+    assert graph["src/internal/codec.rs"]["importers"] == {"src/lib.rs"}

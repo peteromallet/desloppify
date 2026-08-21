@@ -7,13 +7,17 @@ from pathlib import Path
 
 from desloppify.languages.rust.support import (
     build_workspace_package_index,
+    build_production_file_index,
     describe_rust_file,
     find_workspace_root,
     iter_use_specs,
+    iter_include_files,
     match_production_candidate,
     normalize_rust_body,
     resolve_barrel_targets,
     resolve_use_spec,
+    resolve_include_file,
+    read_text_or_none,
     strip_rust_comments,
 )
 
@@ -93,6 +97,39 @@ def parse_test_import_specs(content: str) -> list[str]:
     return iter_use_specs(content)
 
 
+def expand_direct_test_targets(
+    directly_tested: set[str],
+    production_files: set[str],
+) -> set[str]:
+    """Treat textually included Rust source as part of its tested owner.
+
+    ``include!`` does not create a Rust module boundary: the included tokens
+    are compiled in the including module. A direct test of that owner is
+    therefore also a direct test of every recursively included source file.
+    """
+    production_index = build_production_file_index(production_files)
+    expanded: set[str] = set()
+    queue = list(directly_tested)
+    visited = set(queue)
+    while queue:
+        owner = queue.pop()
+        content = read_text_or_none(owner)
+        if content is None:
+            continue
+        for include_path in iter_include_files(content):
+            target = resolve_include_file(
+                include_path,
+                owner,
+                production_files,
+                production_index=production_index,
+            )
+            if target is not None and target not in visited:
+                visited.add(target)
+                expanded.add(target)
+                queue.append(target)
+    return expanded
+
+
 def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
     """Map `tests/foo.rs` to `src/foo.rs` or `src/foo/mod.rs` when present."""
     test_file = Path(test_path)
@@ -150,6 +187,7 @@ __all__ = [
     "TEST_FUNCTION_RE",
     "has_inline_tests",
     "has_testable_logic",
+    "expand_direct_test_targets",
     "is_runtime_entrypoint",
     "map_test_to_source",
     "parse_test_import_specs",
