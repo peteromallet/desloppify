@@ -31,9 +31,68 @@ from .detector_core import (
 )
 from .helpers import (
     _code_text,
+    _extract_block_body,
     _strip_ts_comments,
     _track_brace_body,
 )
+
+
+def _extract_async_declaration_body(lines: list[str], index: int) -> str | None:
+    """Extract an async declaration body without mistaking typed parameter braces for it."""
+    fragment = "\n".join(lines[index : index + 2000])
+    code = _code_text(fragment)
+    opening_paren = code.find("(")
+    if opening_paren == -1:
+        return None
+
+    paren_depth = 0
+    closing_paren = None
+    for cursor in range(opening_paren, len(code)):
+        char = code[cursor]
+        if char == "(":
+            paren_depth += 1
+        elif char == ")":
+            paren_depth -= 1
+            if paren_depth == 0:
+                closing_paren = cursor
+                break
+    if closing_paren is None:
+        return None
+
+    cursor = closing_paren + 1
+    while cursor < len(code) and code[cursor].isspace():
+        cursor += 1
+    has_return_type = cursor < len(code) and code[cursor] == ":"
+    if has_return_type:
+        cursor += 1
+        while cursor < len(code) and code[cursor].isspace():
+            cursor += 1
+    direct_object_return = has_return_type and cursor < len(code) and code[cursor] == "{"
+
+    angle_depth = 0
+    square_depth = 0
+    type_brace_depth = 0
+    for body_cursor in range(cursor, len(code)):
+        char = code[body_cursor]
+        if char == "<" and type_brace_depth == 0:
+            angle_depth += 1
+        elif char == ">" and angle_depth > 0 and type_brace_depth == 0:
+            angle_depth -= 1
+        elif char == "[" and type_brace_depth == 0:
+            square_depth += 1
+        elif char == "]" and square_depth > 0 and type_brace_depth == 0:
+            square_depth -= 1
+        elif char == "{" and angle_depth == 0 and square_depth == 0:
+            if direct_object_return or type_brace_depth > 0:
+                type_brace_depth += 1
+                direct_object_return = False
+            else:
+                return _extract_block_body(
+                    fragment, body_cursor, max_scan=len(fragment) - body_cursor
+                )
+        elif char == "}" and type_brace_depth > 0:
+            type_brace_depth -= 1
+    return None
 
 
 def _detect_async_no_await(ctx, smell_counts: dict[str, list[dict]]) -> None:
@@ -44,7 +103,11 @@ def _detect_async_no_await(ctx, smell_counts: dict[str, list[dict]]) -> None:
         if not match:
             continue
         name = match.group(1) or match.group(2)
-        body = _extract_function_body(ctx.lines, index)
+        body = (
+            _extract_async_declaration_body(ctx.lines, index)
+            if match.group(1)
+            else _extract_function_body(ctx.lines, index)
+        )
         if body is not None and not re.search(r"\bawait\b", _code_text(body)):
             _emit(
                 smell_counts,
