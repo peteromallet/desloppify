@@ -110,3 +110,16 @@ def test_match_production_candidate_uses_relative_index_key(tmp_path):
         index = build_production_file_index(production_files)
         assert match_production_candidate(prod, production_files) == "src/lib.rs"
         assert index.by_relative["src/lib.rs"] == "src/lib.rs"
+
+
+def test_production_file_index_is_reused_for_stable_scan_scope(tmp_path):
+    _write(tmp_path, "src/lib.rs", "pub fn run() {}\n")
+    production_files = {"src/lib.rs"}
+
+    from desloppify.base.runtime_state import RuntimeContext, runtime_scope
+
+    with runtime_scope(RuntimeContext(project_root=tmp_path)):
+        first = build_production_file_index(production_files)
+        second = build_production_file_index(set(production_files))
+
+    assert second is first

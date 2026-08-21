@@ -68,8 +68,27 @@ def build_production_file_index(
     *,
     project_root: Path | None = None,
 ) -> RustProductionFileIndex:
-    """Build O(1) absolute/relative lookup maps for production files."""
+    """Return cached O(1) absolute/relative production-file lookups."""
     root = (project_root or get_project_root()).resolve()
+    return _build_production_file_index_cached(
+        str(root),
+        tuple(sorted(production_files)),
+    )
+
+
+@functools.lru_cache(maxsize=16)
+def _build_production_file_index_cached(
+    project_root: str,
+    production_files: tuple[str, ...],
+) -> RustProductionFileIndex:
+    """Resolve one stable production scope once per project root.
+
+    Rust import mapping asks for the same index once per ``use`` specification.
+    Resolving every production path on each call turns coverage analysis into a
+    filesystem-stat storm on large workspaces, despite the index being
+    immutable for the duration of a scan.
+    """
+    root = Path(project_root)
     by_absolute: dict[str, str] = {}
     by_relative: dict[str, str] = {}
     for production_file in production_files:
