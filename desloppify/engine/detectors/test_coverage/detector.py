@@ -18,7 +18,7 @@ from .discovery import (
     _no_tests_issues,
     _normalize_graph_paths,
 )
-from .heuristics import _has_inline_tests
+from .heuristics import _expand_direct_test_targets, _has_inline_tests
 from .issues import (
     _generate_issues,
 )
@@ -71,6 +71,11 @@ def detect_test_coverage(
         )
     if test_files:
         directly_tested |= naming_based_mapping(test_files, production_files, lang_name)
+    directly_tested |= _expand_direct_test_targets(
+        directly_tested,
+        production_files,
+        lang_name,
+    )
 
     transitively_tested = transitive_coverage(directly_tested, graph, production_files)
     test_quality = analyze_test_quality(test_files, lang_name)

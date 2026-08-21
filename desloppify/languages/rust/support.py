@@ -18,6 +18,9 @@ PUB_USE_STATEMENT_RE = re.compile(r"(?m)^\s*pub(?:\([^)]*\))?\s+use\s+([^;]+);")
 _MOD_LINE_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*;")
 _ATTR_RE = re.compile(r"#\[[^\]]+\]")
 _PATH_ATTR_RE = re.compile(r'#\s*\[\s*path\s*=\s*"([^"\n]+)"\s*\]')
+_INCLUDE_FILE_RE = re.compile(
+    r'(?m)^\s*include!\s*\(\s*"([^"\n]+\.rs)"\s*\)\s*;'
+)
 _PUBLIC_ITEM_RE = re.compile(r"(?m)^\s*pub\s+(?:struct|enum|trait|type|fn|mod)\s+")
 _RUST_LOG_RE = re.compile(r"^\s*(?:println!|eprintln!|dbg!|tracing::)", re.MULTILINE)
 
@@ -240,6 +243,11 @@ def iter_mod_targets(content: str) -> list[tuple[str, str | None]]:
 def iter_use_specs(content: str) -> list[str]:
     """Return normalized Rust `use` / `pub use` specs from a file."""
     return _iter_use_specs_with_pattern(content, USE_STATEMENT_RE)
+
+
+def iter_include_files(content: str) -> list[str]:
+    """Return literal Rust source files textually owned through ``include!``."""
+    return _INCLUDE_FILE_RE.findall(strip_rust_comments(content))
 
 
 def iter_pub_use_specs(content: str) -> list[str]:
@@ -682,6 +690,22 @@ def resolve_mod_declaration(
     return None
 
 
+def resolve_include_file(
+    include_path: str,
+    source_file: str | Path,
+    production_files: set[str],
+    *,
+    production_index: RustProductionFileIndex | None = None,
+) -> str | None:
+    """Resolve a literal ``include!("path.rs")`` relative to its owner."""
+    source = Path(resolve_path(str(source_file))).resolve()
+    return _candidate_matches(
+        source.parent / include_path,
+        production_files,
+        production_index=production_index,
+    )
+
+
 def resolve_use_spec(
     spec: str,
     source_file: str | Path,
@@ -1040,6 +1064,7 @@ __all__ = [
     "has_public_api_markers",
     "iter_mod_declarations",
     "iter_mod_targets",
+    "iter_include_files",
     "iter_pub_use_specs",
     "iter_use_specs",
     "match_production_candidate",
@@ -1050,6 +1075,7 @@ __all__ = [
     "read_package_name",
     "resolve_barrel_targets",
     "resolve_mod_declaration",
+    "resolve_include_file",
     "resolve_use_spec",
     "strip_rust_comments",
 ]
