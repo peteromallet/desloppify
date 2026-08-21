@@ -357,6 +357,31 @@ class TestDetectAsyncNoAwait:
         _detect_async_no_await(_ctx(content), counts)
         assert len(counts["async_no_await"]) == 0
 
+    def test_multiline_typed_parameter_does_not_hide_await(self):
+        content = (
+            "export async function fetchData(args: {\n"
+            "  readonly path: string;\n"
+            "  readonly timeout: number;\n"
+            "}): Promise<void> {\n"
+            "  await fetch(args.path);\n"
+            "}\n"
+        )
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_multiline_typed_parameter_without_await_is_flagged(self):
+        content = (
+            "export async function fetchData(args: {\n"
+            "  readonly path: string;\n"
+            "}): Promise<string> {\n"
+            "  return args.path;\n"
+            "}\n"
+        )
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 1
+
 
 class TestDetectErrorNoThrow:
     def test_flags_error_without_throw(self):
