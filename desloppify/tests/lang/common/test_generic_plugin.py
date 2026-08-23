@@ -486,6 +486,16 @@ class TestMakeToolPhase:
             argv = resolve_command_argv('"C:\\Program Files\\Tool\\tool.exe" --flag')
         assert argv == [r"C:\Program Files\Tool\tool.exe", "--flag"]
 
+    def test_resolve_command_argv_windows_translates_dev_null_redirect(self):
+        with patch("desloppify.languages._framework.generic_parts.tool_runner.os.name", "nt"):
+            argv = resolve_command_argv("npx eslint . --format json 2>/dev/null")
+        assert argv == ["cmd.exe", "/d", "/s", "/c", "npx eslint . --format json 2>nul"]
+
+    def test_resolve_command_argv_posix_keeps_dev_null_redirect(self):
+        with patch("desloppify.languages._framework.generic_parts.tool_runner.os.name", "posix"):
+            argv = resolve_command_argv("npx eslint . --format json 2>/dev/null")
+        assert argv == ["/bin/sh", "-lc", "npx eslint . --format json 2>/dev/null"]
+
 
 class TestToolSpecNormalization:
     def test_missing_fix_cmd_normalizes_to_none(self):

@@ -36,6 +36,10 @@ class ToolRunResult:
 def _shell_argv(cmd: str) -> list[str]:
     """Return a platform-appropriate shell argv for shell-meta commands."""
     if os.name == "nt":
+        # cmd.exe has no /dev/null; translate the POSIX null-device redirect
+        # so tools that discard stderr run instead of failing with
+        # "The system cannot find the path specified." (#714)
+        cmd = cmd.replace("2>/dev/null", "2>nul")
         return ["cmd.exe", "/d", "/s", "/c", cmd]
     return ["/bin/sh", "-lc", cmd]
 
