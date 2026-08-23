@@ -950,6 +950,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = timeout, cwd
             out_path = Path(cmd[cmd.index("-o") + 1])
@@ -1190,6 +1192,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = capture_output, text, timeout, cwd
             out_path = Path(cmd[cmd.index("-o") + 1])
@@ -1309,6 +1313,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = capture_output, text, timeout, cwd
             out_path = Path(cmd[cmd.index("-o") + 1])
@@ -1466,6 +1472,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = capture_output, text, timeout, cwd
             # Simulate Codex occasionally returning JSON on stdout while failing
@@ -1576,6 +1584,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = capture_output, text, timeout, cwd
             out_path = Path(cmd[cmd.index("-o") + 1])
@@ -1707,6 +1717,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = capture_output, text, timeout, cwd
             return MagicMock(returncode=124, stdout="", stderr="timed out")
@@ -1775,6 +1787,8 @@ class TestCmdReviewPrepare:
             text=False,
             timeout=None,
             cwd=None,
+            encoding=None,
+            errors=None,
         ):
             _ = capture_output, text, timeout, cwd
             out_path = Path(cmd[cmd.index("-o") + 1])
@@ -1937,7 +1951,7 @@ class TestCmdReviewPrepare:
         output_file = tmp_path / "out.txt"
         live_snapshot = {"text": ""}
 
-        def fake_run(_cmd, *, capture_output, text, timeout):  # noqa: ARG001
+        def fake_run(_cmd, *, capture_output, text, timeout, encoding=None, errors=None):  # noqa: ARG001
             if log_file.exists():
                 live_snapshot["text"] = log_file.read_text()
             output_file.write_text('{"assessments": {}, "issues": []}')

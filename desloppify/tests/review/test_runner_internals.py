@@ -820,3 +820,71 @@ class TestOpenCodeProvenanceSupport:
         )
 
         assert "opencode" in SUPPORTED_BLIND_REVIEW_RUNNERS
+
+
+class TestLiveSubprocessUtf8Decoding:
+    """Live Codex subprocess paths must decode output as UTF-8 (#717).
+
+    ``text=True`` alone decodes with the locale encoding (cp1252 on Western
+    Windows), which raises ``UnicodeDecodeError`` on UTF-8 Codex output. The
+    persisted-log readers already pin UTF-8; the live subprocess paths must
+    match.
+    """
+
+    @staticmethod
+    def _make_ctx(tmp_path):
+        from desloppify.app.commands.review.runner_process_impl.types import (
+            _AttemptContext,
+        )
+
+        return _AttemptContext(
+            header="Codex",
+            started_at_iso="2026-08-23T00:00:00Z",
+            started_monotonic=0.0,
+            output_file=tmp_path / "output.json",
+            log_file=tmp_path / "runner.log",
+            log_sections=[],
+            safe_write_text_fn=MagicMock(),
+        )
+
+    def test_start_runner_process_requests_utf8_decoding(self, tmp_path):
+        from desloppify.app.commands.review.runner_process_impl.attempts import (
+            _start_runner_process,
+        )
+
+        captured = {}
+
+        def fake_popen(cmd, **kwargs):
+            captured.update(kwargs)
+            return MagicMock()
+
+        deps = _make_deps(subprocess_popen=fake_popen, use_popen_runner=True)
+        result = _start_runner_process(["codex"], deps, self._make_ctx(tmp_path))
+
+        assert not isinstance(result, _ExecutionResult)
+        assert captured.get("encoding") == "utf-8"
+        assert captured.get("errors") == "replace"
+
+    def test_run_via_subprocess_requests_utf8_decoding(self, tmp_path):
+        from desloppify.app.commands.review.runner_process_impl.attempts import (
+            _run_via_subprocess,
+        )
+        from desloppify.app.commands.review.runner_process_impl.types import (
+            _RunnerState,
+        )
+
+        captured = {}
+        fake_result = MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run(cmd, **kwargs):
+            captured.update(kwargs)
+            return fake_result
+
+        deps = _make_deps(subprocess_run=fake_run)
+        result = _run_via_subprocess(
+            ["codex"], deps, _RunnerState(), self._make_ctx(tmp_path), interval=0.01
+        )
+
+        assert result.code == 0
+        assert captured.get("encoding") == "utf-8"
+        assert captured.get("errors") == "replace"

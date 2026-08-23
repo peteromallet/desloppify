@@ -125,6 +125,8 @@ def _start_runner_process(
             stderr=subprocess.PIPE,
             stdin=subprocess.PIPE if stdin_pipe else None,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
         )
     except OSError as exc:
@@ -294,6 +296,8 @@ def _run_via_subprocess(
             run_kwargs = {
                 "capture_output": True,
                 "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
                 "timeout": deps.timeout_seconds,
             }
             if stdin_text is not None:
