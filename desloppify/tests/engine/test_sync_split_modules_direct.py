@@ -832,6 +832,53 @@ def test_queue_snapshot_keeps_executing_real_queue_items_before_postflight_scan(
     assert [item["id"] for item in snapshot.execution_items] == ["unused::a"]
 
 
+def test_queue_snapshot_skipped_subjective_item_does_not_mask_execution() -> None:
+    state = {
+        "issues": {
+            "unused::a": {
+                "id": "unused::a",
+                "detector": "unused",
+                "status": "open",
+                "file": "src/a.py",
+                "tier": 1,
+                "confidence": "high",
+                "summary": "unused import",
+                "detail": {},
+            }
+        },
+        "dimension_scores": {
+            "Naming quality": {
+                "score": 70.0,
+                "strict": 70.0,
+                "failing": 1,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "naming_quality"}
+                },
+            }
+        },
+        "subjective_assessments": {"naming_quality": {"score": 70.0}},
+    }
+    plan = {
+        "queue_order": ["unused::a", "subjective::naming_quality"],
+        "skipped": {
+            "subjective::naming_quality": {
+                "issue_id": "subjective::naming_quality",
+                "kind": "temporary",
+            }
+        },
+        "plan_start_scores": {"strict": 80.0},
+        "refresh_state": {"lifecycle_phase": "plan"},
+    }
+
+    snapshot = snapshot_mod.build_queue_snapshot(state, plan=plan)
+
+    assert snapshot.phase == refresh_lifecycle_mod.LIFECYCLE_PHASE_EXECUTE
+    assert [item["id"] for item in snapshot.execution_items] == ["unused::a"]
+    assert "subjective::naming_quality" not in {
+        item["id"] for item in snapshot.backlog_items
+    }
+
+
 def test_queue_snapshot_does_not_execute_autofix_cluster_without_queue_ownership() -> None:
     state = {
         "issues": {
