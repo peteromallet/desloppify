@@ -1,5 +1,6 @@
 """Tests for desloppify.languages.typescript.detectors.smells.helpers."""
 
+from desloppify.languages.typescript.detectors.smells import TS_SMELL_CHECKS
 from desloppify.languages.typescript.detectors.smells.detector_core import (
     _find_function_start,
 )
@@ -25,7 +26,6 @@ from desloppify.languages.typescript.detectors.smells.helpers import (
     _track_brace_body,
     _ts_match_is_in_string,
 )
-from desloppify.languages.typescript.detectors.smells import TS_SMELL_CHECKS
 
 
 def _ctx(content: str, filepath: str = "test.ts") -> _FileContext:
@@ -329,6 +329,66 @@ class TestDetectAsyncNoAwait:
         _detect_async_no_await(_ctx(content), counts)
         assert len(counts["async_no_await"]) == 0
 
+    def test_skips_await_after_multiline_object_parameter_type(self):
+        content = """async function load(
+  tx: Transaction,
+  args: {
+    readonly accountId: string;
+    readonly customerId: string;
+  },
+): Promise<Result> {
+  const result = await tx.execute(args);
+  return result;
+}
+"""
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_skips_await_after_extract_parameter_type(self):
+        content = """async function load(
+  reference: Extract<EventReference, { readonly kind: 'checkout' }>,
+): Promise<Result> {
+  return await resolveReference(reference);
+}
+"""
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_skips_await_after_object_return_type(self):
+        content = """async function load(): Promise<{
+  readonly accountId: string;
+}> {
+  return await resolveAccount();
+}
+"""
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_skips_await_after_generic_object_constraint(self):
+        content = """async function load<T extends { readonly id: string }>(args: {
+  readonly value: T;
+}): Promise<T> {
+  return await resolveValue(args.value);
+}
+"""
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 0
+
+    def test_flags_multiline_object_parameter_without_await(self):
+        content = """async function load(args: {
+  readonly accountId: string;
+}): Promise<string> {
+  return args.accountId;
+}
+"""
+        counts = _make_counts()
+        _detect_async_no_await(_ctx(content), counts)
+        assert len(counts["async_no_await"]) == 1
+
     def test_arrow_async_without_await(self):
         content = "const fn = async () => {\n  return 42;\n}\n"
         counts = _make_counts()
@@ -337,7 +397,9 @@ class TestDetectAsyncNoAwait:
 
     def test_await_in_comment_still_flagged(self):
         """'await' inside a comment should not count — function is still flagged."""
-        content = "async function fetchData() {\n  // await fetch('/');\n  return 1;\n}\n"
+        content = (
+            "async function fetchData() {\n  // await fetch('/');\n  return 1;\n}\n"
+        )
         counts = _make_counts()
         _detect_async_no_await(_ctx(content), counts)
         assert len(counts["async_no_await"]) == 1

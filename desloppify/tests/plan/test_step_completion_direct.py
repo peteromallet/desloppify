@@ -65,3 +65,32 @@ def test_auto_complete_steps_ignores_done_steps_and_invalid_step_shapes() -> Non
 
     assert messages == []
     assert plan["clusters"]["epic/mixed"]["action_steps"][0]["done"] is True
+
+
+def test_auto_complete_steps_keeps_clustered_issue_outside_execution_queue_open() -> (
+    None
+):
+    plan = {
+        "queue_order": ["review::selected::issue-a"],
+        "clusters": {
+            "epic/selected": {
+                "issue_ids": ["review::selected::issue-a"],
+                "action_steps": [
+                    {"title": "Fix selected", "issue_refs": ["issue-a"]},
+                ],
+            },
+            "epic/not-selected": {
+                "issue_ids": ["review::not-selected::issue-b"],
+                "action_steps": [
+                    {"title": "Fix later", "issue_refs": ["summary-hash-b"]},
+                ],
+            },
+        },
+    }
+
+    messages = auto_complete_steps(plan)
+
+    assert messages == []
+    assert (
+        plan["clusters"]["epic/not-selected"]["action_steps"][0].get("done") is not True
+    )
