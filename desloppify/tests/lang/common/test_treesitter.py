@@ -480,6 +480,35 @@ class TestDepGraphBuilder:
         assert str(pkg_file) in main_imports
         _GO_MODULE_CACHE.clear()
 
+    def test_js_dep_graph_includes_commonjs_require(self, tmp_path):
+        from desloppify.languages._framework.treesitter._imports import (
+            ts_build_dep_graph,
+        )
+        from desloppify.languages._framework.treesitter._specs import JS_SPEC
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        main_file = src_dir / "app.js"
+        dep_file = src_dir / "values.js"
+
+        main_file.write_text(
+            "const values = require('./values');\n"
+            "const _ = require('lodash');\n"
+            "logger('./not-an-import');\n"
+            "module.exports = values;\n"
+        )
+        dep_file.write_text("module.exports = [1, 2, 3];\n")
+
+        graph = ts_build_dep_graph(
+            tmp_path, JS_SPEC, [str(main_file), str(dep_file)]
+        )
+        assert len(graph) == 2
+        main_imports = graph[str(main_file)]["imports"]
+        # The relative require edge is kept.
+        assert str(dep_file) in main_imports
+        # The npm package and the non-require call do not create edges.
+        assert len(main_imports) == 1
+
     def test_no_import_query_returns_empty(self, tmp_path):
         from desloppify.languages._framework.treesitter._imports import (
             ts_build_dep_graph,
