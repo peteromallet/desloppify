@@ -23,6 +23,7 @@ ASSERT_PATTERNS = [
     re.compile(p)
     for p in [
         r"expect\(",
+        r"\bexpectTypeOf(?:\s*<[^;()]+>)?\s*\(",
         r"assert\.",
         r"\bassert(?:[A-Z]\w*)?\(",
         r"\.should\.",

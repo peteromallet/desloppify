@@ -219,6 +219,10 @@ def _subjective_partitions(
     candidates = build_subjective_items(
         state, scoped_issues, threshold=threshold, plan=plan
     )
+    skipped_ids = set((plan or {}).get("skipped", {}).keys())
+    candidates = [
+        item for item in candidates if item.get("id", "") not in skipped_ids
+    ]
     initial = [item for item in candidates if item.get("initial_review")]
     postflight = [item for item in candidates if not item.get("initial_review")]
     return initial, postflight

@@ -78,24 +78,44 @@ def _run_tsc_unused_check(
     )
 
 
+def _find_base_tsconfig(path: Path, project_root: Path) -> Path:
+    """Find the closest TypeScript project config that owns the scan path."""
+    scan_path = path.resolve()
+    root = project_root.resolve()
+
+    for directory in (scan_path, *scan_path.parents):
+        if directory == root.parent:
+            break
+        candidate = directory / "tsconfig.json"
+        if candidate.is_file():
+            return candidate
+        if directory == root:
+            break
+
+    app_config = root / "tsconfig.app.json"
+    return app_config if app_config.is_file() else root / "tsconfig.json"
+
+
 def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     ts_files = find_ts_and_tsx_files(path)
     total_files = len(ts_files)
     if _should_use_deno_fallback(path, ts_files):
         return _detect_unused_fallback(path, category)
 
+    project_root = get_project_root()
+    base_tsconfig = _find_base_tsconfig(path, project_root)
     tmp_tsconfig = {
-        "extends": "./tsconfig.app.json",
+        "extends": f"./{base_tsconfig.name}",
         "compilerOptions": {
             "noUnusedLocals": True,
             "noUnusedParameters": True,
         },
     }
-    tmp_path = get_project_root() / "tsconfig.desloppify.json"
+    tmp_path = base_tsconfig.parent / "tsconfig.desloppify.json"
     try:
         safe_write_text(tmp_path, json.dumps(tmp_tsconfig, indent=2))
         try:
-            result = _run_tsc_unused_check(get_project_root(), tmp_path)
+            result = _run_tsc_unused_check(project_root, tmp_path)
         except (_proc_runtime.SubprocessError, OSError) as exc:
             logger.debug("Falling back to source-based unused detection: %s", exc)
             return _detect_unused_fallback(path, category)
@@ -146,11 +166,19 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
 
 def _categorize_unused(filepath: str, lineno: int) -> str:
     try:
-        p = Path(filepath) if Path(filepath).is_absolute() else get_project_root() / filepath
+        p = (
+            Path(filepath)
+            if Path(filepath).is_absolute()
+            else get_project_root() / filepath
+        )
         lines = p.read_text().splitlines()
         if lineno <= len(lines):
             src_line = lines[lineno - 1].strip()
-            if src_line.startswith("import ") or "from '" in src_line or 'from "' in src_line:
+            if (
+                src_line.startswith("import ")
+                or "from '" in src_line
+                or 'from "' in src_line
+            ):
                 return "imports"
             if src_line.startswith(
                 (
@@ -173,7 +201,9 @@ def _categorize_unused(filepath: str, lineno: int) -> str:
                 if prev.startswith("import "):
                     return "imports"
                 if not prev or (
-                    not prev.startswith("{") and not prev.startswith(",") and "," not in prev
+                    not prev.startswith("{")
+                    and not prev.startswith(",")
+                    and "," not in prev
                 ):
                     break
     except (OSError, UnicodeDecodeError) as exc:
@@ -193,7 +223,9 @@ def cmd_unused(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
     else:
-        print(colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr)
+        print(
+            colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr
+        )
 
     entries, _ = detect_unused(path, args.category)
     if args.json:
