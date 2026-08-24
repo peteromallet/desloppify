@@ -326,6 +326,35 @@ class TestCommentStripping:
 # ── RTL assertion patterns ───────────────────────────────
 
 
+class TestTypeLevelAssertions:
+    def test_vitest_expect_type_of_calls_count_as_assertions(self, tmp_path):
+        content = (
+            "import { expectTypeOf, it } from 'vitest';\n"
+            "it('checks types', () => {\n"
+            "  expectTypeOf(value).toEqualTypeOf<string>();\n"
+            "  expectTypeOf<Readonly<Array<string>>>().toMatchTypeOf(value);\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "types.test.ts", content)
+
+        result = analyze_test_quality({tf}, "typescript")
+
+        assert result[tf]["assertions"] == 2
+        assert result[tf]["quality"] == "adequate"
+
+    def test_imported_expect_type_of_without_call_is_not_an_assertion(self, tmp_path):
+        content = (
+            "import { expectTypeOf, it } from 'vitest';\n"
+            "it('does not check a type', () => {});\n"
+        )
+        tf = _write_file(tmp_path, "types-unused.test.ts", content)
+
+        result = analyze_test_quality({tf}, "typescript")
+
+        assert result[tf]["assertions"] == 0
+        assert result[tf]["quality"] == "assertion_free"
+
+
 class TestRTLPatterns:
     def test_getby_counted(self, tmp_path):
         content = "it(\"renders\", () => {\n  screen.getByText('hello');\n});\n"
