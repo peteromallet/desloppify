@@ -47,6 +47,19 @@ def test_coverage_open_ids_falls_back_to_queue_order_before_first_scan() -> None
     }
 
 
+def test_empty_frozen_scope_does_not_expand_to_new_live_review_issues() -> None:
+    plan = {"epic_triage_meta": {"active_triage_issue_ids": []}}
+    state = {
+        "last_scan": "2026-08-25T00:00:00Z",
+        "issues": {
+            "review::new": {"status": "open", "detector": "review"},
+        },
+    }
+
+    assert snapshot_mod.coverage_open_ids(plan, state) == set()
+    assert snapshot_mod.active_triage_issue_ids(plan, state) == set()
+
+
 def test_manual_clusters_with_issues_and_find_cluster_for_ignore_auto_clusters() -> None:
     plan = {
         "clusters": {

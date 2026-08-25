@@ -87,8 +87,10 @@ def _scoped_plan(plan: dict, triage_issue_ids: set[str] | None) -> dict:
 
     Returns the original plan unchanged when no triage scoping is needed.
     """
-    if not triage_issue_ids:
+    if triage_issue_ids is None:
         return plan
+    if not triage_issue_ids:
+        return {**plan, "clusters": {}}
     active = _active_cluster_names(plan, triage_issue_ids)
     return {
         **plan,

@@ -175,6 +175,23 @@ def test_unclustered_review_issues_ignores_stale_frozen_triage_ids() -> None:
     assert stage_helpers_mod.unclustered_review_issues(plan, state) == ["review::open"]
 
 
+def test_empty_frozen_triage_scope_excludes_legacy_manual_clusters() -> None:
+    plan = {
+        "epic_triage_meta": {"active_triage_issue_ids": []},
+        "clusters": {
+            "legacy": {"auto": False, "issue_ids": ["review::legacy"]},
+        },
+    }
+    state = {
+        "issues": {
+            "review::legacy": {"status": "open", "detector": "review"},
+        },
+    }
+
+    assert stage_helpers_mod.active_triage_issue_scope(plan, state) == set()
+    assert stage_helpers_mod.scoped_manual_clusters_with_issues(plan, state) == []
+
+
 def test_inject_triage_stages_keeps_workflow_prefix_ahead_of_triage() -> None:
     plan = {
         "queue_order": [
