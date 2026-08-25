@@ -11,7 +11,6 @@ from desloppify.languages.rust._fixers import (
     fix_missing_features,
     fix_readme_doctests,
 )
-from desloppify.languages.rust.phases import phase_signature
 from desloppify.languages.rust.detectors.api import (
     detect_error_boundaries,
     detect_future_proofing,
@@ -28,6 +27,7 @@ from desloppify.languages.rust.detectors.safety import (
     detect_drop_safety,
     detect_unsafe_api_usage,
 )
+from desloppify.languages.rust.phases import phase_signature
 
 
 def _write(path: Path, rel_path: str, content: str) -> Path:
@@ -375,6 +375,68 @@ pub struct Config {
         entries, _ = detect_future_proofing(tmp_path)
 
     assert [entry["name"] for entry in entries] == ["struct::Config"]
+
+
+def test_detect_future_proofing_skips_private_package(tmp_path):
+    _write(
+        tmp_path,
+        "Cargo.toml",
+        '[package]\nname = "private-app"\nversion = "0.1.0"\npublish = false\n',
+    )
+    _write(
+        tmp_path,
+        "src/lib.rs",
+        """
+pub struct Config {
+    pub host: String,
+    pub port: u16,
+}
+""",
+    )
+
+    with runtime_scope(RuntimeContext(project_root=tmp_path)):
+        entries, _ = detect_future_proofing(tmp_path)
+
+    assert entries == []
+
+
+def test_detect_future_proofing_honors_private_workspace_package(tmp_path):
+    _write(
+        tmp_path,
+        "Cargo.toml",
+        """
+[workspace]
+members = ["crates/private-api"]
+
+[workspace.package]
+publish = false
+""",
+    )
+    _write(
+        tmp_path,
+        "crates/private-api/Cargo.toml",
+        """
+[package]
+name = "private-api"
+version = "0.1.0"
+publish.workspace = true
+""",
+    )
+    _write(
+        tmp_path,
+        "crates/private-api/src/lib.rs",
+        """
+pub struct Config {
+    pub host: String,
+    pub port: u16,
+}
+""",
+    )
+
+    with runtime_scope(RuntimeContext(project_root=tmp_path)):
+        entries, _ = detect_future_proofing(tmp_path)
+
+    assert entries == []
 
 
 def test_detect_future_proofing_skips_ffi_and_unstable_docs(tmp_path):

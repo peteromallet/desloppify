@@ -377,6 +377,33 @@ def read_library_crate_name(manifest_dir: Path) -> str | None:
     return normalize_crate_name(package.get("name"))
 
 
+def is_publishable_package(manifest_dir: Path) -> bool:
+    """Return whether Cargo permits publishing the package at ``manifest_dir``.
+
+    Public-shape compatibility rules matter for distributable crates, but they
+    create noise and harmful churn for explicitly private workspace packages.
+    Cargo defaults ``package.publish`` to publishable; workspace inheritance is
+    applied only when the member opts in with ``publish.workspace = true``.
+    """
+    data = _read_manifest_data(manifest_dir)
+    package = data.get("package")
+    if not isinstance(package, dict):
+        return False
+
+    publish = package.get("publish")
+    if publish is False:
+        return False
+    if isinstance(publish, dict) and publish.get("workspace") is True:
+        workspace_data = _read_manifest_data(find_workspace_root(manifest_dir))
+        workspace = workspace_data.get("workspace")
+        workspace_package = (
+            workspace.get("package") if isinstance(workspace, dict) else None
+        )
+        if isinstance(workspace_package, dict):
+            return workspace_package.get("publish") is not False
+    return True
+
+
 def _read_manifest_data(manifest_dir: Path) -> dict[str, Any]:
     """Parse a Cargo manifest into a dictionary."""
     data = _load_toml_dict(manifest_dir / "Cargo.toml")
@@ -1057,6 +1084,7 @@ __all__ = [
     "find_rust_files",
     "find_workspace_root",
     "has_public_api_markers",
+    "is_publishable_package",
     "iter_mod_declarations",
     "iter_mod_targets",
     "iter_pub_use_specs",
