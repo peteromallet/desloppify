@@ -31,6 +31,65 @@ mod tests {
     assert rust_cov.has_inline_tests("src/lib.rs", content) is True
 
 
+def test_test_module_directories_are_not_production_logic():
+    content = "pub async fn bootstrap_fixture() {}\n"
+    assert (
+        rust_cov.has_testable_logic(
+            "src/schema/postgres_tests/bootstrap_access.rs",
+            content,
+        )
+        is False
+    )
+
+
+def test_owner_boundary_promotes_only_its_rust_child_modules():
+    direct = {
+        "crates/demo/src/domain.rs",
+        "crates/demo/src/lib.rs",
+    }
+    transitive = {
+        "crates/demo/src/domain/loading.rs",
+        "crates/demo/src/domain/persistence/commit.rs",
+        "crates/demo/src/unrelated.rs",
+    }
+
+    assert rust_cov.promote_owner_covered_files(direct, transitive) == {
+        "crates/demo/src/domain/loading.rs",
+        "crates/demo/src/domain/persistence/commit.rs",
+    }
+
+
+def test_declared_siblings_share_their_tested_rust_owner(tmp_path):
+    _write(
+        tmp_path,
+        "Cargo.toml",
+        '[package]\nname = "demo-cli"\nversion = "0.1.0"\n',
+    )
+    main = _write(
+        tmp_path,
+        "src/main.rs",
+        """
+#[path = "cli/commands.rs"]
+mod commands;
+#[path = "cli/transport.rs"]
+mod transport;
+""",
+    )
+    commands = _write(tmp_path, "src/cli/commands.rs", "pub fn run() {}\n")
+    transport = _write(tmp_path, "src/cli/transport.rs", "pub fn send() {}\n")
+    production_files = {
+        str(main.resolve()),
+        str(commands.resolve()),
+        str(transport.resolve()),
+    }
+
+    assert rust_cov.promote_owner_covered_files(
+        {str(commands.resolve())},
+        {str(transport.resolve())},
+        production_files,
+    ) == {str(transport.resolve())}
+
+
 def test_strip_test_markers_for_rust():
     assert rust_cov.strip_test_markers("test_helper.rs") == "helper.rs"
     assert rust_cov.strip_test_markers("helper_test.rs") == "helper.rs"

@@ -194,6 +194,20 @@ def naming_based_mapping(
     return tested
 
 
+def promote_owner_coverage(
+    directly_tested: set[str],
+    transitively_tested: set[str],
+    production_files: set[str],
+    lang_name: str,
+) -> set[str]:
+    """Promote language-specific child modules covered through an owner boundary."""
+    mod = _load_lang_test_coverage_module(lang_name)
+    promoter = getattr(mod, "promote_owner_covered_files", None)
+    if not callable(promoter):
+        return set()
+    return set(promoter(directly_tested, transitively_tested, production_files))
+
+
 def _strip_test_markers(basename: str, lang_name: str) -> str | None:
     """Strip test naming markers from a basename to derive source basename."""
     mod = _load_lang_test_coverage_module(lang_name)
@@ -277,6 +291,7 @@ __all__ = [
     "get_test_files_for_prod",
     "import_based_mapping",
     "naming_based_mapping",
+    "promote_owner_coverage",
     "transitive_coverage",
     "_build_prod_module_index",
     "_map_test_to_source",

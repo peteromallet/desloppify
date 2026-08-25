@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from desloppify.languages.rust.support import (
     RustProductionFileIndex,
@@ -12,10 +12,13 @@ from desloppify.languages.rust.support import (
     build_workspace_package_index,
     describe_rust_file,
     find_workspace_root,
+    iter_mod_targets,
     iter_use_specs,
     match_production_candidate,
     normalize_rust_body,
+    read_text_or_none,
     resolve_barrel_targets,
+    resolve_mod_declaration,
     resolve_use_spec,
     strip_rust_comments,
 )
@@ -56,9 +59,75 @@ _LOGIC_RE = re.compile(
 def has_testable_logic(filepath: str, content: str) -> bool:
     """Return True when a Rust file contains runtime logic worth testing."""
     path = filepath.replace("\\", "/")
-    if "/tests/" in path or "/examples/" in path or "/benches/" in path:
+    parts = PurePosixPath(path).parts
+    if (
+        any(part == "tests" or part.endswith("_tests") for part in parts)
+        or "/examples/" in path
+        or "/benches/" in path
+    ):
         return False
     return bool(_LOGIC_RE.search(strip_rust_comments(content)))
+
+
+def promote_owner_covered_files(
+    directly_tested: set[str],
+    transitively_tested: set[str],
+    production_files: set[str] | None = None,
+) -> set[str]:
+    """Credit Rust child modules exercised through a tested owner boundary.
+
+    Rust commonly keeps behavioral tests beside ``domain.rs`` while splitting
+    its implementation into ``domain/*.rs``. Requiring duplicate test modules
+    in every child rewards file locality instead of behavioral coverage. Only
+    descendants of a directly tested non-crate-root module are promoted;
+    unrelated dependencies remain transitive coverage gaps.
+    """
+    owner_roots: list[PurePosixPath] = []
+    for owner in directly_tested:
+        path = PurePosixPath(owner.replace("\\", "/"))
+        if path.name in {"lib.rs", "main.rs"}:
+            continue
+        owner_roots.append(path.parent if path.name == "mod.rs" else path.with_suffix(""))
+
+    declared_owner: dict[str, str] = {}
+    direct_declaring_owners: set[str] = set()
+    if production_files:
+        production_index = _production_index_for(frozenset(production_files))
+        for parent in production_files:
+            content = read_text_or_none(parent)
+            if content is None:
+                continue
+            for module_name, declared_path in iter_mod_targets(content):
+                target = resolve_mod_declaration(
+                    module_name,
+                    parent,
+                    production_files,
+                    declared_path=declared_path,
+                    production_index=production_index,
+                )
+                if target:
+                    declared_owner[target] = parent
+        direct_declaring_owners = {
+            owner
+            for target in directly_tested
+            if (owner := declared_owner.get(target)) is not None
+        }
+
+    promoted: set[str] = set()
+    for candidate in transitively_tested:
+        if declared_owner.get(candidate) in direct_declaring_owners:
+            promoted.add(candidate)
+            continue
+        path = PurePosixPath(candidate.replace("\\", "/"))
+        for owner_root in owner_roots:
+            try:
+                relative = path.relative_to(owner_root)
+            except ValueError:
+                continue
+            if relative.parts:
+                promoted.add(candidate)
+                break
+    return promoted
 
 
 def has_inline_tests(_filepath: str, content: str) -> bool:
@@ -196,6 +265,7 @@ __all__ = [
     "is_runtime_entrypoint",
     "map_test_to_source",
     "parse_test_import_specs",
+    "promote_owner_covered_files",
     "resolve_barrel_reexports",
     "resolve_import_spec",
     "strip_comments",

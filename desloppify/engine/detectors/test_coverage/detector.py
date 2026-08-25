@@ -6,6 +6,7 @@ from desloppify.engine.detectors.coverage.mapping import (
     analyze_test_quality,
     import_based_mapping,
     naming_based_mapping,
+    promote_owner_coverage,
     transitive_coverage,
 )
 from desloppify.engine.detectors.coverage.mapping_imports import (
@@ -22,7 +23,6 @@ from .heuristics import _has_inline_tests
 from .issues import (
     _generate_issues,
 )
-
 
 
 def detect_test_coverage(
@@ -73,6 +73,14 @@ def detect_test_coverage(
         directly_tested |= naming_based_mapping(test_files, production_files, lang_name)
 
     transitively_tested = transitive_coverage(directly_tested, graph, production_files)
+    owner_covered = promote_owner_coverage(
+        directly_tested,
+        transitively_tested,
+        production_files,
+        lang_name,
+    )
+    directly_tested |= owner_covered
+    transitively_tested -= owner_covered
     test_quality = analyze_test_quality(test_files, lang_name)
 
     entries = _generate_issues(
