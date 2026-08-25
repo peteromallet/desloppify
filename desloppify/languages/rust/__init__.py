@@ -61,7 +61,10 @@ RUST_ENTRY_PATTERNS = [
 
 RUST_ZONE_RULES = [
     ZoneRule(Zone.PRODUCTION, ["/src/bin/"]),
-    ZoneRule(Zone.TEST, ["/tests/", "_tests.rs", "test_"]),
+    ZoneRule(
+        Zone.TEST,
+        ["/tests/", "*_tests/*", "tests.rs", "test.rs", "_tests.rs", "test_"],
+    ),
     ZoneRule(Zone.SCRIPT, ["/examples/", "/benches/", "/fuzz/", "build.rs"]),
     ZoneRule(Zone.CONFIG, ["Cargo.toml", "Cargo.lock", "/.cargo/"]),
 ] + COMMON_ZONE_RULES
@@ -106,6 +109,7 @@ class RustConfig(LangConfig):
             file_finder=find_rust_files,
             large_threshold=500,
             complexity_threshold=15,
+            boilerplate_min_lines=8,
             default_scan_profile="full",
             detect_markers=["Cargo.toml"],
             external_test_dirs=["tests"],

@@ -61,9 +61,10 @@ def active_triage_issue_scope(
     `None` means "do not scope" for legacy/non-triage flows.
     An empty set means a frozen triage run exists but none of its issues are live.
     """
-    frozen = active_triage_issue_ids(plan, state)
-    if not frozen:
+    meta = plan.get("epic_triage_meta", {})
+    if not isinstance(meta, dict) or "active_triage_issue_ids" not in meta:
         return None
+    frozen = active_triage_issue_ids(plan, state)
     if state is None:
         return frozen
     return live_active_triage_issue_ids(plan, state)

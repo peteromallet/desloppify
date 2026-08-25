@@ -100,6 +100,25 @@ class TestBatchDimensionCoverageNotices:
         assert "Still missing: type_safety" in out
         assert "--path src --dimensions type_safety" in out
 
+    def test_trusted_import_gate_ignores_unselected_dimensions(self):
+        review_scope_mod.enforce_trusted_import_coverage_gate(
+            missing_dims=["type_safety"],
+            selected_dims=["design_coherence"],
+            allow_partial=False,
+            scan_path=".",
+            colorize_fn=lambda text, _tone: text,
+        )
+
+    def test_trusted_import_gate_rejects_a_missing_selected_dimension(self):
+        with pytest.raises(CommandError, match="incomplete selected-dimension coverage"):
+            review_scope_mod.enforce_trusted_import_coverage_gate(
+                missing_dims=["type_safety", "test_strategy"],
+                selected_dims=["type_safety"],
+                allow_partial=False,
+                scan_path=".",
+                colorize_fn=lambda text, _tone: text,
+            )
+
 
 class TestCmdReviewPrepare:
     def test_do_prepare_writes_query_json(

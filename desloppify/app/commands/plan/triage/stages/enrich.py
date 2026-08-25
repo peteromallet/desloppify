@@ -12,6 +12,7 @@ from desloppify.base.output.user_message import print_user_message
 from desloppify.engine.plan_triage import compute_triage_progress
 
 from .records import record_enrich_stage, resolve_reusable_report
+from .helpers import active_triage_issue_scope
 from ..validation.enrich_quality import evaluate_enrich_quality
 from ..validation.enrich_checks import (
     _enrich_report_or_error,
@@ -21,10 +22,7 @@ from ..validation.enrich_checks import (
     _underspecified_steps,
 )
 from ..completion_flow import count_log_activity_since
-from ..review_coverage import (
-    active_triage_issue_ids,
-    open_review_ids_from_state,
-)
+from ..review_coverage import open_review_ids_from_state
 from ..stage_queue import has_triage_in_queue, print_cascade_clear_feedback
 from ..services import TriageServices, default_triage_services
 
@@ -268,7 +266,7 @@ def run_stage_enrich(
     if get_project_root is None:
         from desloppify.base.discovery.paths import get_project_root
 
-    triage_ids = active_triage_issue_ids(plan, state) or None
+    triage_ids = active_triage_issue_scope(plan, state)
     quality_report = evaluate_enrich_quality(
         plan,
         get_project_root(),

@@ -871,6 +871,35 @@ def test_validate_stage_organize_allows_zero_issue_noop(tmp_path: Path) -> None:
     assert msg == ""
 
 
+def test_validate_stage_enrich_ignores_legacy_clusters_for_empty_frozen_scope(
+    tmp_path: Path,
+) -> None:
+    plan = _plan_with_stages(enrich={"report": "x" * 150})
+    plan["epic_triage_meta"]["active_triage_issue_ids"] = []
+    plan["clusters"] = {
+        "legacy": {
+            "issue_ids": ["review::legacy"],
+            "action_steps": [{"title": "underspecified legacy step"}],
+        },
+    }
+    state = {
+        "issues": {
+            "review::legacy": {"status": "open", "detector": "review"},
+        },
+    }
+
+    ok, msg = validate_stage(
+        "enrich",
+        plan,
+        state,
+        tmp_path,
+        triage_input=_make_triage_input(0),
+    )
+
+    assert ok
+    assert msg == ""
+
+
 def test_validate_stage_sense_check_allows_zero_issue_noop(tmp_path: Path) -> None:
     plan = _plan_with_stages(**{"sense-check": {"report": "x" * 150}})
     ok, msg = validate_stage("sense-check", plan, {"issues": {}}, tmp_path, triage_input=_make_triage_input(0))

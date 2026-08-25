@@ -46,7 +46,7 @@ def coverage_open_ids(plan: PlanModel, state: StateModel) -> set[str]:
     """Return the frozen or live open review IDs covered by this triage run."""
     meta = plan.get("epic_triage_meta", {})
     active_ids = _normalized_issue_id_list(meta.get("active_triage_issue_ids"))
-    if active_ids:
+    if "active_triage_issue_ids" in meta:
         return set(active_ids)
     has_completed_scan = bool(state.get("last_scan"))
     review_ids = open_review_ids(state)
@@ -59,7 +59,7 @@ def active_triage_issue_ids(plan: PlanModel, state: StateModel | None = None) ->
     """Return the frozen review issue set for the current triage run."""
     meta = plan.get("epic_triage_meta", {})
     active_ids = _normalized_issue_id_list(meta.get("active_triage_issue_ids"))
-    if active_ids:
+    if "active_triage_issue_ids" in meta:
         return set(active_ids)
     if state is None:
         return set()

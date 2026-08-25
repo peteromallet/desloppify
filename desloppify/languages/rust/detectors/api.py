@@ -10,12 +10,13 @@ from desloppify.languages.rust.support import (
     describe_rust_file,
     find_rust_files,
     has_public_api_markers,
+    is_publishable_package,
     read_text_or_none,
     strip_rust_comments,
 )
 
 from ._shared import (
-    _argument_count,
+    _ENUM_VARIANT_RE,
     _GETTER_RE,
     _INTO_RE,
     _NON_EXHAUSTIVE_RE,
@@ -23,8 +24,9 @@ from ._shared import (
     _PUBLIC_FIELD_RE,
     _USE_STATEMENT_RE,
     _WRAPPER_GETTER_NAMES,
-    _ENUM_VARIANT_RE,
+    _argument_count,
     _entry,
+    _group_files_by_manifest,
     _has_manual_thread_contract,
     _has_public_panic_path,
     _has_python_binding_attrs,
@@ -34,12 +36,11 @@ from ._shared import (
     _is_test_content,
     _iter_public_functions,
     _iter_public_types,
+    _line_number,
     _looks_like_ffi_surface,
     _looks_like_plain_getter,
-    _line_number,
     _should_skip_future_proofing,
     _starts_with_same_crate_import,
-    _group_files_by_manifest,
 )
 
 
@@ -141,7 +142,6 @@ def detect_error_boundaries(path: Path) -> tuple[list[dict], int]:
         context = describe_rust_file(absolute)
         if not _is_library_api_file(context):
             continue
-
         for block in _iter_public_functions(content):
             if _PUBLIC_ERROR_RE.search(block.signature):
                 entries.append(
@@ -183,6 +183,8 @@ def detect_future_proofing(path: Path) -> tuple[list[dict], int]:
             continue
         context = describe_rust_file(absolute)
         if not _is_library_api_file(context):
+            continue
+        if not is_publishable_package(context.manifest_dir):
             continue
 
         for block in _iter_public_types(content):
@@ -227,7 +229,7 @@ def detect_thread_safety_contracts(path: Path) -> tuple[list[dict], int]:
     """Flag manual Send/Sync contracts without visible assertion tests."""
     entries: list[dict] = []
     by_manifest = _group_files_by_manifest(path)
-    for manifest_dir, files in by_manifest.items():
+    for _manifest_dir, files in by_manifest.items():
         corpus_parts: list[str] = []
         for filepath in files:
             absolute = Path(resolve_path(filepath))

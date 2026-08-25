@@ -191,6 +191,49 @@ def test_run_stage_enrich_handles_no_queue_and_records_stage(tmp_path, capsys) -
     assert services.save_calls >= 2
 
 
+def test_run_stage_enrich_ignores_legacy_clusters_for_empty_frozen_scope(
+    tmp_path,
+    capsys,
+) -> None:
+    plan = {
+        "epic_triage_meta": {
+            "active_triage_issue_ids": [],
+            "triage_stages": {
+                "organize": {"confirmed_at": "2026-03-09T00:00:00+00:00"},
+            },
+        },
+        "clusters": {
+            "legacy": {
+                "auto": False,
+                "issue_ids": ["review::legacy"],
+                "action_steps": [{"title": "underspecified legacy step"}],
+            },
+        },
+    }
+    services = _Services(plan=plan)
+
+    def _record_enrich(stages: dict, *, report: str, shallow_count: int, existing_stage, is_reuse):
+        stages["enrich"] = {"stage": "enrich", "report": report}
+        return []
+
+    stage_flow_enrich_mod.run_stage_enrich(
+        argparse.Namespace(report="x" * 120, attestation=None),
+        services=services,
+        deps=stage_flow_enrich_mod.EnrichStageDeps(
+            has_triage_in_queue=lambda _plan: True,
+            require_organize_stage_for_enrich=lambda _stages: True,
+            enrich_report_or_error=lambda report: report,
+            resolve_reusable_report=lambda report, _existing: (report, False),
+            record_enrich_stage=_record_enrich,
+            get_project_root=lambda: tmp_path,
+            print_user_message=lambda _msg: None,
+        ),
+    )
+
+    assert "Enrich stage recorded" in capsys.readouterr().out
+    assert "enrich" in plan["epic_triage_meta"]["triage_stages"]
+
+
 def test_record_sense_stage_and_run_stage_sense_check(tmp_path, capsys, monkeypatch) -> None:
     stages: dict = {}
     monkeypatch.setattr(
@@ -247,3 +290,26 @@ def test_record_sense_stage_and_run_stage_sense_check(tmp_path, capsys, monkeypa
     assert "Sense-check stage recorded" in out
     assert "sense-check" in plan["epic_triage_meta"]["triage_stages"]
     assert services.save_calls >= 2
+
+
+def test_sense_check_evidence_ignores_legacy_clusters_for_empty_frozen_scope() -> None:
+    plan = {
+        "epic_triage_meta": {"active_triage_issue_ids": []},
+        "clusters": {
+            "legacy": {"auto": False, "issue_ids": ["review::legacy"]},
+        },
+    }
+    state = {
+        "issues": {
+            "review::legacy": {"status": "open", "detector": "review"},
+        },
+    }
+
+    blocking, advisory = stage_flow_sense_mod._sense_check_evidence_failures(
+        "No active review issues require source or cluster evidence in this frozen cycle.",
+        plan=plan,
+        state=state,
+    )
+
+    assert blocking == []
+    assert advisory == []

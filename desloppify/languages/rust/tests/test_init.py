@@ -84,6 +84,8 @@ def test_rust_zone_rules_classify_targets():
             "src/lib.rs",
             "src/bin/cli.rs",
             "src/cli_tests.rs",
+            "src/policy/tests.rs",
+            "src/schema/postgres_tests/bootstrap.rs",
             "src/test_cli.rs",
             "src/bin/cli_tests.rs",
             "tests/api.rs",
@@ -99,6 +101,8 @@ def test_rust_zone_rules_classify_targets():
     assert zone_map.get("src/lib.rs") == Zone.PRODUCTION
     assert zone_map.get("src/bin/cli.rs") == Zone.PRODUCTION
     assert zone_map.get("src/cli_tests.rs") == Zone.TEST
+    assert zone_map.get("src/policy/tests.rs") == Zone.TEST
+    assert zone_map.get("src/schema/postgres_tests/bootstrap.rs") == Zone.TEST
     assert zone_map.get("src/test_cli.rs") == Zone.TEST
     assert zone_map.get("src/bin/cli_tests.rs") == Zone.PRODUCTION
     assert zone_map.get("tests/api.rs") == Zone.TEST

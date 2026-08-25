@@ -691,6 +691,36 @@ class TestDetectTestCoverage:
         assert trans_entries[0]["file"] == prod_b
         assert "loc_weight" in trans_entries[0]["detail"]
 
+    def test_rust_owner_boundary_credits_child_modules(self, tmp_path):
+        """Rust domain tests cover implementation children behind that owner."""
+        owner = _write_file(
+            tmp_path,
+            "src/domain.rs",
+            "pub fn run() {}\n" + "// owner\n" * 13,
+        )
+        child = _write_file(
+            tmp_path,
+            "src/domain/loading.rs",
+            "pub fn load() {}\n" + "// child\n" * 13,
+        )
+        test_owner = _write_file(
+            tmp_path,
+            "tests/domain.rs",
+            "#[test]\nfn domain() { assert!(true); assert!(true); assert!(true); }\n",
+        )
+        all_files = [owner, child, test_owner]
+        zone_map = _make_zone_map(all_files)
+        graph = {
+            owner: {"imports": {child}, "importer_count": 1},
+            child: {"imports": set(), "importer_count": 1},
+            test_owner: {"imports": {owner}},
+        }
+
+        entries, potential = detect_test_coverage(graph, zone_map, "rust")
+
+        assert potential > 0
+        assert not any(entry["file"] == child for entry in entries)
+
     def test_untested_critical_high_importers(self, tmp_path):
         """Untested file with >=10 importers → untested_critical (tier 2).
 
@@ -971,4 +1001,3 @@ class TestDetectTestCoverage:
             if e["detail"]["kind"] in ("untested_module", "untested_critical")
         ]
         assert untested == []
-

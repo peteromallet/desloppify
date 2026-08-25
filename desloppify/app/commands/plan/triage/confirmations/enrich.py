@@ -14,8 +14,7 @@ from .shared import (
     finalize_stage_confirmation,
 )
 from ..services import TriageServices, default_triage_services
-from ..stages.helpers import scoped_manual_clusters_with_issues
-from ..review_coverage import active_triage_issue_ids
+from ..stages.helpers import active_triage_issue_scope, scoped_manual_clusters_with_issues
 from ..validation.enrich_quality import (
     EnrichQualityIssue as _ConfirmationCheckIssue,
     EnrichQualityReport as _ConfirmationCheckReport,
@@ -179,7 +178,7 @@ def confirm_enrich(
     checks = _collect_enrich_level_confirmation_checks(
         plan,
         include_stale_issue_ref_warning=True,
-        triage_issue_ids=active_triage_issue_ids(plan, state) or None,
+        triage_issue_ids=active_triage_issue_scope(plan, state),
     )
 
     print(colorize("  Stage: ENRICH — Make steps executor-ready (detail, refs)", "bold"))
@@ -232,7 +231,7 @@ def confirm_sense_check(
     checks = _collect_enrich_level_confirmation_checks(
         plan,
         include_stale_issue_ref_warning=False,
-        triage_issue_ids=active_triage_issue_ids(plan, state) or None,
+        triage_issue_ids=active_triage_issue_scope(plan, state),
     )
 
     print(colorize("  Stage: SENSE-CHECK — Verify accuracy & cross-cluster deps", "bold"))

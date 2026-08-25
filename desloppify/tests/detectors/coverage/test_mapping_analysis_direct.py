@@ -191,3 +191,32 @@ def test_build_test_import_index_drops_ambiguous_basename_aliases() -> None:
     assert "pkg.util" in captures[0]
     assert "services.util" in captures[0]
     assert "util" not in captures[0]
+
+
+def test_build_production_test_index_resolves_each_test_once() -> None:
+    tests = {"tests/by_graph.rs", "tests/by_import.rs", "tests/by_name.rs"}
+    production = {"src/graph.rs", "src/imported.rs", "src/named.rs"}
+    graph = {"tests/by_graph.rs": {"imports": {"src/graph.rs"}}}
+    parsed = {"tests/by_import.rs": {"src/imported.rs"}}
+    calls: list[str] = []
+
+    def map_test(test_path, candidates, _lang_name):
+        calls.append(test_path)
+        assert candidates == production
+        return "src/named.rs" if test_path == "tests/by_name.rs" else None
+
+    index = analysis_mod.build_production_test_index(
+        tests,
+        production,
+        graph,
+        "rust",
+        parsed,
+        map_test_to_source_fn=map_test,
+    )
+
+    assert index == {
+        "src/graph.rs": ["tests/by_graph.rs"],
+        "src/imported.rs": ["tests/by_import.rs"],
+        "src/named.rs": ["tests/by_name.rs"],
+    }
+    assert sorted(calls) == sorted(tests)

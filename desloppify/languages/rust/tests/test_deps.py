@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from desloppify.base.discovery.source import set_exclusions
 from desloppify.base.runtime_state import RuntimeContext, runtime_scope
 from desloppify.languages.rust.detectors.deps import build_dep_graph
+from desloppify.languages.rust.support import build_workspace_package_index
 
 
 def _write(tmp_path: Path, relpath: str, content: str) -> None:
@@ -79,6 +81,28 @@ def test_build_dep_graph_resolves_workspace_local_crates(tmp_path):
         graph = build_dep_graph(tmp_path)
 
     assert "crates/common/src/helpers.rs" in graph["app/src/lib.rs"]["imports"]
+
+
+def test_workspace_package_index_prunes_runtime_exclusions(tmp_path):
+    _write(tmp_path, "Cargo.toml", "[workspace]\nmembers = ['app']\n")
+    _write(
+        tmp_path,
+        "app/Cargo.toml",
+        "[package]\nname = 'app'\nversion = '0.1.0'\n",
+    )
+    _write(
+        tmp_path,
+        "reference/Cargo.toml",
+        "[package]\nname = 'excluded-reference'\nversion = '0.1.0'\n",
+    )
+
+    context = RuntimeContext(project_root=tmp_path)
+    with runtime_scope(context):
+        set_exclusions(["reference"], runtime=context)
+        package_index = build_workspace_package_index(tmp_path)
+
+    assert "app" in package_index
+    assert "excluded_reference" not in package_index
 
 
 def test_build_dep_graph_resolves_workspace_dependency_aliases(tmp_path):
