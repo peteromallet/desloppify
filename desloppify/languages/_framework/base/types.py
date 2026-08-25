@@ -17,9 +17,9 @@ from desloppify.languages._framework.base.lang_config_runtime import (
 from desloppify.languages._framework.base.types_shared import (
     BoundaryRule,
     CoverageStatus,
-    DetectorEntry,
     DetectorCoverageRecord,
     DetectorCoverageStatus,
+    DetectorEntry,
     FixerConfig,
     FixResult,
     LangSecurityResult,
@@ -141,6 +141,7 @@ class LangConfig:
     large_threshold: int = 500
     complexity_threshold: int = 15
     props_threshold: int = 14
+    boilerplate_min_lines: int = 4
     default_scan_profile: str = "full"
 
     # Language-specific persisted settings and per-run runtime options.

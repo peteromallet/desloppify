@@ -11,6 +11,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from fnmatch import fnmatch
 
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.engine.policy.zones_data import (
@@ -78,6 +79,7 @@ class ZoneRule:
       - ".ext"    → basename ends-with (suffix/extension, e.g. ".d.ts", ".test.")
       - "prefix_" → basename starts-with (trailing underscore)
       - "name.py" → basename exact match (has extension, no /)
+      - "*_tests/*" → glob match on the full relative path
       - fallback  → substring on full path
     """
 
@@ -91,6 +93,9 @@ def _match_pattern(rel_path: str, pattern: str) -> bool:
     See ZoneRule docstring for pattern type conventions.
     """
     basename = os.path.basename(rel_path)
+
+    if "*" in pattern:
+        return fnmatch(rel_path, pattern)
 
     # Directory pattern: "/dir/" → substring on padded path
     if pattern.startswith("/") and pattern.endswith("/"):
