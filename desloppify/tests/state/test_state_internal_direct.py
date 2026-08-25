@@ -207,6 +207,35 @@ def test_match_and_resolve_issues_updates_state():
     assert resolved["resolution_attestation"]["scan_verified"] is False
 
 
+def test_fixed_resolution_can_verify_auto_resolved_issue():
+    state = schema_mod.empty_state()
+    issue = filtering_mod.make_issue(
+        "test_coverage",
+        "pkg/a.py",
+        "untested_module",
+        tier=3,
+        confidence="high",
+        summary="untested module",
+    )
+    issue["status"] = "auto_resolved"
+    issue["note"] = "Auto-resolved: absent from latest detector output"
+    state["work_items"] = {issue["id"]: issue}
+
+    resolved_ids = resolution_mod.resolve_issues(
+        state,
+        "test_coverage",
+        status="fixed",
+        note="verified absent after a clean scan",
+        attestation="I verified the detector result",
+    )
+
+    assert resolved_ids == [issue["id"]]
+    resolved = state["work_items"][issue["id"]]
+    assert resolved["status"] == "fixed"
+    assert resolved["note"] == "verified absent after a clean scan"
+    assert resolved["resolution_attestation"]["text"] == "I verified the detector result"
+
+
 def test_open_scope_breakdown_splits_in_scope_and_out_of_scope():
     issues = {
         "smells::src/a.py::x": {
