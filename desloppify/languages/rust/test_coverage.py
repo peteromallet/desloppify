@@ -32,6 +32,7 @@ ASSERT_PATTERNS = [
         r"\bdebug_assert!",
         r"\bmatches!",
         r"\binsta::assert_",
+        r"\bassert_[A-Za-z0-9_]*\s*\(",
     ]
 ]
 MOCK_PATTERNS = [

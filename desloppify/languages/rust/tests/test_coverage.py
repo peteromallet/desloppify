@@ -24,6 +24,12 @@ def test_has_inline_tests_recognizes_cfg_test():
     assert rust_cov.has_inline_tests("src/lib.rs", content) is True
 
 
+def test_assertion_patterns_recognize_delegated_assertion_helpers():
+    line = "assert_active_openapi_surface(&document);"
+
+    assert any(pattern.search(line) for pattern in rust_cov.ASSERT_PATTERNS)
+
+
 def test_map_test_to_source_matches_src_file_and_mod(tmp_path):
     _write(tmp_path, "Cargo.toml", "[package]\nname = 'demo-app'\nversion = '0.1.0'\n")
     test_file = _write(tmp_path, "tests/http.rs", "use demo_app::http::Client;\n")
