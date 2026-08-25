@@ -244,9 +244,42 @@ def build_test_import_index(
     return index
 
 
+def build_production_test_index(
+    test_files: set[str],
+    production_files: set[str],
+    graph: dict,
+    lang_name: str,
+    parsed_imports_by_test: dict[str, set[str]],
+    *,
+    map_test_to_source_fn: Callable[[str, set[str], str], str | None],
+) -> dict[str, list[str]]:
+    """Build production-file -> direct-test mapping in one pass over tests."""
+    related: dict[str, list[str]] = {}
+    for test_path in sorted(test_files):
+        covered = set(parsed_imports_by_test.get(test_path, set()))
+        entry = graph.get(test_path)
+        if entry:
+            covered.update(
+                imported
+                for imported in entry.get("imports", set())
+                if imported in production_files
+            )
+        named_source = map_test_to_source_fn(
+            test_path,
+            production_files,
+            lang_name,
+        )
+        if named_source is not None:
+            covered.add(named_source)
+        for production_file in covered:
+            related.setdefault(production_file, []).append(test_path)
+    return related
+
+
 
 __all__ = [
     "analyze_test_quality",
+    "build_production_test_index",
     "build_test_import_index",
     "get_test_files_for_prod",
     "transitive_coverage",

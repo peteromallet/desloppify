@@ -165,3 +165,44 @@ support = { package = "support-utils", path = "../support" }
         {str(source.resolve())},
     )
     assert resolved == str(source.resolve())
+
+
+def test_import_and_barrel_resolution_share_one_production_index(
+    tmp_path,
+    monkeypatch,
+):
+    _write(
+        tmp_path,
+        "Cargo.toml",
+        '[package]\nname = "demo-app"\nversion = "0.1.0"\nedition = "2021"\n',
+    )
+    barrel = _write(tmp_path, "src/lib.rs", "pub mod service;\npub use service::Service;\n")
+    source = _write(tmp_path, "src/service.rs", "pub struct Service;\n")
+    test_file = _write(tmp_path, "tests/service.rs", "use demo_app::service::Service;\n")
+    production_files = {str(barrel.resolve()), str(source.resolve())}
+
+    rust_cov._production_index_for.cache_clear()
+    original = rust_cov.build_production_file_index
+    calls = 0
+
+    def counting_builder(files):
+        nonlocal calls
+        calls += 1
+        return original(files)
+
+    monkeypatch.setattr(rust_cov, "build_production_file_index", counting_builder)
+
+    resolved = rust_cov.resolve_import_spec(
+        "demo_app::service::Service",
+        str(test_file.resolve()),
+        production_files,
+    )
+    reexports = rust_cov.resolve_barrel_reexports(
+        str(barrel.resolve()),
+        production_files,
+    )
+
+    assert resolved == str(source.resolve())
+    assert str(source.resolve()) in reexports
+    assert calls == 1
+    rust_cov._production_index_for.cache_clear()

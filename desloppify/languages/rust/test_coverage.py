@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import re
 from pathlib import Path
 
 from desloppify.languages.rust.support import (
+    RustProductionFileIndex,
+    build_production_file_index,
     build_workspace_package_index,
     describe_rust_file,
     find_workspace_root,
@@ -78,14 +81,33 @@ def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
     """Resolve Rust `use` specs from test files to production modules."""
-    package_index = build_workspace_package_index(find_workspace_root(test_path))
-    return resolve_use_spec(spec, test_path, production_files, package_index)
+    context = describe_rust_file(test_path)
+    package_index = _workspace_package_index_for(context.manifest_dir)
+    production_index = _production_index_for(frozenset(production_files))
+    return resolve_use_spec(
+        spec,
+        test_path,
+        production_files,
+        package_index,
+        production_index=production_index,
+    )
 
 
 def resolve_barrel_reexports(filepath: str, production_files: set[str]) -> set[str]:
     """Expand Rust facade files such as `lib.rs` to their re-exported modules."""
     package_index = build_workspace_package_index(find_workspace_root(filepath))
-    return resolve_barrel_targets(filepath, production_files, package_index)
+    production_index = _production_index_for(frozenset(production_files))
+    return resolve_barrel_targets(
+        filepath,
+        production_files,
+        package_index,
+        production_index=production_index,
+    )
+
+
+@functools.lru_cache(maxsize=512)
+def _workspace_package_index_for(manifest_dir: Path) -> dict[str, Path]:
+    return build_workspace_package_index(find_workspace_root(manifest_dir))
 
 
 def parse_test_import_specs(content: str) -> list[str]:
@@ -117,8 +139,13 @@ def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
         context.manifest_dir / "src" / f"{stem}.rs",
         context.manifest_dir / "src" / stem / "mod.rs",
     ]
+    production_index = _production_index_for(frozenset(production_set))
     for candidate in candidates:
-        resolved = _candidate_matches(candidate, production_set)
+        resolved = _candidate_matches(
+            candidate,
+            production_set,
+            production_index=production_index,
+        )
         if resolved:
             return resolved
     return None
@@ -138,8 +165,24 @@ def strip_comments(content: str) -> str:
     return strip_rust_comments(content)
 
 
-def _candidate_matches(candidate: Path, production_files: set[str]) -> str | None:
-    return match_production_candidate(candidate, production_files)
+@functools.lru_cache(maxsize=8)
+def _production_index_for(
+    production_files: frozenset[str],
+) -> RustProductionFileIndex:
+    return build_production_file_index(set(production_files))
+
+
+def _candidate_matches(
+    candidate: Path,
+    production_files: set[str],
+    *,
+    production_index: RustProductionFileIndex | None = None,
+) -> str | None:
+    return match_production_candidate(
+        candidate,
+        production_files,
+        production_index=production_index,
+    )
 
 
 __all__ = [

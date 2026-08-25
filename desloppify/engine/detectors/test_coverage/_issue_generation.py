@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from desloppify.engine.detectors.coverage.mapping import (
+    build_production_test_index,
     build_test_import_index,
-    get_test_files_for_prod,
 )
 
 from ._issue_gaps import transitive_coverage_gap_issue, untested_module_issue
@@ -31,6 +31,13 @@ def generate_issues(
         production_scope,
         lang_name,
     )
+    related_tests_by_production = build_production_test_index(
+        test_files,
+        production_scope,
+        graph,
+        lang_name,
+        parsed_imports_by_test,
+    )
 
     for filepath in scorable:
         loc = _file_loc(filepath)
@@ -38,16 +45,9 @@ def generate_issues(
         loc_weight = _loc_weight(loc)
 
         if filepath in directly_tested:
-            related_tests = get_test_files_for_prod(
-                filepath,
-                test_files,
-                graph,
-                lang_name,
-                parsed_imports_by_test=parsed_imports_by_test,
-            )
             issue = select_direct_test_quality_issue(
                 prod_file=filepath,
-                related_tests=related_tests,
+                related_tests=related_tests_by_production.get(filepath, []),
                 test_quality=test_quality,
                 loc_weight=loc_weight,
             )

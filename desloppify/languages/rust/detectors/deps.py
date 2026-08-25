@@ -33,7 +33,7 @@ def build_dep_graph(
 
     file_set = set(graph.keys())
     production_index = build_production_file_index(file_set)
-    package_index = build_workspace_package_index()
+    package_index = build_workspace_package_index(path)
     for filepath in files:
         content = read_text_or_none(filepath)
         if content is None:
