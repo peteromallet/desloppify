@@ -146,3 +146,38 @@ def test_phase_cppcheck_uses_unique_issue_ids_for_same_line(tmp_path, monkeypatc
     assert len(issues) == 2
     assert issues[0]["id"] != issues[1]["id"]
     assert signals == {"cppcheck_issue": 2}
+
+
+def test_information_records_are_classified_non_actionable():
+    assert cxx_phases._is_information_record(
+        {"file": "src/a.cpp", "line": 1,
+         "message": "information: Include file: \"hashmap.hpp\" not found."}
+    )
+    assert cxx_phases._is_information_record(
+        {"file": "src/a.cpp", "line": 1,
+         "message": "information: Active checkers: 173/186"}
+    )
+    assert not cxx_phases._is_information_record(
+        {"file": "src/a.cpp", "line": 1, "message": "error: uninitialized variable"}
+    )
+
+
+def test_compile_db_include_dirs_harvests_matching_entries(tmp_path):
+    import json
+
+    db = tmp_path / "compile_commands.json"
+    db.write_text(json.dumps([
+        {"file": "/repo/src/a.cpp",
+         "command": "c++ -I/repo/include -I /opt/vendor/utils -c src/a.cpp"},
+        {"file": "/repo/src/b.cpp",
+         "arguments": ["c++", "-I/repo/other", "-c", "src/b.cpp"]},
+    ]))
+    dirs = cxx_phases._compile_db_include_dirs(
+        tmp_path, ["src/a.cpp", "src/b.cpp", "include/h.hpp"])
+    assert dirs == ["/opt/vendor/utils", "/repo/include", "/repo/other"]
+
+
+def test_compile_db_include_dirs_missing_or_broken_db(tmp_path):
+    assert cxx_phases._compile_db_include_dirs(tmp_path, ["src/a.cpp"]) == []
+    (tmp_path / "compile_commands.json").write_text("{not json")
+    assert cxx_phases._compile_db_include_dirs(tmp_path, ["src/a.cpp"]) == []
