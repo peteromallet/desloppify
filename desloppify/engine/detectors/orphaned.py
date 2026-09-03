@@ -10,6 +10,15 @@ from pathlib import Path
 from desloppify.base.discovery.file_paths import rel
 from desloppify.base.discovery.file_paths import count_lines
 
+from ._orphaned.nuxt import (
+    NuxtUsageIndex,
+    build_nuxt_usage_index,
+    detect_nuxt_project,
+    is_nuxt_convention_entry,
+    nuxt_auto_import_names,
+    path_within_root,
+)
+
 _DUNDER_ALL_RE = re.compile(r"^__all__\s*[:=]", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
@@ -140,9 +149,11 @@ def detect_orphaned_files(
     alias_resolver = resolved_options.alias_resolver
 
     # Framework convention detection
-    is_nextjs = (
-        resolved_options.detect_frameworks and _detect_nextjs_project(path)
-    )
+    detect_frameworks = resolved_options.detect_frameworks
+    is_nextjs = detect_frameworks and _detect_nextjs_project(path)
+    is_nuxt = detect_frameworks and detect_nuxt_project(path)
+    nuxt_usage: NuxtUsageIndex | None = None
+    scan_root = path.resolve()
 
     dynamic_targets = (
         dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
@@ -165,6 +176,18 @@ def detect_orphaned_files(
 
         if is_nextjs and _is_nextjs_convention_entry(r):
             continue
+
+        if is_nuxt:
+            nuxt_rel = path_within_root(filepath, scan_root, r)
+            if is_nuxt_convention_entry(nuxt_rel):
+                continue
+            auto_import_names = nuxt_auto_import_names(nuxt_rel, filepath)
+            if auto_import_names is not None:
+                if nuxt_usage is None:
+                    nuxt_usage = build_nuxt_usage_index(path)
+                resolved_path = str(Path(filepath).resolve())
+                if nuxt_usage.is_used_outside(auto_import_names, resolved_path):
+                    continue
 
         if dynamic_targets and _is_dynamically_imported(
             filepath, dynamic_targets, alias_resolver
