@@ -125,7 +125,19 @@ _TERMINATOR_TYPES = frozenset({
     "continue_statement", "continue",
     "throw_statement", "throw_expression",
     "raise_statement",
-    "yield_statement",  # Not strictly terminating, but often last in generators
+})
+
+# Nodes emitted when the grammar loses sync with the source. Statement order
+# around them is not trustworthy, so no unreachable-code claim can be made.
+_PARSE_ERROR_NODE_TYPES = frozenset({"ERROR", "MISSING"})
+
+# Declarations that are hoisted, so position relative to a terminator says
+# nothing about reachability. C# local functions are routinely declared at the
+# bottom of a method, after its `return`; JavaScript function declarations are
+# likewise hoisted to the top of their scope.
+_HOISTED_DECLARATION_NODE_TYPES = frozenset({
+    "local_function_statement",  # C#
+    "function_declaration",      # JavaScript
 })
 
 # Node types whose children form a statement sequence.
@@ -180,6 +192,17 @@ def _check_sequence_for_unreachable(block_node, filepath: str, entries: list[dic
 
     for child in children:
         if child.type in _IGNORABLE_NODE_TYPES:
+            continue
+
+        if child.type in _HOISTED_DECLARATION_NODE_TYPES:
+            # Reachable wherever it sits, and it does not make later statements
+            # reachable either, so keep any pending terminator in play.
+            continue
+
+        if child.type in _PARSE_ERROR_NODE_TYPES:
+            # The parse is unreliable from here on, so drop any pending
+            # terminator rather than blaming the next node for being after it.
+            saw_terminator = False
             continue
 
         if saw_terminator:

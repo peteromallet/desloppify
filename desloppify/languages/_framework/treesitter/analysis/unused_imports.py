@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 _ECMASCRIPT_IMPORT_NODE_TYPE = "import_statement"
 
+# Grammars whose imports name a *namespace* rather than a local binding.
+# `using System;` introduces no name that call sites write: they say
+# `Math.Max(...)`, never `System`. Occurrence checking therefore reports every
+# such directive as unused, so it must not run for these languages at all.
+_NAMESPACE_IMPORT_GRAMMARS = frozenset({"csharp"})
+
 # Identifier-ish nodes that represent a reference to a binding in JavaScript/TypeScript.
 # JSX tag names are typically represented as `identifier` in tree-sitter-javascript/tsx,
 # but we include `jsx_identifier` as well for compatibility with grammar variants.
@@ -57,6 +63,9 @@ def detect_unused_imports(
     Returns list of {file, line, name} entries.
     """
     if not spec.import_query:
+        return []
+
+    if spec.grammar in _NAMESPACE_IMPORT_GRAMMARS:
         return []
 
     try:

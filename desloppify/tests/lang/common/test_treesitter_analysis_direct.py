@@ -176,6 +176,75 @@ def test_smells_helpers_detect_empty_handlers_and_unreachable_code() -> None:
     assert entries == [{"file": "src/app.py", "line": 5, "after": "return_statement"}]
 
 
+def test_yield_does_not_make_the_rest_of_a_generator_unreachable() -> None:
+    """`yield return x;` / `yield x` resumes, so the next statement is reachable."""
+    entries: list[dict] = []
+    block = FakeNode(
+        "block",
+        children=[
+            FakeNode("yield_statement"),
+            FakeNode("yield_statement", start_point=(1, 0)),
+            FakeNode("expression_statement", start_point=(2, 0)),
+        ],
+    )
+    smells_mod._check_sequence_for_unreachable(block, "src/gen.cs", entries)
+    assert entries == []
+
+
+def test_hoisted_declarations_after_return_are_not_unreachable() -> None:
+    """C# local functions are routinely declared below a method's `return`."""
+    entries: list[dict] = []
+    block = FakeNode(
+        "block",
+        children=[
+            FakeNode("return_statement"),
+            FakeNode("local_function_statement", start_point=(2, 0)),
+            FakeNode("local_function_statement", start_point=(8, 0)),
+        ],
+    )
+    smells_mod._check_sequence_for_unreachable(block, "src/Contracts.cs", entries)
+    assert entries == []
+
+
+def test_statement_after_hoisted_declaration_is_still_unreachable() -> None:
+    """A hoisted declaration must not launder a real unreachable statement."""
+    entries: list[dict] = []
+    block = FakeNode(
+        "block",
+        children=[
+            FakeNode("return_statement"),
+            FakeNode("local_function_statement", start_point=(2, 0)),
+            FakeNode("expression_statement", start_point=(9, 0)),
+        ],
+    )
+    smells_mod._check_sequence_for_unreachable(block, "src/Contracts.cs", entries)
+    assert entries == [{"file": "src/Contracts.cs", "line": 10, "after": "return_statement"}]
+
+
+def test_parse_errors_do_not_produce_unreachable_findings() -> None:
+    """A grammar that loses sync must not blame the next node for being 'after' a return."""
+    entries: list[dict] = []
+    block = FakeNode(
+        "block",
+        children=[
+            FakeNode("return_statement"),
+            FakeNode("ERROR", start_point=(1, 0)),
+            FakeNode("local_function_statement", start_point=(2, 0)),
+        ],
+    )
+    smells_mod._check_sequence_for_unreachable(block, "src/unsafe.cs", entries)
+    assert entries == []
+
+
+def test_namespace_import_grammars_report_no_unused_imports() -> None:
+    """`using System;` names a namespace, so occurrence checking cannot judge it."""
+    spec = SimpleNamespace(
+        grammar="csharp",
+        import_query="(using_directive (identifier) @path) @import",
+    )
+    assert unused_imports_mod.detect_unused_imports(["src/Policy.cs"], spec) == []
+
+
 def test_unused_import_helpers_and_detection(monkeypatch) -> None:
     as_alias = FakeNode(
         "import_statement",
