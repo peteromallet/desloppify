@@ -144,7 +144,10 @@ def build_dep_graph(
     del roslyn_cmd
     files = find_gdscript_files(path)
     abs_files = [str(Path(resolve_path(filepath)).resolve()) for filepath in files]
-    graph = {filepath: {"imports": set(), "importers": set()} for filepath in abs_files}
+    graph = {
+        filepath: {"imports": set(), "importers": set(), "deferred_imports": set()}
+        for filepath in abs_files
+    }
     if not graph:
         return {}
 
@@ -163,11 +166,13 @@ def build_dep_graph(
             # A duplicate class_name is a Godot error; first declaration wins.
             declared_classes.setdefault(class_match.group("name"), filepath)
 
-    def _add_edge(importer: str, imported: str) -> None:
+    def _add_edge(importer: str, imported: str, *, deferred: bool = False) -> None:
         if imported == importer:
             return
         graph[importer]["imports"].add(imported)
         graph[imported]["importers"].add(importer)
+        if deferred:
+            graph[importer]["deferred_imports"].add(imported)
 
     for filepath, content in contents.items():
         for match in LOAD_PATH_RE.finditer(content):
@@ -197,6 +202,10 @@ def build_dep_graph(
             for name in set(class_usage_re.findall(_strip_noise(content))):
                 declaring_file = declared_classes.get(name)
                 if declaring_file:
-                    _add_edge(filepath, declaring_file)
+                    # A class_name reference cannot form a load-time cycle:
+                    # Godot resolves the registry globally and lazily, so two
+                    # scripts naming each other (a plug and its port, say) is
+                    # ordinary. Only preload/extends can cycle at parse time.
+                    _add_edge(filepath, declaring_file, deferred=True)
 
     return finalize_graph(graph)

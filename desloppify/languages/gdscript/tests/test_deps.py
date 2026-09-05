@@ -95,3 +95,18 @@ def test_scene_attached_and_autoload_scripts_are_dynamic_targets(
 
 def test_no_gdscript_files_yields_empty_graph(tmp_path: Path) -> None:
     assert build_dep_graph(tmp_path) == {}
+
+
+def test_class_name_edges_are_deferred(godot_repo: Path) -> None:
+    """Mutual class_name references must not register as a load-time cycle."""
+    graph = build_dep_graph(godot_repo)
+    key = str((godot_repo / "Game" / "Scripts" / "audio.gd").resolve())
+    emitter = str((godot_repo / "Game" / "Scripts" / "emitter.gd").resolve())
+    assert emitter in graph[key]["deferred_imports"]
+
+
+def test_preload_edges_are_not_deferred(godot_repo: Path) -> None:
+    graph = build_dep_graph(godot_repo)
+    key = str((godot_repo / "Game" / "Scripts" / "preloader.gd").resolve())
+    emitter = str((godot_repo / "Game" / "Scripts" / "emitter.gd").resolve())
+    assert emitter not in graph[key]["deferred_imports"]
