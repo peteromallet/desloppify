@@ -59,6 +59,9 @@ def test_codex_batch_command_on_windows_collapses_cmd_c(monkeypatch, tmp_path: P
     assert "exec" in inner
     assert "--ephemeral" in inner
     assert "review prompt" not in inner
+    assert "approval_policy=never" in inner
+    assert "model_reasoning_effort=low" in inner
+    assert '\\"never\\"' not in inner
     assert inner.endswith(" -")
 
 
@@ -172,10 +175,11 @@ def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_pa
 
     # On Windows with .cmd wrappers, prefix may be ["cmd", "/c", "...codex.cmd"]
     assert any(c.endswith("codex") or "codex" in c for c in command[:3])
-    assert "exec" in command
-    assert "--ephemeral" in command
-    assert f'model_reasoning_effort="high"' in command
-    assert str(tmp_path) in command
+    command_text = " ".join(command)
+    assert "exec" in command_text
+    assert "--ephemeral" in command_text
+    assert "model_reasoning_effort=high" in command_text
+    assert str(tmp_path) in command_text
 
     monkeypatch.setenv("DESLOPPIFY_CODEX_REASONING_EFFORT", "invalid")
     command = codex_batch_mod.codex_batch_command(
@@ -183,7 +187,7 @@ def test_codex_batch_command_uses_sanitized_reasoning_effort(monkeypatch, tmp_pa
         repo_root=tmp_path,
         output_file=tmp_path / "out.json",
     )
-    assert f'model_reasoning_effort="low"' in command
+    assert "model_reasoning_effort=low" in " ".join(command)
 
 
 def test_codex_batch_command_uses_sandbox_env_override(monkeypatch, tmp_path: Path) -> None:

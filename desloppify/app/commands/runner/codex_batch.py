@@ -16,7 +16,9 @@ from desloppify.app.commands.review.runner_process_impl.attempts import (
     resolve_retry_config,
     run_batch_attempt,
 )
-from desloppify.app.commands.review.runner_process_impl.io import extract_payload_from_log
+from desloppify.app.commands.review.runner_process_impl.io import (
+    extract_payload_from_log,
+)
 from desloppify.app.commands.review.runner_process_impl.types import (
     CodexBatchRunnerDeps,
     FollowupScanDeps,
@@ -100,9 +102,9 @@ def codex_batch_command(*, prompt: str, repo_root: Path, output_file: Path) -> l
         "-s",
         sandbox,
         "-c",
-        'approval_policy="never"',
+        "approval_policy=never",
         "-c",
-        f'model_reasoning_effort="{effort}"',
+        f"model_reasoning_effort={effort}",
         "-o",
         str(output_file),
         "-" if _prompt_via_stdin(prompt) else prompt,
