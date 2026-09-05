@@ -90,7 +90,26 @@ def test_scene_attached_and_autoload_scripts_are_dynamic_targets(
     godot_repo: Path,
 ) -> None:
     targets = find_gdscript_dynamic_imports(godot_repo, [".gd"])
-    assert targets == {"Scripts/scene_only", "Scripts/net"}
+    assert {"Scripts/scene_only", "Scripts/net"} <= targets
+
+
+def test_registry_path_literal_is_a_dynamic_target(godot_repo: Path) -> None:
+    """A script path held in a data table and load()ed later is reachable."""
+    (godot_repo / "Game" / "Scripts" / "registry.gd").write_text(
+        "extends Node\n"
+        'const ROWS = [{"script": "res://Scripts/registered.gd"}]\n' + _FILLER
+    )
+    (godot_repo / "Game" / "Scripts" / "registered.gd").write_text(
+        "extends Node\n\nfunc _ready() -> void:\n\tpass\n" + _FILLER
+    )
+    assert "Scripts/registered" in find_gdscript_dynamic_imports(godot_repo, [".gd"])
+
+
+def test_a_path_named_only_in_a_comment_is_not_a_target(godot_repo: Path) -> None:
+    (godot_repo / "Game" / "Scripts" / "mentions.gd").write_text(
+        'extends Node\n# see "res://Scripts/discussed.gd" for why\n' + _FILLER
+    )
+    assert "Scripts/discussed" not in find_gdscript_dynamic_imports(godot_repo, [".gd"])
 
 
 def test_no_gdscript_files_yields_empty_graph(tmp_path: Path) -> None:

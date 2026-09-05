@@ -18,6 +18,7 @@ from desloppify.languages.gdscript.patterns import (
     EXTENDS_RE,
     LOAD_PATH_RE,
     RES_PATH_ATTR_RE,
+    RES_SCRIPT_LITERAL_RE,
     SCENE_EXT_RESOURCE_RE,
     STRING_RE,
 )
@@ -122,16 +123,37 @@ def _autoload_script_paths(project_root: Path) -> set[str]:
     return found
 
 
+def _literal_script_paths(gdscript_files: list[str]) -> set[str]:
+    """Collect ``res://`` script paths held as plain string literals.
+
+    A registry or catalog commonly stores a script path in a data table and
+    ``load()``s it later, which no preload/extends pattern can see.
+    """
+    found: set[str] = set()
+    for filepath in gdscript_files:
+        content = _read_text(filepath)
+        if content is None:
+            continue
+        for match in RES_SCRIPT_LITERAL_RE.finditer(COMMENT_RE.sub("", content)):
+            found.add(match.group("path"))
+    return found
+
+
 def find_gdscript_dynamic_imports(path: Path, extensions: list[str]) -> set[str]:
     """Return script paths reached without an explicit ``preload``/``extends``.
 
-    Godot attaches most scripts through a scene's ``[ext_resource]`` block or a
-    ``project.godot`` autoload entry. Neither appears in GDScript source, so
-    without this every scene script and every singleton looks orphaned.
+    Godot attaches most scripts through a scene's ``[ext_resource]`` block, a
+    ``project.godot`` autoload entry, or a path string held in a registry table.
+    None of those appear as an import in GDScript source, so without this every
+    scene script, singleton and registered model looks orphaned.
     """
     del extensions
     project_root = _find_project_root(Path(path).resolve())
-    targets = _scene_script_paths(project_root) | _autoload_script_paths(project_root)
+    targets = (
+        _scene_script_paths(project_root)
+        | _autoload_script_paths(project_root)
+        | _literal_script_paths(find_gdscript_files(path))
+    )
     # The orphan matcher compares against extension-less repo-relative paths.
     return {target[len("res://") : -len(".gd")] for target in targets}
 

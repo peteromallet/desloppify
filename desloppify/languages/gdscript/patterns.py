@@ -26,6 +26,11 @@ RES_PATH_ATTR_RE = re.compile(r'path\s*=\s*"(?P<path>res://[^"]+\.gd)"')
 AUTOLOAD_SECTION_RE = re.compile(r"(?ms)^\[autoload\]\s*$(?P<body>.*?)(?=^\[|\Z)")
 AUTOLOAD_PATH_RE = re.compile(r"""["']\*?(?P<path>res://[^"']+\.gd)["']""")
 
+# Any bare `res://…gd` literal is a runtime reference: registries and catalogs
+# routinely hold a script path in a data table and `load()` it later, which no
+# preload/extends pattern can see.
+RES_SCRIPT_LITERAL_RE = re.compile(r"""["'](?P<path>res://[^"']+\.gd)["']""")
+
 # Comments and string literals yield false identifier matches when scanning for
 # class_name usage, so strip them first.
 COMMENT_RE = re.compile(r"(?m)#.*$")
@@ -39,6 +44,7 @@ __all__ = [
     "EXTENDS_RE",
     "LOAD_PATH_RE",
     "RES_PATH_ATTR_RE",
+    "RES_SCRIPT_LITERAL_RE",
     "SCENE_EXT_RESOURCE_RE",
     "STRING_RE",
 ]
