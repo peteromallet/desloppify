@@ -151,6 +151,7 @@ def run_coupling_phase(
     build_dep_graph_fn,
     log_fn,
     post_process_fn=None,
+    dynamic_import_finder=None,
 ) -> tuple[list[Issue], dict[str, int]]:
     """Run single-use/cycles/orphaned detectors against a language dep graph."""
     graph = build_dep_graph_fn(path)
@@ -180,6 +181,7 @@ def run_coupling_phase(
         options=OrphanedDetectionOptions(
             extra_entry_patterns=lang.entry_patterns,
             extra_barrel_names=lang.barrel_names,
+            dynamic_import_finder=dynamic_import_finder,
         ),
     )
     orphan_entries = filter_entries(zone_map, orphan_entries, "orphaned")
