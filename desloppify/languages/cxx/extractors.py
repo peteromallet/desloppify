@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from os import PathLike
 import re
+from os import PathLike
 from pathlib import Path
 
 from desloppify.base.discovery.file_paths import resolve_path
@@ -13,7 +13,17 @@ from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.languages.cxx._parse_helpers import find_matching_brace
 
 CXX_SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx")
-CXX_HEADER_EXTENSIONS = (".h", ".hh", ".hpp", ".hxx", ".ipp", ".inl", ".tpp", ".txx", ".tcc")
+CXX_HEADER_EXTENSIONS = (
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+    ".ipp",
+    ".inl",
+    ".tpp",
+    ".txx",
+    ".tcc",
+)
 CXX_EXTENSIONS = [*CXX_SOURCE_EXTENSIONS, *CXX_HEADER_EXTENSIONS]
 CXX_FILE_EXCLUSIONS = [
     "build",
@@ -26,7 +36,7 @@ CXX_FILE_EXCLUSIONS = [
 _FUNC_DECL_RE = re.compile(
     r"(?:(?:^)|(?<=[;}\n]))\s*"
     r"(?:(?:inline|static|constexpr|virtual|explicit|friend|extern|typename)\s+)*"
-    r"(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&:]+)+"
+    r"(?>(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&:]+)+)"
     r"([A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*)\s*"
     r"\(([^()]*)\)\s*"
     r"(?:const\s*)?"
@@ -73,7 +83,9 @@ def _extract_params(param_str: str) -> list[str]:
         token = raw.strip().split("=")[0].strip()
         if not token:
             continue
-        parts = [part for part in token.replace("&", " ").replace("*", " ").split() if part]
+        parts = [
+            part for part in token.replace("&", " ").replace("*", " ").split() if part
+        ]
         if not parts:
             continue
         name = parts[-1]
@@ -132,8 +144,8 @@ def extract_cxx_functions(filepath: str) -> list[FunctionInfo]:
 
 
 def extract_all_cxx_functions(
-    path_or_files: Path | str | PathLike[str] | list[str]
- ) -> list[FunctionInfo]:
+    path_or_files: Path | str | PathLike[str] | list[str],
+) -> list[FunctionInfo]:
     """Extract C/C++ functions from either a scan root or an explicit file list."""
     if isinstance(path_or_files, (Path, str, PathLike)):
         file_list = find_cxx_files(Path(path_or_files))
