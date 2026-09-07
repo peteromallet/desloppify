@@ -83,7 +83,7 @@ def test_next_lint_tool_phase_emits_issues_and_potential(monkeypatch, tmp_path):
     ]
     output = json.dumps(payload)
 
-    def fake_run(argv, *, shell, cwd, capture_output, text, timeout):
+    def fake_run(argv, *, shell, cwd, capture_output, text, timeout, **_kwargs):
         assert shell is False
         assert capture_output is True
         assert text is True
@@ -119,7 +119,7 @@ def test_next_lint_tool_phase_reports_potential_when_clean(monkeypatch, tmp_path
     payload = [{"filePath": "a.js", "messages": []}]
     output = json.dumps(payload)
 
-    def fake_run(argv, *, shell, cwd, capture_output, text, timeout):
+    def fake_run(argv, *, shell, cwd, capture_output, text, timeout, **_kwargs):
         return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
 
     monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
@@ -165,7 +165,7 @@ def test_next_lint_tool_phase_records_coverage_warning_on_tool_missing(monkeypat
 def test_next_lint_tool_phase_records_coverage_warning_on_parser_error(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
-    def fake_run(argv, *, shell, cwd, capture_output, text, timeout):
+    def fake_run(argv, *, shell, cwd, capture_output, text, timeout, **_kwargs):
         return subprocess.CompletedProcess(argv, 0, stdout="not json", stderr="")
 
     monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)

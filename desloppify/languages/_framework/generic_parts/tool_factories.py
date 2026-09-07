@@ -20,6 +20,8 @@ from desloppify.languages._framework.generic_parts.tool_runner import (
     run_tool_result,
 )
 from desloppify.languages._framework.generic_parts.tool_spec import ToolSpec
+from desloppify.base.discovery.file_paths import matches_exclusion
+from desloppify.base.discovery.source import DEFAULT_EXCLUSIONS, get_exclusions
 from desloppify.engine._state.filtering import make_issue
 
 
@@ -57,6 +59,40 @@ def _record_tool_failure_coverage(
             coverage_warnings.append(dict(record))
 
 
+def _drop_excluded_entries(
+    entries: list[dict[str, Any]], run_path: Path
+) -> list[dict[str, Any]]:
+    """Drop tool findings for paths the scan excludes.
+
+    External linters read their own config, not desloppify's, so running one at
+    the project root reports on vendored and excluded directories the user has
+    asked the scan to ignore. Those findings are not actionable and, in a
+    project with a large vendor tree, can outnumber real ones several times
+    over — so they are filtered on the way in rather than scored.
+    """
+    exclusions = tuple(get_exclusions()) + tuple(DEFAULT_EXCLUSIONS)
+    if not exclusions:
+        return entries
+
+    kept: list[dict[str, Any]] = []
+    for entry in entries:
+        raw = str(entry.get("file") or "")
+        if not raw:
+            kept.append(entry)
+            continue
+        candidate = Path(raw)
+        if candidate.is_absolute():
+            try:
+                candidate = candidate.relative_to(run_path)
+            except ValueError:
+                kept.append(entry)
+                continue
+        rel_path = candidate.as_posix()
+        if not any(matches_exclusion(rel_path, pat) for pat in exclusions if pat):
+            kept.append(entry)
+    return kept
+
+
 def make_tool_phase(
     label: str,
     cmd: str,
@@ -81,7 +117,7 @@ def make_tool_phase(
                 result=run_result,
             )
             return [], {}
-        entries = list(run_result.entries)
+        entries = _drop_excluded_entries(list(run_result.entries), run_path)
         meta = run_result.meta if isinstance(run_result.meta, dict) else {}
         meta_potential = meta.get("potential")
         potential = meta_potential if isinstance(meta_potential, int) else 0

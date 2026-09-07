@@ -7,10 +7,12 @@ from ..imports.resolvers_scripts import (
     resolve_bash_source,
     resolve_js_import,
     resolve_lua_import,
+    resolve_luau_import,
     resolve_perl_import,
     resolve_r_import,
     resolve_ruby_import,
 )
+from ..analysis.import_bindings import luau_import_binding
 from ..types import TreeSitterLangSpec
 
 RUBY_SPEC = TreeSitterLangSpec(
@@ -77,6 +79,35 @@ LUA_SPEC = TreeSitterLangSpec(
     resolve_import=resolve_lua_import,
     log_patterns=(
         r"^\s*(?:print\(|io\.write)",
+    ),
+)
+
+LUAU_SPEC = TreeSitterLangSpec(
+    grammar="luau",
+    function_query="""
+        (function_declaration
+            name: [
+                (identifier)
+                (dot_index_expression)
+                (method_index_expression)
+            ] @name
+            body: (block) @body) @func
+    """,
+    comment_node_types=frozenset({"comment"}),
+    string_node_types=frozenset({"string"}),
+    # Constrained to require(): an unqualified "any call with a string
+    # argument" query would treat every print/warn/assert message as an import.
+    import_query="""
+        (function_call
+            name: (identifier) @_fn
+            arguments: (arguments
+                (string) @path)
+            (#eq? @_fn "require")) @import
+    """,
+    resolve_import=resolve_luau_import,
+    import_binding=luau_import_binding,
+    log_patterns=(
+        r"^\s*(?:print\(|warn\(|io\.write)",
     ),
 )
 

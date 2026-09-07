@@ -94,6 +94,22 @@ def detect_unused_imports(
             if not raw_path:
                 continue
 
+            # A spec that can read its own bindings is authoritative: an import
+            # bound to no name cannot be unused-by-name, and one bound to an
+            # alias must be searched for under that alias.
+            binding_name: str | None = None
+            # getattr, not attribute access: the detector accepts any duck-typed
+            # spec, and older ones predate this hook.
+            import_binding = getattr(spec, "import_binding", None)
+            if import_binding is not None:
+                binding = import_binding(import_node)
+                if binding is None:
+                    continue
+                binding_name = binding.name
+                # Search outside the binding statement, not merely outside the
+                # call: the declaration contains the name and would match it.
+                import_node = binding.statement
+
             # Get the import statement's line range so we can exclude it
             # from the search.
             import_start = import_node.start_byte
@@ -103,7 +119,9 @@ def detect_unused_imports(
             rest = source_text[:import_start] + source_text[import_end:]
 
             # Handle grouped/braced imports (e.g. Rust `use crate::module::{A, B}`).
-            grouped_names = _extract_grouped_import_names(raw_path)
+            grouped_names = (
+                [] if binding_name else _extract_grouped_import_names(raw_path)
+            )
             if grouped_names:
                 unused_names = [
                     n for n in grouped_names
@@ -122,7 +140,7 @@ def detect_unused_imports(
             alias_name = _extract_alias(import_node)
 
             # Extract the imported name from the path.
-            name = alias_name or _extract_import_name(raw_path)
+            name = binding_name or alias_name or _extract_import_name(raw_path)
             if not name:
                 continue
 
@@ -497,7 +515,7 @@ def _extract_import_name(import_path: str) -> str:
 
     for ext in (".go", ".rs", ".rb", ".py", ".js", ".jsx", ".ts",
                 ".tsx", ".java", ".kt", ".cs", ".fs", ".ml",
-                ".ex", ".erl", ".hs", ".lua", ".zig", ".pm",
+                ".ex", ".erl", ".hs", ".lua", ".luau", ".zig", ".pm",
                 ".sh", ".pl", ".scala", ".swift", ".php",
                 ".dart", ".mjs", ".cjs", ".h", ".hh", ".hpp"):
         if candidate.endswith(ext):

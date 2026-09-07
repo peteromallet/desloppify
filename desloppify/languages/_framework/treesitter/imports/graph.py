@@ -14,6 +14,14 @@ if TYPE_CHECKING:
     from desloppify.languages._framework.treesitter import TreeSitterLangSpec
 
 
+def _path_key(filepath: str) -> str:
+    """Normalise a path for identity comparison across relative/absolute forms.
+
+    normcase folds case and separators on Windows and is a no-op elsewhere.
+    """
+    return os.path.normcase(os.path.abspath(filepath))
+
+
 def ts_build_dep_graph(
     path: Path,
     spec: TreeSitterLangSpec,
@@ -31,7 +39,12 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+    # Resolvers return whichever path form is natural for them: one derived
+    # from the source file keeps the caller's form, one built from scan_path
+    # comes back absolute. file_list may itself be relative to the process cwd,
+    # so edges are matched on a normalised absolute key and then recorded under
+    # the original file_list spelling that the rest of the graph is keyed by.
+    file_keys = {_path_key(f): f for f in file_list}
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -75,17 +88,19 @@ def ts_build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
+            # A relative result may be relative to the process cwd or to the
+            # scan root depending on what the resolver built it from, so try
+            # both readings before giving up on the edge.
+            target = file_keys.get(_path_key(resolved))
+            if target is None and not os.path.isabs(resolved):
+                target = file_keys.get(_path_key(os.path.join(scan_path, resolved)))
 
             # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            if target is None or target == filepath:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(target)
+            graph[target]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():

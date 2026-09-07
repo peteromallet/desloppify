@@ -777,3 +777,38 @@ class TestDynamicRegistration:
         assert name in DETECTOR_TOOLS
         assert DETECTOR_TOOLS[name]["guidance"] == "auto refresh test"
         unregister_detector(name)
+
+
+def test_tool_phase_drops_findings_in_excluded_paths(monkeypatch, tmp_path):
+    """External linters read their own config, so excluded paths must be filtered."""
+    import subprocess
+
+    from desloppify.base.discovery import source as source_mod
+    from desloppify.languages._framework.generic_parts import (
+        tool_factories as tool_factories_mod,
+    )
+    from desloppify.languages._framework.generic_parts import (
+        tool_runner as tool_runner_mod,
+    )
+
+    output = "\n".join(
+        [
+            "vendor/dep/thing.luau:1:1: warning[x]: vendored noise",
+            "src/Real.luau:2:1: warning[x]: a real finding",
+        ]
+    )
+
+    def fake_run(argv, **_kwargs):
+        return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        tool_factories_mod, "get_exclusions", lambda: ("vendor",), raising=False
+    )
+    monkeypatch.setattr(source_mod, "get_exclusions", lambda **_: ("vendor",))
+
+    phase = tool_factories_mod.make_tool_phase("lint", "lint .", "gnu", "lint_id", 2)
+    issues, _potential = phase.run(tmp_path, SimpleNamespace())
+
+    files = {issue["file"] for issue in issues}
+    assert files == {"src/Real.luau"}

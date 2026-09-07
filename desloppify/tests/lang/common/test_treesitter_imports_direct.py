@@ -7,6 +7,8 @@ import builtins
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import desloppify.languages._framework.treesitter.imports.graph as graph_mod
 import desloppify.languages._framework.treesitter.imports.normalize as normalize_mod
 import desloppify.languages._framework.treesitter.imports.resolver_cache as resolver_cache_mod
@@ -317,3 +319,61 @@ def test_script_import_cache_reset_invalidates_php_lookup_state(tmp_path: Path) 
     scripts_mod.reset_script_import_caches(str(tmp_path))
 
     assert scripts_mod.resolve_php_import("User", "", str(tmp_path)) == str(second_file)
+
+
+def test_dep_graph_matches_edges_across_relative_and_absolute_paths(tmp_path, monkeypatch):
+    """A resolver may return an absolute path while file_list is cwd-relative."""
+    import os
+
+    from desloppify.languages._framework.treesitter import LUAU_SPEC
+    from desloppify.languages._framework.treesitter.imports.graph import (
+        ts_build_dep_graph,
+    )
+    from desloppify.languages._framework.treesitter.imports.resolvers_scripts import (
+        reset_luau_import_caches,
+    )
+
+    pytest.importorskip("tree_sitter_language_pack")
+    reset_luau_import_caches()
+
+    (tmp_path / "Types.luau").write_text("return {}\n", encoding="utf-8")
+    (tmp_path / "Handler.luau").write_text(
+        'local Types = require("./Types")\nreturn Types\n', encoding="utf-8"
+    )
+
+    # Drive the graph from a different cwd with relative file paths, the shape
+    # the language file finders actually produce.
+    monkeypatch.chdir(tmp_path.parent)
+    rel = [
+        os.path.join(tmp_path.name, "Types.luau"),
+        os.path.join(tmp_path.name, "Handler.luau"),
+    ]
+    graph = ts_build_dep_graph(tmp_path, LUAU_SPEC, rel)
+
+    handler = os.path.join(tmp_path.name, "Handler.luau")
+    types = os.path.join(tmp_path.name, "Types.luau")
+    assert graph[handler]["imports"] == {types}
+    assert graph[types]["importers"] == {handler}
+    reset_luau_import_caches()
+
+
+def test_dep_graph_ignores_self_import(tmp_path, monkeypatch):
+    """A module that requires its own path must not become its own importer."""
+    from desloppify.languages._framework.treesitter import LUAU_SPEC
+    from desloppify.languages._framework.treesitter.imports.graph import (
+        ts_build_dep_graph,
+    )
+    from desloppify.languages._framework.treesitter.imports.resolvers_scripts import (
+        reset_luau_import_caches,
+    )
+
+    pytest.importorskip("tree_sitter_language_pack")
+    reset_luau_import_caches()
+
+    module = tmp_path / "Loop.luau"
+    module.write_text('require("./Loop")\nreturn {}\n', encoding="utf-8")
+    graph = ts_build_dep_graph(tmp_path, LUAU_SPEC, [str(module)])
+
+    assert graph[str(module)]["imports"] == set()
+    assert graph[str(module)]["importers"] == set()
+    reset_luau_import_caches()

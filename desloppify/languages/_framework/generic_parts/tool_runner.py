@@ -77,6 +77,12 @@ def run_tool_result(
             cwd=str(path),
             capture_output=True,
             text=True,
+            # Linters emit UTF-8 regardless of platform. Without an explicit
+            # encoding, text mode decodes with the locale codec, which raises
+            # UnicodeDecodeError on a non-ASCII byte (cp1252 on Windows) and
+            # kills the reader thread mid-scan.
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
         )
     except FileNotFoundError as exc:
