@@ -13,6 +13,49 @@ from desloppify.base.discovery.file_paths import count_lines
 _DUNDER_ALL_RE = re.compile(r"^__all__\s*[:=]", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
+# JVM dependency-injection conventions (Spring Boot, etc.)
+# ---------------------------------------------------------------------------
+#
+# In annotation-wired frameworks, classes are instantiated by the container
+# and never appear in a static import graph: a @RestController or @Service has
+# zero importers by design. Treat files carrying these markers as entry points.
+
+_JVM_EXTENSIONS: set[str] = {".kt", ".kts", ".java", ".scala"}
+
+_DI_STEREOTYPE_RE = re.compile(
+    r"@(?:Service|Component|Repository|Controller|RestController|Configuration"
+    r"|ControllerAdvice|RestControllerAdvice|SpringBootApplication"
+    r"|ConfigurationProperties|EnableConfigurationProperties|ComponentScan"
+    r"|KafkaListener|RabbitListener|JmsListener|Scheduled|EventListener"
+    r"|FeignClient|EnableFeignClients|EnableScheduling|EnableAsync|Entity"
+    r"|Table|Embeddable|WebSocketHandler|ServletComponentScan)\b"
+)
+
+# Spring Data repository interfaces are proxied at runtime; nothing imports them.
+_SPRING_DATA_REPO_RE = re.compile(
+    r"\b(?:JpaRepository|CrudRepository|PagingAndSortingRepository"
+    r"|MongoRepository|ReactiveCrudRepository|CassandraRepository"
+    r"|ElasticsearchRepository|Neo4jRepository|JpaSpecificationExecutor)\s*<"
+)
+
+_KOTLIN_MAIN_RE = re.compile(r"^\s*fun\s+main\s*\(", re.MULTILINE)
+_JAVA_MAIN_RE = re.compile(r"public\s+static\s+void\s+main\s*\(")
+
+
+def _has_jvm_entry_marker(filepath: str) -> bool:
+    """Return True if a JVM file is container-wired or a main entry point."""
+    try:
+        text = Path(filepath).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return (
+        _DI_STEREOTYPE_RE.search(text) is not None
+        or _SPRING_DATA_REPO_RE.search(text) is not None
+        or _KOTLIN_MAIN_RE.search(text) is not None
+        or _JAVA_MAIN_RE.search(text) is not None
+    )
+
+# ---------------------------------------------------------------------------
 # Next.js App Router convention files
 # ---------------------------------------------------------------------------
 
@@ -172,6 +215,12 @@ def detect_orphaned_files(
             continue
 
         if _has_dunder_all(filepath):
+            continue
+
+        if (
+            Path(filepath).suffix in _JVM_EXTENSIONS
+            and _has_jvm_entry_marker(filepath)
+        ):
             continue
 
         try:

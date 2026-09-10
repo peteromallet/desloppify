@@ -9,6 +9,7 @@ from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
     _detect_nextjs_project,
     _has_dunder_all,
+    _has_jvm_entry_marker,
     _is_dynamically_imported,
     _is_nextjs_convention_entry,
     detect_orphaned_files,
@@ -614,6 +615,130 @@ class TestIsNextjsConventionEntry:
 
     def test_css_extension_not_matched(self):
         assert _is_nextjs_convention_entry("app/page.css") is False
+
+
+# ===================================================================
+# JVM dependency-injection / entry-point awareness
+# ===================================================================
+
+
+class TestHasJvmEntryMarker:
+    """Unit tests for the _has_jvm_entry_marker helper."""
+
+    def _file(self, tmp_path: Path, name: str, content: str) -> str:
+        f = tmp_path / name
+        f.write_text(content + "\n" + "\n".join(f"line {i}" for i in range(30)))
+        return str(f)
+
+    def test_spring_service_annotation(self, tmp_path):
+        f = self._file(tmp_path, "Foo.kt", "import org.springframework.stereotype.Service\n\n@Service\nclass FooService")
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_rest_controller_annotation(self, tmp_path):
+        f = self._file(tmp_path, "FooController.kt", "@RestController\nclass FooController")
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_configuration_annotation_java(self, tmp_path):
+        f = self._file(tmp_path, "AppConfig.java", "@Configuration\npublic class AppConfig {}")
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_spring_data_repository_interface(self, tmp_path):
+        f = self._file(
+            tmp_path,
+            "JpaFooRepository.kt",
+            "import org.springframework.data.jpa.repository.JpaRepository\n"
+            "interface JpaFooRepository : JpaRepository<Foo, UUID>",
+        )
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_java_extends_crud_repository(self, tmp_path):
+        f = self._file(
+            tmp_path,
+            "FooRepository.java",
+            "public interface FooRepository extends CrudRepository<Foo, Long> {}",
+        )
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_kotlin_main_function(self, tmp_path):
+        f = self._file(tmp_path, "Application.kt", "fun main(args: Array<String>) {\n    runApplication<Foo>(*args)\n}")
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_java_main_method(self, tmp_path):
+        f = self._file(tmp_path, "Main.java", "public static void main(String[] args) {}")
+        assert _has_jvm_entry_marker(f) is True
+
+    def test_plain_jvm_file_not_matched(self, tmp_path):
+        f = self._file(tmp_path, "Demand.kt", "data class Demand(val sku: String)")
+        assert _has_jvm_entry_marker(f) is False
+
+    def test_similar_word_not_matched(self, tmp_path):
+        """@Serviceable or MyRepository usage without generics must not match."""
+        f = self._file(tmp_path, "Note.kt", "// mentions Service and Repository in prose")
+        assert _has_jvm_entry_marker(f) is False
+
+    def test_nonexistent_file(self, tmp_path):
+        assert _has_jvm_entry_marker(str(tmp_path / "nope.kt")) is False
+
+
+class TestJvmOrphanIntegration:
+    """JVM files with container entry markers are not reported as orphaned."""
+
+    def _run(self, tmp_path: Path, graph: dict, extensions: list[str]):
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            return detect_orphaned_files(tmp_path, graph, extensions)
+
+    def test_spring_beans_not_orphaned(self, tmp_path):
+        controller = tmp_path / "FooController.kt"
+        controller.write_text(
+            "@RestController\nclass FooController\n" + "\n".join(f"line {i}" for i in range(30))
+        )
+        service = tmp_path / "FooService.kt"
+        service.write_text(
+            "@Service\nclass FooService\n" + "\n".join(f"line {i}" for i in range(30))
+        )
+        orphan = tmp_path / "orphan.kt"
+        orphan.write_text("class Orphan\n" + "\n".join(f"line {i}" for i in range(30)))
+
+        graph = {
+            str(controller): _graph_entry(importer_count=0),
+            str(service): _graph_entry(importer_count=0),
+            str(orphan): _graph_entry(importer_count=0),
+        }
+
+        entries, total = self._run(tmp_path, graph, [".kt"])
+
+        assert total == 3
+        assert len(entries) == 1
+        assert entries[0]["file"] == str(orphan)
+
+    def test_spring_data_repository_not_orphaned(self, tmp_path):
+        repo = tmp_path / "JpaFooRepository.kt"
+        repo.write_text(
+            "interface JpaFooRepository : JpaRepository<Foo, UUID>\n"
+            + "\n".join(f"line {i}" for i in range(30))
+        )
+
+        graph = {str(repo): _graph_entry(importer_count=0)}
+        entries, total = self._run(tmp_path, graph, [".kt"])
+
+        assert total == 1
+        assert entries == []
+
+    def test_annotation_in_non_jvm_file_still_orphaned(self, tmp_path):
+        """The DI exemption is gated on JVM file extensions."""
+        ts_file = tmp_path / "decorated.ts"
+        ts_file.write_text(
+            "@Component\nexport class Thing {}\n" + "\n".join(f"line {i}" for i in range(30))
+        )
+
+        graph = {str(ts_file): _graph_entry(importer_count=0)}
+        entries, total = self._run(tmp_path, graph, [".ts"])
+
+        assert total == 1
+        assert len(entries) == 1
 
 
 class TestNextjsIntegration:
