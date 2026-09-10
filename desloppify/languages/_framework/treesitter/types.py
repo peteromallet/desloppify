@@ -18,6 +18,12 @@ class TreeSitterLangSpec:
     import_query: str = ""
     resolve_import: Callable[[str, str, str], str | None] | None = None
 
+    # Imported names whose usage a language invokes implicitly by convention
+    # (e.g. Kotlin operator/property-delegation functions). A textual
+    # reference search cannot rule these out, so unused-import detection
+    # must skip them to avoid false positives.
+    implicit_import_names: frozenset[str] = frozenset()
+
     class_query: str = ""
 
     log_patterns: tuple[str, ...] = (

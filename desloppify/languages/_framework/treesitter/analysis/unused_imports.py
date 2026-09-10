@@ -126,6 +126,13 @@ def detect_unused_imports(
             if not name:
                 continue
 
+            # Some languages invoke imported functions implicitly by
+            # convention (e.g. Kotlin property delegation via getValue /
+            # setValue), so the name never appears in the file text even
+            # though the import is live.
+            if name in getattr(spec, "implicit_import_names", frozenset()):
+                continue
+
             # Check if the name appears in the rest of the file.
             if not re.search(r'\b' + re.escape(name) + r'\b', rest):
                 entries.append({

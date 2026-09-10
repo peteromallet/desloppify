@@ -219,3 +219,43 @@ def test_unused_import_helpers_and_detection(monkeypatch) -> None:
     spec = SimpleNamespace(grammar="py", import_query="query")
     entries = unused_imports_mod.detect_unused_imports(["src/app.py"], spec)
     assert entries == [{"file": "src/app.py", "line": 1, "name": "module"}]
+
+
+def test_unused_imports_skip_implicit_convention_names(monkeypatch) -> None:
+    import_node = FakeNode(
+        "import_statement",
+        children=[FakeNode("identifier", text="import"), FakeNode("identifier", text="androidx.compose.runtime.getValue")],
+        start_point=(0, 0),
+        end_point=(0, 46),
+        start_byte=0,
+        end_byte=46,
+    )
+    path_node = FakeNode("identifier", text="androidx.compose.runtime.getValue")
+    monkeypatch.setattr(unused_imports_mod, "_get_parser", lambda _grammar: ("parser", "lang"))
+    monkeypatch.setattr(unused_imports_mod, "_make_query", lambda *_a, **_k: "query")
+    monkeypatch.setattr(
+        unused_imports_mod,
+        "get_or_parse_tree",
+        lambda *_a, **_k: (
+            b"import androidx.compose.runtime.getValue\nval x by state\n",
+            SimpleNamespace(root_node=FakeNode("root")),
+        ),
+    )
+    monkeypatch.setattr(
+        unused_imports_mod,
+        "_run_query",
+        lambda *_a, **_k: [(0, {"import": import_node, "path": path_node})],
+    )
+    monkeypatch.setattr(unused_imports_mod, "_unwrap_node", lambda node: node)
+    monkeypatch.setattr(unused_imports_mod, "_node_text", lambda node: node.text.decode("utf-8"))
+
+    spec = SimpleNamespace(
+        grammar="kotlin",
+        import_query="query",
+        implicit_import_names=frozenset({"getValue"}),
+    )
+    assert unused_imports_mod.detect_unused_imports(["src/App.kt"], spec) == []
+
+    plain_spec = SimpleNamespace(grammar="kotlin", import_query="query")
+    entries = unused_imports_mod.detect_unused_imports(["src/App.kt"], plain_spec)
+    assert entries == [{"file": "src/App.kt", "line": 1, "name": "getValue"}]

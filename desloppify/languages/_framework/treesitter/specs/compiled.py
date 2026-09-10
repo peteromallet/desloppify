@@ -109,6 +109,27 @@ KOTLIN_SPEC = TreeSitterLangSpec(
             (identifier) @path) @import
     """,
     resolve_import=resolve_kotlin_import,
+    # Kotlin convention (operator) functions are invoked implicitly by the
+    # compiler, so an import of one can be live even when its name never
+    # appears in the file text — e.g. `import androidx.compose.runtime.getValue`
+    # is required for `val x by someState` property delegation. Names listed
+    # here are skipped by unused-import detection.
+    implicit_import_names=frozenset({
+        # unary
+        "unaryPlus", "unaryMinus", "not", "inc", "dec",
+        # arithmetic / ranges
+        "plus", "minus", "times", "div", "rem", "mod", "rangeTo", "rangeUntil",
+        # augmented assignments
+        "plusAssign", "minusAssign", "timesAssign", "divAssign", "remAssign",
+        # containment, indexing, invocation, comparison
+        "contains", "get", "set", "invoke", "compareTo", "equals",
+        # iteration (for loops)
+        "iterator", "next", "hasNext",
+        # property delegation
+        "provideDelegate", "getValue", "setValue",
+        # infix bitwise conventions
+        "and", "or", "xor", "shl", "shr", "ushr",
+    }),
     class_query="""
         (class_declaration
             (type_identifier) @name
