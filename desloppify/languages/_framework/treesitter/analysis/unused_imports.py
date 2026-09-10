@@ -414,7 +414,7 @@ def _extract_alias(import_node) -> str | None:
         if child.type == "package_identifier":
             return _node_text(child)
 
-    # "as"-style aliases (Python, PHP, etc.)
+    # "as"-style aliases (Python, PHP, Kotlin, etc.)
     found_as = False
     for child in _iter_children(import_node):
         text = _node_text(child)
@@ -422,7 +422,13 @@ def _extract_alias(import_node) -> str | None:
             found_as = True
             continue
         # The node immediately after "as" is the alias name.
-        if found_as and child.type in ("name", "identifier", "namespace_name"):
+        if found_as and child.type in (
+            "name",
+            "identifier",
+            "namespace_name",
+            "type_identifier",
+            "simple_identifier",
+        ):
             return _node_text(child)
     return None
 
@@ -430,8 +436,9 @@ def _extract_alias(import_node) -> str | None:
 def _iter_children(node):
     """Recursively yield terminal-ish children relevant to alias extraction.
 
-    Only descends into namespace_use_clause / import_clause nodes (the
-    immediate import container) — avoids descending into unrelated subtrees.
+    Only descends into known alias containers (namespace_use_clause,
+    import_clause, import_alias, ...) — avoids descending into unrelated
+    subtrees such as the qualified import path.
     """
     for i in range(node.child_count):
         child = node.children[i]
@@ -441,6 +448,8 @@ def _iter_children(node):
         elif child.type in (
             "namespace_use_clause", "import_clause",
             "namespace_alias", "as_pattern",
+            # Kotlin wraps ``as Foo`` in an import_alias node.
+            "import_alias",
         ):
             yield from _iter_children(child)
 

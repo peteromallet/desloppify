@@ -184,6 +184,49 @@ def test_unused_import_helpers_and_detection(monkeypatch) -> None:
     go_alias = FakeNode("import_spec", children=[FakeNode("package_identifier", text="pkg")])
     assert unused_imports_mod._extract_alias(as_alias) == "alias"
     assert unused_imports_mod._extract_alias(go_alias) == "pkg"
+
+    # Kotlin: `import com.acme.Foo as DomainFoo` nests the alias in an
+    # import_alias node holding an `as` keyword and a type_identifier.
+    kotlin_alias = FakeNode(
+        "import_header",
+        children=[
+            FakeNode("import", text="import"),
+            FakeNode(
+                "identifier",
+                children=[
+                    FakeNode("simple_identifier", text="com"),
+                    FakeNode("simple_identifier", text="acme"),
+                    FakeNode("simple_identifier", text="Foo"),
+                ],
+            ),
+            FakeNode(
+                "import_alias",
+                children=[
+                    FakeNode("as", text="as"),
+                    FakeNode("type_identifier", text="DomainFoo"),
+                ],
+            ),
+        ],
+    )
+    assert unused_imports_mod._extract_alias(kotlin_alias) == "DomainFoo"
+
+    # Kotlin import without an alias: the qualified identifier subtree must
+    # not be mistaken for an alias.
+    kotlin_plain = FakeNode(
+        "import_header",
+        children=[
+            FakeNode("import", text="import"),
+            FakeNode(
+                "identifier",
+                children=[
+                    FakeNode("simple_identifier", text="com"),
+                    FakeNode("simple_identifier", text="acme"),
+                    FakeNode("simple_identifier", text="Foo"),
+                ],
+            ),
+        ],
+    )
+    assert unused_imports_mod._extract_alias(kotlin_plain) is None
     assert unused_imports_mod._extract_import_name("pkg/module") == "module"
     assert unused_imports_mod._extract_import_name("crate::Thing") == "Thing"
     assert unused_imports_mod._extract_import_name("WidgetCatalog.hpp") == "WidgetCatalog"
