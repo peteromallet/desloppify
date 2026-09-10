@@ -233,6 +233,57 @@ def _safe_write_text(path: Path, text: str) -> None:
     path.write_text(text)
 
 
+def test_run_opencode_batch_recovers_fenced_stdout_payload(tmp_path: Path) -> None:
+    log_file = tmp_path / "batch.log"
+    output_file = tmp_path / "out.json"
+    payload = {"assessments": {"logic_clarity": 91}, "issues": []}
+    stdout_text = "\n".join([
+        json.dumps({"type": "text", "part": {"type": "text", "text": "Here is the result:\n```json"}}),
+        json.dumps({"type": "text", "part": {"type": "text", "text": json.dumps(payload)}}),
+        json.dumps({"type": "text", "part": {"type": "text", "text": "```"}}),
+        json.dumps({"type": "step_finish", "part": {"type": "step-finish", "reason": "stop"}}),
+        "",
+    ])
+
+    with patch(
+        "desloppify.app.commands.review.runner_opencode._run_batch_attempt",
+        return_value=(
+            "ATTEMPT 1/1",
+            _ExecutionResult(code=0, stdout_text=stdout_text, stderr_text=""),
+        ),
+    ):
+        code = runner_opencode_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=orchestrator_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=subprocess.run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                sleep_fn=lambda _seconds: None,
+            ),
+        )
+
+    assert code == 0
+    assert json.loads(output_file.read_text()) == payload
+
+
+def test_extract_json_payload_text_handles_fences_and_prose() -> None:
+    fenced = 'Here you go:\n```json\n{"assessments": {"x": 1}, "issues": []}\n```'
+    assert (
+        runner_opencode_mod._extract_json_payload_text(fenced)
+        == '{"assessments": {"x": 1}, "issues": []}'
+    )
+    prose = 'Done. {"assessments": {"x": 2}, "issues": []}'
+    assert (
+        runner_opencode_mod._extract_json_payload_text(prose)
+        == '{"assessments": {"x": 2}, "issues": []}'
+    )
+    assert runner_opencode_mod._extract_json_payload_text("no json here") is None
+
+
 def test_run_opencode_batch_recovers_timeout_from_stdout_payload(tmp_path: Path) -> None:
     log_file = tmp_path / "batch.log"
     output_file = tmp_path / "out.json"

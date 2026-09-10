@@ -51,24 +51,52 @@ def _capture_opencode_stdout_payload(
     )
 
 
+def _extract_json_payload_text(raw_text: str) -> str | None:
+    """Normalise model output into a bare JSON object string, or None.
+
+    Models frequently wrap the requested JSON in markdown fences or prefix it
+    with a sentence of prose.  Strip fences first, then fall back to the
+    outermost ``{...}`` slice of the text.
+    """
+    normalized_text = raw_text.strip()
+    if not normalized_text:
+        return None
+    if normalized_text.startswith("```") and normalized_text.endswith("```"):
+        first_newline = normalized_text.find("\n")
+        if first_newline != -1:
+            normalized_text = normalized_text[first_newline + 1 : -3].strip()
+    try:
+        json.loads(normalized_text)
+        return normalized_text
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    first_brace = normalized_text.find("{")
+    last_brace = normalized_text.rfind("}")
+    if first_brace == -1 or last_brace == -1 or last_brace <= first_brace:
+        return None
+    candidate = normalized_text[first_brace : last_brace + 1]
+    try:
+        json.loads(candidate)
+        return candidate
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
 def _persist_opencode_payload_text(
     *, extracted_text: str, output_file: Path, deps: CodexBatchRunnerDeps
 ) -> str | None:
     """Persist OpenCode output only when it is a complete JSON object."""
-    normalized_text = extracted_text.strip()
-    if not normalized_text:
+    payload_text = _extract_json_payload_text(extracted_text)
+    if payload_text is None:
         return None
-    try:
-        payload = json.loads(normalized_text)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return None
+    payload = json.loads(payload_text)
     if not isinstance(payload, dict):
         return None
     try:
-        deps.safe_write_text_fn(output_file, normalized_text)
+        deps.safe_write_text_fn(output_file, payload_text)
     except (OSError, RuntimeError, TypeError, ValueError):
         return None
-    return normalized_text
+    return payload_text
 
 
 def _build_live_opencode_stdout_observer(
