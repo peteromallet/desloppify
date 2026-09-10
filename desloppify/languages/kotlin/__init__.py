@@ -20,6 +20,7 @@ generic_lang(
     depth="shallow",
     detect_markers=["build.gradle.kts", "build.gradle"],
     treesitter_spec=KOTLIN_SPEC,
+    entry_patterns=["build.gradle.kts", "settings.gradle.kts"],
 )
 
 __all__ = [

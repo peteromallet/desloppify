@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import builtins
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -80,6 +81,56 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
         SimpleNamespace(import_query=None, resolve_import=None),
         file_list,
     ) == {}
+
+
+def test_graph_edges_match_when_file_list_is_relative(monkeypatch, tmp_path: Path) -> None:
+    """Resolvers return absolute paths; finders may return relative ones.
+
+    Regression test: edges must be recorded regardless of path-form mismatch,
+    otherwise every file reports zero importers and mass false orphans appear.
+    """
+    source_file = tmp_path / "src" / "main.kt"
+    dep_file = tmp_path / "src" / "support.kt"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("import com.acme.Support\n", encoding="utf-8")
+    dep_file.write_text("class Support\n", encoding="utf-8")
+
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(
+        graph_mod,
+        "get_or_parse_tree",
+        lambda filepath, *_a, **_k: (b"", SimpleNamespace(root_node=filepath)),
+    )
+    monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
+
+    spec = SimpleNamespace(
+        grammar="kotlin",
+        import_query="imports",
+        resolve_import=lambda _text, *_a: str(dep_file),
+    )
+
+    def run_with(file_list: list[str]) -> dict:
+        matches = {
+            file_list[0]: [(0, {"path": FakeNode("identifier", text="com.acme.Support")})],
+            file_list[1]: [],
+        }
+        monkeypatch.setattr(graph_mod, "_run_query", lambda _query, root: matches[root])
+        return graph_mod.ts_build_dep_graph(tmp_path, spec, file_list)
+
+    # Case 1: paths relative to the scan root (cwd differs from scan root).
+    rel_list = [os.path.relpath(source_file, tmp_path), os.path.relpath(dep_file, tmp_path)]
+    graph = run_with(rel_list)
+    assert graph[rel_list[1]]["importers"] == {rel_list[0]}
+    assert graph[rel_list[0]]["imports"] == {rel_list[1]}
+    assert graph[rel_list[1]]["importer_count"] == 1
+
+    # Case 2: paths relative to the process cwd.
+    monkeypatch.chdir(tmp_path)
+    cwd_list = [os.path.relpath(source_file), os.path.relpath(dep_file)]
+    graph = run_with(cwd_list)
+    assert graph[cwd_list[1]]["importers"] == {cwd_list[0]}
+    assert graph[cwd_list[1]]["importer_count"] == 1
 
 
 def test_import_normalize_helpers_strip_comments_and_log_lines() -> None:

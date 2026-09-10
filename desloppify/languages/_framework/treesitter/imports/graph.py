@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -12,6 +13,97 @@ from ..analysis.extractors import _get_parser, _make_query, _run_query, _unwrap_
 
 if TYPE_CHECKING:
     from desloppify.languages._framework.treesitter import TreeSitterLangSpec
+
+
+def _node_text(node) -> str:
+    raw = node.text
+    return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+
+
+def _top_level_declaration_names(tree, name_query, root_type: str) -> list[str]:
+    """Collect names of declarations sitting directly under the file root."""
+    names: list[str] = []
+    for _pattern_idx, captures in _run_query(name_query, tree.root_node):
+        decl_node = _unwrap_node(captures.get("decl"))
+        name_node = _unwrap_node(captures.get("name"))
+        if decl_node is None or name_node is None:
+            continue
+        parent = decl_node.parent
+        if parent is None or parent.type != root_type:
+            continue
+        name = _node_text(name_node)
+        if len(name) >= 3:
+            names.append(name)
+    return names
+
+
+def _augment_same_package_importers(
+    graph: dict[str, dict[str, Any]],
+    parser,
+    language,
+    spec: TreeSitterLangSpec,
+) -> None:
+    """Register same-package references as importers of the declaring file.
+
+    JVM-style languages let files in one package use each other's top-level
+    declarations without an import statement, so a purely import-based graph
+    reports heavily-used DTOs and helpers as orphaned. References found here
+    are recorded only as *importers* of the declaring file — never as outgoing
+    imports of the referencing file — so cycle detection stays import-based.
+    """
+    package_source = getattr(spec, "package_query", "")
+    name_source = getattr(spec, "top_level_name_query", "")
+    if not package_source or not name_source:
+        return
+
+    package_query = _make_query(language, package_source)
+    name_query = _make_query(language, name_source)
+
+    file_package: dict[str, str] = {}
+    declared_names: dict[str, list[str]] = {}
+    sources: dict[str, str] = {}
+
+    for filepath in graph:
+        cached = get_or_parse_tree(filepath, parser, spec.grammar)
+        if cached is None:
+            continue
+        source, tree = cached
+        sources[filepath] = (
+            source.decode("utf-8", errors="replace")
+            if isinstance(source, bytes)
+            else str(source)
+        )
+
+        package = ""
+        for _pattern_idx, captures in _run_query(package_query, tree.root_node):
+            package_node = _unwrap_node(captures.get("package"))
+            if package_node is not None:
+                package = _node_text(package_node)
+                break
+        file_package[filepath] = package
+        declared_names[filepath] = _top_level_declaration_names(
+            tree, name_query, tree.root_node.type
+        )
+
+    # Group declaring files by package: package -> [(file, names)].
+    by_package: dict[str, list[tuple[str, list[str]]]] = {}
+    for filepath, package in file_package.items():
+        if package:
+            by_package.setdefault(package, []).append((filepath, declared_names[filepath]))
+
+    for package_files in by_package.values():
+        if len(package_files) < 2:
+            continue
+        for declarer, names in package_files:
+            if not names:
+                continue
+            pattern = re.compile(r"\b(" + "|".join(re.escape(n) for n in names) + r")\b")
+            for referencer, _ in package_files:
+                if referencer == declarer:
+                    continue
+                text = sources.get(referencer)
+                if text and pattern.search(text):
+                    graph[declarer]["importers"].add(referencer)
 
 
 def ts_build_dep_graph(
@@ -31,12 +123,26 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
     for f in file_list:
         graph[f] = {"imports": set(), "importers": set()}
+
+    # Map normalized absolute paths back to their file_list key form.
+    # File finders may return relative paths while resolvers typically return
+    # absolute ones; without this mapping no edge would ever match and every
+    # file would report zero importers. Relative entries are interpreted both
+    # against the current working directory and against the scan root.
+    abs_to_key: dict[str, str] = {}
+    for f in file_list:
+        if os.path.isabs(f):
+            abs_to_key[os.path.normpath(f)] = f
+        else:
+            abs_to_key[os.path.normpath(os.path.abspath(f))] = f
+            abs_to_key.setdefault(
+                os.path.normpath(os.path.join(scan_path, f)), f
+            )
 
     for filepath in file_list:
         cached = get_or_parse_tree(filepath, parser, spec.grammar)
@@ -75,17 +181,19 @@ def ts_build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
+            # Normalize to absolute path, then back to the file_list key form.
             if not os.path.isabs(resolved):
                 resolved = os.path.normpath(os.path.join(scan_path, resolved))
+            target = abs_to_key.get(os.path.normpath(resolved))
 
             # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            if target is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(target)
+            graph[target]["importers"].add(filepath)
+
+    _augment_same_package_importers(graph, parser, language, spec)
 
     # Finalize: add counts.
     for data in graph.values():

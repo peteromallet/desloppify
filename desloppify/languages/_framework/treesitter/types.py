@@ -18,6 +18,17 @@ class TreeSitterLangSpec:
     import_query: str = ""
     resolve_import: Callable[[str, str, str], str | None] | None = None
 
+    # Optional query capturing a file's package/namespace as @package.
+    # When set, same-package references (which need no import in JVM-style
+    # languages) are registered as importers of the declaring file.
+    package_query: str = ""
+
+    # Optional query capturing every top-level declaration as @decl with its
+    # @name — used together with package_query for same-package references.
+    # Unlike class_query/function_query it must not require a body, so
+    # body-less declarations (data classes, interfaces) are included.
+    top_level_name_query: str = ""
+
     class_query: str = ""
 
     log_patterns: tuple[str, ...] = (

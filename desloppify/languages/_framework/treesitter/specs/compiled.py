@@ -109,6 +109,18 @@ KOTLIN_SPEC = TreeSitterLangSpec(
             (identifier) @path) @import
     """,
     resolve_import=resolve_kotlin_import,
+    package_query="""
+        (package_header
+            (identifier) @package)
+    """,
+    top_level_name_query="""
+        [
+            (class_declaration (type_identifier) @name)
+            (object_declaration (type_identifier) @name)
+            (function_declaration (simple_identifier) @name)
+            (type_alias (type_identifier) @name)
+        ] @decl
+    """,
     class_query="""
         (class_declaration
             (type_identifier) @name
