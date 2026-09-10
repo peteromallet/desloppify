@@ -320,3 +320,103 @@ def test_run_opencode_batch_restores_valid_output_after_retry_failure(tmp_path: 
     assert len(batch_results) == 1
     assert failures == []
     assert batch_results[0].assessments == first_payload["assessments"]
+
+
+def test_opencode_batch_command_wraps_cmd_shim_and_omits_prompt_from_argv(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner_opencode_mod.sys, "platform", "win32")
+    monkeypatch.setattr(
+        runner_opencode_mod.shutil,
+        "which",
+        lambda _name: r"C:\Users\dev\npm\opencode.CMD",
+    )
+    cmd = runner_opencode_mod.opencode_batch_command(
+        prompt='review "<dim>" & issues', repo_root=tmp_path
+    )
+
+    assert cmd[0].lower() == "cmd"
+    assert cmd[1].lower() == "/c"
+    inner = cmd[2]
+    assert "opencode.CMD run --format json" in inner
+    assert str(tmp_path) in inner
+    assert '<dim>' not in inner
+    assert runner_opencode_mod.opencode_prompt_via_stdin(cmd) is True
+
+
+def test_opencode_batch_command_direct_exe_on_windows_keeps_prompt_in_argv(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner_opencode_mod.sys, "platform", "win32")
+    monkeypatch.setattr(
+        runner_opencode_mod.shutil,
+        "which",
+        lambda _name: r"C:\tools\opencode.exe",
+    )
+    cmd = runner_opencode_mod.opencode_batch_command(prompt="hello", repo_root=tmp_path)
+
+    assert cmd[0] == r"C:\tools\opencode.exe"
+    assert cmd[-1] == "hello"
+    assert runner_opencode_mod.opencode_prompt_via_stdin(cmd) is False
+
+
+def test_opencode_batch_command_non_windows_passes_prompt_in_argv(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner_opencode_mod.sys, "platform", "linux")
+    monkeypatch.setattr(
+        runner_opencode_mod.shutil,
+        "which",
+        lambda _name: "/usr/local/bin/opencode",
+    )
+    cmd = runner_opencode_mod.opencode_batch_command(prompt="hello", repo_root=tmp_path)
+
+    assert cmd[0] == "/usr/local/bin/opencode"
+    assert cmd[-1] == "hello"
+    assert runner_opencode_mod.opencode_prompt_via_stdin(cmd) is False
+
+
+def test_run_opencode_batch_sends_prompt_via_stdin_for_cmd_shim(tmp_path: Path) -> None:
+    log_file = tmp_path / "batch.log"
+    output_file = tmp_path / "out.json"
+    payload = {"assessments": {"logic_clarity": 77}, "issues": []}
+    stdout_text = (
+        json.dumps(
+            {"type": "text", "part": {"type": "text", "text": json.dumps(payload)}}
+        )
+        + "\n"
+    )
+    captured: dict[str, object] = {}
+
+    def _fake_attempt(**kwargs):
+        captured.update(kwargs)
+        return (
+            "ATTEMPT 1/1",
+            _ExecutionResult(code=0, stdout_text=stdout_text, stderr_text=""),
+        )
+
+    with patch(
+        "desloppify.app.commands.review.runner_opencode._run_batch_attempt",
+        side_effect=_fake_attempt,
+    ):
+        code = runner_opencode_mod.run_opencode_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=output_file,
+            log_file=log_file,
+            deps=orchestrator_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=subprocess.run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=_safe_write_text,
+                sleep_fn=lambda _seconds: None,
+            ),
+            opencode_batch_command_fn=lambda **_kwargs: [
+                "cmd",
+                "/c",
+                "opencode.CMD run --format json",
+            ],
+        )
+
+    assert code == 0
+    assert captured["stdin_text"] == "test prompt"

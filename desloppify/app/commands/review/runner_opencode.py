@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from desloppify.app.commands.runner.codex_batch import CodexBatchRunnerDeps
@@ -22,9 +25,33 @@ from .runner_process_impl.io import (
 )
 
 
+def _resolve_opencode_prefix() -> tuple[list[str], bool]:
+    """Resolve the opencode executable, handling Windows .cmd/.bat shims.
+
+    On Windows, npm-installed CLIs are ``.cmd`` batch scripts that cannot be
+    executed directly by ``subprocess`` without ``shell=True``.  They must be
+    run through ``cmd /c``.  Because cmd.exe re-parses its arguments with its
+    own tokeniser (breaking prompts that contain quotes, ``<``, ``>``, or
+    ``&``), prompts are sent through stdin whenever the ``cmd /c`` wrapper is
+    used — the second return value is True in that case.
+
+    ``.exe`` binaries are invoked directly so their argv survives intact.
+    """
+    resolved = shutil.which("opencode")
+    if sys.platform == "win32":
+        if resolved is not None:
+            if resolved.lower().endswith((".cmd", ".bat")):
+                return (["cmd", "/c", resolved], True)
+            return ([resolved], False)
+        # shutil.which missed it — let cmd.exe resolve .cmd/.bat wrappers
+        return (["cmd", "/c", "opencode"], True)
+    return ([resolved or "opencode"], False)
+
+
 def opencode_batch_command(*, prompt: str, repo_root: Path) -> list[str]:
     """Build one ``opencode run`` command line for a batch prompt."""
-    cmd = ["opencode", "run", "--format", "json"]
+    prefix, prompt_via_stdin = _resolve_opencode_prefix()
+    cmd = [*prefix, "run", "--format", "json"]
     model = os.environ.get("DESLOPPIFY_OPENCODE_MODEL", "").strip()
     if model:
         cmd.extend(["--model", model])
@@ -35,8 +62,21 @@ def opencode_batch_command(*, prompt: str, repo_root: Path) -> list[str]:
     if attach_url:
         cmd.extend(["--attach", attach_url])
     cmd.extend(["--dir", str(repo_root)])
-    cmd.append(prompt)
+    if not prompt_via_stdin:
+        cmd.append(prompt)
+    if len(cmd) >= 3 and cmd[0].lower() == "cmd" and cmd[1].lower() == "/c":
+        cmd = ["cmd", "/c", subprocess.list2cmdline(cmd[2:])]
     return cmd
+
+
+def opencode_prompt_via_stdin(cmd: list[str]) -> bool:
+    """Return True when the built command expects the prompt on stdin.
+
+    The prompt is only omitted from argv when the ``cmd /c`` wrapper is in
+    use (see :func:`_resolve_opencode_prefix`), so wrapper presence is the
+    reliable marker.
+    """
+    return len(cmd) >= 3 and cmd[0].lower() == "cmd" and cmd[1].lower() == "/c"
 
 
 def _capture_opencode_stdout_payload(
@@ -122,6 +162,7 @@ def run_opencode_batch(
         prompt=prompt,
         repo_root=repo_root,
     )
+    stdin_text = prompt if opencode_prompt_via_stdin(cmd) else None
     config = _resolve_retry_config(deps)
     log_sections: list[str] = []
     recoverable_output_text: str | None = None
@@ -149,6 +190,7 @@ def run_opencode_batch(
             use_popen=config.use_popen,
             live_log_interval=config.live_log_interval,
             stall_seconds=config.stall_seconds,
+            stdin_text=stdin_text,
             stdout_text_observer=stdout_text_observer,
         )
         early_return = _handle_early_attempt_return(result)
@@ -233,5 +275,6 @@ def run_opencode_batch(
 
 __all__ = [
     "opencode_batch_command",
+    "opencode_prompt_via_stdin",
     "run_opencode_batch",
 ]
