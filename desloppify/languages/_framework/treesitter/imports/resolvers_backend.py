@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .resolver_cache import read_go_module_path
+from .resolver_cache import discover_jvm_source_roots, read_go_module_path
 
 
 def resolve_go_import(import_text: str, source_file: str, scan_path: str) -> str | None:
@@ -56,6 +56,20 @@ def resolve_rust_import(import_text: str, source_file: str, scan_path: str) -> s
     return None
 
 
+def _jvm_candidate_roots(scan_path: str) -> list[str]:
+    """Source roots to try for JVM package resolution: discovered module
+    roots first, then the historical scan-root-relative fallbacks."""
+    roots = list(discover_jvm_source_roots(scan_path))
+    roots += [
+        os.path.join(scan_path, "src", "main", "java"),
+        os.path.join(scan_path, "src"),
+        os.path.join(scan_path, "app", "src", "main", "java"),
+        os.path.join(scan_path, "app", "src", "main", "kotlin"),
+        scan_path,
+    ]
+    return roots
+
+
 def resolve_java_import(import_text: str, source_file: str, scan_path: str) -> str | None:
     """Resolve Java imports to local files."""
     del source_file
@@ -67,8 +81,8 @@ def resolve_java_import(import_text: str, source_file: str, scan_path: str) -> s
         return None
 
     rel_path = os.path.join(*parts[:-1], parts[-1] + ".java")
-    for src_root in ["src/main/java", "src", "app/src/main/java", "."]:
-        candidate = os.path.join(scan_path, src_root, rel_path)
+    for src_root in _jvm_candidate_roots(scan_path):
+        candidate = os.path.join(src_root, rel_path)
         if os.path.isfile(candidate):
             return candidate
     return None
@@ -86,8 +100,8 @@ def resolve_kotlin_import(import_text: str, source_file: str, scan_path: str) ->
 
     for ext in (".kt", ".kts"):
         rel_path = os.path.join(*parts[:-1], parts[-1] + ext)
-        for src_root in ["src/main/kotlin", "src/main/java", "src", "app/src/main/kotlin", "."]:
-            candidate = os.path.join(scan_path, src_root, rel_path)
+        for src_root in _jvm_candidate_roots(scan_path):
+            candidate = os.path.join(src_root, rel_path)
             if os.path.isfile(candidate):
                 return candidate
     return None

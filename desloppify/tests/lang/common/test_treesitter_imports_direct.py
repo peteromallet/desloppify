@@ -317,3 +317,23 @@ def test_script_import_cache_reset_invalidates_php_lookup_state(tmp_path: Path) 
     scripts_mod.reset_script_import_caches(str(tmp_path))
 
     assert scripts_mod.resolve_php_import("User", "", str(tmp_path)) == str(second_file)
+
+
+def test_jvm_resolvers_find_imports_in_gradle_modules(tmp_path: Path) -> None:
+    module_kt = tmp_path / "android" / "src" / "main" / "java" / "com" / "acme" / "Ads.kt"
+    module_kt.parent.mkdir(parents=True)
+    module_kt.write_text("class Ads\n", encoding="utf-8")
+    # build output must not win over real sources
+    generated_dir = tmp_path / "android" / "build" / "generated" / "com" / "acme"
+    generated_dir.mkdir(parents=True)
+    (generated_dir / "Ads.kt").write_text("class Ads\n", encoding="utf-8")
+    module_java = tmp_path / "core" / "src" / "main" / "java" / "com" / "acme" / "Repo.java"
+    module_java.parent.mkdir(parents=True)
+    module_java.write_text("class Repo {}\n", encoding="utf-8")
+
+    # discovery is memoized per scan root, so create every module first
+    assert backend_mod.resolve_kotlin_import("com.acme.Ads", "", str(tmp_path)) == str(module_kt)
+    assert backend_mod.resolve_java_import("com.acme.Repo", "", str(tmp_path)) == str(module_java)
+
+    resolver_cache_mod.reset_import_cache()
+    assert backend_mod.resolve_kotlin_import("com.acme.Ads", "", str(tmp_path)) == str(module_kt)
