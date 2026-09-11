@@ -49,6 +49,7 @@ from desloppify.languages.rust.tools import (
     parse_cargo_errors,
     parse_clippy_messages,
     run_rustdoc_result,
+    scope_cargo_command,
 )
 
 RUST_CLIPPY_LABEL = "cargo clippy"
@@ -266,7 +267,9 @@ def _make_rust_tool_phase(label: str, runner: ToolResultRunner, detector: str, t
 def tool_phase_clippy():
     return _make_rust_tool_phase(
         RUST_CLIPPY_LABEL,
-        lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
+        lambda path: run_tool_result(
+            scope_cargo_command(RUST_CLIPPY_CMD, path), path, parse_clippy_messages
+        ),
         "clippy_warning",
         tier=2,
     )
@@ -275,7 +278,9 @@ def tool_phase_clippy():
 def tool_phase_check():
     return _make_rust_tool_phase(
         RUST_CHECK_LABEL,
-        lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
+        lambda path: run_tool_result(
+            scope_cargo_command(RUST_CHECK_CMD, path), path, parse_cargo_errors
+        ),
         "cargo_error",
         tier=3,
     )

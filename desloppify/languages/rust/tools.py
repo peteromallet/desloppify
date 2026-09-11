@@ -16,7 +16,7 @@ from desloppify.languages._framework.generic_parts.tool_runner import (
     resolve_command_argv,
     run_tool_result,
 )
-from desloppify.languages.rust.support import find_workspace_root
+from desloppify.languages.rust.support import find_manifest_dir, find_workspace_root
 
 CLIPPY_WARNING_CMD = (
     "cargo clippy --workspace --all-targets --all-features --message-format=json "
@@ -594,6 +594,15 @@ def build_rustdoc_warning_cmd(package: str) -> str:
     return RUSTDOC_WARNING_CMD.format(package=shlex.quote(package))
 
 
+def scope_cargo_command(command: str, scan_path: Path) -> str:
+    """Select the enclosing member for a member scan, not every workspace crate."""
+    manifest_dir = find_manifest_dir(scan_path)
+    if manifest_dir is None or manifest_dir.resolve() == find_workspace_root(scan_path):
+        return command
+    manifest = shlex.quote(str((manifest_dir / "Cargo.toml").resolve()))
+    return command.replace("--workspace", f"--manifest-path {manifest}", 1)
+
+
 def _entry_file_exists(entry: dict[str, Any], workspace_root: Path) -> bool:
     file_name = entry.get("file")
     if not isinstance(file_name, str) or not file_name.strip():
@@ -612,12 +621,25 @@ def _filter_existing_rustdoc_entries(
     return [entry for entry in entries if _entry_file_exists(entry, workspace_root)]
 
 
-def _extract_workspace_rustdoc_packages(payload: dict[str, Any]) -> list[str]:
+def _extract_workspace_rustdoc_packages(
+    payload: dict[str, Any], scan_path: Path | None = None
+) -> list[str]:
     workspace_members = set(payload.get("workspace_members") or [])
     packages: list[str] = []
     for package in payload.get("packages") or []:
         if not isinstance(package, dict) or package.get("id") not in workspace_members:
             continue
+        if scan_path is not None:
+            manifest_path = package.get("manifest_path")
+            if not isinstance(manifest_path, str):
+                continue
+            package_root = Path(manifest_path).resolve().parent
+            scan_root = scan_path.resolve()
+            if not (
+                package_root.is_relative_to(scan_root)
+                or scan_root.is_relative_to(package_root)
+            ):
+                continue
         name = package.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
@@ -690,7 +712,7 @@ def _run_cargo_metadata(
             [],
         )
     try:
-        data = json.loads(output)
+        data = json.loads(result.stdout or "")
     except json.JSONDecodeError as exc:
         return (
             ToolRunResult(
@@ -713,7 +735,8 @@ def _run_cargo_metadata(
             ),
             [],
         )
-    return None, _extract_workspace_rustdoc_packages(data)
+    scoped_path = scan_path if scan_path.resolve() != workspace_root else None
+    return None, _extract_workspace_rustdoc_packages(data, scoped_path)
 
 
 def run_rustdoc_result(
