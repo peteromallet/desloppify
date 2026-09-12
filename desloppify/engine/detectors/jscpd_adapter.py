@@ -248,6 +248,9 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                     "4",
                     "--min-tokens",
                     "50",
+                    # Collect findings even when the project's CI threshold is zero.
+                    "--threshold",
+                    "100",
                     "--ignore",
                     _jscpd_ignore_arg(path),
                     "--silent",

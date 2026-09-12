@@ -536,6 +536,33 @@ from desloppify.engine.detectors.jscpd_adapter import (  # noqa: E402
 
 
 class TestJscpdAdapter:
+    def test_collects_duplicates_despite_project_threshold(self, tmp_path):
+        def run_with_threshold(cmd, *, timeout):
+            report_dir = Path(cmd[cmd.index("--output") + 1])
+            report_dir.joinpath("jscpd-report.json").write_text(json.dumps({
+                "duplicates": [{
+                    "fragment": "const value = input.map(transform);",
+                    "lines": 4,
+                    "firstFile": {"name": str(tmp_path / "a.ts"), "start": 1},
+                    "secondFile": {"name": str(tmp_path / "b.ts"), "start": 2},
+                }],
+            }))
+            if "--threshold" not in cmd or cmd[cmd.index("--threshold") + 1] != "100":
+                raise subprocess.CalledProcessError(1, cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["jscpd"],
+        ), patch(
+            "desloppify.engine.detectors.jscpd_adapter._run_jscpd_command",
+            side_effect=run_with_threshold,
+        ):
+            result = detect_with_jscpd(tmp_path)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["distinct_files"] == 2
+
     def test_returns_none_when_jscpd_not_installed(self, tmp_path):
         with patch(
             "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
