@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
-from desloppify.base.discovery.source import find_py_files
 from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.discovery.source import find_py_files
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.languages.python.detectors.smells_ast._dispatch import (
     detect_ast_smells,
 )
 from desloppify.languages.python.detectors.smells_ast._source_detectors import (
+    _resolve_import_target,
     collect_module_constants,
     detect_duplicate_constants,
     detect_star_import_no_all,
     detect_vestigial_parameter,
 )
+
+CallableDefaultProvider = tuple[str, str]
+LoadedSmellSource = tuple[str, str, list[str]]
 
 
 def build_string_line_set(lines: list[str]) -> set[int]:
@@ -208,6 +213,131 @@ def _read_smell_source_file(
         return None
 
 
+def _resolve_smell_source_path(filepath: str) -> Path:
+    """Resolve a smell-scanner filepath against the active project root."""
+    source_path = Path(filepath)
+    if source_path.is_absolute():
+        return source_path.resolve()
+    return (get_project_root() / source_path).resolve()
+
+
+def _is_dataclass_decorator(decorator: ast.expr) -> bool:
+    """Return whether a decorator invokes or refers to ``dataclass``."""
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    return (isinstance(target, ast.Name) and target.id == "dataclass") or (
+        isinstance(target, ast.Attribute) and target.attr == "dataclass"
+    )
+
+
+def _is_callable_annotation(annotation: ast.expr) -> bool:
+    """Return whether an annotation directly names ``Callable``."""
+    target = annotation.value if isinstance(annotation, ast.Subscript) else annotation
+    return (isinstance(target, ast.Name) and target.id == "Callable") or (
+        isinstance(target, ast.Attribute) and target.attr == "Callable"
+    )
+
+
+def _top_level_function_names(tree: ast.Module) -> set[str]:
+    """Return function names that can be directly imported from a module."""
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def _imported_callable_provider_bindings(
+    tree: ast.Module,
+    *,
+    source_path: Path,
+    scan_root: Path,
+    source_filepaths: dict[Path, str],
+    function_names_by_file: dict[str, set[str]],
+) -> dict[str, CallableDefaultProvider]:
+    """Map direct local-project function imports to their defining files."""
+    bindings: dict[str, CallableDefaultProvider] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        target = _resolve_import_target(
+            node.module or "",
+            node.level,
+            source_path.parent,
+            scan_root,
+        )
+        if target is None:
+            continue
+        target_filepath = source_filepaths.get(target.resolve())
+        if target_filepath is None:
+            continue
+        target_function_names = function_names_by_file[target_filepath]
+        for alias in node.names:
+            if alias.name == "*" or alias.name not in target_function_names:
+                continue
+            bindings[alias.asname or alias.name] = (target_filepath, alias.name)
+    return bindings
+
+
+def _collect_callable_default_return_none_providers(
+    loaded_files: list[LoadedSmellSource],
+    project_path: Path,
+) -> frozenset[CallableDefaultProvider]:
+    """Find exact provider functions used as typed dataclass callable defaults.
+
+    This deliberately recognizes only direct ``Name`` defaults on top-level
+    dataclasses and resolvable local-project imports.  It is evidence of a
+    provider contract, not a general exemption for exports or imports.
+    """
+    parsed_files: dict[str, ast.Module] = {}
+    source_filepaths: dict[Path, str] = {}
+    for filepath, content, _lines in loaded_files:
+        try:
+            parsed_files[filepath] = ast.parse(content, filename=filepath)
+        except SyntaxError:
+            continue
+        source_filepaths[_resolve_smell_source_path(filepath)] = filepath
+
+    function_names_by_file = {
+        filepath: _top_level_function_names(tree)
+        for filepath, tree in parsed_files.items()
+    }
+    scan_root = _resolve_smell_source_path(str(project_path))
+    imported_bindings_by_file = {
+        filepath: _imported_callable_provider_bindings(
+            tree,
+            source_path=_resolve_smell_source_path(filepath),
+            scan_root=scan_root,
+            source_filepaths=source_filepaths,
+            function_names_by_file=function_names_by_file,
+        )
+        for filepath, tree in parsed_files.items()
+    }
+
+    providers: set[CallableDefaultProvider] = set()
+    for filepath, tree in parsed_files.items():
+        local_function_names = function_names_by_file[filepath]
+        imported_bindings = imported_bindings_by_file[filepath]
+        for class_node in tree.body:
+            if not isinstance(class_node, ast.ClassDef) or not any(
+                _is_dataclass_decorator(decorator)
+                for decorator in class_node.decorator_list
+            ):
+                continue
+            for field in class_node.body:
+                if not (
+                    isinstance(field, ast.AnnAssign)
+                    and isinstance(field.value, ast.Name)
+                    and _is_callable_annotation(field.annotation)
+                ):
+                    continue
+                provider_name = field.value.id
+                if provider_name in imported_bindings:
+                    providers.add(imported_bindings[provider_name])
+                elif provider_name in local_function_names:
+                    providers.add((filepath, provider_name))
+    return frozenset(providers)
+
+
 def _scan_file_patterns(
     *,
     filepath: str,
@@ -249,11 +379,17 @@ def _run_semantic_detectors(
     project_path: Path,
     smell_counts: dict[str, list[dict]],
     constants_by_key: dict[tuple[str, str], list[tuple[str, int]]],
+    return_none_callable_default_providers: frozenset[CallableDefaultProvider],
 ) -> None:
     """Run semantic smell detectors for one file."""
     _detect_empty_except(filepath, lines, smell_counts)
     _detect_swallowed_errors(filepath, lines, smell_counts)
-    detect_ast_smells(filepath, content, smell_counts)
+    detect_ast_smells(
+        filepath,
+        content,
+        smell_counts,
+        return_none_callable_default_providers=return_none_callable_default_providers,
+    )
     detect_star_import_no_all(filepath, content, project_path, smell_counts)
     detect_vestigial_parameter(filepath, content, lines, smell_counts)
     collect_module_constants(filepath, content, constants_by_key)
@@ -299,6 +435,7 @@ def detect_smells_runtime(
     files = find_py_files(path)
     constants_by_key: dict[tuple[str, str], list[tuple[str, int]]] = {}
 
+    loaded_files: list[LoadedSmellSource] = []
     for filepath in files:
         if is_test_path_fn(filepath):
             continue
@@ -306,6 +443,12 @@ def detect_smells_runtime(
         if loaded is None:
             continue
         content, lines = loaded
+        loaded_files.append((filepath, content, lines))
+
+    return_none_callable_default_providers = (
+        _collect_callable_default_return_none_providers(loaded_files, path)
+    )
+    for filepath, content, lines in loaded_files:
         _scan_file_patterns(
             filepath=filepath,
             lines=lines,
@@ -319,6 +462,9 @@ def detect_smells_runtime(
             project_path=path,
             smell_counts=smell_counts,
             constants_by_key=constants_by_key,
+            return_none_callable_default_providers=(
+                return_none_callable_default_providers
+            ),
         )
 
     detect_duplicate_constants(constants_by_key, smell_counts)

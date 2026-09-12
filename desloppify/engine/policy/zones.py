@@ -293,16 +293,26 @@ def adjust_potential(zone_map, total: int) -> int:
     return max(total - zone_map.non_production_count(), 0)
 
 
-def should_skip_issue(zone_map, filepath: str, detector: str) -> bool:
-    """Check if a issue should be skipped based on zone policy.
+def should_skip_detector_in_zone(zone: object, detector: object) -> bool:
+    """Return whether a detector is excluded by an issue's stored zone.
 
-    Returns True if the file's zone policy says to skip this detector.
+    Queue consumers only have the zone stamped onto an issue, not the source
+    ``FileZoneMap`` used during scanning.  Keep their policy decision aligned
+    with phase-time filtering rather than treating every non-production zone
+    as non-actionable.
     """
+    normalized_zone = normalize_zone(zone)
+    if normalized_zone is None or not isinstance(detector, str):
+        return False
+    policy = ZONE_POLICIES.get(normalized_zone)
+    return policy is not None and detector in policy.skip_detectors
+
+
+def should_skip_issue(zone_map, filepath: str, detector: str) -> bool:
+    """Check whether a file's zone policy skips its detector."""
     if zone_map is None:
         return False
-    zone = zone_map.get(filepath)
-    policy = ZONE_POLICIES.get(zone)
-    return policy is not None and detector in policy.skip_detectors
+    return should_skip_detector_in_zone(zone_map.get(filepath), detector)
 
 
 def filter_entries(

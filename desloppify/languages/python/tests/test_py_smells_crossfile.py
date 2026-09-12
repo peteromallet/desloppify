@@ -5,6 +5,9 @@ from pathlib import Path
 
 from desloppify.languages.python.detectors import smells as smells_mod
 from desloppify.languages.python.detectors.smells import detect_smells
+from desloppify.languages.python.detectors.smells_ast._source_detectors import (
+    collect_module_constants,
+)
 
 # ── Helpers ────────────────────────────────────────────────
 
@@ -105,11 +108,186 @@ class TestDuplicateConstants:
         entries, _ = detect_smells(tmp_path)
         assert "duplicate_constant" in _smell_ids(entries)
 
+    def test_versioned_migration_constant_is_ignored(self, tmp_path):
+        migration_dir = tmp_path / "migrations" / "versions"
+        migration_dir.mkdir(parents=True)
+        (migration_dir / "a1_add_constraint.py").write_text("SHA256_CHECK = 'sql'\n")
+        (tmp_path / "model.py").write_text("SHA256_CHECK = 'sql'\n")
+
+        entries, _ = detect_smells(tmp_path)
+
+        assert "duplicate_constant" not in _smell_ids(entries)
+
+    def test_versioned_migration_paths_are_separator_independent(self):
+        for filepath in (
+            "migrations/versions/a1.py",
+            r"migrations\versions\a1.py",
+            "alembic/versions/a1.py",
+            r"alembic\versions\a1.py",
+        ):
+            constants_by_key = {}
+
+            collect_module_constants(
+                filepath, "SHA256_CHECK = 'sql'\n", constants_by_key
+            )
+
+            assert constants_by_key == {}
+
     def test_different_constants_ok(self, tmp_path):
         (tmp_path / "a.py").write_text("MAX_RETRIES = 3\n")
         (tmp_path / "b.py").write_text("MAX_RETRIES = 5\n")
         entries, _ = detect_smells(tmp_path)
         assert "duplicate_constant" not in _smell_ids(entries)
+
+
+class TestCallableDefaultProviders:
+    def test_local_callable_dataclass_default_allows_return_none_provider(
+        self, tmp_path
+    ):
+        path = _write_py(
+            tmp_path,
+            '''\
+            from dataclasses import dataclass
+            from typing import Callable
+
+
+            def no_current_tenant_id() -> None:
+                """Fail closed when no tenant context is injected."""
+                return None
+
+
+            @dataclass(frozen=True)
+            class Dependencies:
+                current_tenant_id_fn: Callable[[], int | None] = no_current_tenant_id
+            ''',
+            "providers.py",
+        )
+
+        entries, _ = detect_smells(path)
+
+        assert "dead_function" not in _smell_ids(entries)
+
+    def test_imported_callable_dataclass_default_allows_return_none_provider(
+        self, tmp_path
+    ):
+        package = tmp_path / "package"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "providers.py").write_text(
+            textwrap.dedent(
+                '''\
+            def no_current_tenant_id() -> None:
+                """Fail closed when no tenant context is injected."""
+                return None
+                '''
+            )
+        )
+        (package / "consumer.py").write_text(
+            textwrap.dedent(
+                """\
+            from dataclasses import dataclass
+            from typing import Callable
+
+            from .providers import no_current_tenant_id
+
+
+            @dataclass(frozen=True)
+            class Dependencies:
+                current_tenant_id_fn: Callable[[], int | None] = no_current_tenant_id
+                """
+            )
+        )
+
+        entries, _ = detect_smells(tmp_path)
+
+        assert "dead_function" not in _smell_ids(entries)
+
+    def test_callable_dataclass_default_keeps_pass_and_bare_return_providers_flagged(
+        self, tmp_path
+    ):
+        package = tmp_path / "package"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "providers.py").write_text(
+            textwrap.dedent(
+                """\
+            def no_current_tenant_id() -> None:
+                pass
+
+
+            def no_current_tenant_id_bare() -> None:
+                return
+                """
+            )
+        )
+        (package / "consumer.py").write_text(
+            textwrap.dedent(
+                """\
+            from dataclasses import dataclass
+            from typing import Callable
+
+            from .providers import no_current_tenant_id
+
+
+            @dataclass(frozen=True)
+            class Dependencies:
+                current_tenant_id_fn: Callable[[], int | None] = no_current_tenant_id
+                current_tenant_id_bare_fn: Callable[[], int | None] = no_current_tenant_id_bare
+                """
+            )
+        )
+
+        entries, _ = detect_smells(tmp_path)
+        dead_function = _find_smell(entries, "dead_function")
+
+        assert dead_function is not None
+        provider_matches = [
+            match
+            for match in dead_function["matches"]
+            if match["file"].endswith("package/providers.py")
+        ]
+        assert {"no_current_tenant_id()", "no_current_tenant_id_bare()"} <= {
+            match["content"].split(" - ", maxsplit=1)[0] for match in provider_matches
+        }
+
+    def test_import_without_callable_dataclass_default_keeps_provider_flagged(
+        self, tmp_path
+    ):
+        package = tmp_path / "package"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "providers.py").write_text(
+            textwrap.dedent(
+                """\
+            def no_current_tenant_id() -> None:
+                return None
+                """
+            )
+        )
+        (package / "consumer.py").write_text(
+            textwrap.dedent(
+                """\
+            from dataclasses import dataclass
+            from typing import Callable
+
+            from .providers import no_current_tenant_id
+
+
+            @dataclass(frozen=True)
+            class Dependencies:
+                current_tenant_id_fn: Callable[[], int | None]
+                """
+            )
+        )
+
+        entries, _ = detect_smells(tmp_path)
+        dead_function = _find_smell(entries, "dead_function")
+
+        assert dead_function is not None
+        assert any(
+            match["file"].endswith("package/providers.py")
+            for match in dead_function["matches"]
+        )
 
 
 # ── star_import_no_all ───────────────────────────────────

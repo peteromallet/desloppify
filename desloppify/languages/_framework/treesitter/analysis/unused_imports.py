@@ -7,6 +7,7 @@ imports whose names don't appear elsewhere in the file.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ECMASCRIPT_IMPORT_NODE_TYPE = "import_statement"
+
+# Symbols a sourced Bash file defines for the sourcing script: functions
+# (both `name() {}` and `function name {}` forms, global regardless of
+# nesting) and top-level variable assignments (including `export`/`declare`
+# wrappers). Function-local `local`/`declare` assignments are excluded.
+_BASH_DEFINITION_QUERY = """
+    (function_definition
+        name: (word) @name)
+    (program
+        (variable_assignment
+            name: (variable_name) @name))
+    (program
+        (declaration_command
+            (variable_assignment
+                name: (variable_name) @name)))
+"""
 
 # Identifier-ish nodes that represent a reference to a binding in JavaScript/TypeScript.
 # JSX tag names are typically represented as `identifier` in tree-sitter-javascript/tsx,
@@ -48,6 +65,22 @@ _ECMASCRIPT_DECLARATION_NAME_NODE_TYPES = frozenset({
 })
 
 
+def _is_implicitly_used(name: str, body: str, spec: TreeSitterLangSpec) -> bool:
+    """Return True if ``name`` is resolved by language convention rather than by name.
+
+    Some languages resolve imports through syntax that never spells the imported
+    symbol out — Kotlin's property delegation (``var x by remember { ... }``) requires
+    ``getValue``/``setValue`` imports, and destructuring requires ``componentN``.
+    A plain identifier search reports those as unused, and removing them breaks the
+    build. ``spec.implicit_import_uses`` declares those conventions per language.
+    """
+    # getattr keeps duck-typed spec stubs (used in tests) working.
+    for name_pattern, body_pattern in getattr(spec, "implicit_import_uses", ()):
+        if re.search(name_pattern, name) and re.search(body_pattern, body):
+            return True
+    return False
+
+
 def detect_unused_imports(
     file_list: list[str],
     spec: TreeSitterLangSpec,
@@ -72,6 +105,7 @@ def detect_unused_imports(
 
     query = _make_query(language, spec.import_query)
     entries: list[dict] = []
+    sourced_symbol_cache: dict[str, frozenset[str]] = {}
 
     for filepath in file_list:
         cached = get_or_parse_tree(filepath, parser, spec.grammar)
@@ -94,6 +128,13 @@ def detect_unused_imports(
             if not raw_path:
                 continue
 
+            # Go blank (`_ "pkg"`) and dot (`. "pkg"`) imports are never
+            # "unused" by design: blank imports exist purely for their
+            # init() side effects, and dot imports inject every exported
+            # name into scope with no single identifier to search for.
+            if spec.grammar == "go" and _is_go_blank_or_dot_import(import_node):
+                continue
+
             # Get the import statement's line range so we can exclude it
             # from the search.
             import_start = import_node.start_byte
@@ -108,6 +149,7 @@ def detect_unused_imports(
                 unused_names = [
                     n for n in grouped_names
                     if not re.search(r'\b' + re.escape(n) + r'\b', rest)
+                    and not _is_implicitly_used(n, rest, spec)
                 ]
                 if unused_names:
                     entries.append({
@@ -121,13 +163,38 @@ def detect_unused_imports(
             # When an alias is present, search for the alias name instead.
             alias_name = _extract_alias(import_node)
 
-            # Extract the imported name from the path.
-            name = alias_name or _extract_import_name(raw_path)
+            # Extract the imported name from the path. Go's in-code package
+            # identifier comes from the package clause, not necessarily the
+            # last path segment (versioned modules, gopkg.in-style versioning,
+            # hyphenated repo names), so it gets its own conservative resolver
+            # instead of the generic path-segment heuristic used elsewhere.
+            if alias_name is None and spec.grammar == "go":
+                name = _extract_go_package_name(raw_path)
+            else:
+                name = alias_name or _extract_import_name(raw_path)
             if not name:
                 continue
 
+            # Bash `source`/`.` loads a library whose *defined* functions and
+            # variables are what the sourcing script uses — the sourced file's
+            # basename almost never reappears in the script body. Treat the
+            # import as used when any symbol the library defines is referenced.
+            if spec.grammar == "bash":
+                symbols = _bash_sourced_symbols(
+                    raw_path, filepath, spec, parser, language,
+                    sourced_symbol_cache,
+                )
+                if any(
+                    re.search(r'\b' + re.escape(symbol) + r'\b', rest)
+                    for symbol in symbols
+                ):
+                    continue
+
             # Check if the name appears in the rest of the file.
-            if not re.search(r'\b' + re.escape(name) + r'\b', rest):
+            if (
+                not re.search(r'\b' + re.escape(name) + r'\b', rest)
+                and not _is_implicitly_used(name, rest, spec)
+            ):
                 entries.append({
                     "file": filepath,
                     "line": import_node.start_point[0] + 1,
@@ -135,6 +202,54 @@ def detect_unused_imports(
                 })
 
     return entries
+
+
+def _bash_sourced_symbols(
+    raw_path: str,
+    filepath: str,
+    spec: TreeSitterLangSpec,
+    parser,
+    language,
+    cache: dict[str, frozenset[str]],
+) -> frozenset[str]:
+    """Extract the function/variable names a sourced Bash file defines.
+
+    Resolves ``raw_path`` relative to the sourcing script. Returns an empty
+    set when the sourced file cannot be resolved (variable-based paths,
+    missing files) so the caller falls back to the basename heuristic.
+    """
+    resolver = spec.resolve_import
+    if resolver is None:
+        return frozenset()
+    try:
+        resolved = resolver(raw_path, filepath, os.path.dirname(filepath))
+    except (OSError, ValueError):
+        return frozenset()
+    if not resolved:
+        return frozenset()
+
+    resolved = os.path.abspath(resolved)
+    cached_symbols = cache.get(resolved)
+    if cached_symbols is not None:
+        return cached_symbols
+
+    symbols: frozenset[str] = frozenset()
+    parsed = get_or_parse_tree(resolved, parser, spec.grammar)
+    if parsed is not None:
+        _source, tree = parsed
+        definition_query = _make_query(language, _BASH_DEFINITION_QUERY)
+        names: set[str] = set()
+        for _pattern_idx, captures in _run_query(definition_query, tree.root_node):
+            name_node = _unwrap_node(captures.get("name"))
+            if name_node is None:
+                continue
+            text = _node_text(name_node)
+            if text:
+                names.add(text)
+        symbols = frozenset(names)
+
+    cache[resolved] = symbols
+    return symbols
 
 
 def _detect_unused_imports_ecmascript(
@@ -475,6 +590,68 @@ def _extract_grouped_import_names(import_path: str) -> list[str] | None:
         if segment:
             names.append(segment)
     return names or None
+
+
+_GO_VALID_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_GO_MAJOR_VERSION_SEGMENT_RE = re.compile(r"^v[0-9]+$")
+_GO_VERSIONED_SEGMENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\.v[0-9]+$")
+
+
+def _is_go_blank_or_dot_import(import_node) -> bool:
+    """Return True for Go blank (``_ "pkg"``) or dot (``. "pkg"``) imports.
+
+    Blank imports exist purely for their ``init()`` side effects and are
+    never "used" by design. Dot imports inject every exported name from the
+    package directly into the file's scope with no qualifier, so there is
+    no single identifier that could be searched for. Both must be excluded
+    from unused-import reporting rather than guessed at.
+    """
+    for i in range(import_node.child_count):
+        if import_node.children[i].type in ("blank_identifier", "dot"):
+            return True
+    return False
+
+
+def _extract_go_package_name(import_path: str) -> str | None:
+    """Best-effort derivation of a Go package's in-code identifier.
+
+    Go's identifier is whatever the dependency declares in its ``package``
+    clause, which frequently differs from the last import-path segment:
+
+        "gopkg.in/yaml.v3"                          -> "yaml"
+        "math/rand/v2"                              -> "rand"
+        "github.com/go-playground/validator/v10"    -> "validator"
+        "github.com/anthropics/anthropic-sdk-go"    -> None (unresolvable)
+
+    Returns None when the identifier can't be confidently determined from
+    the path alone. Callers must treat None as "do not report a finding" --
+    a false negative here is far cheaper than a false positive.
+    """
+    segments = [s for s in import_path.split("/") if s]
+    if not segments:
+        return None
+
+    candidate = segments[-1]
+
+    # Go modules major-version suffix (e.g. ".../v2", ".../v10"): the version
+    # is its own path segment and is never part of the package identifier.
+    if len(segments) > 1 and _GO_MAJOR_VERSION_SEGMENT_RE.match(candidate):
+        candidate = segments[-2]
+
+    # gopkg.in-style versioning embeds the version in the segment itself
+    # (e.g. "yaml.v3", "mgo.v2") instead of as a separate path segment.
+    versioned = _GO_VERSIONED_SEGMENT_RE.match(candidate)
+    if versioned:
+        candidate = versioned.group(1)
+
+    if not _GO_VALID_IDENTIFIER_RE.match(candidate):
+        # e.g. "anthropic-sdk-go": hyphens can't appear in a Go identifier,
+        # so the path base can't be the identifier either. The real package
+        # name lives in the dependency's package clause, which isn't
+        # available here -- don't guess.
+        return None
+
+    return candidate
 
 
 def _extract_import_name(import_path: str) -> str:

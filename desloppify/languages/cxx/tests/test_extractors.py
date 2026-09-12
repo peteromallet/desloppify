@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import desloppify.languages.cxx.extractors as cxx_extractors
-from desloppify.languages.cxx.extractors import extract_all_cxx_functions, find_cxx_files
+from desloppify.languages.cxx.extractors import (
+    extract_all_cxx_functions,
+    find_cxx_files,
+)
 
 
 def test_extract_cxx_functions_and_classes(tmp_path):
@@ -54,10 +58,27 @@ def test_find_cxx_files_includes_common_header_only_extensions(tmp_path):
     for path in files:
         path.write_text("// test\n")
 
-    discovered = {str(Path(filepath).resolve()) for filepath in find_cxx_files(tmp_path)}
+    discovered = {
+        str(Path(filepath).resolve()) for filepath in find_cxx_files(tmp_path)
+    }
 
     assert discovered == {str(path.resolve()) for path in files}
 
 
 def test_cxx_extractors_use_local_brace_helper():
-    assert cxx_extractors.find_matching_brace.__module__ == "desloppify.languages.cxx._parse_helpers"
+    assert (
+        cxx_extractors.find_matching_brace.__module__
+        == "desloppify.languages.cxx._parse_helpers"
+    )
+
+
+def test_function_extraction_bounds_qualified_name_backtracking(tmp_path):
+    source = tmp_path / "adversarial.cpp"
+    source.write_text("::".join(["Type"] * 21) + " value = source;\n")
+
+    started = time.perf_counter()
+    functions = extract_all_cxx_functions([str(source)])
+    elapsed = time.perf_counter() - started
+
+    assert functions == []
+    assert elapsed < 0.25

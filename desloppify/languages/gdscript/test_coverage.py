@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 
-from desloppify.languages.gdscript.patterns import EXTENDS_RE, LOAD_PATH_RE
+from desloppify.languages.gdscript.patterns import (
+    CLASS_NAME_RE,
+    COMMENT_RE,
+    EXTENDS_RE,
+    LOAD_PATH_RE,
+    STRING_RE,
+)
+
+# A bare PascalCase identifier is how a suite names the thing it exercises,
+# because Godot resolves `class_name` globally with no import statement.
+_IDENTIFIER_RE = re.compile(r"\b[A-Z][A-Za-z0-9_]*\b")
 
 _GDS_LOGIC_RE = re.compile(r"(?m)^\s*(?:func|class_name|extends)\b")
 
@@ -25,6 +36,21 @@ def _find_project_root(path: Path) -> Path:
     return cursor
 
 
+@lru_cache(maxsize=8)
+def _class_name_index(production_files: frozenset[str]) -> dict[str, str]:
+    """Map each declared ``class_name`` to the file that declares it."""
+    index: dict[str, str] = {}
+    for filepath in production_files:
+        try:
+            content = Path(filepath).read_text(errors="replace")
+        except OSError:
+            continue
+        match = CLASS_NAME_RE.search(content)
+        if match:
+            index.setdefault(match.group("name"), filepath)
+    return index
+
+
 def _resolve_res_path(spec: str, project_root: Path) -> Path | None:
     if not spec.startswith("res://"):
         return None
@@ -40,14 +66,18 @@ def has_testable_logic(filepath: str, content: str) -> bool:
 def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
-    project_root = _find_project_root(Path(test_path))
-    resolved = _resolve_res_path((spec or "").strip(), project_root)
-    if resolved is None:
+    cleaned = (spec or "").strip()
+    if not cleaned:
         return None
-    resolved_str = str(resolved)
-    if resolved_str in production_files:
-        return resolved_str
-    return None
+
+    project_root = _find_project_root(Path(test_path))
+    resolved = _resolve_res_path(cleaned, project_root)
+    if resolved is not None:
+        resolved_str = str(resolved)
+        return resolved_str if resolved_str in production_files else None
+
+    # Not a path — try the global class registry.
+    return _class_name_index(frozenset(production_files)).get(cleaned)
 
 
 def resolve_barrel_reexports(filepath: str, production_files: set[str]) -> set[str]:
@@ -64,10 +94,16 @@ def resolve_barrel_reexports(filepath: str, production_files: set[str]) -> set[s
 
 
 def parse_test_import_specs(content: str) -> list[str]:
+    """Return everything a suite names: ``res://`` paths and global classes."""
     specs = [match.group("path") for match in LOAD_PATH_RE.finditer(content)]
     extends = EXTENDS_RE.search(content)
     if extends:
         specs.append(extends.group("path"))
+
+    # Comments and strings are stripped so a class merely described in prose
+    # is not counted as covered.
+    body = COMMENT_RE.sub("", STRING_RE.sub(" ", content))
+    specs.extend(dict.fromkeys(_IDENTIFIER_RE.findall(body)))
     return specs
 
 

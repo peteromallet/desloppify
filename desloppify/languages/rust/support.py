@@ -523,7 +523,7 @@ def _resolve_local_dependency_entry(
 
 
 def find_workspace_root(path: Path | str | None) -> Path:
-    """Return the outermost Cargo workspace root for a file/dir when present."""
+    """Return the nearest Cargo workspace root without escaping nested worktrees."""
     if path is None:
         return get_project_root()
 
@@ -541,7 +541,7 @@ def find_workspace_root(path: Path | str | None) -> Path:
             continue
         workspace = data.get("workspace")
         if isinstance(workspace, dict):
-            workspace_root = current
+            return current.resolve()
     return workspace_root.resolve()
 
 

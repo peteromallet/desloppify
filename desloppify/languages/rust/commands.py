@@ -51,6 +51,7 @@ from desloppify.languages.rust.tools import (
     parse_cargo_errors,
     parse_clippy_messages,
     run_rustdoc_result,
+    scope_cargo_command,
 )
 
 DetectCommand = Callable[[argparse.Namespace], None]
@@ -180,11 +181,15 @@ def _make_entry_detect_command(
 
 cmd_clippy_warning = _make_tool_detect_command(
     RUST_CLIPPY_LABEL,
-    lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
+    lambda path: run_tool_result(
+        scope_cargo_command(RUST_CLIPPY_CMD, path), path, parse_clippy_messages
+    ),
 )
 cmd_cargo_error = _make_tool_detect_command(
     RUST_CHECK_LABEL,
-    lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
+    lambda path: run_tool_result(
+        scope_cargo_command(RUST_CHECK_CMD, path), path, parse_cargo_errors
+    ),
 )
 cmd_rustdoc_warning = _make_tool_detect_command(
     RUST_RUSTDOC_LABEL,

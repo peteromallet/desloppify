@@ -32,6 +32,7 @@ from desloppify.engine._work_queue.ranking_output import (
 from desloppify.engine._work_queue.synthetic import subjective_strict_scores
 from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.engine.planning.helpers import CONFIDENCE_ORDER
+from desloppify.engine.policy.zones import should_skip_detector_in_zone
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,8 @@ def build_issue_items(
         if issue.get("suppressed"):
             continue
         if not status_matches(issue.get("status", "open"), status_filter):
+            continue
+        if should_skip_detector_in_zone(issue.get("zone"), issue.get("detector")):
             continue
         if chronic and not (
             issue.get("status") == "open" and issue.get("reopen_count", 0) >= 2

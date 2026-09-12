@@ -35,16 +35,36 @@ from desloppify.languages.gdscript.review import (
     module_patterns,
 )
 
+# Godot's own project templates and documentation use PascalCase directories,
+# so a Godot project's folders are `Scripts/`, `Scenes/`, `Tests/` far more
+# often than the lowercase spellings the shared rules assume.
 GDSCRIPT_ENTRY_PATTERNS = [
     "/main.gd",
     "/autoload/",
+    "/Autoload/",
     "/addons/",
     "/tests/",
+    "/Tests/",
     "/test/",
+    "/Test/",
+]
+
+# A Godot suite is a scene plus a script named for what it covers — `_tests.gd`,
+# `_test.gd`, or a `_suite.gd` — inside a tests directory. A leading `test_` is
+# a Python/JS convention and is deliberately absent: in Godot it reads as a
+# script that BUILDS a test scene, which is production code.
+GDSCRIPT_TEST_PATTERNS = [
+    "/tests/",
+    "/Tests/",
+    "/test/",
+    "/Test/",
+    "_tests.gd",
+    "_test.gd",
+    "_suite.gd",
 ]
 
 GDSCRIPT_ZONE_RULES = [
-    ZoneRule(Zone.TEST, ["/tests/", "/test/", "test_", "_test.gd"]),
+    ZoneRule(Zone.TEST, GDSCRIPT_TEST_PATTERNS),
     ZoneRule(Zone.CONFIG, ["/project.godot", "/.godot/", "/addons/"]),
     ZoneRule(Zone.GENERATED, ["/.import/", ".import", ".uid"]),
 ] + COMMON_ZONE_RULES
@@ -80,7 +100,7 @@ class GdscriptConfig(LangConfig):
             complexity_threshold=16,
             default_scan_profile="full",
             detect_markers=["project.godot"],
-            external_test_dirs=["tests", "test"],
+            external_test_dirs=["tests", "Tests", "test", "Test"],
             test_file_extensions=[".gd"],
             review_module_patterns_fn=module_patterns,
             review_api_surface_fn=api_surface,
@@ -117,6 +137,7 @@ __all__ = [
     "register",
     "register_hooks",
     "GDSCRIPT_ENTRY_PATTERNS",
+    "GDSCRIPT_TEST_PATTERNS",
     "GDSCRIPT_ZONE_RULES",
     "HOLISTIC_REVIEW_DIMENSIONS",
     "LOW_VALUE_PATTERN",

@@ -8,10 +8,15 @@ from unittest.mock import patch
 from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
     _detect_nextjs_project,
+    _detect_react_router_project,
     _has_dunder_all,
     _is_dynamically_imported,
     _is_nextjs_convention_entry,
+    _is_react_router_convention_entry,
     detect_orphaned_files,
+)
+from desloppify.languages.python.detectors.deps_dynamic import (
+    find_python_dynamic_imports,
 )
 
 # ---------------------------------------------------------------------------
@@ -250,6 +255,61 @@ class TestDetectOrphanedFiles:
         assert len(entries) == 1
         assert entries[0]["file"] == str(f2)
 
+    def test_explicit_legacy_module_alias_not_orphaned(self, tmp_path):
+        """A physical compatibility alias remains an import entry point."""
+        alias = tmp_path / "legacy.py"
+        alias.write_text(
+            "from pkg.compat import install_legacy_module_alias\n"
+            "install_legacy_module_alias(__name__, 'pkg.canonical')\n"
+        )
+        graph = {str(alias): _graph_entry(importer_count=0)}
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, _ = detect_orphaned_files(
+                tmp_path,
+                graph,
+                [".py"],
+                options=OrphanedDetectionOptions(
+                    dynamic_import_finder=find_python_dynamic_imports
+                ),
+            )
+
+        assert entries == []
+
+    def test_literal_lazy_package_export_not_orphaned(self, tmp_path):
+        """A static lazy-export table keeps its selected child module reachable."""
+        package = tmp_path / "auth"
+        package.mkdir()
+        (package / "__init__.py").write_text(
+            "from importlib import import_module\n"
+            "_LAZY_EXPORTS = {'Service': ('service', 'Service')}\n"
+            "def __getattr__(name):\n"
+            "    module_name, attr_name = _LAZY_EXPORTS[name]\n"
+            "    module = import_module(f'{__name__}.{module_name}')\n"
+            "    return getattr(module, attr_name)\n"
+        )
+        service = package / "service.py"
+        service.write_text("class Service:\n    pass\n")
+        graph = {str(service): _graph_entry(importer_count=0)}
+
+        with patch(
+            "desloppify.engine.detectors.orphaned.rel",
+            side_effect=lambda p: str(Path(p).relative_to(tmp_path)),
+        ):
+            entries, _ = detect_orphaned_files(
+                tmp_path,
+                graph,
+                [".py"],
+                options=OrphanedDetectionOptions(
+                    dynamic_import_finder=find_python_dynamic_imports
+                ),
+            )
+
+        assert entries == []
+
     def test_results_sorted_by_loc_descending(self, tmp_path):
         """Results are sorted by LOC descending (largest files first)."""
         f_small = _write_file(tmp_path / "small.py", lines=20)
@@ -414,8 +474,7 @@ class TestDetectOrphanedFiles:
         """Files defining __all__ are public API surfaces and not orphaned."""
         api_file = tmp_path / "api.py"
         api_file.write_text(
-            "__all__ = ['Foo', 'Bar']\n"
-            + "\n".join(f"line {i}" for i in range(30))
+            "__all__ = ['Foo', 'Bar']\n" + "\n".join(f"line {i}" for i in range(30))
         )
         orphan_file = _write_file(tmp_path / "orphan.py", lines=30)
 
@@ -438,8 +497,7 @@ class TestDetectOrphanedFiles:
         """Files using ``__all__: list[str] = [...]`` syntax are also excluded."""
         api_file = tmp_path / "api.py"
         api_file.write_text(
-            "__all__: list[str] = ['Foo']\n"
-            + "\n".join(f"line {i}" for i in range(30))
+            "__all__: list[str] = ['Foo']\n" + "\n".join(f"line {i}" for i in range(30))
         )
 
         graph = {
@@ -683,3 +741,74 @@ class TestNextjsIntegration:
             )
 
         assert len(entries) == 1
+
+
+# ===================================================================
+# React Router / Remix framework awareness
+# ===================================================================
+
+
+class TestDetectReactRouterProject:
+    """Unit tests for _detect_react_router_project."""
+
+    def test_react_router_config(self, tmp_path):
+        (tmp_path / "react-router.config.ts").write_text("export default {}")
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_remix_config(self, tmp_path):
+        (tmp_path / "remix.config.js").write_text("module.exports = {}")
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_dependency_in_package_json(self, tmp_path):
+        # The framework template ships a Vite config rather than a
+        # react-router.config file, so the dependency is the reliable signal.
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"@react-router/node": "^7.0.0"}}'
+        )
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_remix_dependency(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"@remix-run/node": "^2.0.0"}}'
+        )
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_unrelated_project(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"dependencies": {"express": "^4.0.0"}}')
+        assert _detect_react_router_project(tmp_path) is False
+
+    def test_no_package_json(self, tmp_path):
+        assert _detect_react_router_project(tmp_path) is False
+
+
+class TestIsReactRouterConventionEntry:
+    """Unit tests for _is_react_router_convention_entry."""
+
+    def test_route_module(self):
+        assert _is_react_router_convention_entry("app/routes/app.settings.jsx") is True
+
+    def test_nested_route_module(self):
+        assert _is_react_router_convention_entry("app/routes/_index/route.jsx") is True
+
+    def test_src_routes(self):
+        assert _is_react_router_convention_entry("src/routes/dashboard.tsx") is True
+
+    def test_root_module(self):
+        assert _is_react_router_convention_entry("app/root.jsx") is True
+
+    def test_server_entry(self):
+        # `.stem` strips only the last suffix, so this stems to "entry.server".
+        assert _is_react_router_convention_entry("app/entry.server.jsx") is True
+
+    def test_client_entry(self):
+        assert _is_react_router_convention_entry("app/entry.client.tsx") is True
+
+    def test_ordinary_module_is_not_an_entry(self):
+        # The whole point: a genuinely orphaned file must still be reported.
+        assert _is_react_router_convention_entry("app/db.server.js") is False
+
+    def test_a_file_merely_named_root_deeper_in_the_tree(self):
+        assert _is_react_router_convention_entry("app/lib/nested/root.js") is False
+
+    def test_non_javascript_extension(self):
+        assert _is_react_router_convention_entry("app/routes/styles.css") is False

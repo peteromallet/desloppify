@@ -249,3 +249,19 @@ def test_reflect_preserves_observe_auto_disposition_during_fresh_persist(
     ledger = plan["epic_triage_meta"]["triage_stages"]["reflect"]["disposition_ledger"]
     assert [entry["issue_id"] for entry in ledger] == ["review::complexity::aaaa1111"]
     assert saved
+
+
+def test_reflect_recurring_dimension_accepts_catalog_display_label() -> None:
+    assert reflect_mod._validate_recurring_dimension_mentions(
+        report="The strategy directly addresses the High elegance rework pattern.",
+        recurring_dims=["high_level_elegance"],
+        recurring={"high_level_elegance": {"open": ["open"], "resolved": ["resolved"]}},
+    )
+
+
+def test_reflect_recurring_dimension_accepts_canonical_snake_case() -> None:
+    assert reflect_mod._validate_recurring_dimension_mentions(
+        report="The strategy directly addresses the high_level_elegance rework pattern.",
+        recurring_dims=["high_level_elegance"],
+        recurring={"high_level_elegance": {"open": ["open"], "resolved": ["resolved"]}},
+    )

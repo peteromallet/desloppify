@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 
 ConstantLocations = dict[tuple[str, str], list[tuple[str, int]]]
 SmellCounts = dict[str, list[dict[str, object]]]
+_VERSIONED_MIGRATION_DIRECTORY_PAIRS = frozenset(
+    {
+        ("alembic", "versions"),
+        ("migrations", "versions"),
+    }
+)
 
 
 def _is_within(root: Path, candidate: Path) -> bool:
@@ -20,6 +26,17 @@ def _is_within(root: Path, candidate: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _is_versioned_migration_path(filepath: str) -> bool:
+    """Return whether a file is an immutable versioned schema migration."""
+    path_parts = tuple(
+        part.casefold() for part in re.split(r"[\\/]+", filepath) if part
+    )
+    return any(
+        path_parts[index : index + 2] in _VERSIONED_MIGRATION_DIRECTORY_PAIRS
+        for index in range(len(path_parts) - 1)
+    )
 
 
 def collect_module_constants(
@@ -32,6 +49,9 @@ def collect_module_constants(
     Only collects UPPER_CASE or _UPPER_CASE names assigned to simple literals
     (dicts, lists, sets, tuples, numbers, strings).
     """
+    if _is_versioned_migration_path(filepath):
+        return
+
     try:
         tree = ast.parse(content, filename=filepath)
     except SyntaxError as exc:

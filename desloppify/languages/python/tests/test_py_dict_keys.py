@@ -94,6 +94,128 @@ class TestPhantomRead:
         entries, _ = detect_dict_key_flow(path)
         assert "phantom_read" not in _kinds(entries)
 
+    def test_open_positional_dict_copy_suppresses_phantom_reads(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_external(source):
+                payload = dict(source)
+                return payload.get("message"), payload.pop("error_code", None)
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert "phantom_read" not in _kinds(entries)
+
+    def test_open_unpack_copies_suppress_phantom_reads(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_external(source):
+                call_copy = dict(**source)
+                literal_copy = {**source}
+                return call_copy.get("message"), literal_copy.get("error")
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert "phantom_read" not in _kinds(entries)
+
+    def test_open_keyset_suppresses_derived_near_miss(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_external(source):
+                payload = dict(source, message="fallback")
+                return payload.get("messag")
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert not {"phantom_read", "near_miss"} & _kinds(entries)
+
+    def test_closed_dict_constructors_still_detect_typos(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_closed():
+                literal = {"message": "one"}
+                keyword = dict(message="two")
+                return literal.get("messag"), keyword.get("messag")
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert len(_find_kind(entries, "phantom_read")) == 2
+        assert len(_find_kind(entries, "near_miss")) == 2
+
+    def test_closed_keyset_survives_literal_constructor_alias_and_copy(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_closed():
+                original = {"message": "one"}
+                alias = original
+                constructor = dict(alias)
+                method_copy = alias.copy()
+                unpack_copy = dict(**{"message": "two"})
+                positional_literal = dict({"message": "three"})
+                return (
+                    alias.get("messag"),
+                    constructor.get("messag"),
+                    method_copy.get("messag"),
+                    unpack_copy.get("messag"),
+                    positional_literal.get("messag"),
+                )
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert len(_find_kind(entries, "phantom_read")) == 5
+        assert len(_find_kind(entries, "near_miss")) == 5
+
+    def test_open_keyset_survives_alias_and_tracked_copies(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_external(source):
+                original = dict(source)
+                alias = original
+                constructor = dict(alias)
+                method_copy = alias.copy()
+                return constructor.get("message"), method_copy.get("error")
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        assert "phantom_read" not in _kinds(entries)
+
+    def test_update_propagates_open_and_closed_keysets(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            def read_external(source):
+                open_payload = {}
+                open_payload.update(source)
+                closed_payload = {}
+                closed_payload.update({"message": "fallback"})
+                return open_payload.get("message"), closed_payload.get("messag")
+        """,
+        )
+
+        entries, _ = detect_dict_key_flow(path)
+
+        phantom = _find_kind(entries, "phantom_read")
+        near_miss = _find_kind(entries, "near_miss")
+        assert [issue["variable"] for issue in phantom] == ["closed_payload"]
+        assert [issue["variable"] for issue in near_miss] == ["closed_payload"]
+
 
 # ── Dead writes (written key never read) ──────────────────
 

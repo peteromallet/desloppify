@@ -17,6 +17,7 @@ class TrackedDict:
     returned_or_passed: bool = False
     has_dynamic_key: bool = False
     has_star_unpack: bool = False
+    keyset_is_open: bool = False
     writes: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     reads: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     bulk_read: bool = False

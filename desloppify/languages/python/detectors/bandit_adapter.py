@@ -23,6 +23,8 @@ import json
 import logging
 import subprocess  # nosec B404
 import sys
+import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -56,6 +58,10 @@ _BANDIT_IMPACT_TEXT = (
     "Python-specific security checks were skipped; this can miss shell injection, "
     "unsafe deserialization, and risky SQL/subprocess patterns."
 )
+
+# Keep a batch well below platform command-line limits while ensuring a single
+# slow directory cannot consume the adapter's whole timeout budget.
+_BANDIT_FILE_BATCH_SIZE = 250
 
 
 BanditRunState = Literal["ok", "missing_tool", "timeout", "error", "parse_error"]
@@ -185,25 +191,15 @@ def _to_security_entry(
     }
 
 
-def detect_with_bandit(
-    path: Path,
+def _run_bandit(
+    targets: list[Path],
     zone_map: FileZoneMap | None,
     timeout: int = 120,
     exclude_dirs: list[str] | None = None,
     skip_tests: list[str] | None = None,
+    require_target_metrics: bool = False,
 ) -> BanditScanResult:
-    """Run bandit on *path* and return issues + typed execution status.
-
-    Parameters
-    ----------
-    exclude_dirs:
-        Absolute directory paths to pass to bandit's ``--exclude`` flag.
-        When non-empty, bandit will skip these directories during its
-        recursive scan.
-    skip_tests:
-        Bandit test IDs to suppress via ``--skip`` (e.g. ``["B101", "B601"]``).
-        Allows users to disable entire rule families from ``config.json``.
-    """
+    """Run Bandit for one non-empty set of explicit targets."""
     cmd = [
         sys.executable,
         "-m",
@@ -217,7 +213,7 @@ def detect_with_bandit(
         cmd.extend(["--exclude", ",".join(exclude_dirs)])
     if skip_tests:
         cmd.extend(["--skip", ",".join(skip_tests)])
-    cmd.append(str(path.resolve()))
+    cmd.extend(str(target) for target in targets)
 
     try:
         result = subprocess.run(
@@ -249,13 +245,28 @@ def detect_with_bandit(
             status=BanditRunStatus(state="error", detail=str(exc)),
         )
 
+    returncode = getattr(result, "returncode", 0)
+    fatal_returncode = isinstance(returncode, int) and returncode > 1
     stdout = result.stdout.strip()
     if not stdout:
-        # Bandit exits 0 with no output when there's nothing to scan.
+        if fatal_returncode:
+            status = BanditRunStatus(
+                state="error",
+                detail=f"bandit exited with status {returncode}",
+            )
+        elif require_target_metrics:
+            status = BanditRunStatus(
+                state="error",
+                detail=f"bandit produced no output for {len(targets)} target(s)",
+            )
+        else:
+            # Bandit exits 0 with no output when a legacy recursive call has
+            # nothing to scan.
+            status = BanditRunStatus(state="ok")
         return BanditScanResult(
             entries=[],
             files_scanned=0,
-            status=BanditRunStatus(state="ok"),
+            status=status,
         )
 
     try:
@@ -268,8 +279,13 @@ def detect_with_bandit(
             status=BanditRunStatus(state="parse_error", detail=str(exc)),
         )
 
-    raw_results: list[dict] = data.get("results", [])
-    metrics: dict = data.get("metrics", {})
+    raw_results = data.get("results", [])
+    metrics = data.get("metrics", {})
+    errors = data.get("errors", [])
+    if not isinstance(raw_results, list):
+        raw_results = []
+    if not isinstance(metrics, dict):
+        metrics = {}
 
     # Count scanned files from metrics (bandit reports per-file stats).
     files_scanned = sum(
@@ -280,13 +296,164 @@ def detect_with_bandit(
 
     entries: list[dict] = []
     for res in raw_results:
+        if not isinstance(res, dict):
+            continue
         entry = _to_security_entry(res, zone_map)
         if entry is not None:
             entries.append(entry)
 
-    logger.debug("bandit: %d issues from %d files", len(entries), files_scanned)
+    status = BanditRunStatus(state="ok")
+    if fatal_returncode:
+        status = BanditRunStatus(
+            state="error",
+            detail=f"bandit exited with status {returncode}",
+        )
+    elif errors:
+        error_count = len(errors) if isinstance(errors, list) else 1
+        status = BanditRunStatus(
+            state="error",
+            detail=f"bandit reported {error_count} file error(s)",
+        )
+    elif require_target_metrics:
+        project_root = get_project_root()
+        metric_paths = {
+            (Path(path) if Path(path).is_absolute() else project_root / path).resolve()
+            for path in metrics
+            if path != "_totals" and not path.endswith("_totals")
+        }
+        missing_targets = [target for target in targets if target.resolve() not in metric_paths]
+        if missing_targets:
+            status = BanditRunStatus(
+                state="error",
+                detail=f"bandit omitted metrics for {len(missing_targets)} target(s)",
+            )
+
+    logger.debug(
+        "bandit: %d issues from %d files (%s)",
+        len(entries),
+        files_scanned,
+        status.state,
+    )
     return BanditScanResult(
         entries=entries,
         files_scanned=files_scanned,
-        status=BanditRunStatus(state="ok"),
+        status=status,
+    )
+
+
+def _file_targets(files: Iterable[str | Path]) -> list[Path]:
+    """Normalize, filter, and de-duplicate discovered Python file targets."""
+    project_root = get_project_root()
+    targets: list[Path] = []
+    seen: set[Path] = set()
+    for file in files:
+        target = Path(file)
+        if target.suffix != ".py":
+            continue
+        if not target.is_absolute():
+            target = project_root / target
+        target = target.resolve()
+        if target in seen:
+            continue
+        seen.add(target)
+        targets.append(target)
+    return targets
+
+
+def detect_with_bandit_files(
+    files: Iterable[str | Path],
+    zone_map: FileZoneMap | None,
+    timeout: int = 120,
+    exclude_dirs: list[str] | None = None,
+    skip_tests: list[str] | None = None,
+    batch_size: int = _BANDIT_FILE_BATCH_SIZE,
+) -> BanditScanResult:
+    """Run Bandit over the scanner's discovered Python files in safe batches.
+
+    Scanning explicit file targets keeps Bandit's traversal aligned with the
+    scanner's exclusion-aware source discovery. A failure in any batch retains
+    findings from successful batches but reports reduced coverage.
+    """
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+
+    targets = _file_targets(files)
+    if not targets:
+        return BanditScanResult(
+            entries=[],
+            files_scanned=0,
+            status=BanditRunStatus(state="ok"),
+        )
+
+    batches = [
+        targets[index : index + batch_size]
+        for index in range(0, len(targets), batch_size)
+    ]
+    deadline = time.monotonic() + timeout
+    entries_by_name: dict[str, dict] = {}
+    files_scanned = 0
+    first_failure: BanditRunStatus | None = None
+
+    for batch_number, batch in enumerate(batches, start=1):
+        remaining_timeout = deadline - time.monotonic()
+        if remaining_timeout <= 0:
+            first_failure = first_failure or BanditRunStatus(
+                state="timeout",
+                detail=f"total timeout={timeout}s before batch {batch_number}/{len(batches)}",
+            )
+            break
+        result = _run_bandit(
+            batch,
+            zone_map,
+            timeout=remaining_timeout,
+            exclude_dirs=exclude_dirs,
+            skip_tests=skip_tests,
+            require_target_metrics=True,
+        )
+        files_scanned += result.files_scanned
+        for entry in result.entries:
+            entries_by_name.setdefault(str(entry["name"]), entry)
+
+        if result.status.state != "ok" and first_failure is None:
+            detail = result.status.detail or result.status.state
+            first_failure = BanditRunStatus(
+                state=result.status.state,
+                detail=f"batch {batch_number}/{len(batches)}: {detail}",
+            )
+        if result.status.state == "missing_tool":
+            break
+
+    status = first_failure or BanditRunStatus(state="ok")
+    return BanditScanResult(
+        entries=list(entries_by_name.values()),
+        files_scanned=files_scanned,
+        status=status,
+    )
+
+
+def detect_with_bandit(
+    path: Path,
+    zone_map: FileZoneMap | None,
+    timeout: int = 120,
+    exclude_dirs: list[str] | None = None,
+    skip_tests: list[str] | None = None,
+) -> BanditScanResult:
+    """Run Bandit recursively on *path* for legacy direct callers.
+
+    Parameters
+    ----------
+    exclude_dirs:
+        Absolute directory paths to pass to bandit's ``--exclude`` flag.
+        When non-empty, bandit will skip these directories during its
+        recursive scan.
+    skip_tests:
+        Bandit test IDs to suppress via ``--skip`` (e.g. ``["B101", "B601"]``).
+        Allows users to disable entire rule families from ``config.json``.
+    """
+    return _run_bandit(
+        [path.resolve()],
+        zone_map,
+        timeout=timeout,
+        exclude_dirs=exclude_dirs,
+        skip_tests=skip_tests,
     )

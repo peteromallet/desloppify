@@ -26,6 +26,7 @@ from desloppify.languages._framework.generic_parts.parsers import (
     parse_gnu,
     parse_golangci,
     parse_json,
+    parse_ktlint,
     parse_rubocop,
 )
 from desloppify.languages._framework.generic_parts.tool_factories import (
@@ -178,5 +179,6 @@ __all__ = [
     "parse_gnu",
     "parse_golangci",
     "parse_json",
+    "parse_ktlint",
     "parse_rubocop",
 ]

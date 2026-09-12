@@ -499,12 +499,13 @@ class TestBanditExcludeIntegration:
         config = PythonConfig()
         captured_kwargs = {}
 
-        def _fake_bandit(path, zone_map, **kwargs):
+        def _fake_bandit(discovered_files, zone_map, **kwargs):
             from desloppify.languages.python.detectors.bandit_adapter import (
                 BanditRunStatus,
                 BanditScanResult,
             )
 
+            captured_kwargs["files"] = discovered_files
             captured_kwargs.update(kwargs)
             return BanditScanResult(
                 entries=[], files_scanned=0, status=BanditRunStatus(state="ok")
@@ -513,7 +514,7 @@ class TestBanditExcludeIntegration:
         fake_exclude_dirs = ["/project/src/.venv", "/project/src/__pycache__", "/project/src/vendor"]
         files = ["/project/src/app.py", "/project/src/utils.py"]
         with patch(
-            "desloppify.languages.python._security.detect_with_bandit", _fake_bandit
+            "desloppify.languages.python._security.detect_with_bandit_files", _fake_bandit
         ), patch(
             "desloppify.languages.python._security.collect_exclude_dirs",
             return_value=fake_exclude_dirs,
@@ -523,6 +524,7 @@ class TestBanditExcludeIntegration:
         exclude_dirs = captured_kwargs.get("exclude_dirs", [])
         # Should pass through whatever collect_exclude_dirs returns.
         assert exclude_dirs == fake_exclude_dirs
+        assert captured_kwargs["files"] == files
 
 
 # ── jscpd adapter ────────────────────────────────────────────────────────────

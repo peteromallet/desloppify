@@ -117,6 +117,14 @@ KOTLIN_SPEC = TreeSitterLangSpec(
             (type_identifier) @name
             (class_body) @body) @class
     """,
+    implicit_import_uses=(
+        # Property delegation (`var x by remember { mutableStateOf(0) }`) resolves the
+        # getValue/setValue/provideDelegate operators through imported extensions that
+        # are never spelled out in the body. Pervasive in Compose Multiplatform.
+        (r"^(?:getValue|setValue|provideDelegate)$", r"(?<![\w.])by\s"),
+        # Destructuring declarations (`val (a, b) = pair`) call componentN() implicitly.
+        (r"^component\d+$", r"(?m)^\s*(?:val|var)\s*\("),
+    ),
     log_patterns=(
         r"^\s*(?:println\(|print\(|Logger\.|log\.)",
     ),

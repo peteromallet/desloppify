@@ -32,6 +32,10 @@ def ts_build_dep_graph(
 
     scan_path = str(path.resolve())
     file_set = set(file_list)
+    # `resolve_import` returns a path in the same space as the source file it
+    # was given, which is not necessarily the space `file_list` uses. Index by
+    # absolute path so either space matches.
+    abs_index = {os.path.abspath(f): f for f in file_list}
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -75,17 +79,24 @@ def ts_build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
+            # Match the resolved path against the file set, whichever path
+            # space each happens to use.
+            if resolved in file_set:
+                target: str | None = resolved
+            else:
+                target = abs_index.get(os.path.abspath(resolved))
+                if target is None:
+                    # Fall back to interpreting it as scan_path-relative.
+                    candidate = os.path.normpath(os.path.join(scan_path, resolved))
+                    target = candidate if candidate in file_set else abs_index.get(candidate)
 
             # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            if target is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(target)
+            if target in graph:
+                graph[target]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():

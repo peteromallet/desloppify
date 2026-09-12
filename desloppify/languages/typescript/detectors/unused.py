@@ -78,20 +78,44 @@ def _run_tsc_unused_check(
     )
 
 
+def _find_nearest_tsconfig(path: Path) -> Path | None:
+    """Return the closest TypeScript config that owns ``path``.
+
+    Prefer an application config when both conventional config names exist in
+    the same directory. Walking upward keeps scans of monorepo projects scoped
+    to that project's config instead of assuming the repository root is a
+    single application.
+    """
+    current = path.resolve()
+    if current.is_file():
+        current = current.parent
+
+    for directory in (current, *current.parents):
+        for config_name in ("tsconfig.app.json", "tsconfig.json"):
+            candidate = directory / config_name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     ts_files = find_ts_and_tsx_files(path)
     total_files = len(ts_files)
     if _should_use_deno_fallback(path, ts_files):
         return _detect_unused_fallback(path, category)
 
+    base_tsconfig = _find_nearest_tsconfig(path)
+    if base_tsconfig is None:
+        return _detect_unused_fallback(path, category)
+
     tmp_tsconfig = {
-        "extends": "./tsconfig.app.json",
+        "extends": f"./{base_tsconfig.name}",
         "compilerOptions": {
             "noUnusedLocals": True,
             "noUnusedParameters": True,
         },
     }
-    tmp_path = get_project_root() / "tsconfig.desloppify.json"
+    tmp_path = base_tsconfig.parent / "tsconfig.desloppify.json"
     try:
         safe_write_text(tmp_path, json.dumps(tmp_tsconfig, indent=2))
         try:

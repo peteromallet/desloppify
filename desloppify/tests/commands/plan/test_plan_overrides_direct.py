@@ -15,6 +15,7 @@ import desloppify.app.commands.plan.override.resolve_helpers as resolve_helpers_
 import desloppify.app.commands.plan.override.resolve_workflow as resolve_workflow_mod
 import desloppify.app.commands.plan.override.skip as override_skip_mod
 import desloppify.app.commands.plan.reorder_handlers as reorder_handlers_mod
+import desloppify.state as state_mod
 from desloppify.base.exception_sets import CommandError
 
 
@@ -48,10 +49,15 @@ def test_override_resolve_helpers_cover_synthetic_split_and_blocked_stages(
     capsys,
 ) -> None:
     synthetic, remaining = resolve_helpers_mod.split_synthetic_patterns(
-        ["triage::reflect", "workflow::create-plan", "unused::src/a.py::X"]
+        [
+            "triage::reflect",
+            "workflow::create-plan",
+            "strategy::owner-boundary-type-safety",
+            "unused::src/a.py::X",
+        ]
     )
     assert synthetic == ["triage::reflect", "workflow::create-plan"]
-    assert remaining == ["unused::src/a.py::X"]
+    assert remaining == ["strategy::owner-boundary-type-safety", "unused::src/a.py::X"]
     assert resolve_helpers_mod.resolve_synthetic_ids(
         ["triage::reflect", "unused::src/a.py::X"]
     ) == (["triage::reflect"], ["unused::src/a.py::X"])
@@ -153,6 +159,71 @@ def test_override_resolve_cmd_confirm_requires_note(capsys) -> None:
     override_resolve_cmd_mod.cmd_plan_resolve(args)
     out = capsys.readouterr().out
     assert "--confirm requires --note" in out
+
+
+def test_override_resolve_cmd_resolves_state_backed_strategy_item(monkeypatch) -> None:
+    strategy_id = "strategy::owner-boundary-type-safety"
+    state = state_mod.empty_state()
+    state["work_items"][strategy_id] = {
+        "id": strategy_id,
+        "status": "open",
+        "detector": "strategy",
+        "file": ".",
+        "tier": 2,
+        "confidence": "high",
+        "summary": "Migrate the remaining owner-boundary compatibility seams.",
+    }
+    plan = {"queue_order": [strategy_id], "clusters": {}}
+    delegated: list[argparse.Namespace] = []
+
+    monkeypatch.setattr(
+        override_resolve_cmd_mod,
+        "command_runtime",
+        lambda _args: SimpleNamespace(state=state),
+    )
+    monkeypatch.setattr(override_resolve_cmd_mod, "load_plan", lambda: plan)
+    monkeypatch.setattr(
+        override_resolve_cmd_mod, "append_log_entry", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(override_resolve_cmd_mod, "save_plan", lambda _plan: None)
+    monkeypatch.setattr(
+        override_resolve_cmd_mod,
+        "resolve_workflow_patterns",
+        lambda *_args, **_kwargs: pytest.fail(
+            "strategy work must use state resolution"
+        ),
+    )
+
+    def resolve_state_backed_item(resolve_args: argparse.Namespace) -> None:
+        delegated.append(resolve_args)
+        state_mod.resolve_issues(
+            state,
+            strategy_id,
+            resolve_args.status,
+            resolve_args.note,
+            attestation=resolve_args.attest,
+        )
+
+    monkeypatch.setattr(
+        override_resolve_cmd_mod, "cmd_resolve", resolve_state_backed_item
+    )
+
+    override_resolve_cmd_mod.cmd_plan_resolve(
+        argparse.Namespace(
+            patterns=[strategy_id],
+            attest="I have actually completed the owner-boundary migration and am not gaming the score.",
+            note="Completed the owner-boundary migration and verified its affected callers.",
+            confirm=False,
+            force_resolve=False,
+            state=None,
+            lang=None,
+            path=".",
+            exclude=None,
+        )
+    )
+
+    assert delegated[0].patterns == [strategy_id]
+    assert state["work_items"][strategy_id]["status"] == "fixed"
 
 
 def test_override_resolve_cmd_handles_synthetic_only_resolution(

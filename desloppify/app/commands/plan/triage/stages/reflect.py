@@ -5,11 +5,16 @@ from __future__ import annotations
 import argparse
 
 from desloppify.base.output.terminal import colorize
+from desloppify.base.subjective_dimension_catalog import DISPLAY_NAMES
 from desloppify.state_io import utc_now
 
 from ..display.dashboard import print_reflect_result
-from ..stage_queue import cascade_clear_dispositions, cascade_clear_later_confirmations, has_triage_in_queue
 from ..services import TriageServices, default_triage_services
+from ..stage_queue import (
+    cascade_clear_dispositions,
+    cascade_clear_later_confirmations,
+    has_triage_in_queue,
+)
 from ..validation.reflect_accounting import (
     BacklogDecision,
     ReflectDisposition,
@@ -33,7 +38,15 @@ def _validate_recurring_dimension_mentions(
     if not recurring_dims:
         return True
     report_lower = report.lower()
-    mentioned = [dim for dim in recurring_dims if dim.lower() in report_lower]
+    mentioned = [
+        dim
+        for dim in recurring_dims
+        if any(
+            name.lower() in report_lower
+            for name in (dim, DISPLAY_NAMES.get(dim))
+            if name
+        )
+    ]
     if mentioned:
         return True
     print(colorize("  Recurring patterns detected but not addressed in report:", "red"))

@@ -344,10 +344,72 @@ class TestDynamicImportFinder:
         assert len(targets) >= 1
         # The raw specifier should match if resolution fails,
         # or a resolved path ending in auth.py if it succeeds
-        found = any(
-            "auth" in t for t in targets
-        )
+        found = any("auth" in t for t in targets)
         assert found, f"Expected 'auth' in targets, got {targets}"
+
+    def test_finds_from_importlib_import_module(self, tmp_path):
+        """A directly imported import_module function remains a dynamic import."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "loader.py": textwrap.dedent("""\
+                    from importlib import import_module
+                    mod = import_module("mypkg.plugins.auth")
+                """),
+                "plugins/__init__.py": "",
+                "plugins/auth.py": "x = 1\n",
+            },
+        )
+
+        targets = find_python_dynamic_imports(pkg, [".py"])
+
+        assert any("auth" in target for target in targets)
+
+    def test_finds_literal_lazy_export_mapping_targets(self, tmp_path):
+        """Lazy package __getattr__ mappings keep their child modules reachable."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": textwrap.dedent("""\
+                    from importlib import import_module
+
+                    _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+                        "Service": ("services.service", "Service"),
+                    }
+
+                    def __getattr__(name: str):
+                        module_name, attr_name = _LAZY_EXPORTS[name]
+                        module = import_module(f"{__name__}.{module_name}")
+                        return getattr(module, attr_name)
+                """),
+                "services/__init__.py": "",
+                "services/service.py": "class Service: pass\n",
+            },
+        )
+
+        targets = find_python_dynamic_imports(pkg, [".py"])
+
+        assert str((pkg / "services" / "service.py").resolve()) in targets
+
+    def test_finds_explicit_legacy_module_alias_wrapper(self, tmp_path):
+        """Physical aliases are import entry points even with no first-party callers."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "legacy.py": textwrap.dedent("""\
+                    from mypkg.compat import install_legacy_module_alias
+
+                    install_legacy_module_alias(__name__, "mypkg.canonical")
+                """),
+                "canonical.py": "VALUE = 1\n",
+            },
+        )
+
+        targets = find_python_dynamic_imports(pkg, [".py"])
+
+        assert str((pkg / "legacy.py").resolve()) in targets
 
     def test_ignores_non_string_args(self, tmp_path):
         """importlib.import_module(variable) should NOT be found."""

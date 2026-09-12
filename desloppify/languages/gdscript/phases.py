@@ -11,7 +11,10 @@ from desloppify.languages._framework.base.shared_phases import (
     run_structural_phase,
 )
 from desloppify.languages._framework.base.types import LangRuntimeContract
-from desloppify.languages.gdscript.detectors.deps import build_dep_graph
+from desloppify.languages.gdscript.detectors.deps import (
+    build_dep_graph,
+    find_gdscript_dynamic_imports,
+)
 from desloppify.state_io import Issue
 
 GDSCRIPT_COMPLEXITY_SIGNALS = [
@@ -54,4 +57,5 @@ def phase_coupling(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], 
         lang,
         build_dep_graph_fn=build_dep_graph,
         log_fn=log,
+        dynamic_import_finder=find_gdscript_dynamic_imports,
     )
