@@ -424,6 +424,32 @@ class TestTransitiveCoverage:
 
 
 class TestAnalyzeTestQuality:
+    @pytest.mark.parametrize("module", ["np", "numpy"])
+    def test_python_numpy_testing_assertions(self, tmp_path, module):
+        content = (
+            "def test_values():\n"
+            f"    {module}.testing.assert_allclose(actual, expected)\n"
+            f"    {module}.testing.assert_array_equal(actual, expected)\n"
+            "\n"
+            "def test_bounds():\n"
+            f"    {module}.testing.assert_array_less(actual, upper_bound)\n"
+        )
+        tf = _write_file(tmp_path, "test_arrays.py", content)
+        result = analyze_test_quality({tf}, "python")
+        assert result[tf]["assertions"] == 3
+        assert result[tf]["test_functions"] == 2
+        assert result[tf]["quality"] not in {"assertion_free", "smoke"}
+
+    def test_python_numpy_assertion_references_and_comments_do_not_count(self, tmp_path):
+        content = (
+            "def test_values():\n"
+            "    helper = np.testing.assert_allclose\n"
+            "    # np.testing.assert_array_equal(actual, expected)\n"
+        )
+        tf = _write_file(tmp_path, "test_references.py", content)
+        result = analyze_test_quality({tf}, "python")
+        assert result[tf]["assertions"] == 0
+
     # Python test function counting uses MULTILINE and should count all test defs.
 
     def test_python_thorough(self, tmp_path):
@@ -971,4 +997,3 @@ class TestDetectTestCoverage:
             if e["detail"]["kind"] in ("untested_module", "untested_critical")
         ]
         assert untested == []
-

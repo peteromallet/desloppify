@@ -24,6 +24,7 @@ ASSERT_PATTERNS = [
         r"^\s*assert\s+",
         r"self\.assert\w+\(",
         r"pytest\.raises\(",
+        r"\b(?:np|numpy)\.testing\.assert_\w+\s*\(",
         r"\.assert_called",
         r"\.assert_not_called",
     ]
