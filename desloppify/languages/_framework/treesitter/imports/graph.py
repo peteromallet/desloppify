@@ -31,7 +31,10 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+    # Resolvers may return paths that are absolute, cwd-relative, or scan-root
+    # relative, while ``file_list`` may itself hold relative paths. Key the
+    # lookup on the absolute form of each entry so edges match either way.
+    abs_to_key = {os.path.abspath(f): f for f in file_list}
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -75,17 +78,19 @@ def ts_build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
-
-            # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            # Only track edges within the scanned file set. Try the resolved
+            # path as-is (absolute, or relative to the current directory)
+            # before falling back to interpreting it as scan-root relative.
+            target = abs_to_key.get(os.path.abspath(resolved))
+            if target is None and not os.path.isabs(resolved):
+                target = abs_to_key.get(
+                    os.path.abspath(os.path.join(scan_path, resolved))
+                )
+            if target is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(target)
+            graph[target]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():

@@ -216,6 +216,13 @@ JS_SPEC = TreeSitterLangSpec(
     import_query="""
         (import_statement
             source: (string (string_fragment) @path)) @import
+        (call_expression
+            function: (identifier) @_require_fn
+            arguments: (arguments . (string (string_fragment) @path))
+            (#eq? @_require_fn "require")) @import
+        (call_expression
+            function: (import)
+            arguments: (arguments . (string (string_fragment) @path))) @import
     """,
     resolve_import=resolve_js_import,
     class_query="""
@@ -244,6 +251,13 @@ TYPESCRIPT_SPEC = TreeSitterLangSpec(
     import_query="""
         (import_statement
             source: (string (string_fragment) @path)) @import
+        (call_expression
+            function: (identifier) @_require_fn
+            arguments: (arguments . (string (string_fragment) @path))
+            (#eq? @_require_fn "require")) @import
+        (call_expression
+            function: (import)
+            arguments: (arguments . (string (string_fragment) @path))) @import
     """,
     resolve_import=resolve_js_import,
     class_query="""
