@@ -227,3 +227,35 @@ def test_next_lint_phase_is_skipped_when_include_slow_false():
     labels = [getattr(p, "label", "") for p in selected]
     assert "Next.js framework smells" in labels
     assert "next lint" not in labels
+
+
+@pytest.mark.parametrize("version,eslint", [("15.5.0", False), ("16.0.0", True), ("17.0.0-canary.1", True), ("v16.0.0", True)])
+def test_next_lint_uses_installed_version(tmp_path, monkeypatch, version, eslint):
+    import json
+    from desloppify.languages._framework.frameworks import phases
+    from desloppify.languages._framework.frameworks.specs.nextjs import NEXTJS_SPEC
+
+    _write(tmp_path, "package.json", '{"dependencies":{"next":"*"}}')
+    _write(tmp_path, "app/page.tsx", "export default function Page(){return null}")
+    _write(tmp_path, "node_modules/next/package.json", json.dumps({"version": version}))
+    calls = []
+
+    def fake_phase(label, cmd, *args, **kwargs):
+        def run(root, lang):
+            calls.append((cmd, root))
+            return [], {"next_lint": 1}
+        return SimpleNamespace(label=label, run=run, slow=False)
+
+    monkeypatch.setattr(phases, "make_tool_phase", fake_phase)
+    phase = phases._framework_tool_phase(NEXTJS_SPEC, NEXTJS_SPEC.tools[0])
+    assert phase.run(tmp_path, _FakeLang()) == ([], {"next_lint": 1})
+    expected = "npx --no-install eslint . --format json" if eslint else "npx --no-install next lint --format json"
+    assert calls == [(expected, tmp_path.resolve())]
+
+
+@pytest.mark.parametrize("content", [None, "invalid", "[]", '{"version": null}', '{"version":"unknown"}'])
+def test_next_lint_unknown_installation_keeps_legacy_command(tmp_path, content):
+    from desloppify.languages._framework.frameworks.specs.nextjs import _next_lint_command
+    if content is not None:
+        _write(tmp_path, "node_modules/next/package.json", content)
+    assert _next_lint_command(tmp_path) is None
