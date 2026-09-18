@@ -45,7 +45,8 @@ from .shared_phases_helpers import (
 # security detector symbol from this module.
 detect_security_issues = _detect_security_issues_default
 
-_DETECTOR_CACHE_VERSION = 1
+# Earlier external scans could cache results from relatively excluded paths.
+_DETECTOR_CACHE_VERSION = 2
 _PREFETCH_ATTR = "_shared_review_prefetch_futures"
 _FUNCTION_CACHE_ATTR = "_shared_review_function_cache"
 _PREFETCH_BOILERPLATE_KEY = "boilerplate"

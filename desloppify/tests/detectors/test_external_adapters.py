@@ -954,6 +954,32 @@ class TestImportLinterAdapter:
 from desloppify.base.discovery.source import collect_exclude_dirs  # noqa: E402
 
 
+def test_collect_exclude_dirs_resolves_relative_scan_root(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "archive").mkdir()
+    result = collect_exclude_dirs(Path("."), extra_exclusions=("archive",))
+    assert str(tmp_path / "archive") in result
+    assert all(Path(path).is_absolute() for path in result)
+
+
+def test_bandit_respects_exclusions_with_relative_scan_root(tmp_path, monkeypatch):
+    pytest.importorskip("bandit")
+    from desloppify.languages.python.detectors.bandit_adapter import detect_with_bandit
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "archive").mkdir()
+    for path in (tmp_path / "active.py", tmp_path / "archive" / "retired.py"):
+        path.write_text("import subprocess\nsubprocess.run(['echo', 'fixture'])\n")
+    result = detect_with_bandit(
+        Path("."), None,
+        exclude_dirs=collect_exclude_dirs(Path("."), extra_exclusions=("archive",)),
+    )
+    assert result.status.state == "ok"
+    assert result.files_scanned == 1
+    assert result.entries
+    assert all(entry["file"] == "active.py" for entry in result.entries)
+
+
 class TestCollectExcludeDirs:
     def test_returns_absolute_paths(self, tmp_path):
         with patch(
