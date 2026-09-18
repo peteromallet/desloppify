@@ -19,16 +19,18 @@ from desloppify.engine.policy.zones import adjust_potential, filter_entries
 from desloppify.languages._framework.base.shared_phases import (
     run_structural_phase,
 )
-from desloppify.languages._framework.base.types import DetectorPhase, LangRuntimeContract
-from desloppify.languages._framework.issue_factories import (
-    make_orphaned_issues,
-    make_single_use_issues,
+from desloppify.languages._framework.base.types import (
+    DetectorPhase,
+    LangRuntimeContract,
 )
 from desloppify.languages._framework.generic_parts.tool_factories import (
     _record_tool_failure_coverage,
 )
 from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
-from desloppify.languages._framework.generic_parts.tool_runner import run_tool_result
+from desloppify.languages._framework.issue_factories import (
+    make_orphaned_issues,
+    make_single_use_issues,
+)
 from desloppify.languages.rust.detectors import (
     detect_async_locking,
     detect_doctest_hygiene,
@@ -44,10 +46,17 @@ from desloppify.languages.rust.detectors import (
 from desloppify.languages.rust.detectors.deps import build_dep_graph
 from desloppify.languages.rust.tools import (
     CARGO_ERROR_CMD as RUST_CHECK_CMD,
+)
+from desloppify.languages.rust.tools import (
     CLIPPY_WARNING_CMD as RUST_CLIPPY_CMD,
+)
+from desloppify.languages.rust.tools import (
     RUSTDOC_WARNING_CMD as RUST_RUSTDOC_CMD,
+)
+from desloppify.languages.rust.tools import (
     parse_cargo_errors,
     parse_clippy_messages,
+    run_cargo_result,
     run_rustdoc_result,
 )
 
@@ -244,7 +253,6 @@ def _make_rust_tool_phase(label: str, runner: ToolResultRunner, detector: str, t
                 label=label,
                 result=result,
             )
-            return [], {}
         if not result.entries:
             return [], {}
         issues = [
@@ -266,7 +274,9 @@ def _make_rust_tool_phase(label: str, runner: ToolResultRunner, detector: str, t
 def tool_phase_clippy():
     return _make_rust_tool_phase(
         RUST_CLIPPY_LABEL,
-        lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
+        lambda path: run_cargo_result(
+            RUST_CLIPPY_CMD, path, parse_clippy_messages
+        ),
         "clippy_warning",
         tier=2,
     )
@@ -275,7 +285,9 @@ def tool_phase_clippy():
 def tool_phase_check():
     return _make_rust_tool_phase(
         RUST_CHECK_LABEL,
-        lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
+        lambda path: run_cargo_result(
+            RUST_CHECK_CMD, path, parse_cargo_errors
+        ),
         "cargo_error",
         tier=3,
     )

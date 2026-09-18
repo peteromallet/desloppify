@@ -8,7 +8,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from desloppify.base.discovery.file_paths import rel
 from desloppify.base.output.terminal import colorize, display_entries
 from desloppify.languages._framework.commands.base import (
     make_cmd_complexity,
@@ -23,7 +22,6 @@ from desloppify.languages._framework.commands.registry import (
     make_cmd_orphaned,
 )
 from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
-from desloppify.languages._framework.generic_parts.tool_runner import run_tool_result
 from desloppify.languages.rust.detectors import (
     detect_async_locking,
     detect_doctest_hygiene,
@@ -47,9 +45,14 @@ from desloppify.languages.rust.phases import (
 )
 from desloppify.languages.rust.tools import (
     CARGO_ERROR_CMD as RUST_CHECK_CMD,
+)
+from desloppify.languages.rust.tools import (
     CLIPPY_WARNING_CMD as RUST_CLIPPY_CMD,
+)
+from desloppify.languages.rust.tools import (
     parse_cargo_errors,
     parse_clippy_messages,
+    run_cargo_result,
     run_rustdoc_result,
 )
 
@@ -114,8 +117,8 @@ def _make_tool_detect_command(
         result = runner(Path(args.path))
         if result.status == "error":
             payload = {
-                "count": 0,
-                "entries": [],
+                "count": len(result.entries),
+                "entries": result.entries,
                 "status": result.status,
                 "error_kind": result.error_kind,
                 "message": result.message,
@@ -126,11 +129,12 @@ def _make_tool_detect_command(
             print(colorize(f"\n{label} unavailable", "yellow"))
             if result.message:
                 print(colorize(result.message, "dim"))
-            return
+            if not result.entries:
+                return
 
         entries = [
             {
-                "file": rel(entry["file"]),
+                "file": entry["file"],
                 "line": entry["line"],
                 "message": entry["message"],
             }
@@ -180,11 +184,15 @@ def _make_entry_detect_command(
 
 cmd_clippy_warning = _make_tool_detect_command(
     RUST_CLIPPY_LABEL,
-    lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
+    lambda path: run_cargo_result(
+        RUST_CLIPPY_CMD, path, parse_clippy_messages
+    ),
 )
 cmd_cargo_error = _make_tool_detect_command(
     RUST_CHECK_LABEL,
-    lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
+    lambda path: run_cargo_result(
+        RUST_CHECK_CMD, path, parse_cargo_errors
+    ),
 )
 cmd_rustdoc_warning = _make_tool_detect_command(
     RUST_RUSTDOC_LABEL,

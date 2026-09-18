@@ -718,7 +718,8 @@ def test_run_rustdoc_result_scans_each_workspace_library_package(tmp_path):
 
     result = run_rustdoc_result(workspace, run_subprocess=runner)
 
-    assert result.status == "ok"
+    assert result.status == "error"
+    assert result.error_kind == "tool_failed"
     assert result.entries == [
         {"file": "pkg-a/src/lib.rs", "line": 3, "message": "missing docs"},
         {"file": "pkg-c/src/lib.rs", "line": 8, "message": "missing docs"},
@@ -775,7 +776,8 @@ def test_run_rustdoc_result_filters_missing_primary_span_files(tmp_path):
 
     result = run_rustdoc_result(workspace, run_subprocess=runner)
 
-    assert result.status == "ok"
+    assert result.status == "error"
+    assert result.error_kind == "tool_failed"
     assert result.entries == [
         {"file": "pkg-a/src/lib.rs", "line": 1, "message": "missing docs"}
     ]

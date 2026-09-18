@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
 import shlex
 import subprocess  # nosec B404
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -16,11 +19,11 @@ from desloppify.languages._framework.generic_parts.tool_runner import (
     resolve_command_argv,
     run_tool_result,
 )
-from desloppify.languages.rust.support import find_workspace_root
+from desloppify.languages.rust.support import find_manifest_dir, find_workspace_root
 
 CLIPPY_WARNING_CMD = (
-    "cargo clippy --workspace --all-targets --all-features --message-format=json "
-    "-- -D warnings -W clippy::pedantic -W clippy::cargo -W clippy::unwrap_used "
+    "cargo clippy --workspace --all-targets --all-features --message-format=json --no-deps "
+    "-- -W clippy::pedantic -W clippy::cargo -W clippy::unwrap_used "
     "-W clippy::expect_used -W clippy::panic -W clippy::todo -W clippy::unimplemented "
     "2>&1"
 )
@@ -55,6 +58,8 @@ def _parse_cargo_messages(
     skip_inline_cfg_test_modules: bool = False,
 ) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
+    scan_root = scan_path.resolve()
+    workspace_root = find_workspace_root(scan_root)
     inline_test_cache: dict[str, tuple[tuple[int, int], ...]] = {}
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -76,6 +81,13 @@ def _parse_cargo_messages(
         line_no = span.get("line_start")
         if not filename or not isinstance(line_no, int):
             continue
+        source_path = Path(filename)
+        if not source_path.is_absolute():
+            source_path = workspace_root / source_path
+        source_path = source_path.resolve()
+        if not source_path.is_relative_to(scan_root):
+            continue
+        filename = source_path.relative_to(scan_root).as_posix()
         if skip_inline_cfg_test_modules and _should_skip_inline_cfg_test_module_diagnostic(
             scan_path,
             filename,
@@ -594,6 +606,71 @@ def build_rustdoc_warning_cmd(package: str) -> str:
     return RUSTDOC_WARNING_CMD.format(package=shlex.quote(package))
 
 
+def scope_cargo_command(command: str, scan_path: Path) -> str:
+    """Select the enclosing member for a member scan, not every workspace crate."""
+    manifest_dir = find_manifest_dir(scan_path)
+    if manifest_dir is None or manifest_dir.resolve() == find_workspace_root(scan_path):
+        return command
+    manifest = shlex.quote(str((manifest_dir / "Cargo.toml").resolve()))
+    return command.replace("--workspace", f"--manifest-path {manifest}", 1)
+
+
+def run_cargo_result(
+    command: str,
+    scan_path: Path,
+    parser: Callable[[str, Path], list[dict]],
+    *,
+    run_subprocess: SubprocessRun | None = None,
+) -> ToolRunResult:
+    """Run scoped Cargo without mistaking partial diagnostics for full coverage."""
+    try:
+        timeout = float(os.environ.get("DESLOPPIFY_RUST_TOOL_TIMEOUT", "120"))
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be finite and positive")
+    except ValueError:
+        return ToolRunResult(
+            entries=[],
+            status="error",
+            error_kind="tool_configuration",
+            message="DESLOPPIFY_RUST_TOOL_TIMEOUT must be a positive number of seconds",
+        )
+
+    runner = run_subprocess or subprocess.run
+    partial_output = ""
+
+    def run(args, **kwargs):
+        nonlocal partial_output
+        kwargs["timeout"] = timeout
+        try:
+            return runner(args, **kwargs)
+        except subprocess.TimeoutExpired as exc:
+            output = exc.stdout or ""
+            partial_output = (
+                output.decode(errors="replace") if isinstance(output, bytes) else output
+            )
+            raise
+
+    # Cargo JSON is on stdout. Avoid a shell so timeouts terminate Cargo itself,
+    # and keep human-readable stderr separate from structured diagnostics.
+    command = scope_cargo_command(command, scan_path).removesuffix(" 2>&1")
+    result = run_tool_result(
+        command,
+        find_workspace_root(scan_path),
+        lambda output, _: parser(output, scan_path),
+        run_subprocess=run,
+    )
+    if result.error_kind == "tool_timeout" and partial_output:
+        return replace(result, entries=parser(partial_output, scan_path))
+    if result.returncode not in (0, None) and result.status != "error":
+        return replace(
+            result,
+            status="error",
+            error_kind="tool_failed",
+            message=f"Cargo exited with code {result.returncode}; diagnostics are partial",
+        )
+    return result
+
+
 def _entry_file_exists(entry: dict[str, Any], workspace_root: Path) -> bool:
     file_name = entry.get("file")
     if not isinstance(file_name, str) or not file_name.strip():
@@ -612,12 +689,25 @@ def _filter_existing_rustdoc_entries(
     return [entry for entry in entries if _entry_file_exists(entry, workspace_root)]
 
 
-def _extract_workspace_rustdoc_packages(payload: dict[str, Any]) -> list[str]:
+def _extract_workspace_rustdoc_packages(
+    payload: dict[str, Any], scan_path: Path | None = None
+) -> list[str]:
     workspace_members = set(payload.get("workspace_members") or [])
     packages: list[str] = []
     for package in payload.get("packages") or []:
         if not isinstance(package, dict) or package.get("id") not in workspace_members:
             continue
+        if scan_path is not None:
+            manifest_path = package.get("manifest_path")
+            if not isinstance(manifest_path, str):
+                continue
+            package_root = Path(manifest_path).resolve().parent
+            scan_root = scan_path.resolve()
+            if not (
+                package_root.is_relative_to(scan_root)
+                or scan_root.is_relative_to(package_root)
+            ):
+                continue
         name = package.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
@@ -690,7 +780,7 @@ def _run_cargo_metadata(
             [],
         )
     try:
-        data = json.loads(output)
+        data = json.loads(result.stdout or "")
     except json.JSONDecodeError as exc:
         return (
             ToolRunResult(
@@ -713,7 +803,8 @@ def _run_cargo_metadata(
             ),
             [],
         )
-    return None, _extract_workspace_rustdoc_packages(data)
+    scoped_path = scan_path if scan_path.resolve() != workspace_root else None
+    return None, _extract_workspace_rustdoc_packages(data, scoped_path)
 
 
 def run_rustdoc_result(
@@ -728,29 +819,26 @@ def run_rustdoc_result(
     if not packages:
         return ToolRunResult(entries=[], status="empty", returncode=0)
 
-    workspace_root = find_workspace_root(scan_path)
     entries: list[dict[str, Any]] = []
+    failure: ToolRunResult | None = None
     returncode = 0
     for package in packages:
-        result = run_tool_result(
+        result = run_cargo_result(
             build_rustdoc_warning_cmd(package),
-            workspace_root,
+            scan_path,
             parse_rustdoc_messages,
             run_subprocess=run_subprocess,
         )
+        entries.extend(_filter_existing_rustdoc_entries(result.entries, scan_path))
         if result.status == "error":
             message = result.message or "cargo rustdoc failed"
-            return ToolRunResult(
-                entries=[],
-                status="error",
-                error_kind=result.error_kind,
-                message=f"{package}: {message}",
-                returncode=result.returncode,
-            )
+            if failure is None:
+                failure = replace(result, message=f"{package}: {message}")
         if result.status == "ok":
-            entries.extend(_filter_existing_rustdoc_entries(result.entries, workspace_root))
             if result.returncode not in (0, None):
                 returncode = result.returncode
+    if failure is not None:
+        return replace(failure, entries=entries)
     if not entries:
         return ToolRunResult(entries=[], status="empty", returncode=returncode)
     return ToolRunResult(entries=entries, status="ok", returncode=returncode)
@@ -764,5 +852,6 @@ __all__ = [
     "parse_cargo_errors",
     "parse_clippy_messages",
     "parse_rustdoc_messages",
+    "run_cargo_result",
     "run_rustdoc_result",
 ]

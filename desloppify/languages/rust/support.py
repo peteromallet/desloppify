@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from typing import Any
 from desloppify.base.discovery.file_paths import rel, resolve_path
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.discovery.source import SourceDiscoveryOptions, find_source_files
+
 RUST_FILE_EXCLUSIONS = ["target", ".git", "node_modules", "vendor"]
 USE_STATEMENT_RE = re.compile(r"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?use\s+([^;]+);")
 PUB_USE_STATEMENT_RE = re.compile(r"(?m)^\s*pub(?:\([^)]*\))?\s+use\s+([^;]+);")
@@ -384,10 +386,15 @@ def _build_workspace_package_index_cached(root: Path) -> dict[str, Path]:
     """Cached inner implementation of workspace package index building."""
     _exclusions = set(RUST_FILE_EXCLUSIONS)
     packages: dict[str, Path] = {}
-    for manifest in root.rglob("Cargo.toml"):
-        if any(part in _exclusions for part in manifest.relative_to(root).parts[:-1]):
+    for directory, subdirs, filenames in os.walk(root):
+        current = Path(directory)
+        subdirs[:] = sorted(
+            name for name in subdirs
+            if name not in _exclusions and not (current / name / ".git").exists()
+        )
+        if "Cargo.toml" not in filenames:
             continue
-        manifest_dir = manifest.parent.resolve()
+        manifest_dir = current.resolve()
         for name in {
             read_package_name(manifest_dir),
             read_library_crate_name(manifest_dir),
@@ -523,7 +530,7 @@ def _resolve_local_dependency_entry(
 
 
 def find_workspace_root(path: Path | str | None) -> Path:
-    """Return the outermost Cargo workspace root for a file/dir when present."""
+    """Return the nearest Cargo workspace root without escaping nested worktrees."""
     if path is None:
         return get_project_root()
 
@@ -541,7 +548,7 @@ def find_workspace_root(path: Path | str | None) -> Path:
             continue
         workspace = data.get("workspace")
         if isinstance(workspace, dict):
-            workspace_root = current
+            return current.resolve()
     return workspace_root.resolve()
 
 

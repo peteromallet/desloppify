@@ -306,9 +306,15 @@ Rust has three official-tool phases in `tools.py` and `phases.py`:
 
 Current command policy:
 
-- Clippy runs workspace-wide, all targets, all features, JSON output
-- Cargo check runs workspace-wide, all targets, all features, JSON output
-- Rustdoc runs once per workspace library package with `cargo rustdoc -p <package> --lib`, all features, JSON output
+- Workspace-root scans select the workspace; member scans select their enclosing
+  manifest for Clippy and Cargo check, and their library package for rustdoc.
+- Clippy and Cargo check retain all targets, all features, and JSON output.
+- Clippy uses `--no-deps` and does not promote all warnings to errors. Dependencies
+  still compile, but their Clippy warnings cannot stop analysis of the selected crate.
+- Rustdoc runs once per selected library package with `cargo rustdoc -p <package>
+  --lib`, all features, and JSON output.
+- Native span paths are resolved from the Cargo workspace, filtered to the scan
+  directory, and returned relative to that directory.
 
 Current rustdoc warnings enabled:
 
@@ -316,7 +322,20 @@ Current rustdoc warnings enabled:
 - `private_intra_doc_links`
 - `missing_crate_level_docs`
 
-If these tools are unavailable or fail, the plugin records reduced coverage rather than inventing findings.
+If these tools are unavailable, fail, or time out, the plugin records reduced
+coverage rather than inventing findings. In-scope diagnostics emitted before a
+failure or timeout are retained, never represented as a complete successful check.
+The direct `detect` commands likewise include partial entries in their error JSON.
+
+Each Rust native invocation defaults to 120 seconds. For a cold selected crate,
+set `DESLOPPIFY_RUST_TOOL_TIMEOUT` to a positive number of seconds, for example:
+
+```bash
+DESLOPPIFY_RUST_TOOL_TIMEOUT=300 desloppify --lang rust detect clippy_warning --path crates/service --json
+```
+
+This override affects only Rust native invocations, not other language tools,
+review batches, or Cargo metadata (which retains its 120-second timeout).
 
 ## Rust smell detection
 
