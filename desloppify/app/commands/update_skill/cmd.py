@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 
 from desloppify.app.skill_docs import (
+    GLOBAL_TARGETS,
     SKILL_BEGIN,
     SKILL_END,
     SKILL_TARGETS,
@@ -173,6 +174,7 @@ def _update_installed_skill_with_deps(
     target_path = get_project_root_fn() / target_rel
 
     print(colorize_fn(f"Downloading skill document ({interface})...", "dim"))
+    print(colorize_fn(f"Project skill target: {target_path}", "dim"))
     try:
         skill_content = download_fn("SKILL.md")
         overlay_content = download_fn(f"{overlay_name}.md") if overlay_name else None
@@ -188,16 +190,28 @@ def _update_installed_skill_with_deps(
     if interface in _FRONTMATTER_FIRST_INTERFACES:
         new_section = _ensure_frontmatter_first(new_section)
 
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    if dedicated:
-        result = new_section
-    elif target_path.is_file():
-        existing = target_path.read_text(encoding="utf-8", errors="replace")
-        result = _replace_section(existing, new_section)
-    else:
-        result = new_section
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if dedicated:
+            result = new_section
+        elif target_path.is_file():
+            existing = target_path.read_text(encoding="utf-8", errors="replace")
+            result = _replace_section(existing, new_section)
+        else:
+            result = new_section
 
-    safe_write_text_fn(target_path, result)
+        safe_write_text_fn(target_path, result)
+    except OSError as exc:
+        hint = (
+            "update-skill installs into the current directory (or DESLOPPIFY_ROOT). "
+            "Run it from your project directory, or set DESLOPPIFY_ROOT to that directory."
+        )
+        if interface in GLOBAL_TARGETS:
+            hint += (
+                " For a personal skill shared across projects, run: "
+                f"desloppify setup --interface {interface}"
+            )
+        raise CommandError(f"Cannot install skill at {target_path}: {exc}\n{hint}") from exc
 
     version_match = SKILL_VERSION_RE.search(new_section)
     version = version_match.group(1) if version_match else "?"
@@ -239,6 +253,8 @@ def _run_cmd_update_skill(
         print()
         names = ", ".join(sorted(SKILL_TARGETS))
         print(f"Install with: desloppify update-skill <{names}>")
+        print("Run from your project directory, or set DESLOPPIFY_ROOT to it.")
+        print("For personal skills, use: desloppify setup --interface <interface>")
         return
 
     if interface not in SKILL_TARGETS:

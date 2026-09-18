@@ -190,6 +190,11 @@ def _add_update_skill_parser(sub) -> None:
     p = sub.add_parser(
         "update-skill",
         help="Install or update the desloppify skill/agent document",
+        description=(
+            "Install or update a project-local skill document in the current "
+            "directory (or DESLOPPIFY_ROOT). For a personal skill shared across "
+            "projects, use: desloppify setup --interface <interface>."
+        ),
     )
     p.add_argument(
         "interface",
@@ -208,6 +213,6 @@ def _add_setup_parser(sub) -> None:
     p.add_argument(
         "--interface",
         default=None,
-        choices=["amp", "claude", "codex", "gemini", "opencode", "qwen", "rovodev"],
+        choices=["amp", "claude", "codex", "copilot", "gemini", "opencode", "qwen", "rovodev"],
         help="Install for a specific interface only",
     )

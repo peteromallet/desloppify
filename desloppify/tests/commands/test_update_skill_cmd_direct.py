@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import errno
 from pathlib import Path
 
+import pytest
+
 import desloppify.app.commands.update_skill.cmd as update_skill_cmd_mod
+from desloppify.base.exception_sets import CommandError
 
 
 def test_update_skill_helper_functions_cover_frontmatter_resolution_and_replace() -> None:
@@ -111,3 +115,86 @@ def test_cmd_update_skill_handles_missing_and_unknown_interfaces(monkeypatch, ca
     update_skill_cmd_mod.cmd_update_skill(argparse.Namespace(interface=None))
     out = capsys.readouterr().out
     assert "Unknown interface 'unknown_thing'." in out
+
+
+@pytest.mark.parametrize("operation", ["mkdir", "read_text", "write"])
+@pytest.mark.parametrize("interface", ["copilot", "windsurf"])
+def test_update_skill_reports_filesystem_errors(
+    monkeypatch, tmp_path: Path, capsys, operation: str, interface: str,
+) -> None:
+    target = tmp_path / update_skill_cmd_mod.SKILL_TARGETS[interface][0]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    original = "# Existing instructions\n"
+    target.write_text(original, encoding="utf-8")
+    error = PermissionError(errno.EACCES, "Permission denied", str(target))
+
+    def fail(*args, **kwargs):
+        raise error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(update_skill_cmd_mod, "get_project_root", lambda: tmp_path)
+        patch.setattr(
+            update_skill_cmd_mod, "_download",
+            lambda _: "<!-- desloppify-skill-version: 7 -->\n",
+        )
+        if operation == "write":
+            patch.setattr(update_skill_cmd_mod, "safe_write_text", fail)
+        else:
+            patch.setattr(Path, operation, fail)
+
+        with pytest.raises(CommandError) as caught:
+            update_skill_cmd_mod.update_installed_skill(interface)
+
+    assert caught.value.__cause__ is error
+    message = caught.value.message
+    assert str(target) in message
+    assert "DESLOPPIFY_ROOT" in message
+    assert ("desloppify setup --interface copilot" in message) == (interface == "copilot")
+    output = capsys.readouterr().out
+    assert f"Project skill target: {target}" in output
+    assert "Updated" not in output
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_update_skill_cli_exits_cleanly_on_permission_error(
+    monkeypatch, tmp_path: Path, capsys,
+) -> None:
+    import desloppify.app.commands.update_skill as update_skill_mod
+    import desloppify.cli as cli_mod
+
+    def fail(_path, _content):
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr("sys.argv", ["desloppify", "update-skill", "copilot"])
+    monkeypatch.setattr(update_skill_mod, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        update_skill_mod, "_download",
+        lambda _: "<!-- desloppify-skill-version: 7 -->\n",
+    )
+    monkeypatch.setattr(update_skill_mod, "safe_write_text", fail)
+    with pytest.raises(SystemExit) as caught:
+        cli_mod.main()
+    assert caught.value.code != 0
+    stderr = capsys.readouterr().err
+    assert "Permission denied" in stderr
+    assert str(tmp_path / ".github" / "copilot-instructions.md") in stderr
+    assert "desloppify setup --interface copilot" in stderr
+    assert "Traceback" not in stderr
+
+
+def test_copilot_project_install_preserves_existing_instructions(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    target = tmp_path / ".github" / "copilot-instructions.md"
+    target.parent.mkdir()
+    target.write_text("# Project instructions\n", encoding="utf-8")
+    monkeypatch.setenv("DESLOPPIFY_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        update_skill_cmd_mod, "_download",
+        lambda _: "<!-- desloppify-skill-version: 7 -->\n",
+    )
+
+    assert update_skill_cmd_mod.update_installed_skill("copilot")
+    content = target.read_text(encoding="utf-8")
+    assert content.startswith("# Project instructions\n")
+    assert "desloppify-skill-version" in content

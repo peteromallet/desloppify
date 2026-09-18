@@ -36,7 +36,7 @@ def _build_bundled_section(interface: str) -> str:
     skill_content = _resource_text("SKILL.md")
     overlay_content = _resource_text(f"{overlay_name}.md")
     section = _build_section(skill_content, overlay_content)
-    if interface in {"amp", "codex", "qwen"}:
+    if interface in {"amp", "codex", "copilot", "qwen"}:
         section = _ensure_frontmatter_first(section)
     return section
 

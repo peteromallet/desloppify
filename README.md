@@ -53,6 +53,25 @@ Use `plan` / `plan queue` to reorder priorities or cluster related issues. Resca
 The scan output includes agent instructions — follow them, don't substitute your own analysis.
 ```
 
+## Skill installation scope
+
+`desloppify update-skill <interface>` installs or updates a **project-local**
+document beneath the current directory (or `DESLOPPIFY_ROOT` if set). Run it
+from your project root, not the directory containing an executable. For Copilot,
+the target is `.github/copilot-instructions.md`.
+
+For a **personal** skill shared across projects, use the bundled installer:
+
+```bash
+desloppify setup --interface copilot
+```
+
+This installs `~/.copilot/skills/desloppify/SKILL.md`. In WSL, `~` is the Linux
+user's home; a working directory under `/mnt/c` does not select a Windows
+Copilot installation. No platform inference from the working directory is needed.
+Run `/skills reload` in an existing Copilot CLI session to load the new skill.
+Re-run `setup` after upgrading Desloppify to update bundled personal skills.
+
 ## Monorepos and multi-project directories
 
 If your workspace contains multiple programs (e.g., a frontend and backend in sibling directories), scan each one separately with `--path`:

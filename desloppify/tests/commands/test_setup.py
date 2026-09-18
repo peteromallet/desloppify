@@ -10,7 +10,7 @@ import pytest
 
 import desloppify.app.commands.registry as registry_mod
 import desloppify.app.commands.setup.cmd as setup_cmd_mod
-from desloppify.app.skill_docs import SKILL_VERSION
+from desloppify.app.skill_docs import SKILL_VERSION, find_any_global_install
 from desloppify.base.exception_sets import CommandError
 from desloppify.cli import create_parser
 
@@ -221,3 +221,36 @@ def test_setup_parser_accepts_rovodev_choice() -> None:
     parser = create_parser()
     args = parser.parse_args(["setup", "--interface", "rovodev"])
     assert args.interface == "rovodev"
+
+
+def test_setup_parser_accepts_copilot_choice() -> None:
+    args = create_parser().parse_args(["setup", "--interface", "copilot"])
+    assert args.interface == "copilot"
+
+
+@pytest.mark.parametrize("interface", ["copilot", None])
+def test_copilot_global_setup_uses_home_not_project_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    interface: str | None,
+) -> None:
+    home = tmp_path / "home"
+    (home / ".copilot").mkdir(parents=True)
+    project = tmp_path / "mnt" / "c" / "Program Files" / "tools"
+    project.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("DESLOPPIFY_ROOT", str(project))
+
+    setup_cmd_mod.cmd_setup(_setup_args(interface=interface))
+
+    target = home / ".copilot" / "skills" / "desloppify" / "SKILL.md"
+    content = target.read_text(encoding="utf-8")
+    assert content.startswith("---\nname: desloppify\n")
+    assert f"desloppify-skill-version: {SKILL_VERSION}" in content
+    assert "<!-- desloppify-overlay: copilot -->" in content
+    assert find_any_global_install()
+    assert not list(project.iterdir())
+
+    setup_cmd_mod.cmd_setup(_setup_args(interface=interface))
+    assert target.read_text(encoding="utf-8") == content

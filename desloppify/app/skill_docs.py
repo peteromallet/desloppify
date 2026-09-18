@@ -64,9 +64,11 @@ SKILL_TARGETS: dict[str, tuple[str, str, bool]] = {
 #   rovodev:  support.atlassian.com/rovo/docs/extend-rovo-dev-cli-with-agent-skills/
 #
 # Cursor is excluded — global rules are UI-only (cursor.com/docs/rules).
+# Copilot personal skills: docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills
 GLOBAL_TARGETS: dict[str, tuple[str, str, str, bool]] = {
     "claude": (".claude/skills/desloppify/SKILL.md", "CLAUDE", ".claude", True),
     "codex": (".codex/AGENTS.md", "CODEX", ".codex", False),
+    "copilot": (".copilot/skills/desloppify/SKILL.md", "COPILOT", ".copilot", True),
     "gemini": (".gemini/skills/desloppify/SKILL.md", "GEMINI", ".gemini", True),
     "amp": (".config/agents/skills/desloppify/SKILL.md", "AMP", ".config/agents", True),
     "opencode": (
