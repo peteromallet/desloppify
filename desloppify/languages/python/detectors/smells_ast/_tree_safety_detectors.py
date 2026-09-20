@@ -65,6 +65,12 @@ def _detect_unsafe_file_write(
     Also flags open(file, 'w') without evidence of temp+rename.
     """
     results: list[dict] = []
+    module_aliases = {
+        alias.asname or alias.name.split(".", 1)[0]
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+    }
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         # Collect all method calls and check for atomic patterns in this function
         has_atomic_pattern = False
@@ -90,6 +96,12 @@ def _detect_unsafe_file_write(
                 "write_text",
                 "write_bytes",
             ):
+                # ``module.write_text(...)`` is a module-level function call, not pathlib's
+                # non-atomic ``Path.write_text(...)`` method. In particular, projects commonly
+                # expose their temp+fsync+replace writer as ``atomic_io.write_text``.
+                receiver = func.value
+                if isinstance(receiver, ast.Name) and receiver.id in module_aliases:
+                    continue
                 write_calls.append(child)
 
         # Only flag if no atomic pattern exists in the same function
