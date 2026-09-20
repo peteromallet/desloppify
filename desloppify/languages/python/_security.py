@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 
 from desloppify.base.config import load_config
@@ -27,8 +28,25 @@ def missing_bandit_coverage() -> DetectorCoverageStatus:
     )
 
 
-def python_scan_coverage_prerequisites() -> list[DetectorCoverageStatus]:
+def _bandit_available() -> bool:
+    """Whether bandit can actually be run the way the adapter runs it.
+
+    The adapter invokes ``sys.executable -m bandit``, so an importable bandit
+    package is enough — a ``bandit`` console script on PATH is not required.
+    Checking only PATH reports reduced coverage for every installation where
+    desloppify lives in its own virtualenv (pipx, ``uv tool install``), even
+    though bandit ran fine and produced findings.
+    """
     if shutil.which("bandit") is not None:
+        return True
+    try:
+        return importlib.util.find_spec("bandit") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def python_scan_coverage_prerequisites() -> list[DetectorCoverageStatus]:
+    if _bandit_available():
         return []
     return [missing_bandit_coverage()]
 
@@ -63,6 +81,7 @@ def detect_python_security(files, zone_map) -> LangSecurityResult:
 
 
 __all__ = [
+    "_bandit_available",
     "detect_python_security",
     "missing_bandit_coverage",
     "python_scan_coverage_prerequisites",

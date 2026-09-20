@@ -21,10 +21,19 @@ def test_python_security_prerequisites_and_detection_flow(monkeypatch, tmp_path)
     assert missing.reason == "missing_dependency"
 
     monkeypatch.setattr(py_security_mod.shutil, "which", lambda _cmd: None)
+    monkeypatch.setattr(py_security_mod.importlib.util, "find_spec", lambda _name: None)
     prereqs = py_security_mod.python_scan_coverage_prerequisites()
     assert len(prereqs) == 1
 
     monkeypatch.setattr(py_security_mod.shutil, "which", lambda _cmd: "/usr/bin/bandit")
+    assert py_security_mod.python_scan_coverage_prerequisites() == []
+
+    # Importable bandit with no console script on PATH is still full coverage:
+    # the adapter runs `sys.executable -m bandit`.
+    monkeypatch.setattr(py_security_mod.shutil, "which", lambda _cmd: None)
+    monkeypatch.setattr(
+        py_security_mod.importlib.util, "find_spec", lambda _name: object()
+    )
     assert py_security_mod.python_scan_coverage_prerequisites() == []
 
     monkeypatch.setattr(py_security_mod, "scan_root_from_files", lambda _files: None)

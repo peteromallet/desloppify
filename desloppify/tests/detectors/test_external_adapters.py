@@ -1001,6 +1001,23 @@ class TestCollectExcludeDirs:
         # glob pattern should not appear
         assert not any("vendor" in p for p in result)
 
+    def test_returns_absolute_paths_for_relative_scan_root(self, monkeypatch, tmp_path):
+        """A relative scan root must still yield absolute exclusion paths.
+
+        Python scan roots are derived from relative source paths, so a repo
+        whose files span several top-level dirs produces ``Path(".")``. Bandit
+        is handed an absolute scan target, so relative exclusions never match
+        and excluded directories get scanned anyway.
+        """
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions",
+            return_value=("vendored",),
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert all(Path(p).is_absolute() for p in result)
+        assert str((tmp_path / "vendored").resolve()) in result
+
     def test_deduplicates(self, tmp_path):
         """Runtime exclusion that overlaps with DEFAULT_EXCLUSIONS doesn't produce dupes."""
         with patch(
