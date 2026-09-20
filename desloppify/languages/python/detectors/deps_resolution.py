@@ -106,20 +106,43 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
     return try_resolve_path(target_base)
 
 
-def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
-    parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+# Directory names that hold an importable package without being part of its
+# import path. In the src layout — what PyPA recommends and what hatchling's
+# `packages = ["src/mypkg"]` and setuptools' `package-dir = {"": "src"}`
+# produce — `import mypkg.thing` resolves to `src/mypkg/thing.py`, so a
+# resolver that only tries the scan root and the project root finds nothing.
+_SOURCE_ROOT_DIRS = ("src", "lib")
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+
+def _import_search_roots(scan_root: Path) -> list[Path]:
+    """Directories an absolute import may be resolved against, in priority order."""
+    roots: list[Path] = []
+    for base in (scan_root.resolve(), get_project_root()):
+        if base not in roots:
+            roots.append(base)
+        for name in _SOURCE_ROOT_DIRS:
+            candidate = base / name
+            if candidate.is_dir() and candidate not in roots:
+                roots.append(candidate)
+    return roots
+
+
+def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
+    """Resolve an absolute import within scan root first, then project root.
+
+    Each root is also tried through a source directory (src/, lib/), so a
+    package laid out under src/ resolves instead of reporting every module as
+    having no importers.
+    """
+    parts = module_path.split(".")
+    for root in _import_search_roots(scan_root):
+        target_base = root
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
 
 
 def try_resolve_path(target_base: Path) -> str | None:
@@ -141,6 +164,7 @@ def try_resolve_path(target_base: Path) -> str | None:
 
 
 __all__ = [
+    "_import_search_roots",
     "resolve_absolute_import",
     "resolve_python_from_import",
     "resolve_python_import",
