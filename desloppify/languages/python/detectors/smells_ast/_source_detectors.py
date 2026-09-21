@@ -13,6 +13,20 @@ ConstantLocations = dict[tuple[str, str], list[tuple[str, int]]]
 SmellCounts = dict[str, list[dict[str, object]]]
 
 
+def _is_literal_constant(node: ast.AST) -> bool:
+    """Return whether ``node`` is composed only of literal container values."""
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+        return all(_is_literal_constant(item) for item in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(
+            key is not None and _is_literal_constant(key) and _is_literal_constant(value)
+            for key, value in zip(node.keys, node.values)
+        )
+    return False
+
+
 def _is_within(root: Path, candidate: Path) -> bool:
     """Return whether candidate is within root after path resolution."""
     try:
@@ -48,6 +62,8 @@ def collect_module_constants(
                 if isinstance(target, ast.Name) and re.match(
                     r"^_?[A-Z][A-Z0-9_]+$", target.id
                 ):
+                    if not _is_literal_constant(node.value):
+                        continue
                     try:
                         value_repr = ast.dump(node.value)
                     except (RecursionError, ValueError) as exc:

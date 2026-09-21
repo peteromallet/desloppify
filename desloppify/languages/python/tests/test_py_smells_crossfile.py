@@ -111,6 +111,13 @@ class TestDuplicateConstants:
         entries, _ = detect_smells(tmp_path)
         assert "duplicate_constant" not in _smell_ids(entries)
 
+    def test_module_relative_paths_are_not_constants(self, tmp_path):
+        source = "import os\nHERE = os.path.dirname(os.path.abspath(__file__))\n"
+        (tmp_path / "a.py").write_text(source)
+        (tmp_path / "b.py").write_text(source)
+        entries, _ = detect_smells(tmp_path)
+        assert "duplicate_constant" not in _smell_ids(entries)
+
 
 # ── star_import_no_all ───────────────────────────────────
 
