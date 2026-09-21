@@ -216,19 +216,29 @@ class DictKeyVisitor(ast.NodeVisitor):
     visit_YieldFrom = visit_Return
 
     def visit_Compare(self, node: ast.Compare) -> None:
-        """Handle "key" in d."""
+        """Handle key membership and whole-dictionary comparisons."""
         for i, op in enumerate(node.ops):
+            left = node.left if i == 0 else node.comparators[i - 1]
+            comparator = node.comparators[i]
             if isinstance(op, ast.In | ast.NotIn):
-                comparator = node.comparators[i]
                 name = _get_name(comparator)
                 if name:
                     td = self._get_tracked(name)
                     if td:
                         # The left side of `in` for the first op is node.left
-                        left = node.left if i == 0 else node.comparators[i - 1]
                         key = _get_str_key(left)
                         if key:
                             td.reads[key].append(node.lineno)
+            else:
+                # Equality and ordering inspect the dictionary as a whole. Treat both operands
+                # as bulk reads so `actual != expected` does not report every expected key as a
+                # dead write merely because the comparison does not spell out subscripts.
+                for operand in (left, comparator):
+                    name = _get_name(operand)
+                    if name:
+                        td = self._get_tracked(name)
+                        if td:
+                            td.bulk_read = True
         self.generic_visit(node)
 
     def visit_For(self, node: ast.For):

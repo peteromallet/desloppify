@@ -186,6 +186,24 @@ class TestDeadWrite:
         entries, _ = detect_dict_key_flow(path)
         assert "dead_write" not in _kinds(entries)
 
+    def test_no_dead_write_when_whole_dict_is_compared(self, tmp_path):
+        """Comparing a dict value reads every key, even without explicit subscripts."""
+        path = _write_py(
+            tmp_path,
+            """\
+            def verify(actual):
+                expected = {
+                    "alpha.jpg": "alpha-1.jpg",
+                    "beta.jpg": "beta-1.jpg",
+                    "gamma.jpg": "gamma-1.jpg",
+                }
+                if actual != expected:
+                    raise AssertionError(expected)
+        """,
+        )
+        entries, _ = detect_dict_key_flow(path)
+        assert "dead_write" not in _kinds(entries)
+
 
 # ── Overwritten keys ──────────────────────────────────────
 
