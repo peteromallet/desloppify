@@ -48,10 +48,18 @@ def test_override_resolve_helpers_cover_synthetic_split_and_blocked_stages(
     capsys,
 ) -> None:
     synthetic, remaining = resolve_helpers_mod.split_synthetic_patterns(
-        ["triage::reflect", "workflow::create-plan", "unused::src/a.py::X"]
+        [
+            "triage::reflect",
+            "workflow::create-plan",
+            "strategy::balance-review-and-mechanical-work",
+            "unused::src/a.py::X",
+        ]
     )
     assert synthetic == ["triage::reflect", "workflow::create-plan"]
-    assert remaining == ["unused::src/a.py::X"]
+    assert remaining == [
+        "strategy::balance-review-and-mechanical-work",
+        "unused::src/a.py::X",
+    ]
     assert resolve_helpers_mod.resolve_synthetic_ids(
         ["triage::reflect", "unused::src/a.py::X"]
     ) == (["triage::reflect"], ["unused::src/a.py::X"])
