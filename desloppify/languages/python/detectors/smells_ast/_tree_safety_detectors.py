@@ -65,6 +65,12 @@ def _detect_unsafe_file_write(
     Also flags open(file, 'w') without evidence of temp+rename.
     """
     results: list[dict] = []
+    module_bindings = {
+        alias.asname or alias.name.split(".", 1)[0]
+        for imported in tree.body
+        if isinstance(imported, ast.Import)
+        for alias in imported.names
+    }
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         # Collect all method calls and check for atomic patterns in this function
         has_atomic_pattern = False
@@ -90,7 +96,16 @@ def _detect_unsafe_file_write(
                 "write_text",
                 "write_bytes",
             ):
-                write_calls.append(child)
+                # These names also occur on helper modules (for example,
+                # atomic_io.write_text()).  The detector is for Path instance
+                # methods; treating an imported module's function as a Path
+                # method creates a false positive and cannot establish whether
+                # the helper writes atomically.
+                if not (
+                    isinstance(func.value, ast.Name)
+                    and func.value.id in module_bindings
+                ):
+                    write_calls.append(child)
 
         # Only flag if no atomic pattern exists in the same function
         if not has_atomic_pattern:

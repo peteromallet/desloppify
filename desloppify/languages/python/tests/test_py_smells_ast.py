@@ -387,6 +387,19 @@ class TestUnsafeFileWrite:
         entries, _ = detect_smells(path)
         assert "unsafe_file_write" not in _smell_ids(entries)
 
+    def test_imported_module_write_helper_is_not_a_path_method(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            import atomic_io
+            def safe_save(path, data):
+                atomic_io.write_text(path, data)
+                atomic_io.write_bytes(path, data.encode())
+        """,
+        )
+        entries, _ = detect_smells(path)
+        assert "unsafe_file_write" not in _smell_ids(entries)
+
 
 # ── vestigial parameter ──────────────────────────────────
 
