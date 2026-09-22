@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 
-def auto_complete_steps(plan: dict) -> list[str]:
+def auto_complete_steps(
+    plan: dict,
+    *,
+    resolved_refs: set[str] | None = None,
+    open_refs: set[str] | None = None,
+) -> list[str]:
     """Mark steps done when all their issue_refs are no longer in the queue.
 
     Returns list of human-readable messages for completed steps.
@@ -18,11 +23,16 @@ def auto_complete_steps(plan: dict) -> list[str]:
             refs = step.get("issue_refs", [])
             if not refs:
                 continue
-            # Match by suffix: ref "abc123" matches "review::path::abc123"
-            all_gone = all(
-                not any(qid.endswith(ref) or qid == ref for qid in queue_set)
-                for ref in refs
-            )
+            if resolved_refs is not None and not any(ref in resolved_refs for ref in refs):
+                continue
+            if open_refs is not None:
+                all_gone = all(ref not in open_refs for ref in refs)
+            else:
+                # Match by suffix: ref "abc123" matches "review::path::abc123"
+                all_gone = all(
+                    not any(qid.endswith(ref) or qid == ref for qid in queue_set)
+                    for ref in refs
+                )
             if all_gone:
                 step["done"] = True
                 messages.append(

@@ -65,3 +65,27 @@ def test_auto_complete_steps_ignores_done_steps_and_invalid_step_shapes() -> Non
 
     assert messages == []
     assert plan["clusters"]["epic/mixed"]["action_steps"][0]["done"] is True
+
+
+def test_auto_complete_steps_only_touches_steps_hit_by_this_resolution() -> None:
+    plan = {
+        "queue_order": [],
+        "clusters": {
+            "resolved-cluster": {
+                "action_steps": [{"title": "Resolved", "issue_refs": ["hash1111"]}]
+            },
+            "unrelated-cluster": {
+                "action_steps": [{"title": "Still open", "issue_refs": ["hash2222"]}]
+            },
+        },
+    }
+
+    messages = auto_complete_steps(
+        plan,
+        resolved_refs={"review::resolved", "hash1111"},
+        open_refs={"review::still-open", "hash2222"},
+    )
+
+    assert plan["clusters"]["resolved-cluster"]["action_steps"][0]["done"] is True
+    assert plan["clusters"]["unrelated-cluster"]["action_steps"][0].get("done") is not True
+    assert messages == ["  Step 1 of 'resolved-cluster' auto-completed: Resolved"]

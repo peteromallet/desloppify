@@ -93,6 +93,26 @@ def capture_cluster_context(plan: dict, resolved_ids: list[str]) -> ClusterConte
     )
 
 
+def _step_ref_sets(state: dict | None, resolved_ids: list[str]) -> tuple[set[str], set[str]]:
+    """Return resolved/open IDs plus review summary hashes used by action steps."""
+    resolved_refs = set(resolved_ids)
+    open_refs: set[str] = set()
+    if not isinstance(state, dict):
+        return resolved_refs, open_refs
+    for issue_id, issue in (state.get("work_items") or {}).items():
+        if not isinstance(issue, dict):
+            continue
+        refs = {issue_id}
+        detail = issue.get("detail")
+        if isinstance(detail, dict) and isinstance(detail.get("summary_hash"), str):
+            refs.add(detail["summary_hash"])
+        if issue_id in resolved_refs:
+            resolved_refs.update(refs)
+        if issue.get("status") == "open" and issue_id not in resolved_ids:
+            open_refs.update(refs)
+    return resolved_refs, open_refs
+
+
 def update_living_plan_after_resolve(
     *,
     args: argparse.Namespace,
@@ -115,7 +135,10 @@ def update_living_plan_after_resolve(
         completed_clusters = _completed_cluster_names(plan, all_resolved)
         phase_before = current_lifecycle_phase(plan)
         purged = purge_ids(plan, all_resolved)
-        step_messages = auto_complete_steps(plan)
+        resolved_refs, open_refs = _step_ref_sets(state, all_resolved)
+        step_messages = auto_complete_steps(
+            plan, resolved_refs=resolved_refs, open_refs=open_refs
+        )
         for msg in step_messages:
             print(colorize(msg, "green"))
         append_log_entry(
