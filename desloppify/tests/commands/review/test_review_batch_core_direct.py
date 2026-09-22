@@ -107,6 +107,11 @@ def test_batch_prompt_requires_score_and_issue_consistency():
     )
     assert "Explore the codebase freely" in prompt
     assert "blind packet's `system_prompt`" in prompt
+    assert (
+        "every assessed dimension scoring below 85.0 must include at least one "
+        "concrete defect"
+    ) in prompt
+    assert "never invent an issue to satisfy the gate" in prompt
     assert "Evaluate ONLY listed files and ONLY listed dimensions" not in prompt
 
 

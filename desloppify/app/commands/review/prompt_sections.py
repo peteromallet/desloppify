@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from desloppify.intelligence.review.feedback_contract import (
+    LOW_SCORE_ISSUE_THRESHOLD,
+)
+
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -586,6 +590,13 @@ def render_task_requirements(*, issues_cap: int, dim_set: set[str]) -> str:
         f"{next_num}. Complete `dimension_judgment`: write dimension_character "
         "(synthesizing characteristics and defects) then score_rationale. "
         "Set the score LAST."
+    )
+    next_num += 1
+    lines.append(
+        f"{next_num}. Import contract: every assessed dimension scoring below "
+        f"{LOW_SCORE_ISSUE_THRESHOLD:.1f} must include at least one concrete defect "
+        "in issues[] for that same dimension. If no defect warrants an issue, do not "
+        "assign a score below that threshold; never invent an issue to satisfy the gate."
     )
     next_num += 1
     lines.append(
