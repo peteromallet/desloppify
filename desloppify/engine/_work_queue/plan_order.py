@@ -10,13 +10,14 @@ from desloppify.engine._plan.cluster_semantics import (
     infer_cluster_action_type,
     infer_cluster_execution_policy,
 )
+from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.engine.plan_ops import (
     get_issue_description,
     get_issue_note,
     get_issue_override,
 )
-from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.state_io import StateModel
+
 
 def new_item_ids(state: StateModel) -> set[str]:
     """Return issue IDs added in the most recent scan."""
@@ -161,6 +162,10 @@ def _build_cluster_meta(
     action = cluster_data.get("action") or ""
     autofix_hint = cluster_autofix_hint(cluster_data, detector=detector)
     if autofix_hint:
+        # Individual commands already account for each language's available
+        # fixers. A detector-wide cluster action must not bypass that check.
+        if not all(member.get("primary_command") == autofix_hint for member in members):
+            autofix_hint = None
         primary_command = f"desloppify next --cluster {cluster_name} --count 10"
     else:
         primary_command = action or f"desloppify next --cluster {cluster_name} --count 10"
