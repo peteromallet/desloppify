@@ -12,6 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from desloppify.base.discovery.file_paths import (
+    matches_exclusion,
+    rel,
+    resolve_scan_file,
+)
+from desloppify.base.discovery.source import get_exclusions
 from desloppify.languages._framework.generic_parts.parsers import ToolParserError
 
 SubprocessRun = Callable[..., subprocess.CompletedProcess[str]]
@@ -180,9 +186,24 @@ def run_tool_result(
             meta=meta,
             returncode=result.returncode,
         )
+    # External tools discover their own files and may ignore our exclusions.
+    # Filter only after validating parsed output: a nonzero lint result whose
+    # diagnostics are all excluded is still a successful, empty detector run.
+    exclusions = get_exclusions()
+    if exclusions:
+        parsed_entries = [
+            entry
+            for entry in parsed_entries
+            if not any(
+                matches_exclusion(
+                    rel(resolve_scan_file(entry["file"], scan_root=path)), exclusion
+                )
+                for exclusion in exclusions
+            )
+        ]
     return ToolRunResult(
         entries=parsed_entries,
-        status="ok",
+        status="ok" if parsed_entries else "empty",
         meta=meta,
         returncode=result.returncode,
     )
