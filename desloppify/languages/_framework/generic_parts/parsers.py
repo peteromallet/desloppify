@@ -98,6 +98,35 @@ def parse_json(output: str, scan_path: Path) -> list[dict]:
     return entries
 
 
+def parse_ktlint(output: str, scan_path: Path) -> list[dict]:
+    """Parse ktlint's per-file JSON objects containing nested errors."""
+    del scan_path
+    data = _load_json_output(output, parser_name="ktlint")
+    if not isinstance(data, list):
+        raise ToolParserError("ktlint output must be a JSON array")
+    entries: list[dict] = []
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("errors"), list):
+            raise ToolParserError("ktlint file entry must contain an errors array")
+        filename = item.get("file")
+        if not isinstance(filename, str) or not filename:
+            raise ToolParserError("ktlint file entry is missing its filename")
+        for error in item["errors"]:
+            if not isinstance(error, dict):
+                raise ToolParserError("ktlint error must be an object")
+            line = _coerce_line(error.get("line"))
+            column = _coerce_line(error.get("column"))
+            message, rule = error.get("message"), error.get("rule")
+            if line is None or column is None or not isinstance(message, str) or not isinstance(rule, str):
+                raise ToolParserError("ktlint error is missing location, message or rule")
+            entries.append({
+                "file": filename, "line": line, "message": message,
+                "id": f"ktlint_violation::{rule}::{line}:{column}",
+                "detail": {"rule": rule, "column": column},
+            })
+    return entries
+
+
 def parse_rubocop(output: str, scan_path: Path) -> list[dict]:
     """Parse RuboCop JSON: `{"files": [{"path": ..., "offenses": [...]}]}`."""
     del scan_path
@@ -310,6 +339,7 @@ PARSERS: dict[str, ToolParser] = {
     "gnu": parse_gnu,
     "golangci": parse_golangci,
     "json": parse_json,
+    "ktlint": parse_ktlint,
     "credo": parse_credo,
     "phpstan": parse_phpstan,
     "rubocop": parse_rubocop,
@@ -332,6 +362,7 @@ __all__ = [
     "parse_gnu",
     "parse_golangci",
     "parse_json",
+    "parse_ktlint",
     "parse_phpstan",
     "parse_next_lint",
     "parse_rubocop",
