@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from desloppify.base.coercions import coerce_confidence
 from desloppify.base.discovery.paths import get_project_root
@@ -66,7 +67,7 @@ def _find_external_test_files(
     *,
     get_project_root_fn: Callable[[], Path] = get_project_root,
 ) -> set[str]:
-    """Find test files in standard locations outside the scanned path."""
+    """Find test files absent from the scanned language's source inventory."""
     extra = set()
     path_root = path.resolve()
     project_root = get_project_root_fn()
@@ -76,11 +77,16 @@ def _find_external_test_files(
         directory = project_root / test_dir
         if not directory.is_dir():
             continue
+        directory_exts = exts
         if directory.resolve().is_relative_to(path_root):
+            # In-scope tests using production extensions are already discovered.
+            # Different test languages still need the supplemental pass.
+            directory_exts = tuple(ext for ext in exts if ext not in lang.extensions)
+        if not directory_exts:
             continue
         for root, _, files in os.walk(directory):
             for filename in files:
-                if any(filename.endswith(ext) for ext in exts):
+                if filename.endswith(directory_exts):
                     extra.add(os.path.join(root, filename))
     return extra
 

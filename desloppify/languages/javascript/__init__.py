@@ -7,7 +7,6 @@ from desloppify.languages._framework.treesitter import JS_SPEC
 from desloppify.languages.javascript import test_coverage as js_test_coverage
 from desloppify.languages.javascript._zones import JS_ZONE_RULES
 
-
 cfg = generic_lang(
     name="javascript",
     extensions=[".js", ".jsx", ".mjs", ".cjs"],
@@ -29,6 +28,7 @@ cfg = generic_lang(
     zone_rules=JS_ZONE_RULES,
     frameworks=True,
     test_coverage_module=js_test_coverage,
+    test_file_extensions=[".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"],
 )
 
 __all__ = [

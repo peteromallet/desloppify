@@ -47,6 +47,7 @@ class TestFindExternalTestFiles:
         mock_lang = MagicMock()
         mock_lang.external_test_dirs = ["src/tests"]
         mock_lang.test_file_extensions = [".py"]
+        mock_lang.extensions = [".py"]
 
         with patch(
             "desloppify.languages._framework.base.shared_phases.get_project_root",
