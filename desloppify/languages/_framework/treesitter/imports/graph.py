@@ -7,8 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .cache import get_or_parse_tree
 from ..analysis.extractors import _get_parser, _make_query, _run_query, _unwrap_node
+from .cache import get_or_parse_tree
 
 if TYPE_CHECKING:
     from desloppify.languages._framework.treesitter import TreeSitterLangSpec
@@ -31,7 +31,7 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+    file_keys = {os.path.abspath(filepath): filepath for filepath in file_list}
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -75,17 +75,18 @@ def ts_build_dep_graph(
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
-
-            # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            # Resolvers may return project-relative, scan-relative, or absolute
+            # paths. Match in one path space, retaining the discovered graph keys.
+            resolved_key = file_keys.get(os.path.abspath(resolved))
+            if resolved_key is None and not os.path.isabs(resolved):
+                resolved_key = file_keys.get(
+                    os.path.abspath(os.path.join(scan_path, resolved))
+                )
+            if resolved_key is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(resolved_key)
+            graph[resolved_key]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():
