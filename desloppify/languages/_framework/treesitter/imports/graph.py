@@ -7,8 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .cache import get_or_parse_tree
 from ..analysis.extractors import _get_parser, _make_query, _run_query, _unwrap_node
+from .cache import get_or_parse_tree
 
 if TYPE_CHECKING:
     from desloppify.languages._framework.treesitter import TreeSitterLangSpec
@@ -28,6 +28,11 @@ def ts_build_dep_graph(
         return {}
 
     parser, language = _get_parser(spec.grammar)
+    if spec.grammar == "kotlin":
+        from .kotlin import build_kotlin_graph
+
+        return build_kotlin_graph(file_list, parser)
+
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
