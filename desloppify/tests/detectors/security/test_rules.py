@@ -104,6 +104,16 @@ def test_sensitive_log_entries_detect_secret_logs():
     assert issues[0]["detail"]["kind"] == "log_sensitive"
 
 
+def test_sensitive_log_entries_ignore_noncredential_token_vocabulary():
+    issues = rules_mod._sensitive_log_entries(
+        filepath="src/report.py",
+        line_num=12,
+        line='print(f"{count} token strip(s)")',
+    )
+
+    assert issues == []
+
+
 # ── _looks_like_non_secret_value heuristic ────────────────
 
 

@@ -153,8 +153,8 @@ LOG_CALLS = re.compile(
 )
 
 SENSITIVE_IN_LOG = re.compile(
-    r"(?i)(?:password|token|secret|api_key|apikey|credentials|"
-    r"private_key|access_key|authorization)",
+    r"(?i)\b(?:password|token|secret|api_key|apikey|credentials|"
+    r"private_key|access_key|authorization)\b(?=\s*(?:[=:,)}]|$))",
 )
 
 

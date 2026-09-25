@@ -8,6 +8,8 @@ import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from desloppify.engine.detectors.security.detector import detect_security_issues
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages.typescript.detectors.security.detector import detect_ts_security
@@ -295,6 +297,42 @@ class TestCrossLangLogSensitive:
             entries, _ = detect_security_issues([path], None, "typescript")
             log_entries = [e for e in entries if e["detail"]["kind"] == "log_sensitive"]
             assert len(log_entries) >= 1
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            'print("out tokens")',
+            'print(f"{count} token strip(s)")',
+            'print(f"folder token(s): {count}")',
+            'print(f"folder_token_strip({stem!r})")',
+        ],
+    )
+    def test_log_sensitive_ignores_noncredential_token_vocabulary(self, content):
+        path = _write_temp_file(content)
+        try:
+            entries, _ = detect_security_issues([path], None, "python")
+            log_entries = [e for e in entries if e["detail"]["kind"] == "log_sensitive"]
+            assert log_entries == []
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "print(token)",
+            'logger.info("%s", credentials)',
+            'console.log("api_key=", apiKey);',
+        ],
+    )
+    def test_log_sensitive_detects_bare_sensitive_values(self, content):
+        suffix = ".ts" if content.startswith("console") else ".py"
+        path = _write_temp_file(content, suffix=suffix)
+        try:
+            entries, _ = detect_security_issues([path], None, suffix.removeprefix("."))
+            log_entries = [e for e in entries if e["detail"]["kind"] == "log_sensitive"]
+            assert len(log_entries) == 1
         finally:
             os.unlink(path)
 
