@@ -616,6 +616,28 @@ class TestResponsibilityCohesion:
 
 
 class TestUnusedImports:
+    def test_php_trait_use_is_not_an_unused_import(self, tmp_path):
+        from desloppify.languages._framework.treesitter.specs.compiled import PHP_SPEC
+        from desloppify.languages._framework.treesitter.analysis.unused_imports import (
+            detect_unused_imports,
+        )
+
+        code = """<?php
+namespace App;
+
+use App\\Support\\UnusedHelper;
+
+class Example
+{
+    use PasswordValidationRules;
+}
+"""
+        file = tmp_path / "Example.php"
+        file.write_text(code)
+
+        entries = detect_unused_imports([str(file)], PHP_SPEC)
+        assert [entry["name"] for entry in entries] == ["UnusedHelper"]
+
     def test_unused_import_detected(self, tmp_path):
         from desloppify.languages._framework.treesitter.specs.compiled import GO_SPEC
         from desloppify.languages._framework.treesitter.analysis.unused_imports import (

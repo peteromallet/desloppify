@@ -79,9 +79,14 @@ def ts_build_dep_graph(
             if not os.path.isabs(resolved):
                 resolved = os.path.normpath(os.path.join(scan_path, resolved))
 
-            # Only track edges within the scanned file set.
+            # Discovery may return paths relative to the scan root, while
+            # import resolvers return absolute paths. Match the discovered
+            # path style before deciding that an import is external.
             if resolved not in file_set:
-                continue
+                relative = os.path.relpath(resolved, scan_path)
+                if relative not in file_set:
+                    continue
+                resolved = relative
 
             graph[filepath]["imports"].add(resolved)
             if resolved in graph:

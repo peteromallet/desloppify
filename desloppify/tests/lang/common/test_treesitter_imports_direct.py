@@ -82,6 +82,58 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
     ) == {}
 
 
+def test_graph_matches_absolute_php_imports_to_relative_discovery_paths(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source_file = tmp_path / "app" / "Providers" / "AppServiceProvider.php"
+    dep_file = tmp_path / "app" / "Payments" / "CashierStripeBillingGateway.php"
+    source_file.parent.mkdir(parents=True)
+    dep_file.parent.mkdir(parents=True)
+    source_file.write_text("<?php\n", encoding="utf-8")
+    dep_file.write_text("<?php\n", encoding="utf-8")
+    source = str(source_file.relative_to(tmp_path))
+    dependency = str(dep_file.relative_to(tmp_path))
+
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(
+        graph_mod, "_make_query", lambda _language, source: source
+    )
+    monkeypatch.setattr(
+        graph_mod,
+        "get_or_parse_tree",
+        lambda filepath, *_a, **_k: (b"", SimpleNamespace(root_node=filepath)),
+    )
+    monkeypatch.setattr(
+        graph_mod,
+        "_run_query",
+        lambda _query, root: [
+            (
+                0,
+                {
+                    "path": FakeNode(
+                        "qualified_name",
+                        text="App\\Payments\\CashierStripeBillingGateway",
+                    )
+                },
+            )
+        ]
+        if root == source
+        else [],
+    )
+    monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
+    spec = SimpleNamespace(
+        grammar="php",
+        import_query="imports",
+        resolve_import=lambda *_args: str(dep_file),
+    )
+
+    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, [source, dependency])
+
+    assert graph[source]["imports"] == {dependency}
+    assert graph[dependency]["importers"] == {source}
+    assert graph[dependency]["importer_count"] == 1
+
+
 def test_import_normalize_helpers_strip_comments_and_log_lines() -> None:
     cached = normalize_mod._get_log_patterns((r"logger\.",))
     assert cached is normalize_mod._get_log_patterns((r"logger\.",))
