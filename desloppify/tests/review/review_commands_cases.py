@@ -2314,7 +2314,7 @@ class TestAutoResolveOnReImport:
         ]
         assert len(open_ids) == 2
 
-        # Second import: only 1 issue (different from first)
+        # Re-review all three dimensions; only one issue remains.
         data2 = {
             "issues": [
                 {
@@ -2327,6 +2327,14 @@ class TestAutoResolveOnReImport:
                     "suggestion": "consolidate error handling",
                 },
             ],
+            "review_scope": {
+                "full_sweep_included": True,
+                "imported_dimensions": [
+                    "cross_module_architecture",
+                    "abstraction_fitness",
+                    "error_consistency",
+                ],
+            },
         }
         diff2 = import_holistic_issues(_as_review_payload(data2), state, "typescript")
         assert diff2["new"] == 1

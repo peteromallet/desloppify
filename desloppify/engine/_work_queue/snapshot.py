@@ -505,21 +505,24 @@ def _build_backlog(
     p: _Partitions,
     execution_ids: set[str],
 ) -> list[WorkQueueItem]:
-    return [
-        item
-        for item in (
-            [
-                *p.objective_items,
-                *p.initial_review_items,
-                *p.postflight_assessment_items,
-                *p.review_issue_items,
-                *p.scan_items,
-                *p.postflight_workflow_items,
-                *p.triage_items,
-            ]
-        )
-        if item.get("id", "") not in execution_ids
-    ]
+    # Mechanical findings are also triage candidates, so partitions can overlap.
+    # Keep their first representation before ranking, counts and paging.
+    seen_ids = set(execution_ids)
+    backlog_items: list[WorkQueueItem] = []
+    for item in [
+        *p.objective_items,
+        *p.initial_review_items,
+        *p.postflight_assessment_items,
+        *p.review_issue_items,
+        *p.scan_items,
+        *p.postflight_workflow_items,
+        *p.triage_items,
+    ]:
+        item_id = item.get("id", "")
+        if item_id not in seen_ids:
+            seen_ids.add(item_id)
+            backlog_items.append(item)
+    return backlog_items
 
 
 # ---------------------------------------------------------------------------

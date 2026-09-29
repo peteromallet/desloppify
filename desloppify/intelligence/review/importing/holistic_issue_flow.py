@@ -207,14 +207,16 @@ def auto_resolve_stale_holistic(
     imported_dimensions: set[str] | None = None,
     full_sweep_included: bool | None = None,
 ) -> None:
-    """Auto-resolve open holistic issues not present in the latest import."""
+    """Resolve absent holistic findings only in dimensions covered by this import."""
+    # Retain the caller contract, but file coverage does not imply that every
+    # dimension was reviewed. Even a full codebase sweep can target one dimension.
+    del full_sweep_included
     scope_dimensions = {
         normalize_dimension_name(dim)
         for dim in (imported_dimensions or set())
         if isinstance(dim, str) and dim.strip()
     }
-    scoped_reimport = full_sweep_included is False
-    if scoped_reimport and not scope_dimensions:
+    if not scope_dimensions:
         return
 
     def _should_resolve(issue: Issue) -> bool:
@@ -223,8 +225,6 @@ def auto_resolve_stale_holistic(
         detail = issue.get("detail")
         if not isinstance(detail, dict) or not detail.get("holistic"):
             return False
-        if not scoped_reimport:
-            return True
         dimension = normalize_dimension_name(str(detail.get("dimension", "")))
         return dimension in scope_dimensions
 
