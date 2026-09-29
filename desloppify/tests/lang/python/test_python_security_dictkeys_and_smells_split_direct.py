@@ -41,7 +41,7 @@ def test_python_security_prerequisites_and_detection_flow(monkeypatch, tmp_path)
     monkeypatch.setattr(
         py_security_mod,
         "detect_with_bandit",
-        lambda _root, _zone_map, *, exclude_dirs, skip_tests=None: SimpleNamespace(
+        lambda _root, _zone_map, *, exclude_dirs, skip_tests=None, files=None: SimpleNamespace(
             entries=[{"file": "a.py", "line": 1}],
             files_scanned=3,
             status=_Status(),

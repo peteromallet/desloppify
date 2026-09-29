@@ -23,6 +23,7 @@ import json
 import logging
 import subprocess  # nosec B404
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 _SEVERITY_TO_TIER = {"HIGH": 4, "MEDIUM": 3, "LOW": 3}
 _SEVERITY_TO_CONFIDENCE = {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
+_TARGET_BYTES_PER_BATCH = 32768
 
 # Bandit test IDs that overlap with the cross-language security detector
 # (secret names, hardcoded passwords). Skip these to avoid duplicate issues.
@@ -191,6 +193,7 @@ def detect_with_bandit(
     timeout: int = 120,
     exclude_dirs: list[str] | None = None,
     skip_tests: list[str] | None = None,
+    files: list[str] | None = None,
 ) -> BanditScanResult:
     """Run bandit on *path* and return issues + typed execution status.
 
@@ -203,12 +206,15 @@ def detect_with_bandit(
     skip_tests:
         Bandit test IDs to suppress via ``--skip`` (e.g. ``["B101", "B601"]``).
         Allows users to disable entire rule families from ``config.json``.
+    files:
+        Already-discovered source files, relative to the project root or absolute.
+        When supplied, scan these targets without recursive traversal. Bandit's
+        own recursive exclusions filter files but do not prune directory walks.
     """
     cmd = [
         sys.executable,
         "-m",
         "bandit",
-        "-r",
         "-f",
         "json",
         "--quiet",
@@ -217,7 +223,41 @@ def detect_with_bandit(
         cmd.extend(["--exclude", ",".join(exclude_dirs)])
     if skip_tests:
         cmd.extend(["--skip", ",".join(skip_tests)])
-    cmd.append(str(path.resolve()))
+    if files is None:
+        cmd.extend(["-r", str(path.resolve())])
+        return _run_bandit(cmd, zone_map, timeout)
+
+    targets = sorted({str((get_project_root() / filename).resolve()) for filename in files})
+    batches: list[list[str]] = []
+    batch: list[str] = []
+    size = 0
+    for filename in targets:
+        length = len(filename.encode()) + 1
+        if batch and size + length > _TARGET_BYTES_PER_BATCH:
+            batches.append(batch)
+            batch, size = [], 0
+        batch.append(filename)
+        size += length
+    if batch:
+        batches.append(batch)
+
+    entries: list[dict] = []
+    files_scanned = 0
+    deadline = time.monotonic() + timeout
+    for batch in batches:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return BanditScanResult(entries, files_scanned, BanditRunStatus("timeout"))
+        result = _run_bandit([*cmd, *batch], zone_map, remaining)
+        entries.extend(result.entries)
+        files_scanned += result.files_scanned
+        if result.status.state != "ok":
+            return BanditScanResult(entries, files_scanned, result.status)
+    return BanditScanResult(entries, files_scanned, BanditRunStatus("ok"))
+
+
+def _run_bandit(cmd: list[str], zone_map: FileZoneMap | None, timeout: float) -> BanditScanResult:
+    """Run one bounded Bandit invocation and preserve its coverage status."""
 
     try:
         result = subprocess.run(

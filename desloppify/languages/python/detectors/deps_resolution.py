@@ -82,7 +82,16 @@ def resolve_python_import(
     scan_root_path = Path(scan_root) if not isinstance(scan_root, Path) else scan_root
     if module_path.startswith("."):
         return resolve_relative_import(module_path, source_dir)
-    return resolve_absolute_import(module_path, scan_root_path)
+    resolved = resolve_absolute_import(module_path, scan_root_path)
+    if resolved:
+        return resolved
+    # Executing a flat script adds its directory to sys.path. The project-root
+    # lookup alone misses its sibling imports when scanning a larger project.
+    # Keep this a fallback, and do not invent implicit relative imports inside
+    # regular packages, where Python requires an explicit leading dot.
+    if not (source_dir / "__init__.py").is_file():
+        return try_resolve_path(source_dir.joinpath(*module_path.split(".")))
+    return None
 
 
 def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
