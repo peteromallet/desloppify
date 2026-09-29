@@ -12,6 +12,9 @@ from desloppify.engine.plan_triage import TRIAGE_STAGE_SPECS
 from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES
 from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
 from desloppify.engine._state.schema import StateModel
+from desloppify.engine._work_queue.assessment_refresh import (
+    same_cycle_assessment_coverage,
+)
 from desloppify.engine._work_queue.helpers import (
     detail_dict,
     slugify,
@@ -228,15 +231,6 @@ def build_subjective_items(
                 review_open_by_dim[dim_key] = review_open_by_dim.get(dim_key, 0) + 1
 
     items: list[WorkQueueItem] = []
-    latest_trusted_audit_ts = ""
-    for raw_entry in reversed(state.get("assessment_import_audit", []) or []):
-        if not isinstance(raw_entry, dict):
-            continue
-        if raw_entry.get("mode") not in {"trusted_internal", "attested_external"}:
-            continue
-        latest_trusted_audit_ts = str(raw_entry.get("timestamp", "")).strip()
-        if latest_trusted_audit_ts:
-            break
     current_phase = current_lifecycle_phase(plan) if isinstance(plan, dict) else None
     current_scan_count = int(state.get("scan_count", 0) or 0)
     postflight_scan_completed_this_scan = False
@@ -252,9 +246,12 @@ def build_subjective_items(
         if isinstance(plan, dict)
         else False
     )
+    covered_revisions, legacy_latest_audit_ts = same_cycle_assessment_coverage(
+        state, plan, review_completed_this_scan=review_completed_this_scan
+    )
 
     def _suppressed_same_cycle_refresh(dimension_key: str, *, stale: bool) -> bool:
-        if not stale or latest_trusted_audit_ts == "":
+        if not stale:
             return False
         # Persisted phase is now "plan" or "execute".  The suppression
         # applies when in planning mode (covers workflow/triage display phases).
@@ -264,13 +261,17 @@ def build_subjective_items(
         payload = assessments.get(dimension_key)
         if not isinstance(payload, dict):
             return False
+        if payload.get("placeholder") or payload.get("provisional_override"):
+            return False
         refresh_reason = str(payload.get("refresh_reason", "")).strip()
         if not refresh_reason.startswith("review_issue_"):
             return False
         assessed_at = str(payload.get("assessed_at", "")).strip()
         if assessed_at == "":
             return False
-        return assessed_at >= latest_trusted_audit_ts
+        return assessed_at in covered_revisions.get(dimension_key, set()) or (
+            bool(legacy_latest_audit_ts) and assessed_at >= legacy_latest_audit_ts
+        )
 
     def _prepare_command(
         cli_keys: list[str],

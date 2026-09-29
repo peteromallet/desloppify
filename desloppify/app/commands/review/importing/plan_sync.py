@@ -376,6 +376,7 @@ def _append_review_import_sync_log(
     *,
     covered_ids: tuple[str, ...],
     outcome: PlanImportSyncOutcome,
+    scan_timestamp: str = "",
 ) -> None:
     if not (
         import_result is not None
@@ -392,6 +393,7 @@ def _append_review_import_sync_log(
         actor="system",
         detail={
             "trigger": "review_import",
+            "scan_timestamp": scan_timestamp,
             "new_ids": sorted(import_result.new_ids) if import_result is not None else [],
             "added_to_queue": import_result.added_to_queue if import_result is not None else [],
             "workflow_injected_ids": pipeline_result.workflow_injected_ids,
@@ -480,6 +482,7 @@ def sync_plan_after_import(
                 result,
                 covered_ids=sync_inputs.covered_ids,
                 outcome=outcome,
+                scan_timestamp=str(state.get("last_scan", "") or ""),
             )
             save_plan(plan, plan_path)
 

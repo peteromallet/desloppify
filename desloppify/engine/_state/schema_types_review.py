@@ -58,6 +58,8 @@ class AssessmentImportAuditEntry(TypedDict, total=False):
     """Typed record for review assessment import events."""
 
     timestamp: str
+    scan_timestamp: str
+    assessment_timestamps: dict[str, str]
     mode: str
     trusted: bool
     reason: str

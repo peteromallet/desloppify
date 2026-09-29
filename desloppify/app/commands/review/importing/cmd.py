@@ -155,10 +155,20 @@ def _append_assessment_import_audit(
         return
     provenance = import_payload.get("provenance")
     provenance_dict = provenance if isinstance(provenance, dict) else {}
+    assessments = working_state.get("subjective_assessments", {})
+    assessment_timestamps = {
+        dimension: assessment["assessed_at"]
+        for dimension in sorted(imported_assessment_keys(import_payload))
+        if isinstance(assessments, dict)
+        and isinstance(assessment := assessments.get(dimension), dict)
+        and isinstance(assessment.get("assessed_at"), str)
+    }
     append_assessment_import_audit(
         working_state,
         {
             "timestamp": utc_now(),
+            "scan_timestamp": str(working_state.get("last_scan", "") or ""),
+            "assessment_timestamps": assessment_timestamps,
             "mode": assessment_policy.mode,
             "trusted": bool(assessment_policy.trusted),
             "reason": assessment_policy.reason,
