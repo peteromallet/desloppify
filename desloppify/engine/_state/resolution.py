@@ -11,6 +11,7 @@ __all__ = [
 ]
 
 from desloppify.base.text_utils import is_numeric
+from desloppify.engine._state import _recompute_stats
 from desloppify.engine._state.filtering import _matches_pattern
 from desloppify.engine._state.issue_semantics import is_review_finding
 from desloppify.engine._state.schema import (
@@ -19,9 +20,6 @@ from desloppify.engine._state.schema import (
     utc_now,
     validate_state_invariants,
 )
-
-
-from desloppify.engine._state import _recompute_stats
 
 
 def _preserve_integrity_target(state: StateModel) -> float | None:
@@ -100,11 +98,18 @@ def _mark_stale_assessments_on_review_resolve(
 def match_issues(
     state: StateModel, pattern: str, status_filter: str = "open"
 ) -> list[dict]:
-    """Return issues matching *pattern* with the given status."""
+    """Return issues matching *pattern* with the given status.
+
+    A known full ID selects only that issue, even when its status or
+    suppression makes it ineligible. Explicit globs and incomplete prefixes
+    still select multiple issues.
+    """
     ensure_state_defaults(state)
+    exact_id = pattern in state["work_items"]
     return [
         issue
         for issue_id, issue in state["work_items"].items()
+        if not exact_id or issue_id == pattern
         if not issue.get("suppressed")
         if (status_filter == "all" or issue["status"] == status_filter)
         and _matches_pattern(issue_id, issue, pattern)

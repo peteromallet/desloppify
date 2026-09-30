@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import fnmatch
 
-from desloppify.engine.plan_state import PlanModel
-from desloppify.engine._work_queue.core import QueueBuildOptions, build_work_queue
 from desloppify.engine._state.resolution import match_issues
+from desloppify.engine._work_queue.core import QueueBuildOptions, build_work_queue
+from desloppify.engine.plan_state import PlanModel
 from desloppify.state_io import StateModel
 
 from .cluster_membership import cluster_issue_ids
@@ -49,6 +49,8 @@ def _collect_queue_ids(state: StateModel, plan: PlanModel | None) -> set[str]:
 
 def _queue_pattern_matches(queue_ids: set[str], pattern: str) -> list[str]:
     """Match a plan pattern against queue IDs (supports literals + globs)."""
+    if pattern in queue_ids:
+        return [pattern]
     matches: list[str] = []
     for issue_id in queue_ids:
         if issue_id == pattern:
@@ -74,6 +76,9 @@ def _resolve_single_pattern(
     status_filter: str,
 ) -> set[str] | None:
     matches = match_issues(state, pattern, status_filter=status_filter)
+    if pattern in plan_ids and pattern not in state["work_items"]:
+        _append_unique(pattern, seen, result)
+        return queue_ids
     if matches:
         for issue in matches:
             _append_unique(issue["id"], seen, result)
@@ -81,6 +86,10 @@ def _resolve_single_pattern(
 
     if pattern in plan_ids:
         _append_unique(pattern, seen, result)
+        return queue_ids
+
+    # An ineligible exact state ID must not expand into a plan/queue sibling.
+    if pattern in state["work_items"]:
         return queue_ids
 
     plan_matches = _queue_pattern_matches(plan_ids, pattern)
