@@ -32,8 +32,9 @@ def _detect_subprocess_no_timeout(
     tree: ast.Module,
     all_nodes: tuple[ast.AST, ...] | None = None,
 ) -> list[dict]:
-    """Flag subprocess.run/Popen/call/check_call/check_output without timeout=."""
-    _SUBPROCESS_FUNCS = {"run", "Popen", "call", "check_call", "check_output"}
+    """Flag synchronous subprocess helpers without timeout=."""
+    # Popen has no constructor timeout; wait()/communicate() accept it separately.
+    _SUBPROCESS_FUNCS = {"run", "call", "check_call", "check_output"}
     results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, ast.Call):
         # Match subprocess.run(...) or subprocess.call(...) etc.

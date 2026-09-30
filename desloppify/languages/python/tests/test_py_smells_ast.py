@@ -272,6 +272,19 @@ class TestSubprocessNoTimeout:
         entries, _ = detect_smells(path)
         assert "subprocess_no_timeout" not in _smell_ids(entries)
 
+    def test_popen_with_bounded_wait_ok(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            """\
+            import subprocess
+            def run_it():
+                process = subprocess.Popen(["worker"])
+                process.wait(timeout=30)
+        """,
+        )
+        entries, _ = detect_smells(path)
+        assert "subprocess_no_timeout" not in _smell_ids(entries)
+
 
 # ── unreachable code ──────────────────────────────────────
 
