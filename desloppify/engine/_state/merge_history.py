@@ -84,6 +84,38 @@ def _score_confidence_snapshot(confidence: dict | None) -> dict[str, object] | N
     }
 
 
+def _scan_score_snapshot(state: StateModel) -> dict[str, object]:
+    """Copy canonical score fields into one scan-history snapshot."""
+    return {
+        "strict_score": state.get("strict_score"),
+        "verified_strict_score": state.get("verified_strict_score"),
+        "objective_score": state.get("objective_score"),
+        "overall_score": state.get("overall_score"),
+        "open": state["stats"]["open"],
+        "subjective_integrity": _subjective_integrity_snapshot(
+            state.get("subjective_integrity")
+        ),
+        "score_confidence": _score_confidence_snapshot(state.get("score_confidence")),
+        "dimension_scores": {
+            name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
+            for name, ds in state.get("dimension_scores", {}).items()
+        }
+        if state.get("dimension_scores")
+        else None,
+    }
+
+
+def refresh_scan_history_scores(state: StateModel) -> None:
+    """Update only this scan's history snapshot after disposition reconciliation."""
+    current_scan = state.get("last_scan")
+    history = state.get("scan_history")
+    if not current_scan or not isinstance(history, list) or not history:
+        return
+    latest = history[-1]
+    if isinstance(latest, dict) and latest.get("timestamp") == current_scan:
+        latest.update(_scan_score_snapshot(state))
+
+
 def _append_scan_history(
     state: StateModel,
     *,
@@ -101,29 +133,13 @@ def _append_scan_history(
         {
             "timestamp": now,
             "lang": lang,
-            "strict_score": state.get("strict_score"),
-            "verified_strict_score": state.get("verified_strict_score"),
-            "objective_score": state.get("objective_score"),
-            "overall_score": state.get("overall_score"),
-            "open": state["stats"]["open"],
+            **_scan_score_snapshot(state),
             "diff_new": new_count,
             "diff_resolved": auto_resolved,
             "ignored": ignored_count,
             "raw_issues": raw_issues,
             "suppressed_pct": suppressed_pct,
             "ignore_patterns": ignore_pattern_count,
-            "subjective_integrity": _subjective_integrity_snapshot(
-                state.get("subjective_integrity")
-            ),
-            "score_confidence": _score_confidence_snapshot(
-                state.get("score_confidence")
-            ),
-            "dimension_scores": {
-                name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
-                for name, ds in state.get("dimension_scores", {}).items()
-            }
-            if state.get("dimension_scores")
-            else None,
         }
     )
 
@@ -168,5 +184,6 @@ __all__ = [
     "_compute_suppression",
     "_merge_scan_inputs",
     "_record_scan_metadata",
+    "refresh_scan_history_scores",
     "_subjective_integrity_snapshot",
 ]

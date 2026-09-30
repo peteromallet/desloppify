@@ -88,7 +88,14 @@ def _clear_needs_rescan_flag(config: dict[str, object]) -> None:
 
 def _reconcile_plan_post_scan(runtime: ScanRuntime) -> None:
     """Reconcile plan queue metadata and stale subjective review dimensions."""
-    _reconcile_plan_post_scan_impl(runtime)
+    _reconcile_plan_post_scan_impl(
+        runtime,
+        persist_state=lambda: save_state(
+            runtime.state,
+            runtime.state_path,
+            subjective_integrity_target=target_strict_score_from_config(runtime.config),
+        ),
+    )
 
 
 def _state_subjective_assessments(
@@ -476,16 +483,10 @@ def merge_scan_results(
     mark_stale_holistic(
         runtime.state, runtime.config.get("holistic_max_age_days", 30)
     )
-    save_state(
-        runtime.state,
-        runtime.state_path,
-        subjective_integrity_target=target_score,
-    )
-
-    _clear_needs_rescan_flag(runtime.config)
     runtime.scan_diff = diff
     runtime.prev_dim_scores = prev_dim_scores
     _reconcile_plan_post_scan(runtime)
+    _clear_needs_rescan_flag(runtime.config)
 
     return ScanMergeResult(
         diff=diff,

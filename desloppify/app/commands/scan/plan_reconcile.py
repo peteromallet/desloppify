@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from desloppify import state as state_mod
@@ -37,6 +38,8 @@ from desloppify.engine._plan.sync.workflow import (
     clear_create_plan_sentinel,
     clear_score_communicated_sentinel,
 )
+from desloppify.engine._scoring.state_integration import recompute_stats
+from desloppify.engine._state.merge_history import refresh_scan_history_scores
 from desloppify.engine._state.progression import (
     _execution_log_ids_since,
     append_progression_event,
@@ -353,13 +356,17 @@ def _display_reconcile_results(
         )
 
 
-def reconcile_plan_post_scan(runtime: Any) -> None:
+def reconcile_plan_post_scan(
+    runtime: Any, *, persist_state: Callable[[], None] | None = None
+) -> None:
     """Reconcile plan queue metadata and stale subjective review dimensions."""
     plan_path = runtime.state_path.parent / "plan.json" if runtime.state_path else None
     try:
         plan = load_plan(plan_path)
     except PLAN_LOAD_EXCEPTIONS as exc:
         logger.warning("Plan reconciliation skipped (load failed): %s", exc)
+        if persist_state is not None:
+            persist_state()
         return
 
     phase_before = current_lifecycle_phase(plan)
@@ -379,7 +386,33 @@ def reconcile_plan_post_scan(runtime: Any) -> None:
             new_scan_count=int(runtime.state.get("scan_count", 0) or 0),
         ):
             dirty = True
+    statuses_before = {
+        fid: issue.get("status")
+        for fid, issue in (
+            runtime.state.get("work_items") or runtime.state.get("issues", {})
+        ).items()
+    }
     dirty = _sync_post_scan_without_policy(plan=plan, state=runtime.state) or dirty
+    statuses_after = {
+        fid: issue.get("status")
+        for fid, issue in (
+            runtime.state.get("work_items") or runtime.state.get("issues", {})
+        ).items()
+    }
+    if statuses_after != statuses_before:
+        # Score restored dispositions before freezing cycle baselines,
+        # evaluating checkpoints, or recording progression events.
+        recompute_stats(
+            runtime.state,
+            scan_path=runtime.state.get("scan_path"),
+            subjective_integrity_target=target_strict_score_from_config(runtime.config),
+        )
+        refresh_scan_history_scores(runtime.state)
+
+    # Commit the reconciled scan before writing plan baselines or completion
+    # events. A failed state write must not announce a completed scan.
+    if persist_state is not None:
+        persist_state()
 
     boundary_crossed = live_planned_queue_empty(plan) or force_rescan
     if boundary_crossed:
