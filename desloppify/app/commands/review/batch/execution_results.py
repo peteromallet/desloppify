@@ -9,10 +9,10 @@ from desloppify.base.exception_sets import CommandError
 
 from ..importing.flags import ReviewImportConfig
 from .execution import CollectBatchResultsRequest
-
 from .scope import (
     collect_reviewed_files_from_batches,
     enforce_trusted_import_coverage_gate,
+    missing_scored_dimensions,
     normalize_dimension_list,
     print_import_dimension_coverage_notice,
     print_review_quality,
@@ -143,23 +143,28 @@ def merge_and_write_results(
         merged_assessment_dims + merged_issue_dims
     )
     review_scope["imported_dimensions"] = merged_imported_dims
-    missing_after_import = print_import_dimension_coverage_notice(
+    missing_scored_after_import = print_import_dimension_coverage_notice(
         assessed_dims=merged_assessment_dims,
         scored_dims=scored_dimensions,
         scan_path=scan_path,
         colorize_fn=colorize_fn,
     )
+    missing_selected_after_import = missing_scored_dimensions(
+        selected_dims=merged_assessment_dims,
+        scored_dims=packet_dimensions,
+    )
     merged["assessment_coverage"] = {
         "scored_dimensions": scored_dimensions,
         "selected_dimensions": packet_dimensions,
         "imported_dimensions": merged_assessment_dims,
-        "missing_dimensions": missing_after_import,
+        "missing_dimensions": missing_scored_after_import,
+        "missing_selected_dimensions": missing_selected_after_import,
     }
     merged_path = run_dir / "holistic_issues_merged.json"
     safe_write_text_fn(merged_path, json.dumps(merged, indent=2) + "\n")
     print(colorize_fn(f"\n  Merged outputs: {merged_path}", "bold"))
     print_review_quality(quality, colorize_fn=colorize_fn)
-    return merged_path, missing_after_import
+    return merged_path, missing_selected_after_import
 
 
 def import_and_finalize(

@@ -67,7 +67,9 @@ from .core_merge_support import assessment_weight  # noqa: F401 — re-exported
 from .core_models import BatchResultPayload
 from .scope import (
     normalize_dimension_list,
+    require_batches,
     scored_dimensions_for_lang,
+    selected_batch_dimensions,
 )
 from .core_normalize import normalize_batch_result
 from .core_parse import extract_json_payload, parse_batch_selection
@@ -474,25 +476,61 @@ def do_import_run(
     scan_after_import: bool = False,
     scan_path: str = ".",
     dry_run: bool = False,
+    only_batches: str | None = None,
 ) -> None:
     """Re-import results from a completed run directory.
 
     Replays the merge+provenance+import step that normally runs at the end of
     ``--run-batches``.  Useful when the original pipeline was interrupted (e.g.
     broken pipe from background execution) but all batch results completed.
+    ``only_batches`` selects absolute packet indexes from the original recorded run.
     """
     run_dir = Path(run_dir_path)
     summary, blind_packet_path, _immutable_path = _validate_run_dir(run_dir)
 
     runner = str(summary.get("runner", "codex"))
     stamp = str(summary.get("run_stamp", ""))
-    selected = summary.get("selected_batches", [])
+    recorded = summary.get("selected_batches", [])
     packet = summary.pop("_packet", {})
     allowed_dims = {str(d) for d in packet.get("dimensions", []) if isinstance(d, str)}
+    if not isinstance(recorded, list) or any(type(index) is not int for index in recorded):
+        raise PacketValidationError(
+            "Error: invalid selected_batches in run summary.", exit_code=1
+        )
+    raw_dim_prompts = packet.get("dimension_prompts")
+    batches = explode_to_single_dimension(
+        require_batches(packet, colorize_fn=colorize),
+        dimension_prompts=raw_dim_prompts if isinstance(raw_dim_prompts, dict) else None,
+    )
+    selected_indexes = [index - 1 for index in recorded]
+    packet_dimensions = selected_batch_dimensions(
+        batches=batches,
+        selected_indexes=selected_indexes,
+        packet_dimensions=normalize_dimension_list(packet.get("dimensions", [])),
+    )
+    if only_batches is not None:
+        requested_indexes = selected_batch_indexes(
+            raw_selection=only_batches,
+            batch_count=len(batches),
+            parse_fn=parse_batch_selection,
+            colorize_fn=colorize,
+        )
+        unrecorded = sorted(set(requested_indexes) - set(selected_indexes))
+        if unrecorded:
+            raise PacketValidationError(
+                "Error: requested batches were not selected in the original run: "
+                f"{[index + 1 for index in unrecorded]}",
+                exit_code=2,
+            )
+        selected_indexes = requested_indexes
+        packet_dimensions = selected_batch_dimensions(
+            batches=batches,
+            selected_indexes=selected_indexes,
+            packet_dimensions=normalize_dimension_list(packet.get("dimensions", [])),
+        )
 
     # -- locate and parse raw batch results --
     results_dir = run_dir / "results"
-    selected_indexes = [idx - 1 for idx in selected]  # convert 1-based to 0-based
     output_files = {
         idx: results_dir / f"batch-{idx + 1}.raw.txt"
         for idx in selected_indexes
@@ -506,7 +544,7 @@ def do_import_run(
                 "  Did you run --run-batches or launch subagents to produce results first?"
             )
             raise CommandError(hint, exit_code=1)
-        elif len(missing) == len(selected):
+        elif len(missing) == len(selected_indexes):
             hint = (
                 f"No result files found in {results_dir}\n"
                 "  Each subagent must write its output to results/batch-N.raw.txt.\n"
@@ -542,6 +580,13 @@ def do_import_run(
 
     if not batch_results:
         raise CommandError("no valid batch results could be parsed.", exit_code=1)
+    if failures and not allow_partial:
+        print_failures_and_raise(
+            failures=failures,
+            packet_path=Path(_immutable_path),
+            logs_dir=run_dir / "logs",
+            colorize_fn=colorize,
+        )
 
     print(colorize(f"  Parsed {len(batch_results)} batch results from {run_dir}", "bold"))
     if failures:
@@ -550,13 +595,6 @@ def do_import_run(
     successful_indexes = [idx for idx in selected_indexes if idx not in set(failures)]
 
     # Reuse the canonical merge+metadata boundary from normal batch execution.
-    raw_batches = packet.get("investigation_batches", [])
-    raw_dim_prompts = packet.get("dimension_prompts")
-    batches = explode_to_single_dimension(
-        raw_batches if isinstance(raw_batches, list) else [],
-        dimension_prompts=raw_dim_prompts if isinstance(raw_dim_prompts, dict) else None,
-    )
-    packet_dimensions = normalize_dimension_list(packet.get("dimensions", []))
     lang_name = getattr(lang, "name", None) or str(getattr(lang, "lang", ""))
     scored_dimensions = scored_dimensions_for_lang(lang_name) if lang_name else []
     merged_path, missing_after_import = _merge_and_write_results(

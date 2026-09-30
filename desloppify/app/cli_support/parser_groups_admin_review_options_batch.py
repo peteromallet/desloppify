@@ -105,7 +105,10 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
         "--only-batches",
         type=str,
         default=None,
-        help="Comma-separated 1-based batch indexes to run (e.g. 1,3,5)",
+        help=(
+            "Comma-separated 1-based packet batch indexes to run or replay "
+            "(e.g. 1,3,5)"
+        ),
     )
     g_batch.add_argument(
         "--scan-after-import",

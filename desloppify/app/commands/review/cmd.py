@@ -155,6 +155,7 @@ def _run_review_mode(
             scan_after_import=opts.scan_after_import,
             scan_path=opts.path,
             dry_run=opts.dry_run,
+            only_batches=getattr(args, "only_batches", None),
         )
         return
     if opts.external_start:

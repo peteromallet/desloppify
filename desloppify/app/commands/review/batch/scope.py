@@ -13,7 +13,6 @@ from desloppify.intelligence.review.feedback_contract import (
     TRUSTED_IMPORT_COVERAGE_OVERRIDE_FLAG,
 )
 
-
 _SUPPORTED_RUNNERS = {"codex", "opencode", "rovodev"}
 
 
@@ -113,6 +112,35 @@ def normalize_dimension_list(raw: object) -> list[str]:
     return out
 
 
+def selected_batch_dimensions(
+    *,
+    batches: list[dict],
+    selected_indexes: list[int],
+    packet_dimensions: list[str],
+) -> list[str]:
+    """Require assessments for selected exploded batches, including custom dimensions."""
+    dimensions: list[str] = []
+    declared = set(packet_dimensions)
+    if not selected_indexes:
+        raise PacketValidationError("Error: no selected batches.", exit_code=1)
+    for index in selected_indexes:
+        if type(index) is not int or not 0 <= index < len(batches):
+            raise PacketValidationError(
+                "Error: selected batch index is outside the packet.", exit_code=1
+            )
+        batch = batches[index]
+        raw = batch.get("dimensions") if isinstance(batch, dict) else None
+        if not isinstance(raw, list) or not raw or any(
+            not isinstance(dim, str) or not dim.strip() or dim.strip() not in declared
+            for dim in raw
+        ):
+            raise PacketValidationError(
+                f"Error: batch {index + 1} has no valid declared dimension scope.", exit_code=1
+            )
+        dimensions.extend(raw)
+    return normalize_dimension_list(dimensions)
+
+
 def scored_dimensions_for_lang(lang_name: str) -> list[str]:
     """Return default scored subjective dimensions for one language."""
     try:
@@ -161,7 +189,7 @@ def print_preflight_dimension_scope_notice(
 
     covered_count = len([dim for dim in selected_dims if dim in set(scored_dims)])
     scope_reason = (
-        "explicit --dimensions selection"
+        "explicit dimension or batch selection"
         if explicit_selection
         else "language default review dimension set"
     )
@@ -235,21 +263,25 @@ def enforce_trusted_import_coverage_gate(
     colorize_fn,
 ) -> None:
     """Block trusted assessment import when selected assessment dimensions are missing."""
-    if not selected_dims or not missing_dims:
+    missing_set = set(normalize_dimension_list(missing_dims))
+    missing_selected_dims = [
+        dim for dim in normalize_dimension_list(selected_dims) if dim in missing_set
+    ]
+    if not missing_selected_dims:
         return
     if allow_partial:
         print(
             colorize_fn(
-                "  Coverage override: importing with missing scored dimensions "
+                "  Coverage override: importing with missing selected dimensions "
                 f"because {TRUSTED_IMPORT_COVERAGE_OVERRIDE_FLAG} is enabled.",
                 "yellow",
             )
         )
         return
 
-    preview = ", ".join(missing_dims[:5])
-    if len(missing_dims) > 5:
-        preview = f"{preview}, +{len(missing_dims) - 5} more"
+    preview = ", ".join(missing_selected_dims[:5])
+    if len(missing_selected_dims) > 5:
+        preview = f"{preview}, +{len(missing_selected_dims) - 5} more"
     print(colorize_fn(f"  Missing dimensions: {preview}", "yellow"), file=sys.stderr)
     print(
         colorize_fn(
@@ -262,7 +294,7 @@ def enforce_trusted_import_coverage_gate(
     print(
         colorize_fn(
             "  Suggested rerun: "
-            f"`{missing_dimensions_command(missing_dims=missing_dims, scan_path=scan_path)}`",
+            f"`{missing_dimensions_command(missing_dims=missing_selected_dims, scan_path=scan_path)}`",
             "dim",
         ),
         file=sys.stderr,
@@ -284,5 +316,6 @@ __all__ = [
     "print_review_quality",
     "require_batches",
     "scored_dimensions_for_lang",
+    "selected_batch_dimensions",
     "validate_runner",
 ]
