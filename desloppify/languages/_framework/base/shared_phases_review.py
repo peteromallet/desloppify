@@ -597,7 +597,7 @@ def phase_test_coverage(
     entries = filter_entries(zone_map, entries, "test_coverage")
 
     results = _entries_to_issues("test_coverage", entries, default_name="")
-    _log_phase_summary("test coverage", results, potential, "production files")
+    _log_phase_summary("test coverage", results, potential, "weighted coverage units")
 
     return results, {"test_coverage": potential}
 
