@@ -18,6 +18,11 @@ from ..batches_runtime import (
 from ..prompt_sections import explode_to_single_dimension
 from ..runner_parallel import BatchExecutionOptions
 from ..runtime.policy import resolve_batch_run_policy
+from .execution import (
+    CollectBatchResultsRequest,
+    LoadOrPreparePacketRequest,
+    PrepareRunArtifactsRequest,
+)
 from .execution_dry_run import maybe_handle_dry_run
 from .execution_progress import (
     build_initial_batch_status,
@@ -33,11 +38,6 @@ from .execution_results import (
     merge_and_write_results,
 )
 from .execution_summary import build_run_summary_writer
-from .execution import (
-    CollectBatchResultsRequest,
-    LoadOrPreparePacketRequest,
-    PrepareRunArtifactsRequest,
-)
 from .scope import (
     normalize_dimension_list,
     print_preflight_dimension_scope_notice,
@@ -553,12 +553,6 @@ def execute_batch_run(*, prepared: PreparedBatchRunContext, deps: BatchRunDeps) 
     )
 
 
-def _is_partial_batch_retry(prepared: PreparedBatchRunContext) -> bool:
-    """Return True when the current run targets a subset of the packet's batches."""
-    all_indexes = set(range(len(prepared.batches)))
-    return set(prepared.selected_indexes) != all_indexes
-
-
 def merge_and_import_batch_run(
     *,
     prepared: PreparedBatchRunContext,
@@ -585,18 +579,10 @@ def merge_and_import_batch_run(
         colorize_fn=deps.colorize_fn,
     )
 
-    # When retrying a subset of batches (--only-batches), the merged output
-    # only contains the retried dimensions.  Skip the coverage gate so the
-    # partial result can be imported — the original run already covered the
-    # remaining dimensions.
-    allow_partial = prepared.allow_partial
-    if _is_partial_batch_retry(prepared):
-        allow_partial = True
-
     enforce_import_coverage(
         missing_after_import=missing_after_import,
         packet_dimensions=prepared.packet_dimensions,
-        allow_partial=allow_partial,
+        allow_partial=prepared.allow_partial,
         scan_path=prepared.scan_path,
         colorize_fn=deps.colorize_fn,
     )
@@ -621,7 +607,6 @@ __all__ = [
     "PreparedPacketScope",
     "PreparedBatchRunContext",
     "PreparedRunArtifacts",
-    "_is_partial_batch_retry",
     "_prepare_packet_scope",
     "_prepare_run_runtime",
     "_print_runtime_expectation",

@@ -203,8 +203,10 @@ def test_merge_and_finalize_helpers(tmp_path: Path, monkeypatch) -> None:
         colorize_fn=lambda text, _tone=None: text,
     )
     assert merged_path.exists()
-    assert missing == ["missing_dim"]
+    assert missing == []
     merged_payload = json.loads(merged_path.read_text())
+    assert merged_payload["assessment_coverage"]["missing_dimensions"] == ["missing_dim"]
+    assert merged_payload["assessment_coverage"]["missing_selected_dimensions"] == []
     assert merged_payload["review_scope"]["reviewed_files_count"] == 2
     assert merged_payload["provenance"]["trusted"] is True
     assert merged_payload["review_quality"]["overall"] == 0.8
