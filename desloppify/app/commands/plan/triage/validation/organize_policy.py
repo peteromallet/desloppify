@@ -65,6 +65,12 @@ def _manual_clusters_or_error(
     open_review_ids: set[str] | None = None,
 ) -> list[str] | None:
     manual_clusters = manual_clusters_with_issues(plan)
+    if open_review_ids is not None:
+        clusters = plan.get("clusters", {})
+        manual_clusters = [
+            name for name in manual_clusters
+            if open_review_ids.intersection(cluster_issue_ids(clusters[name]))
+        ]
     if manual_clusters:
         return manual_clusters
     if open_review_ids is not None and not open_review_ids:
@@ -74,7 +80,10 @@ def _manual_clusters_or_error(
         if cluster_issue_ids(cluster)
     ]
     if any_clusters:
-        print(colorize("  Cannot organize: only auto-clusters exist.", "red"))
+        if open_review_ids is not None:
+            print(colorize("  Cannot organize: no manual clusters cover the open review issues.", "red"))
+        else:
+            print(colorize("  Cannot organize: only auto-clusters exist.", "red"))
         print(colorize("  Create manual clusters that group issues by root cause:", "dim"))
     else:
         print(colorize("  Cannot organize: no clusters with issues exist.", "red"))

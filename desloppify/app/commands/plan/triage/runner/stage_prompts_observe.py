@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+
+from desloppify.engine._state.schema import WorkItem
 
 from .stage_prompts_instruction_shared import (
     observe_example_report_quality,
@@ -55,7 +58,7 @@ def build_observe_batch_prompt(
     batch_index: int,
     total_batches: int,
     dimension_group: list[str],
-    issues_subset: dict[str, dict],
+    issues_subset: Mapping[str, WorkItem],
     *,
     repo_root: Path,
     strategist_guidance: str | None = None,
@@ -84,14 +87,28 @@ def build_observe_batch_prompt(
     for fid, f in sorted(issues_subset.items()):
         detail = f.get("detail", {}) if isinstance(f.get("detail"), dict) else {}
         dim = detail.get("dimension", "unknown")
-        title = f.get("title", fid)
-        file_path = detail.get("file_path", "")
+        title = f.get("summary", f.get("title", fid))
+        file_path = f.get("file", detail.get("file_path", ""))
         description = detail.get("description", f.get("description", ""))
         line = f"- [{fid[:8]}] ({dim}) **{title}**"
         if file_path:
             line += f" — `{file_path}`"
         if description:
             line += f"\n  {description[:300]}"
+        line += f"\n  Issue ID: {fid}"
+        related_files = detail.get("related_files")
+        if isinstance(related_files, list):
+            paths = [path for path in related_files if isinstance(path, str)]
+            if paths:
+                line += "\n  Related files: " + ", ".join(f"`{path}`" for path in paths)
+        evidence = detail.get("evidence")
+        if isinstance(evidence, list):
+            for claim in evidence:
+                if isinstance(claim, str):
+                    line += f"\n  Evidence: {claim}"
+        suggestion = detail.get("suggestion")
+        if isinstance(suggestion, str) and suggestion:
+            line += f"\n  Suggestion: {suggestion}"
         parts.append(line)
 
     # Batch-specific observe instructions (no subagent/CLI references)
