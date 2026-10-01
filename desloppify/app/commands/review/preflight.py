@@ -7,13 +7,21 @@ markers before a new cycle.
 
 from __future__ import annotations
 
-import re
 import sys
 
 from desloppify.app.commands.helpers.query import load_query_result
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import queue_context
+from desloppify.engine._work_queue.review_scope import (
+    normalize_dimension_key as _normalize_dimension_key,
+)
+from desloppify.engine._work_queue.review_scope import (
+    review_blockers,
+)
+from desloppify.engine._work_queue.review_scope import (
+    scored_dimensions as _scored_dimensions,
+)
 from desloppify.state_io import StateModel, save_state
 
 from .helpers import parse_dimensions
@@ -44,25 +52,6 @@ def clear_stale_subjective_entries(
             assessment.pop("refresh_reason", None)
             cleared.append(dim_key)
     return cleared
-
-
-def _scored_dimensions(state: StateModel) -> list[str]:
-    """Return dimension keys that already have a nonzero subjective score."""
-    assessments: dict = state.get("subjective_assessments", {})
-    scored: list[str] = []
-    for dim_key, assessment in assessments.items():
-        if isinstance(assessment, dict):
-            if assessment.get("score", 0):
-                scored.append(dim_key)
-        elif isinstance(assessment, int | float) and assessment:
-            scored.append(dim_key)
-    return sorted(scored)
-
-
-def _normalize_dimension_key(raw: object) -> str:
-    """Normalize a dimension key/name to canonical snake_case."""
-    text = str(raw or "").strip().lower().replace(" ", "_")
-    return re.sub(r"[^a-z0-9_]+", "_", text).strip("_")
 
 
 def _prepared_query_dimensions() -> set[str] | None:
@@ -129,24 +118,10 @@ def _objective_and_subjective_backlog(
     if not blocking_dims:
         return ctx.snapshot.objective_execution_count, 0
 
-    normalized_blocking_dims = {_normalize_dimension_key(dim) for dim in blocking_dims}
-
-    def _item_dimension_key(item: dict) -> str | None:
-        detail = item.get("detail")
-        if not isinstance(detail, dict):
-            return None
-        dimension = detail.get("dimension")
-        if not isinstance(dimension, str) or not dimension.strip():
-            return None
-        return _normalize_dimension_key(dimension)
-
-    subjective_total = sum(
-        1
-        for item in ctx.snapshot.all_postflight_review_items
-        if item.get("kind") != "subjective_dimension"
-        if (dim_key := _item_dimension_key(item)) is not None
-        and dim_key in normalized_blocking_dims
-    )
+    subjective_total = len(review_blockers(
+        ctx.snapshot.all_postflight_review_items,
+        blocking_dims=blocking_dims,
+    ))
     return ctx.snapshot.objective_execution_count, subjective_total
 
 

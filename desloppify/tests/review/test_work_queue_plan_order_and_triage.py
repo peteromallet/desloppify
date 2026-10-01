@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from desloppify.engine._plan.refresh_lifecycle import carry_forward_subjective_review
+from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 from desloppify.engine.planning.queue_policy import (
     build_backlog_queue,
     build_execution_queue,
 )
-from desloppify.engine._work_queue.core import QueueBuildOptions
-from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 
 
 def build_work_queue(state, **kwargs):
@@ -417,8 +419,20 @@ def test_triaged_review_findings_stay_postflight_while_objective_work_remains():
     assert ids == ["smells::src/a.py::x"]
 
 
-def test_postflight_assessment_precedes_review_findings():
-    """Postflight subjective reruns gate later review execution work."""
+@pytest.mark.parametrize(
+    ("review_dimension", "expected_ids"),
+    [
+        ("naming_quality", ["review::src/a.py::naming"]),
+        (
+            "unscored_dimension",
+            ["subjective::naming_quality", "subjective_review::naming_quality"],
+        ),
+    ],
+)
+def test_postflight_priority_depends_on_scored_review_blockers(
+    review_dimension: str, expected_ids: list[str],
+):
+    """Ready scored blockers precede reruns; unrelated review work does not."""
     from desloppify.engine._plan.schema import empty_plan
 
     state = _state(
@@ -428,7 +442,7 @@ def test_postflight_assessment_precedes_review_findings():
                 detector="review",
                 tier=1,
                 confidence="high",
-                detail={"dimension": "naming_quality"},
+                detail={"dimension": review_dimension},
             ),
             _issue(
                 "subjective_review::naming_quality",
@@ -473,9 +487,7 @@ def test_postflight_assessment_precedes_review_findings():
         ),
     )
     ids = [item["id"] for item in queue["items"]]
-    # Subjective dimension item is suppressed when review issues cover the
-    # same dimension — the assessment request alone surfaces.
-    assert ids == ["subjective_review::naming_quality"]
+    assert ids == expected_ids
 
 
 def test_execution_queue_excludes_unplanned_objective_items():

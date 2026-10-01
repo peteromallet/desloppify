@@ -27,13 +27,15 @@ Persisted markers live in ``plan["refresh_state"]`` and have distinct roles:
 Display phase is never persisted. ``derive_display_phase()`` computes the
 user-visible phase from boolean signals with this strict priority chain:
 ``initial_review > prefer_scan > assessment > workflow > triage >
-review_postflight > execute > scan``. ``user_facing_mode()`` collapses all
+review_postflight > execute > scan``. When current-triaged review work blocks
+reassessment, its workflow/triage prerequisites and then the ready blockers
+run before assessment. Initial reviews and required scans retain priority. ``user_facing_mode()`` collapses all
 non-``execute`` display phases back to the persisted ``"plan"`` mode.
 """
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
 from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
@@ -182,12 +184,19 @@ def derive_display_phase(
     has_execution: bool,
     fresh_boundary: bool,
     prefer_scan: bool,
+    has_reassessment_blockers: bool = False,
 ) -> str:
     """Return the canonical display phase from normalized boolean signals."""
     if fresh_boundary and has_initial_review:
         return LIFECYCLE_PHASE_REVIEW_INITIAL
     if prefer_scan:
         return LIFECYCLE_PHASE_SCAN
+    if has_reassessment_blockers:
+        if has_workflow:
+            return LIFECYCLE_PHASE_WORKFLOW_POSTFLIGHT
+        if has_triage:
+            return LIFECYCLE_PHASE_TRIAGE_POSTFLIGHT
+        return LIFECYCLE_PHASE_REVIEW_POSTFLIGHT
     if has_postflight_assessment:
         return LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT
     if has_workflow:

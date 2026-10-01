@@ -4,36 +4,43 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.state_scoring import score_snapshot
 from desloppify.engine._plan.auto_cluster import auto_cluster_issues
 from desloppify.engine._plan.constants import (
     PRE_REVIEW_WORKFLOW_IDS,
     WORKFLOW_COMMUNICATE_SCORE_ID,
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_DEFERRED_DISPOSITION_ID,
-    WORKFLOW_IMPORT_SCORES_ID,
     WORKFLOW_RUN_SCAN_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
     QueueSyncResult,
     is_synthetic_id,
 )
 from desloppify.engine._plan.operations.meta import append_log_entry
-from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
 from desloppify.engine._plan.policy.stale import open_review_ids
+from desloppify.engine._plan.policy.subjective import compute_subjective_visibility
 from desloppify.engine._plan.refresh_lifecycle import (
     _set_lifecycle_phase,
     derive_display_phase,
     user_facing_mode,
 )
+from desloppify.engine._plan.schema import live_planned_queue_ids
 from desloppify.engine._plan.sync.dimensions import sync_subjective_dimensions
 from desloppify.engine._plan.sync.phase_cleanup import prune_synthetic_for_phase
 from desloppify.engine._plan.sync.triage import sync_triage_needed
-from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._plan.sync.workflow import (
     ScoreSnapshot,
     sync_communicate_score_needed,
     sync_create_plan_needed,
 )
+from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
+from desloppify.engine._state.issue_semantics import is_triage_finding
+from desloppify.engine._state.schema import StateModel
+from desloppify.engine._work_queue.ranking import build_issue_items
+from desloppify.engine._work_queue.review_scope import (
+    review_blockers,
+    scored_dimensions,
+)
+from desloppify.state_scoring import score_snapshot
 
 _SCAN_PHASE_WORKFLOW_IDS = {
     WORKFLOW_DEFERRED_DISPOSITION_ID,
@@ -93,7 +100,7 @@ class ReconcileResult:
         return injected
 
 
-def _current_scores(state: dict) -> ScoreSnapshot:
+def _current_scores(state: StateModel) -> ScoreSnapshot:
     snapshot = score_snapshot(state)
     return ScoreSnapshot(
         strict=snapshot.strict,
@@ -109,7 +116,7 @@ def _log_gate_changes(plan: dict, action: str, detail: dict[str, object]) -> Non
 
 def _resolve_reconcile_display_phase(
     plan: dict,
-    state: dict,
+    state: StateModel,
     *,
     result: ReconcileResult,
     policy: object | None,
@@ -159,6 +166,21 @@ def _resolve_reconcile_display_phase(
         not has_real_work and bool(open_review_ids(state))
     )
 
+    ready_blockers = []
+    if (
+        triage_snapshot.triage_has_run
+        and not triage_snapshot.has_triage_in_queue
+        and not triage_snapshot.is_triage_stale
+    ):
+        items = build_issue_items(
+            state, scan_path=state.get("scan_path"), status_filter="open",
+            scope=None, chronic=False, forced_ids=live_planned_queue_ids(plan),
+        )
+        ready_blockers = review_blockers(
+            (item for item in items if is_triage_finding(item)),
+            blocking_dims=scored_dimensions(state),
+        )
+
     return derive_display_phase(
         has_initial_review=has_initial_review,
         has_postflight_assessment=has_postflight_assessment,
@@ -168,6 +190,7 @@ def _resolve_reconcile_display_phase(
         has_execution=has_real_work,
         fresh_boundary=fresh_boundary,
         prefer_scan=prefer_scan,
+        has_reassessment_blockers=bool(ready_blockers),
     )
 
 
@@ -218,7 +241,7 @@ def live_planned_queue_empty(plan: dict) -> bool:
 
 def reconcile_plan(
     plan: dict,
-    state: dict,
+    state: StateModel,
     *,
     target_strict: float,
     force_rescan: bool = False,
