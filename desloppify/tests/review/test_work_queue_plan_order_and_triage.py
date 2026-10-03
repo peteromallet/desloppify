@@ -919,3 +919,35 @@ def test_force_rescan_carry_forward_keeps_below_target_review_suppressed() -> No
         "workflow::communicate-score",
         "workflow::create-plan",
     ]
+
+
+def test_completed_triage_keeps_unplanned_mechanical_items_in_backlog():
+    """Triage eligibility must not turn objective backlog into review execution."""
+    from desloppify.engine._plan.schema import empty_plan
+    from desloppify.engine._work_queue.snapshot import _review_issue_items
+
+    planned = _issue("smells::src/a.py::planned")
+    unplanned = _issue("smells::src/b.py::unplanned")
+    review = _issue("review::src/a.py::naming", detector="review")
+    concern = _issue("concerns::src/a.py::boundary", detector="concerns")
+    items = [planned, unplanned, review, concern]
+    assert [item["id"] for item in _review_issue_items(items)] == [
+        review["id"], concern["id"],
+    ]
+
+    state = _state(items)
+    plan = empty_plan()
+    plan["plan_start_scores"] = {"strict": 80.0}
+    plan["queue_order"] = [planned["id"], review["id"], concern["id"]]
+    plan["epic_triage_meta"] = {
+        "triaged_ids": [item["id"] for item in items],
+        "last_completed_at": "2026-03-13T00:00:00+00:00",
+    }
+    plan["refresh_state"] = {"lifecycle_phase": "execute"}
+    options = QueueBuildOptions(count=None, include_subjective=False, plan=plan)
+    execution = build_execution_queue(state, options=options)
+    backlog = build_backlog_queue(state, options=options)
+    assert unplanned["id"] not in {item["id"] for item in execution["items"]}
+    assert planned["id"] in {item["id"] for item in execution["items"]}
+    assert unplanned["id"] in {item["id"] for item in backlog["items"]}
+    assert state["issues"][unplanned["id"]]["status"] == "open"

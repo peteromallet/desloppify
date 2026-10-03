@@ -35,7 +35,6 @@ from desloppify.engine._state.issue_semantics import (
     counts_toward_objective_backlog,
     is_assessment_request,
     is_review_work_item,
-    is_triage_finding,
 )
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.ranking import build_issue_items
@@ -119,7 +118,7 @@ def _is_objective_item(item: WorkQueueItem, *, skipped_ids: set[str]) -> bool:
 
 
 def _review_issue_items(items: Iterable[WorkQueueItem]) -> list[WorkQueueItem]:
-    return [item for item in items if is_triage_finding(item)]
+    return [item for item in items if is_review_work_item(item)]
 
 
 def _assessment_request_items(items: Iterable[WorkQueueItem]) -> list[WorkQueueItem]:
@@ -281,7 +280,16 @@ def _phase_for_snapshot(
     # during postflight remains backlog-only until postflight ends; queued
     # review findings still belong to the review postflight phase.
     suppress_postflight_signals = has_execution and (
-        persisted_phase == "execute" or raw_phase is None
+        persisted_phase == "execute"
+        or (
+            persisted_phase is None
+            and raw_phase == "execute"
+            and any(
+                counts_toward_objective_backlog(item)
+                for item in explicit_queue_items
+            )
+        )
+        or raw_phase is None
     )
     prefer_scan = raw_phase == "execute" and not has_execution
     if suppress_postflight_signals:
