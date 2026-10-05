@@ -33,6 +33,8 @@ def _class_declared_contract_attrs(node: ast.ClassDef) -> set[str]:
     for stmt in node.body:
         if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
             declared.add(stmt.target.id)
+        elif isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
+            declared.add(stmt.name)
     return declared
 
 
