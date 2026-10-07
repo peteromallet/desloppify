@@ -65,6 +65,8 @@ def build_execution_queue(
         plan=_queue_plan_from_options(options),
         target_strict=_subjective_threshold(state),
     )
+    if options.subjective_threshold == QueueBuildOptions().subjective_threshold:
+        options = replace(options, subjective_threshold=ctx.target_strict)
     return _build_work_queue_with_visibility(
         state,
         options=replace(options, context=ctx),
