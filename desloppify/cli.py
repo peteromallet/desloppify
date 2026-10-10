@@ -11,18 +11,19 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.app.cli_support.parser import create_parser as _create_parser
-from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.command_runtime import CommandRuntime
+from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.app.commands.registry import CommandHandler, get_command_handlers
 from desloppify.base.config import load_config
+from desloppify.base.discovery.paths import get_default_scan_path, get_project_root
 from desloppify.base.discovery.source import set_exclusions
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
-from desloppify.base.discovery.paths import get_default_scan_path, get_project_root
 from desloppify.base.registry import detector_names, on_detector_registered
 from desloppify.base.runtime_state import runtime_scope
+from desloppify.engine._plan.persistence import plan_path_for_state
 from desloppify.languages import available_langs
 from desloppify.state_io import load_state
 
@@ -114,12 +115,12 @@ def _project_root_from_state_path(state_path_value: str | Path | None) -> Path |
         state_file = Path(state_path_value).resolve()
     except OSError:
         return None
-    if state_file.parent.name != ".desloppify":
-        return None
     if state_file.name == "state.json" or (
         state_file.name.startswith("state-") and state_file.suffix == ".json"
     ):
-        return state_file.parent.parent
+        for parent in state_file.parents:
+            if parent.name == ".desloppify":
+                return parent.parent
     return None
 
 
@@ -268,7 +269,12 @@ def main() -> None:
 
     try:
         with runtime_scope() as runtime:
-            inferred = _project_root_from_state_path(getattr(args, "state", None))
+            explicit_state = getattr(args, "state", None)
+            if explicit_state:
+                # Every implicit plan read/write must follow the selected state,
+                # including recovery while the shared command runtime is loaded.
+                runtime.plan_file = plan_path_for_state(Path(explicit_state).absolute())
+            inferred = _project_root_from_state_path(explicit_state)
             if inferred is not None:
                 runtime.project_root = inferred
             _warn_if_running_installed_package_from_checkout()

@@ -17,8 +17,8 @@ from desloppify.app.commands.helpers.runtime_options import (
 )
 from desloppify.cli import (
     _get_detector_names,
-    _running_installed_package_from_checkout,
     _resolve_default_path,
+    _running_installed_package_from_checkout,
     _warn_if_running_installed_package_from_checkout,
     create_parser,
     state_path,
@@ -946,6 +946,12 @@ class TestResolveLang:
 
 class TestProjectRootFromStatePath:
     """Infer project root from an explicit --state path."""
+
+    def test_nested_language_state_file(self, tmp_path: Path):
+        from desloppify.cli import _project_root_from_state_path
+
+        state_file = tmp_path / ".desloppify" / "rust" / "state-rust.json"
+        assert _project_root_from_state_path(state_file) == tmp_path
 
     def test_language_state_file(self, tmp_path: Path):
         dot = tmp_path / ".desloppify"

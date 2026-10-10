@@ -13,9 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.discovery.file_paths import safe_write_text
+from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.fallbacks import log_best_effort_failure
+from desloppify.base.runtime_state import current_runtime_context
+from desloppify.engine._plan.refresh_lifecycle import migrate_legacy_phase
 from desloppify.engine._plan.schema import (
     PLAN_VERSION,
     PlanModel,
@@ -23,7 +25,6 @@ from desloppify.engine._plan.schema import (
     ensure_plan_defaults,
     validate_plan,
 )
-from desloppify.engine._plan.refresh_lifecycle import migrate_legacy_phase
 from desloppify.engine._state.schema import (
     get_state_dir,
     json_default,
@@ -49,7 +50,7 @@ class PlanLoadStatus:
 
 def get_plan_file() -> Path:
     """Return the default plan file for the current runtime context."""
-    return get_state_dir() / "plan.json"
+    return current_runtime_context().plan_file or get_state_dir() / "plan.json"
 
 
 def _default_plan_file() -> Path:
