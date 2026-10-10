@@ -14,10 +14,12 @@ import subprocess  # nosec B404
 import sys
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from desloppify.base.discovery.file_paths import rel, resolve_path, safe_write_text
+from desloppify.base.discovery.file_paths import rel, resolve_path
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.discovery.source import find_ts_and_tsx_files
+from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize, print_table
 from desloppify.languages.typescript.detectors.unused_fallback import (
     _contains_deno_markers,
@@ -45,17 +47,26 @@ _should_use_deno_fallback = should_use_deno_fallback
 def _run_tsc_unused_check(
     project_root: Path,
     tsconfig_path: Path,
+    *,
+    show_config: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run the unused-symbol check for one project root.
 
-    Prefers `npx tsc` (project-local), then `node_modules/.bin/tsc`, then `tsc`.
+    Prefers `npx tsc`, then the nearest ancestor's `node_modules/.bin/tsc`, then `tsc`.
     """
     npx_path = shutil.which("npx")
     if npx_path:
         cmd = [npx_path, "tsc"]
     else:
-        local_tsc = project_root / "node_modules" / ".bin" / "tsc"
-        if local_tsc.is_file():
+        local_tsc = next(
+            (
+                compiler
+                for directory in (project_root, *project_root.parents)
+                if (compiler := directory / "node_modules" / ".bin" / "tsc").is_file()
+            ),
+            None,
+        )
+        if local_tsc is not None:
             cmd = [str(local_tsc)]
         else:
             tsc_path = shutil.which("tsc")
@@ -64,93 +75,188 @@ def _run_tsc_unused_check(
             else:
                 raise OSError("TypeScript compiler not found (npx/tsc)")
 
-    return _proc_runtime.run(  # nosec B603
-        [
-            *cmd,
-            "--project",
-            str(tsconfig_path),
-            "--noEmit",
-        ],
-        capture_output=True,
-        text=True,
-        cwd=project_root,
-        timeout=120,
+    # Even --noEmit can write .tsbuildinfo in incremental/composite projects.
+    # Keep this observation from changing the project's compiler cache.
+    with TemporaryDirectory(prefix="desloppify-tsc-") as scratch:
+        options = (
+            ["--showConfig"]
+            if show_config
+            else [
+                "--noEmit",
+                "--noUnusedLocals",
+                "--noUnusedParameters",
+                "--incremental",
+                "--tsBuildInfoFile",
+                str(Path(scratch) / "unused.tsbuildinfo"),
+            ]
+        )
+        return _proc_runtime.run(  # nosec B603
+            [*cmd, "--project", str(tsconfig_path), "--pretty", "false", *options],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+            timeout=120,
+        )
+
+
+def _find_tsconfigs(ts_files: list[str]) -> list[Path]:
+    """Use each source file's nearest project, including nested workspace packages."""
+    root = get_project_root().resolve()
+    configs: set[Path] = set()
+    unconfigured = 0
+    for filepath in ts_files:
+        directory = Path(resolve_path(filepath)).parent
+        while True:
+            config = next(
+                (
+                    directory / name
+                    for name in ("tsconfig.json", "tsconfig.app.json", "jsconfig.json")
+                    if (directory / name).is_file()
+                ),
+                None,
+            )
+            if config is not None:
+                configs.add(config)
+                break
+            # --path can target a project outside the runtime project root.
+            # In that case, walk its ancestors as tsc's config discovery does.
+            if directory == root or directory.parent == directory:
+                unconfigured += 1
+                break
+            directory = directory.parent
+    if configs and unconfigured:
+        logger.warning(
+            "Unused compiler check skips %s file(s) without a TypeScript project configuration",
+            unconfigured,
+        )
+    return sorted(configs)
+
+
+def _project_diagnostics(config: Path) -> tuple[list[str], list[Path]]:
+    """Let tsc resolve JSONC/extends and validate configuration before using diagnostics."""
+    try:
+        shown = _run_tsc_unused_check(config.parent, config, show_config=True)
+        if shown.returncode != 0:
+            raise CommandError(
+                f"Cannot read TypeScript project {config}:\n{shown.stdout}{shown.stderr}".strip()
+            )
+        try:
+            effective = json.loads(shown.stdout)
+        except json.JSONDecodeError as exc:
+            raise CommandError(
+                f"TypeScript returned an invalid configuration for {config}"
+            ) from exc
+        references = []
+        for reference in effective.get("references", []):
+            target = (config.parent / reference["path"]).resolve()
+            references.append(target / "tsconfig.json" if target.is_dir() else target)
+        result = _run_tsc_unused_check(config.parent, config)
+    except (_proc_runtime.SubprocessError, OSError) as exc:
+        raise CommandError(
+            f"Cannot check unused declarations in TypeScript project {config}: {exc}"
+        ) from exc
+    lines = result.stdout.splitlines() + result.stderr.splitlines()
+    # Source errors can coexist with valid unused diagnostics. Configuration
+    # errors can also be located; tsc only checks some option combinations during
+    # compilation, so successful --showConfig is insufficient on its own. Only
+    # normal tsc success/diagnostic exit statuses can establish a complete check.
+    located = [
+        match
+        for line in lines
+        if (match := re.match(r"^(.+)\(\d+,\d+\): error TS\d+:", line))
+    ]
+    config_error = any(
+        Path(match[1]).suffix in {".json", ".jsonc"}
+        or (config.parent / match[1]).resolve() == config
+        for match in located
     )
+    if (
+        config_error
+        or any(line.startswith("error TS") for line in lines)
+        or result.returncode not in {0, 1, 2}
+        or (result.returncode != 0 and not located)
+    ):
+        raise CommandError(
+            f"TypeScript unused check failed for {config}:\n{result.stdout}{result.stderr}".strip()
+        )
+    return lines, references
 
 
 def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     ts_files = find_ts_and_tsx_files(path)
     total_files = len(ts_files)
+    if not ts_files:
+        return [], 0
     if _should_use_deno_fallback(path, ts_files):
         return _detect_unused_fallback(path, category)
 
-    tmp_tsconfig = {
-        "extends": "./tsconfig.app.json",
-        "compilerOptions": {
-            "noUnusedLocals": True,
-            "noUnusedParameters": True,
-        },
-    }
-    tmp_path = get_project_root() / "tsconfig.desloppify.json"
-    try:
-        safe_write_text(tmp_path, json.dumps(tmp_tsconfig, indent=2))
-        try:
-            result = _run_tsc_unused_check(get_project_root(), tmp_path)
-        except (_proc_runtime.SubprocessError, OSError) as exc:
-            logger.debug("Falling back to source-based unused detection: %s", exc)
-            return _detect_unused_fallback(path, category)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    configs = _find_tsconfigs(ts_files)
+    if not configs:
+        logger.warning(
+            "No TypeScript project configuration found; using source-based unused detection"
+        )
+        return _detect_unused_fallback(path, category)
 
-    entries = []
-    for line in result.stdout.splitlines() + result.stderr.splitlines():
-        m = TS6133_RE.match(line)
-        m2 = TS6192_RE.match(line) if not m else None
-        if not m and not m2:
+    scan_files = {Path(resolve_path(filepath)) for filepath in ts_files}
+    entries: dict[tuple[str, int, int, str], dict] = {}
+    checked: set[Path] = set()
+    while configs:
+        config = configs.pop(0).resolve()
+        if config in checked:
             continue
-        if m:
-            filepath, lineno, col, name = (
-                m.group(1),
-                int(m.group(2)),
-                int(m.group(3)),
-                m.group(4),
-            )
-            if name.startswith("_"):
+        checked.add(config)
+        lines, references = _project_diagnostics(config)
+        configs.extend(references)
+        for line in lines:
+            m = TS6133_RE.match(line)
+            m2 = TS6192_RE.match(line) if not m else None
+            if not m and not m2:
                 continue
-        else:
-            filepath, lineno, col = m2.group(1), int(m2.group(2)), int(m2.group(3))
-            name = "(entire import)"
+            if m:
+                filepath, lineno, col, name = (
+                    m.group(1),
+                    int(m.group(2)),
+                    int(m.group(3)),
+                    m.group(4),
+                )
+                if name.startswith("_"):
+                    continue
+            else:
+                filepath, lineno, col = m2.group(1), int(m2.group(2)), int(m2.group(3))
+                name = "(entire import)"
 
-        try:
-            full = Path(resolve_path(filepath))
-            if not str(full).startswith(str(path.resolve())):
+            full = (config.parent / filepath).resolve()
+            if full not in scan_files:
                 continue
-        except (OSError, ValueError) as exc:
-            logger.debug("Skipping path scope check for %s: %s", filepath, exc)
-            continue
-
-        cat = _categorize_unused(filepath, lineno)
-        if category != "all" and cat != category:
-            continue
-        entries.append(
-            {
+            filepath = rel(full)
+            cat = _categorize_unused(filepath, lineno)
+            if category != "all" and cat != category:
+                continue
+            entries[(filepath, lineno, col, name)] = {
                 "file": filepath,
                 "line": lineno,
                 "col": col,
                 "name": name,
                 "category": cat,
             }
-        )
-    return entries, total_files
+    return list(entries.values()), total_files
 
 
 def _categorize_unused(filepath: str, lineno: int) -> str:
     try:
-        p = Path(filepath) if Path(filepath).is_absolute() else get_project_root() / filepath
+        p = (
+            Path(filepath)
+            if Path(filepath).is_absolute()
+            else get_project_root() / filepath
+        )
         lines = p.read_text().splitlines()
         if lineno <= len(lines):
             src_line = lines[lineno - 1].strip()
-            if src_line.startswith("import ") or "from '" in src_line or 'from "' in src_line:
+            if (
+                src_line.startswith("import ")
+                or "from '" in src_line
+                or 'from "' in src_line
+            ):
                 return "imports"
             if src_line.startswith(
                 (
@@ -173,7 +279,9 @@ def _categorize_unused(filepath: str, lineno: int) -> str:
                 if prev.startswith("import "):
                     return "imports"
                 if not prev or (
-                    not prev.startswith("{") and not prev.startswith(",") and "," not in prev
+                    not prev.startswith("{")
+                    and not prev.startswith(",")
+                    and "," not in prev
                 ):
                     break
     except (OSError, UnicodeDecodeError) as exc:
@@ -193,7 +301,9 @@ def cmd_unused(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
     else:
-        print(colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr)
+        print(
+            colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr
+        )
 
     entries, _ = detect_unused(path, args.category)
     if args.json:

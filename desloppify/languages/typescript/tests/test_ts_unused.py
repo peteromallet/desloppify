@@ -1,14 +1,17 @@
 """Tests for desloppify.languages.typescript.detectors.unused — unused declaration detection.
 
-Note: detect_unused depends on tsc (TypeScript compiler) and a real project setup,
-so we test what is feasible: the helper function _categorize_unused and module imports.
+Compiler integration cases run when tsc is on PATH; unit cases cover discovery
+and failure handling without requiring Node.
 """
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 import desloppify.languages.typescript.detectors.unused as ts_unused_mod
+from desloppify.base.exception_sets import CommandError
 from desloppify.languages.typescript.detectors.unused import (
     TS6133_RE,
     TS6192_RE,
@@ -155,13 +158,21 @@ class TestDenoFallback:
         result = ts_unused_mod._run_tsc_unused_check(tmp_path, tsconfig)
 
         assert result.stdout == ""
-        assert recorded["args"] == [
+        assert recorded["args"][:-1] == [
             npx_path,
             "tsc",
             "--project",
             str(tsconfig),
+            "--pretty",
+            "false",
             "--noEmit",
-            ]
+            "--noUnusedLocals",
+            "--noUnusedParameters",
+            "--incremental",
+            "--tsBuildInfoFile",
+        ]
+        assert Path(recorded["args"][-1]).name == "unused.tsbuildinfo"
+        assert not Path(recorded["args"][-1]).parent.exists()
         assert recorded["cwd"] == tmp_path
         assert recorded["timeout"] == 120
 
@@ -171,7 +182,24 @@ class TestDenoFallback:
         with pytest.raises(OSError, match="TypeScript compiler not found"):
             ts_unused_mod._run_tsc_unused_check(tmp_path, tmp_path / "tsconfig.json")
 
-    def test_detect_unused_uses_deno_fallback_for_url_imports(self, tmp_path, monkeypatch):
+    def test_nested_config_uses_nearest_ancestor_compiler(self, tmp_path, monkeypatch):
+        compiler = _write(tmp_path, "packages/app/node_modules/.bin/tsc", "")
+        _write(tmp_path, "node_modules/.bin/tsc", "")
+        config = _write(tmp_path, "packages/app/config/tsconfig.json", "{}")
+        monkeypatch.setattr(ts_unused_mod.shutil, "which", lambda _name: None)
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0, "{}", "")
+
+        monkeypatch.setattr(ts_unused_mod._proc_runtime, "run", run)
+        ts_unused_mod._run_tsc_unused_check(config.parent, config, show_config=True)
+        assert calls[0][0] == str(compiler)
+
+    def test_detect_unused_uses_deno_fallback_for_url_imports(
+        self, tmp_path, monkeypatch
+    ):
         """Deno-style URL imports should bypass tsc and use source-based fallback."""
         _write(
             tmp_path,
@@ -225,17 +253,19 @@ class TestDenoFallback:
     def test_detect_unused_non_deno_keeps_tsc_path(self, tmp_path, monkeypatch):
         """Regular TypeScript projects should still parse TS6133/TS6192 from tsc."""
         _write(tmp_path, "src/app.ts", "const x = 1;\n")
+        _write(tmp_path, "tsconfig.json", "{}")
 
         class _Result:
-            stdout = (
-                "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
-            )
+            returncode = 2
+            stdout = "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
             stderr = ""
 
         calls = {"count": 0}
 
         def _fake_run(*args, **kwargs):
             calls["count"] += 1
+            if "--showConfig" in args[0]:
+                return subprocess.CompletedProcess(args[0], 0, "{}", "")
             return _Result()
 
         monkeypatch.setattr(
@@ -245,7 +275,7 @@ class TestDenoFallback:
         )
         monkeypatch.setattr(ts_unused_mod._proc_runtime, "run", _fake_run)
         entries, total = detect_unused(tmp_path / "src")
-        assert calls["count"] == 1
+        assert calls["count"] == 2
         assert total == 1
         assert entries and entries[0]["name"] == "x"
 
@@ -255,17 +285,19 @@ class TestDenoFallback:
         """A repo-level deno.lock alone should not disable tsc-based unused detection."""
         _write(tmp_path, "deno.lock", "{}\n")
         _write(tmp_path, "src/app.ts", "const x = 1;\n")
+        _write(tmp_path, "tsconfig.json", "{}")
 
         class _Result:
-            stdout = (
-                "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
-            )
+            returncode = 2
+            stdout = "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
             stderr = ""
 
         calls = {"count": 0}
 
         def _fake_run(*args, **kwargs):
             calls["count"] += 1
+            if "--showConfig" in args[0]:
+                return subprocess.CompletedProcess(args[0], 0, "{}", "")
             return _Result()
 
         monkeypatch.setattr(
@@ -275,6 +307,230 @@ class TestDenoFallback:
         )
         monkeypatch.setattr(ts_unused_mod._proc_runtime, "run", _fake_run)
         entries, total = detect_unused(tmp_path / "src")
-        assert calls["count"] == 1
+        assert calls["count"] == 2
         assert total == 1
         assert entries and entries[0]["name"] == "x"
+
+
+class TestProjectConfiguration:
+    def test_discovers_nearest_configs_for_nested_projects(self, tmp_path):
+        _write(tmp_path, "tsconfig.json", "{}")
+        nested = _write(tmp_path, "packages/app/tsconfig.json", "{}")
+        _write(tmp_path, "packages/app/tsconfig.app.json", "{}")
+        other = _write(tmp_path, "packages/other/tsconfig.app.json", "{}")
+        files = [
+            _write(tmp_path, "packages/app/src/code.ts", "export {};"),
+            _write(tmp_path, "packages/other/src/code.ts", "export {};"),
+        ]
+        assert ts_unused_mod._find_tsconfigs([str(path) for path in files]) == [
+            nested,
+            other,
+        ]
+
+    @pytest.mark.parametrize(
+        "diagnostic",
+        [
+            "error TS5083: Cannot read file 'missing.json'.",
+            "tsconfig.json(2,2): error TS5023: Unknown compiler option 'broken'.",
+        ],
+    )
+    def test_config_errors_are_not_reported_as_unused_results(
+        self, tmp_path, monkeypatch, diagnostic
+    ):
+        _write(tmp_path, "tsconfig.json", "{}")
+        _write(tmp_path, "src/app.ts", "export {}; const unused = 1;")
+
+        def run(_root, _config, *, show_config=False):
+            assert show_config
+            return subprocess.CompletedProcess([], 1, diagnostic, "")
+
+        monkeypatch.setattr(ts_unused_mod, "_run_tsc_unused_check", run)
+        with pytest.raises(
+            CommandError, match="Cannot read TypeScript project"
+        ) as error:
+            detect_unused(tmp_path)
+        assert diagnostic in str(error.value)
+        assert not (tmp_path / "tsconfig.desloppify.json").exists()
+
+    @pytest.mark.parametrize(
+        "result",
+        [
+            subprocess.CompletedProcess([], 1, "", "compiler failed"),
+            subprocess.CompletedProcess(
+                [], 2, "error TS2688: Cannot find type definition file for 'node'.", ""
+            ),
+            subprocess.CompletedProcess(
+                [],
+                2,
+                "tsconfig.json(1,41): error TS6304: Composite projects may not disable declaration emit.",
+                "",
+            ),
+            subprocess.CompletedProcess(
+                [],
+                -9,
+                "src/app.ts(1,18): error TS6133: 'unused' is declared but its value is never read.",
+                "compiler terminated",
+            ),
+        ],
+    )
+    def test_compiler_failures_do_not_become_a_clean_check(
+        self, tmp_path, monkeypatch, result
+    ):
+        _write(tmp_path, "tsconfig.json", "{}")
+        _write(tmp_path, "src/app.ts", "export {};")
+        monkeypatch.setattr(
+            ts_unused_mod,
+            "_run_tsc_unused_check",
+            lambda _root, _config, *, show_config=False: (
+                subprocess.CompletedProcess([], 0, "{}", "") if show_config else result
+            ),
+        )
+        with pytest.raises(CommandError, match="TypeScript unused check failed"):
+            detect_unused(tmp_path)
+
+    def test_source_type_errors_can_coexist_with_unused_findings(
+        self, tmp_path, monkeypatch
+    ):
+        _write(tmp_path, "tsconfig.json", "{}")
+        _write(tmp_path, "src/app.ts", "export {}; const unused = 1;")
+        monkeypatch.setattr(
+            ts_unused_mod,
+            "_run_tsc_unused_check",
+            lambda _root, _config, *, show_config=False: subprocess.CompletedProcess(
+                [],
+                0 if show_config else 2,
+                "{}"
+                if show_config
+                else "src/app.ts(1,8): error TS2304: Cannot find name 'missing'.\n"
+                "src/app.ts(1,18): error TS6133: 'unused' is declared but its value is never read.",
+                "",
+            ),
+        )
+        entries, _ = detect_unused(tmp_path)
+        assert [entry["name"] for entry in entries] == ["unused"]
+
+    def test_compiler_unavailable_does_not_bypass_project_exclusions(
+        self, tmp_path, monkeypatch
+    ):
+        _write(tmp_path, "tsconfig.json", '{"exclude":["src/excluded.ts"]}')
+        _write(tmp_path, "src/excluded.ts", "const unused = 1;")
+
+        def unavailable(*args, **kwargs):
+            raise OSError("compiler not found")
+
+        monkeypatch.setattr(ts_unused_mod, "_run_tsc_unused_check", unavailable)
+        with pytest.raises(CommandError, match="compiler not found"):
+            detect_unused(tmp_path)
+
+    def test_missing_configuration_reports_source_fallback(self, tmp_path, caplog):
+        _write(tmp_path, "src/app.ts", "const unused = 1;")
+        entries, _ = detect_unused(tmp_path)
+        assert entries[0]["name"] == "unused"
+        assert "No TypeScript project configuration found" in caplog.text
+
+
+@pytest.fixture
+def real_tsc(monkeypatch):
+    compiler = shutil.which("tsc")
+    if compiler is None:
+        pytest.skip("TypeScript compiler is not installed")
+    # Use the installed compiler directly; integration tests never fetch npm packages.
+    monkeypatch.setattr(
+        ts_unused_mod.shutil, "which", lambda name: compiler if name == "tsc" else None
+    )
+    return compiler
+
+
+class TestRealProjectConfiguration:
+    def test_external_scan_path_preserves_its_project_excludes(
+        self, tmp_path_factory, real_tsc
+    ):
+        external = tmp_path_factory.mktemp("external-project")
+        _write(
+            external,
+            "tsconfig.json",
+            '{"include":["src"],"exclude":["src/excluded.ts"]}',
+        )
+        _write(external, "src/excluded.ts", "export {}; const excluded = 1;")
+        _write(external, "src/included.ts", "export {}; const included = 1;")
+        entries, _ = detect_unused(external / "src")
+        assert [entry["name"] for entry in entries] == ["included"]
+
+    @pytest.mark.parametrize(
+        "options, diagnostic",
+        [
+            ('"composite":true,"declaration":false', "TS6304"),
+            ('"emitDeclarationOnly":true,"declaration":false', "TS5069"),
+        ],
+    )
+    def test_compile_stage_configuration_errors_are_reported(
+        self, tmp_path, real_tsc, options, diagnostic
+    ):
+        _write(tmp_path, "tsconfig.json", '{"compilerOptions":{' + options + "}}")
+        _write(tmp_path, "src/app.ts", "export {}; const unused = 1;")
+        with pytest.raises(CommandError, match=diagnostic):
+            detect_unused(tmp_path)
+
+    def test_jsonc_extends_and_excludes_survive_nested_scan(self, tmp_path, real_tsc):
+        _write(
+            tmp_path,
+            "app/base.json",
+            '{"compilerOptions":{"noEmit":true,"skipLibCheck":true},"include":["src"],"exclude":["src/excluded.ts"]}',
+        )
+        _write(
+            tmp_path,
+            "app/tsconfig.json",
+            '{// JSONC belongs to TypeScript, not Python\n"extends":"./base.json",}',
+        )
+        _write(tmp_path, "app/src/excluded.ts", "export {}; const excluded = 1;")
+        _write(tmp_path, "app/src/included.ts", "export {}; const included = 1;")
+        entries, _ = detect_unused(tmp_path / "app/src")
+        assert [
+            (entry["file"], entry["name"], entry["category"]) for entry in entries
+        ] == [("app/src/included.ts", "included", "vars")]
+        assert not list(tmp_path.rglob("*.tsbuildinfo"))
+        assert not list(tmp_path.rglob("tsconfig.desloppify.json"))
+
+    def test_solution_config_checks_references_and_deduplicates(
+        self, tmp_path, real_tsc
+    ):
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            '{"files":[],"references":[{"path":"./tsconfig.app.json"},{"path":"./tsconfig.app.json"}]}',
+        )
+        _write(
+            tmp_path,
+            "tsconfig.app.json",
+            '{"compilerOptions":{"composite":true},"include":["src"]}',
+        )
+        _write(tmp_path, "src/included.ts", "export {}; const included = 1;")
+        entries, _ = detect_unused(tmp_path)
+        assert [entry["name"] for entry in entries] == ["included"]
+        assert not list(tmp_path.rglob("*.tsbuildinfo"))
+
+    def test_scan_root_discovers_sibling_packages_and_filters_outside_scope(
+        self, tmp_path, real_tsc
+    ):
+        for package in ("app", "other"):
+            _write(tmp_path, f"packages/{package}/tsconfig.json", '{"include":["src"]}')
+            _write(
+                tmp_path,
+                f"packages/{package}/src/index.ts",
+                f"export {{}}; const unused_{package} = 1;",
+            )
+        entries, _ = detect_unused(tmp_path)
+        assert {entry["file"] for entry in entries} == {
+            "packages/app/src/index.ts",
+            "packages/other/src/index.ts",
+        }
+        entries, _ = detect_unused(tmp_path / "packages/app/src")
+        assert [entry["file"] for entry in entries] == ["packages/app/src/index.ts"]
+
+    def test_missing_extended_config_raises_instead_of_scanning_defaults(
+        self, tmp_path, real_tsc
+    ):
+        _write(tmp_path, "tsconfig.json", '{"extends":"./missing.json"}')
+        _write(tmp_path, "src/app.ts", "export {}; const unused = 1;")
+        with pytest.raises(CommandError, match="missing.json"):
+            detect_unused(tmp_path)
