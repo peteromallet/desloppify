@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
+import pytest
+
 from desloppify.engine._plan.operations.cluster import add_to_cluster, create_cluster
+from desloppify.engine._plan.operations.skip import skip_items
 from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan
 from desloppify.engine._plan.schema import empty_plan, ensure_plan_defaults
+from desloppify.engine._state.merge_issues import upsert_issues
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -194,6 +200,84 @@ def test_reconcile_supersedes_resolved_action_references():
     assert "a" not in plan["clusters"]["my-cluster"]["issue_ids"]
     assert "b" in plan["queue_order"]
     assert "b" in plan["promoted_ids"]
+
+
+@pytest.mark.parametrize("kind,status", [("false_positive", "false_positive"), ("permanent", "wontfix")])
+@pytest.mark.parametrize("cluster_status", ["active", "review", "deferred", "done"])
+@pytest.mark.parametrize("auto", [False, True])
+def test_repeated_scans_preserve_durable_skips(kind, status, cluster_status, auto):
+    """Resolved cluster references must not erase deliberate dispositions."""
+    plan = _plan_with_queue("a", "b")
+    create_cluster(plan, "reviewed")
+    add_to_cluster(plan, "reviewed", ["a", "b"])
+    cluster = plan["clusters"]["reviewed"]
+    cluster.update(auto=auto, execution_status=cluster_status)
+    cluster["action_steps"] = [{"title": "Review remaining work", "issue_refs": ["a", "b"]}]
+    skip_items(plan, ["a"], kind=kind, note="Maintained evidence", attestation="Reviewed")
+    expected_skip = deepcopy(plan["skipped"]["a"])
+    plan["promoted_ids"] = ["a", "b"]
+    state = _state_with_issues("a", "b")
+    incoming = deepcopy(state["issues"]["a"])
+    state["issues"]["a"]["status"] = status
+
+    for scan in (6, 7, 8):
+        issues = state.get("work_items") or state["issues"]
+        upsert_issues(issues, [deepcopy(incoming)], [], f"2026-10-10T22:0{scan}:00+00:00", lang="php")
+        state["scan_count"] = scan
+        reconcile_plan_after_scan(plan, state)
+
+        assert state["work_items"]["a"]["status"] == status
+        assert plan["skipped"]["a"] == expected_skip
+        assert "a" not in plan["superseded"]
+        assert "a" not in plan["queue_order"]
+        assert "a" not in plan["promoted_ids"]
+        assert cluster["issue_ids"] == ["b"]
+        assert cluster["action_steps"][0]["issue_refs"] == ["b"]
+        assert plan["overrides"]["a"]["cluster"] is None
+        assert cluster["execution_status"] == cluster_status
+
+
+@pytest.mark.parametrize("kind,status", [("false_positive", "false_positive"), ("permanent", "wontfix")])
+def test_reaccepted_durable_skip_recovers_from_superseded_tombstone(kind, status):
+    """An ordinary re-skip survives a tombstone left by an earlier scan."""
+    plan = _plan_with_queue("a", "b")
+    create_cluster(plan, "reviewed")
+    add_to_cluster(plan, "reviewed", ["a", "b"])
+    plan["superseded"]["a"] = {
+        "original_id": "a", "status": "superseded",
+        "superseded_at": "2026-10-10T21:00:00+00:00",
+    }
+    skip_items(plan, ["a"], kind=kind, note="Revalidated evidence", attestation="Reviewed")
+    expected_skip = deepcopy(plan["skipped"]["a"])
+    state = _state_with_issues("a", "b")
+    incoming = deepcopy(state["issues"]["a"])
+    state["issues"]["a"]["status"] = status
+
+    for scan in (6, 7):
+        issues = state.get("work_items") or state["issues"]
+        upsert_issues(issues, [deepcopy(incoming)], [], f"2026-10-10T22:0{scan}:00+00:00", lang="php")
+        state["scan_count"] = scan
+        reconcile_plan_after_scan(plan, state)
+
+        assert state["work_items"]["a"]["status"] == status
+        assert plan["skipped"]["a"] == expected_skip
+        assert "a" not in plan["superseded"]
+        assert plan["clusters"]["reviewed"]["issue_ids"] == ["b"]
+
+
+@pytest.mark.parametrize("kind", ["false_positive", "permanent"])
+def test_durable_skip_of_missing_issue_still_supersedes(kind):
+    plan = _plan_with_queue("gone")
+    skip_items(plan, ["gone"], kind=kind, note="Reviewed", attestation="Reviewed")
+    plan["superseded"]["gone"] = {
+        "original_id": "gone", "status": "superseded",
+        "superseded_at": "2026-10-10T21:00:00+00:00",
+    }
+
+    reconcile_plan_after_scan(plan, _state_with_issues())
+
+    assert "gone" not in plan["skipped"]
+    assert "gone" in plan["superseded"]
 
 
 # ---------------------------------------------------------------------------
