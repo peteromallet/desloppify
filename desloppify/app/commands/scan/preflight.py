@@ -7,15 +7,14 @@ import logging
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.queue_progress import (
     ScoreDisplayMode,
+    get_plan_start_strict,
     plan_aware_queue_breakdown,
     score_display_mode,
 )
-from desloppify.app.commands.helpers.queue_progress import get_plan_start_strict
 from desloppify.app.commands.helpers.state import state_path
-from desloppify.base.exception_sets import CommandError
-from desloppify.base.output.terminal import colorize
 from desloppify.app.commands.resolve.plan_load import warn_plan_load_degraded_once
-from desloppify.engine._work_queue.context import resolve_plan_load_status
+from desloppify.base.exception_sets import CommandError, ScanQueueBlockedError
+from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import WORKFLOW_RUN_SCAN_ID
 from desloppify.engine._plan.refresh_lifecycle import current_lifecycle_phase
 from desloppify.engine._plan.sync.pipeline import live_planned_queue_empty
@@ -23,8 +22,9 @@ from desloppify.engine._state.progression import (
     append_progression_event,
     build_scan_preflight_event,
 )
-from desloppify.engine.planning.queue_policy import build_execution_queue
+from desloppify.engine._work_queue.context import resolve_plan_load_status
 from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine.planning.queue_policy import build_execution_queue
 
 _logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ def scan_queue_preflight(args: object) -> None:
     _log_preflight(plan, "blocked", f"{remaining} item(s) remaining", remaining)
     # GATE — block both FROZEN (objective work) and PHASE_TRANSITION
     # (subjective/workflow items remain)
-    raise CommandError(
+    raise ScanQueueBlockedError(
         f"{remaining} item{'s' if remaining != 1 else ''}"
         " remaining in your queue.\n"
         "  Scanning mid-cycle regenerates issue IDs and breaks triage state.\n"

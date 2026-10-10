@@ -257,6 +257,7 @@ def _organize_instructions(mode: PromptMode = "self_record") -> str:
    - **supersede**: absorb into the named review cluster (already handled by clustering above)
    - With placement: `desloppify plan promote <pattern> before -t <target>`
 6. Add steps that consolidate: one step per file or logical change, NOT one step per issue
+   Link every issue addressed by each step with `--issue-refs`, including all members of a consolidated small cluster.
 7. Set `--effort` on each step individually (trivial/small/medium/large)
 8. Set `--depends-on` when clusters touch overlapping files
 """
@@ -282,6 +283,7 @@ desloppify plan triage --stage organize --report "<summary of priorities and org
 4. Assign every kept issue to a cluster.
 5. Execute ALL backlog decisions from reflect's `## Backlog Decisions` section (promote/skip/supersede).
 6. Consolidate steps: one step per file or logical change, NOT one step per issue.
+   Include issue_refs for every issue addressed by each step, including all members of a consolidated small cluster.
 7. Assign an effort level to each planned step (trivial/small/medium/large).
 8. Call out cross-cluster dependencies when clusters touch overlapping files.
 """
@@ -312,7 +314,8 @@ Before recording, verify:
       simple code with a known smell over complex code with a hidden abstraction)
 - [ ] Every cluster name describes an area or specific change, not a problem type
 - [ ] No cluster has issues from 5+ unrelated directories (theme-group smell)
-- [ ] Step count < issue count (consolidation happened)
+- [ ] Shared changes are consolidated and the steps' issue_refs cover every cluster member
+- [ ] Step count reflects the actual work (a single-issue cluster may have one step)
 - [ ] Every skip has a specific per-issue reason (not "low priority")
 - [ ] Overlapping clusters have --depends-on set
 - [ ] Cluster descriptions describe the WORK, not the PROBLEMS

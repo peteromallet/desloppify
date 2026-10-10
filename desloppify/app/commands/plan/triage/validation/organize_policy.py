@@ -17,13 +17,15 @@ from .reflect_accounting import BacklogDecision, ReflectDisposition
 class ActualDisposition:
     """What actually happened to an issue in plan state."""
 
-    kind: Literal["clustered", "skipped", "unplaced"]
+    kind: Literal["clustered", "skipped", "deferred", "unplaced"]
     cluster_name: str = ""
 
     def describe(self, intended: ReflectDisposition | None = None) -> str:
         """Human-readable description for error messages."""
         if self.kind == "skipped":
             return "permanently skipped"
+        if self.kind == "deferred":
+            return "temporarily deferred without a cluster"
         if self.kind == "clustered":
             if intended and intended.decision == "cluster" and self.cluster_name != intended.target:
                 return f'in cluster "{self.cluster_name}" (expected "{intended.target}")'
@@ -150,8 +152,13 @@ def _build_actual_disposition_index(plan: dict) -> dict[str, ActualDisposition]:
         for fid in cluster_issue_ids(cluster):
             index[fid] = ActualDisposition(kind="clustered", cluster_name=cluster_name)
 
-    for fid in (plan.get("skipped", {}) or {}):
-        if isinstance(fid, str):
+    for fid, entry in (plan.get("skipped", {}) or {}).items():
+        if not isinstance(fid, str):
+            continue
+        if isinstance(entry, dict) and entry.get("kind") == "temporary":
+            # Queue deferral does not undo the cluster selected during reflect.
+            index.setdefault(fid, ActualDisposition(kind="deferred"))
+        else:
             index[fid] = ActualDisposition(kind="skipped")
 
     return index

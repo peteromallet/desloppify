@@ -33,7 +33,7 @@ non-``execute`` display phases back to the persisted ``"plan"`` mode.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
 from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
@@ -184,7 +184,9 @@ def derive_display_phase(
     prefer_scan: bool,
 ) -> str:
     """Return the canonical display phase from normalized boolean signals."""
-    if fresh_boundary and has_initial_review:
+    # The first scan freezes a score baseline before initial review is done.
+    # A baseline alone must not hide unassessed dimensions at an empty queue.
+    if has_initial_review and (fresh_boundary or not has_execution):
         return LIFECYCLE_PHASE_REVIEW_INITIAL
     if prefer_scan:
         return LIFECYCLE_PHASE_SCAN

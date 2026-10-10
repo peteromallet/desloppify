@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from desloppify.base.discovery.file_paths import rel
-from desloppify.base.discovery.file_paths import count_lines
+from desloppify.base.discovery.file_paths import count_lines, rel
 
 _DUNDER_ALL_RE = re.compile(r"^__all__\s*[:=]", re.MULTILINE)
 
@@ -43,6 +43,42 @@ _NEXTJS_ROOT_CONVENTIONS: set[str] = {
 }
 
 _NEXTJS_EXTENSIONS: set[str] = {".ts", ".tsx", ".js", ".jsx"}
+
+# Statamic's ExtensionServiceProvider autoloads these application folders.
+_STATAMIC_EXTENSION_DIRECTORIES = {
+    "Actions",
+    "Dictionaries",
+    "Fieldtypes",
+    "Modifiers",
+    "Scopes",
+    "Tags",
+    "Widgets",
+}
+
+
+def _detect_statamic_project(path: Path) -> bool:
+    """Recognize installed Statamic projects without exempting other PHP apps."""
+    try:
+        composer = json.loads((path / "composer.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(composer, dict):
+        return False
+    return any(
+        isinstance(composer.get(section), dict)
+        and "statamic/cms" in composer[section]
+        for section in ("require", "require-dev")
+    )
+
+
+def _is_statamic_convention_entry(rel_path: str) -> bool:
+    parts = Path(rel_path).parts
+    return (
+        len(parts) >= 3
+        and parts[0] == "app"
+        and parts[1] in _STATAMIC_EXTENSION_DIRECTORIES
+        and Path(rel_path).suffix == ".php"
+    )
 
 
 def _detect_nextjs_project(path: Path) -> bool:
@@ -143,6 +179,9 @@ def detect_orphaned_files(
     is_nextjs = (
         resolved_options.detect_frameworks and _detect_nextjs_project(path)
     )
+    is_statamic = (
+        resolved_options.detect_frameworks and _detect_statamic_project(path)
+    )
 
     dynamic_targets = (
         dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
@@ -164,6 +203,9 @@ def detect_orphaned_files(
             continue
 
         if is_nextjs and _is_nextjs_convention_entry(r):
+            continue
+
+        if is_statamic and _is_statamic_convention_entry(r):
             continue
 
         if dynamic_targets and _is_dynamically_imported(

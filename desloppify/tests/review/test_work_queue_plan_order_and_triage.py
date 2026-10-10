@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from desloppify.engine._plan.refresh_lifecycle import carry_forward_subjective_review
+from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 from desloppify.engine.planning.queue_policy import (
     build_backlog_queue,
     build_execution_queue,
 )
-from desloppify.engine._work_queue.core import QueueBuildOptions
-from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 
 
 def build_work_queue(state, **kwargs):
@@ -47,7 +49,8 @@ def _state(issues: list[dict], *, dimension_scores: dict | None = None) -> dict:
 # ── Cluster collapse ─────────────────────────────────────
 
 
-def test_collapse_clusters_preserves_order():
+@pytest.mark.parametrize("auto", [True, False])
+def test_collapse_clusters_preserves_order(auto):
     """Cluster meta-item appears at position of first member, not re-sorted."""
     from desloppify.engine._work_queue.plan_order import collapse_clusters
 
@@ -60,7 +63,7 @@ def test_collapse_clusters_preserves_order():
     }
     plan["clusters"]["auto/unused"] = {
         "name": "auto/unused",
-        "auto": True,
+        "auto": auto,
         "cluster_key": "auto::unused",
         "issue_ids": ["u1", "u2"],
         "description": "Remove 2 unused issues",
@@ -85,6 +88,29 @@ def test_collapse_clusters_preserves_order():
     assert result[1]["kind"] == "cluster"
     assert result[1]["id"] == "auto/unused"
     assert len(result) == 2  # other + cluster
+
+
+def test_manual_clusters_follow_member_order_instead_of_creation_order():
+    from desloppify.engine._work_queue.plan_order import collapse_clusters
+
+    plan = {
+        "clusters": {
+            "later": {"auto": False, "issue_ids": ["b1", "b2"]},
+            "earlier": {"auto": False, "issue_ids": ["a1", "a2"]},
+        },
+    }
+    items = [
+        {"id": fid, "kind": "issue", "detector": "review", "detail": {}}
+        for fid in ["strategy::classify", "target", "a1", "b1", "a2", "b2"]
+    ]
+
+    result = collapse_clusters(items, plan)
+
+    assert [item["id"] for item in result] == [
+        "strategy::classify", "target", "earlier", "later",
+    ]
+    assert [item["id"] for item in result[2]["members"]] == ["a1", "a2"]
+    assert [item["id"] for item in result[3]["members"]] == ["b1", "b2"]
 
 
 # -- Plan-ordered subjective items surface despite objective backlog --------

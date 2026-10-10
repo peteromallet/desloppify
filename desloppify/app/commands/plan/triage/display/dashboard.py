@@ -9,6 +9,12 @@ from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
 from desloppify.engine.plan_triage import build_triage_snapshot
 
+from ..review_coverage import (
+    cluster_issue_ids,
+    triage_coverage,
+)
+from ..services import TriageServices, default_triage_services
+from ..stage_queue import print_cascade_clear_feedback
 from .layout import (
     print_action_guidance,
     print_dashboard_header,
@@ -17,12 +23,6 @@ from .layout import (
     show_plan_summary,
 )
 from .primitives import print_stage_progress
-from ..review_coverage import (
-    cluster_issue_ids,
-    triage_coverage,
-)
-from ..stage_queue import print_cascade_clear_feedback
-from ..services import TriageServices, default_triage_services
 
 
 def _cluster_tags(cluster: dict) -> str:
@@ -165,8 +165,8 @@ def print_organize_result(
     print_user_message(
         "Organize recorded. Before confirming — does the"
         " organize output match the reflect blueprint? Clusters"
-        " by file area (same PR), not by theme? Step count <"
-        " issue count (consolidated)? Cluster names describe"
+        " by file area (same PR), not by theme? Shared changes"
+        " consolidated and every issue covered by the steps? Cluster names describe"
         " locations, not problem types? This should read like"
         " a set of PR plans."
     )

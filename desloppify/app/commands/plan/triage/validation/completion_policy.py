@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.engine.plan_triage import TRIAGE_CMD_ORGANIZE
 from desloppify.base.output.terminal import colorize
-from desloppify.engine.plan_triage import extract_issue_citations
+from desloppify.engine.plan_triage import TRIAGE_CMD_ORGANIZE, extract_issue_citations
 
 from ..display.dashboard import show_plan_summary
 from ..review_coverage import (
@@ -163,7 +162,7 @@ def evaluate_completion_readiness(
         print(colorize(f"  Cannot complete: {len(gaps)} cluster(s) still need enrichment.", "red"))
         for name, missing in gaps:
             print(colorize(f"    {name}: missing {', '.join(missing)}", "yellow"))
-        print(colorize("  Small clusters (<5 issues) need at least 1 action step per issue.", "dim"))
+        print(colorize("  Consolidated steps in small clusters (<5 issues) must link every member with --issue-refs.", "dim"))
         print(colorize('  Fix: desloppify plan cluster update <name> --description "..." --steps "step1" "step2"', "dim"))
         return CompletionReadiness(ok=False, message=f"{len(gaps)} cluster(s) still need enrichment.")
 

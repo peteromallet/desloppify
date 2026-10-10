@@ -237,6 +237,46 @@ def test_build_and_render_execution_queue_uses_real_execution_policy(capsys) -> 
     assert written[0]["plan"]["total_ordered"] == 1
 
 
+@pytest.mark.parametrize("count", [1, 3])
+def test_next_keeps_singleton_prerequisites_before_a_manual_cluster(count, capsys) -> None:
+    written: list[dict] = []
+    issues = [_issue(f"smells::src/a.py::{name}") for name in ["target", "billing", "n1", "n2"]]
+    plan = empty_plan()
+    plan["queue_order"] = [issue["id"] for issue in issues]
+    plan["clusters"] = {
+        "native-records": {
+            "auto": False,
+            "issue_ids": [issue["id"] for issue in issues[2:]],
+            "depends_on_clusters": ["billing"],
+        },
+        "billing": {"auto": False, "issue_ids": [issues[1]["id"]]},
+        "target": {"auto": False, "issue_ids": [issues[0]["id"]]},
+    }
+
+    queue_flow_mod.build_and_render_execution_queue(
+        _args(count=count),
+        state={
+            "issues": {issue["id"]: issue for issue in issues},
+            "dimension_scores": {},
+            "scan_path": ".",
+            "potentials": {},
+            "scan_count": 0,
+        },
+        config={},
+        deps=queue_flow_mod.QueueRenderDeps(
+            resolve_lang_fn=lambda _args: SimpleNamespace(name="python"),
+            load_plan_fn=lambda: plan,
+            write_query_fn=lambda payload: written.append(payload),
+        ),
+    )
+
+    capsys.readouterr()
+    expected = [issues[0]["id"], issues[1]["id"], "native-records"]
+    assert [item["id"] for item in written[0]["items"]] == expected[:count]
+    if count == 3:
+        assert written[0]["items"][2]["member_count"] == 2
+
+
 def test_build_and_render_backlog_queue_uses_real_backlog_policy(capsys) -> None:
     written: list[dict] = []
     planned = _issue(

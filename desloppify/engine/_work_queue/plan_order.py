@@ -10,13 +10,14 @@ from desloppify.engine._plan.cluster_semantics import (
     infer_cluster_action_type,
     infer_cluster_execution_policy,
 )
+from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.engine.plan_ops import (
     get_issue_description,
     get_issue_note,
     get_issue_override,
 )
-from desloppify.engine._work_queue.types import WorkQueueItem
 from desloppify.state_io import StateModel
+
 
 def new_item_ids(state: StateModel) -> set[str]:
     """Return issue IDs added in the most recent scan."""
@@ -197,9 +198,8 @@ def _build_cluster_meta(
 def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueItem]:
     """Replace cluster member items with single cluster meta-items.
 
-    Both auto-clusters and manual (triage) clusters are collapsed.  Manual
-    clusters are inserted at the front in plan order so triage-prioritised
-    work appears before auto-clustered mechanical items.
+    Auto and manual clusters occupy their first member's position in the
+    ordered queue. Grouping must preserve the plan's execution priorities.
     """
     clusters = plan.get("clusters", {})
     if not clusters:
@@ -231,15 +231,7 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
             cname, members, clusters.get(cname, {})
         )
 
-    # Collect manual cluster names in plan order (for front-insertion)
-    manual_names = [
-        name for name in clusters
-        if not clusters[name].get("auto") and name in meta_items
-    ]
-
-    # Walk in order: replace first auto-cluster member with meta-item,
-    # skip subsequent members.  Manual cluster members are always skipped
-    # (they'll be inserted at the front).
+    # Replace the first member in place, then skip subsequent members.
     seen_clusters: set[str] = set()
     rest: list[WorkQueueItem] = []
     for item in items:
@@ -247,16 +239,12 @@ def collapse_clusters(items: list[WorkQueueItem], plan: dict) -> list[WorkQueueI
         if cname and cname in meta_items:
             if cname not in seen_clusters:
                 seen_clusters.add(cname)
-                # Auto-clusters collapse in-place; manual clusters go to front
-                if clusters.get(cname, {}).get("auto"):
-                    rest.append(meta_items[cname])
+                rest.append(meta_items[cname])
             # skip individual member
         else:
             rest.append(item)
 
-    # Manual clusters at the front in plan order, then everything else
-    manual_result = [meta_items[name] for name in manual_names if name in seen_clusters]
-    return manual_result + rest
+    return rest
 
 
 __all__ = [

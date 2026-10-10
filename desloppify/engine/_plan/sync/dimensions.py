@@ -16,15 +16,19 @@ dimensions retain deferral and escalation behavior.
 from __future__ import annotations
 
 from desloppify.base.config import DEFAULT_TARGET_STRICT_SCORE
-from desloppify.engine._plan.policy import stale as stale_policy_mod
 from desloppify.engine._plan.constants import (
     SUBJECTIVE_PREFIX,
     QueueSyncResult,
     is_triage_id,
     is_workflow_id,
 )
-from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
+from desloppify.engine._plan.policy import stale as stale_policy_mod
 from desloppify.engine._plan.policy.subjective import SubjectiveVisibility
+from desloppify.engine._plan.schema import (
+    PlanModel,
+    ensure_plan_defaults,
+    live_planned_queue_ids,
+)
 from desloppify.engine._state.schema import StateModel
 
 from .context import has_objective_backlog, is_mid_cycle
@@ -34,7 +38,6 @@ from .defer_policy import (
     should_escalate_defer_state,
     update_defer_state,
 )
-
 
 # ---------------------------------------------------------------------------
 # Defer-meta keys (shared with work_queue readers via plan dict)
@@ -262,6 +265,8 @@ def sync_subjective_dimensions(
     result = QueueSyncResult()
     order: list[str] = plan["queue_order"]
     mid_cycle = is_mid_cycle(plan)
+    # A frozen baseline alone must not prune the first scan's initial reviews.
+    initial_review_allowed = not mid_cycle or not live_planned_queue_ids(plan)
 
     # --- Compute all ID sets once -----------------------------------------
     unscored_ids = current_unscored_ids(state)
@@ -274,7 +279,7 @@ def sync_subjective_dimensions(
     under_target_injectable = under_target_ids - skipped_ids
 
     # --- Resurface: clear skips for never-reviewed dimensions -------------
-    if not mid_cycle:
+    if initial_review_allowed:
         skipped_dict = plan.get("skipped", {})
         if isinstance(skipped_dict, dict):
             for sid in sorted(unscored_ids & skipped_ids):
@@ -303,15 +308,15 @@ def sync_subjective_dimensions(
     # --- Single prune pass ------------------------------------------------
     evicting_under_target = should_defer_under_target and not escalated
     if evicting_under_target:
-        keep_ids = stale_injectable if mid_cycle else (unscored_ids | stale_injectable)
+        keep_ids = stale_injectable
     else:
         keep_ids = stale_injectable | under_target_injectable
-        if not mid_cycle:
-            keep_ids |= unscored_ids
+    if initial_review_allowed:
+        keep_ids |= unscored_ids
     _prune_subjective_ids(order, keep_ids=keep_ids, pruned=result.pruned)
 
     # --- Inject unscored (cycle boundaries only) --------------------------
-    if not mid_cycle:
+    if initial_review_allowed:
         _inject_subjective_ids(
             order,
             inject_ids=unscored_ids - skipped_ids,

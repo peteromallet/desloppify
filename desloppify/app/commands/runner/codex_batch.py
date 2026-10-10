@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 from desloppify.app.commands.review.runner_process_impl.attempts import (
@@ -16,11 +17,16 @@ from desloppify.app.commands.review.runner_process_impl.attempts import (
     resolve_retry_config,
     run_batch_attempt,
 )
-from desloppify.app.commands.review.runner_process_impl.io import extract_payload_from_log
+from desloppify.app.commands.review.runner_process_impl.io import (
+    extract_payload_from_log,
+)
 from desloppify.app.commands.review.runner_process_impl.types import (
     CodexBatchRunnerDeps,
     FollowupScanDeps,
 )
+from desloppify.app.commands.scan.preflight import scan_queue_preflight
+from desloppify.base.exception_sets import ScanQueueBlockedError
+from desloppify.base.runtime_state import RuntimeContext, runtime_scope
 
 _PROMPT_ARG_MAX_CHARS = 16_000
 
@@ -217,7 +223,23 @@ def run_followup_scan(
     deps: FollowupScanDeps,
     force_queue_bypass: bool = False,
 ) -> int:
-    """Run a follow-up scan and return a non-zero status when it fails."""
+    """Run an eligible follow-up scan, deferring unfinished queues normally."""
+    if not force_queue_bypass:
+        try:
+            with runtime_scope(RuntimeContext(project_root=deps.project_root)):
+                scan_queue_preflight(
+                    Namespace(command="scan", lang=lang_name, path=scan_path)
+                )
+        except ScanQueueBlockedError:
+            print(
+                deps.colorize_fn(
+                    "  Follow-up scan deferred until queued work is complete. "
+                    "Continue with `desloppify next`.",
+                    "dim",
+                )
+            )
+            return 0
+
     scan_cmd = [
         deps.python_executable,
         "-m",

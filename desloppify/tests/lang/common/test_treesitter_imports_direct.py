@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import builtins
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,7 +21,7 @@ class FakeNode:
         type_: str,
         *,
         text: str = "",
-        children: list["FakeNode"] | None = None,
+        children: list[FakeNode] | None = None,
         start_byte: int = 0,
         end_byte: int = 0,
     ) -> None:
@@ -60,7 +60,7 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
     monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
 
     spec = SimpleNamespace(
-        grammar="php",
+        grammar="fixture",
         import_query="imports",
         resolve_import=lambda text, *_a: (
             str(dep_file.relative_to(tmp_path)) if text == "App\\Thing" else "/outside/file.php"

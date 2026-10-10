@@ -8,24 +8,24 @@ from pathlib import Path
 from typing import NamedTuple
 
 from desloppify.app.commands.helpers.transition_messages import emit_transition_message
+from desloppify.app.commands.resolve.plan_load import warn_plan_load_degraded_once
 from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.terminal import colorize
-from desloppify.app.commands.resolve.plan_load import warn_plan_load_degraded_once
-from desloppify.engine._plan.sync import live_planned_queue_empty, reconcile_plan
 from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE
-from desloppify.engine.plan_ops import (
-    append_log_entry,
-    auto_complete_steps,
-    purge_ids,
-)
 from desloppify.engine._plan.refresh_lifecycle import (
     current_lifecycle_phase,
     invalidate_postflight_scan,
 )
+from desloppify.engine._plan.sync import live_planned_queue_empty, reconcile_plan
 from desloppify.engine._state.progression import (
     maybe_append_entered_planning,
     maybe_append_execution_drain,
+)
+from desloppify.engine.plan_ops import (
+    append_log_entry,
+    auto_complete_steps,
+    purge_ids,
 )
 from desloppify.engine.plan_state import (
     add_uncommitted_issues,
@@ -37,6 +37,7 @@ from desloppify.engine.plan_state import (
 )
 
 _logger = logging.getLogger(__name__)
+_RESOLVED_STATUSES = frozenset({"fixed", "auto_resolved", "wontfix", "false_positive"})
 
 
 class ClusterContext(NamedTuple):
@@ -48,35 +49,61 @@ class ClusterContext(NamedTuple):
 def _affected_cluster_names(plan: dict, resolved_ids: list[str]) -> list[str]:
     """Return unique cluster names referenced by the resolved ids."""
     overrides = plan.get("overrides") or {}
+    clusters = plan.get("clusters") or {}
     seen: set[str] = set()
     cluster_names: list[str] = []
     for resolved_id in resolved_ids:
         override = overrides.get(resolved_id)
         cluster_name = override.get("cluster") if isinstance(override, dict) else None
-        if not cluster_name or cluster_name in seen:
-            continue
-        seen.add(cluster_name)
-        cluster_names.append(cluster_name)
+        candidates = [cluster_name] if cluster_name else [
+            name
+            for name, cluster in clusters.items()
+            if isinstance(cluster, dict)
+            and cluster.get("execution_status") != EXECUTION_STATUS_DONE
+            and resolved_id in (cluster.get("issue_ids") or [])
+        ]
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            cluster_names.append(candidate)
     return cluster_names
 
 
-def _completed_cluster_names(plan: dict, resolved_ids: list[str]) -> list[str]:
-    """Return affected clusters whose issues are fully resolved by this command."""
+def _remaining_cluster_ids(
+    cluster: dict, resolved_ids: list[str], state: dict | None
+) -> set[str]:
+    current_ids = set(cluster.get("issue_ids") or [])
+    if state is None:
+        return current_ids - set(resolved_ids)
+    issues = state.get("work_items") or state.get("issues", {})
+    return {
+        issue_id
+        for issue_id in current_ids
+        if not isinstance(issues.get(issue_id), dict)
+        or issues[issue_id].get("status") not in _RESOLVED_STATUSES
+    }
+
+
+def _completed_cluster_names(
+    plan: dict, resolved_ids: list[str], *, state: dict | None = None
+) -> list[str]:
+    """Return affected clusters with no unresolved members in current state."""
     clusters = plan.get("clusters") or {}
-    resolved_set = set(resolved_ids)
     completed: list[str] = []
     for cluster_name in _affected_cluster_names(plan, resolved_ids):
         cluster = clusters.get(cluster_name)
-        if not isinstance(cluster, dict):
+        if not isinstance(cluster, dict) or cluster.get("execution_status") == EXECUTION_STATUS_DONE:
             continue
-        current_ids = set(cluster.get("issue_ids") or [])
-        if current_ids - resolved_set:
+        if _remaining_cluster_ids(cluster, resolved_ids, state):
             continue
         completed.append(cluster_name)
     return completed
 
 
-def capture_cluster_context(plan: dict, resolved_ids: list[str]) -> ClusterContext:
+def capture_cluster_context(
+    plan: dict, resolved_ids: list[str], *, state: dict | None = None
+) -> ClusterContext:
     """Determine cluster membership for resolved issues before purge."""
     clusters = plan.get("clusters") or {}
     cluster_name = next(iter(_affected_cluster_names(plan, resolved_ids)), None)
@@ -84,8 +111,7 @@ def capture_cluster_context(plan: dict, resolved_ids: list[str]) -> ClusterConte
         return ClusterContext(
             cluster_name=None, cluster_completed=False, cluster_remaining=0
         )
-    current_ids = set(clusters[cluster_name].get("issue_ids") or [])
-    remaining = current_ids - set(resolved_ids)
+    remaining = _remaining_cluster_ids(clusters[cluster_name], resolved_ids, state)
     return ClusterContext(
         cluster_name=cluster_name,
         cluster_completed=len(remaining) == 0,
@@ -111,8 +137,8 @@ def update_living_plan_after_resolve(
         if not has_living_plan(plan_path):
             return None, ctx
         plan = load_plan(plan_path)
-        ctx = capture_cluster_context(plan, all_resolved)
-        completed_clusters = _completed_cluster_names(plan, all_resolved)
+        ctx = capture_cluster_context(plan, all_resolved, state=state)
+        completed_clusters = _completed_cluster_names(plan, all_resolved, state=state)
         phase_before = current_lifecycle_phase(plan)
         purged = purge_ids(plan, all_resolved)
         step_messages = auto_complete_steps(plan)

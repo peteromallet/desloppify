@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import desloppify.app.commands.plan.triage.stages.helpers as stage_helpers_mod
 import desloppify.app.commands.plan.triage.stages.flow_helpers as flow_stage_helpers_mod
+import desloppify.app.commands.plan.triage.stages.helpers as stage_helpers_mod
 from desloppify.app.commands.plan.triage.helpers import inject_triage_stages
 from desloppify.engine._plan.constants import TRIAGE_STAGE_IDS
 
@@ -93,7 +93,7 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
     assert "empty_cluster" not in gaps
     assert gaps["needs_everything"] == ["description", "action_steps"]
     assert gaps["small_needs_more_steps"] == [
-        "action_steps (have 2, need >= 3 for small cluster)"
+        "action_steps (have 2, need >= 3 or issue_refs covering all 3 issues)"
     ]
     assert "large_has_steps" not in gaps
 

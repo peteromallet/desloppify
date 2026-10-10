@@ -22,24 +22,24 @@ from desloppify.engine._plan.persistence import (
     plan_path_for_state,
     save_plan,
 )
-from desloppify.engine._plan.sync.review_import import (
-    ReviewImportSyncResult,
-    sync_plan_after_review_import,
+from desloppify.engine._plan.refresh_lifecycle import (
+    current_lifecycle_phase,
+    mark_subjective_review_completed,
 )
 from desloppify.engine._plan.sync import (
     ReconcileResult,
     live_planned_queue_empty,
     reconcile_plan,
 )
-from desloppify.engine._plan.sync.workflow_gates import sync_import_scores_needed
+from desloppify.engine._plan.sync.review_import import (
+    ReviewImportSyncResult,
+    sync_plan_after_review_import,
+)
 from desloppify.engine._plan.sync.workflow import (
     clear_create_plan_sentinel,
     clear_score_communicated_sentinel,
 )
-from desloppify.engine._plan.refresh_lifecycle import (
-    current_lifecycle_phase,
-    mark_subjective_review_completed,
-)
+from desloppify.engine._plan.sync.workflow_gates import sync_import_scores_needed
 from desloppify.engine._state.progression import (
     _execution_log_ids_since,
     _extract_review_payload_detail,
@@ -185,7 +185,7 @@ def _print_review_import_footer(
         print(colorize("    Manual dashboard: desloppify plan triage", "dim"))
     print(
         colorize(
-            "  (Follow the queue in order; score communication and planning come before triage.)",
+            "  (Follow the queue in order.)",
             "dim",
         )
     )

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import is_synthetic_id
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._state.issue_semantics import (
+    is_review_work_item,
+)
 from desloppify.engine.plan_triage import TRIAGE_IDS
 
 from ..review_coverage import (
@@ -113,9 +115,10 @@ def unenriched_clusters(
 
     Requirements:
     - Every cluster needs a description and at least one action_step.
-    - Small clusters (< 5 issues) need at least 1 action step per issue,
-      so each item has a concrete plan. Large clusters (>= 5) just need
-      steps overall (cluster-level plan is sufficient).
+    - Small clusters (< 5 issues) need a concrete plan for every issue:
+      consolidated steps may link all members through issue_refs. Legacy
+      steps without full references still need at least one step per issue.
+      Large clusters (>= 5) just need steps overall.
     """
     gaps: list[tuple[str, list[str]]] = []
     clusters = plan.get("clusters", {})
@@ -130,9 +133,18 @@ def unenriched_clusters(
         if not steps:
             missing.append("action_steps")
         elif issue_count < 5 and len(steps) < issue_count:
-            missing.append(
-                f"action_steps (have {len(steps)}, need >= {issue_count} for small cluster)"
-            )
+            planned_ids = {
+                ref
+                for step in steps
+                if isinstance(step, dict)
+                for ref in (step.get("issue_refs") or [])
+                if isinstance(ref, str)
+            }
+            if not set(issue_ids).issubset(planned_ids):
+                missing.append(
+                    f"action_steps (have {len(steps)}, need >= {issue_count} "
+                    f"or issue_refs covering all {issue_count} issues)"
+                )
         if missing:
             gaps.append((name, missing))
     return gaps

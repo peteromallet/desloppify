@@ -24,6 +24,10 @@ class PacketValidationError(CommandError):
     """Raised for malformed/missing review packet inputs."""
 
 
+class ScanQueueBlockedError(CommandError):
+    """Raised when an unfinished execution queue defers the next scan."""
+
+
 class RunnerTimeoutError(CommandError):
     """Raised when review batch execution fails due to timeout conditions."""
 
@@ -44,5 +48,6 @@ __all__ = [
     "PLAN_LOAD_EXCEPTIONS",
     "PacketValidationError",
     "RunnerTimeoutError",
+    "ScanQueueBlockedError",
     "TriageValidationError",
 ]

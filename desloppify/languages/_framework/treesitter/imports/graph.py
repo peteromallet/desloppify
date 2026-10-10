@@ -7,8 +7,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .cache import get_or_parse_tree
 from ..analysis.extractors import _get_parser, _make_query, _run_query, _unwrap_node
+from .cache import get_or_parse_tree
+from .php_references import (
+    PhpClassSymbols,
+    add_php_class_reference_edges,
+    collect_php_class_symbols,
+)
 
 if TYPE_CHECKING:
     from desloppify.languages._framework.treesitter import TreeSitterLangSpec
@@ -19,7 +24,7 @@ def ts_build_dep_graph(
     spec: TreeSitterLangSpec,
     file_list: list[str],
 ) -> dict[str, dict[str, Any]]:
-    """Build a dependency graph by parsing imports with tree-sitter.
+    """Build a dependency graph from imports and native PHP class references.
 
     Returns the same shape as Python/TS dep graphs:
     {file: {"imports": set[str], "importers": set[str], "import_count": int, "importer_count": int}}
@@ -31,8 +36,9 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+    file_keys = {str(Path(f).resolve()): f for f in file_list}
     graph: dict[str, dict[str, Any]] = {}
+    php_symbols: dict[str, PhpClassSymbols] = {}
 
     # Initialize all files in the graph.
     for f in file_list:
@@ -43,6 +49,10 @@ def ts_build_dep_graph(
         if cached is None:
             continue
         _source, tree = cached
+        if spec.grammar == "php":
+            php_symbols[filepath] = collect_php_class_symbols(tree.root_node)
+            # PHP names require namespace/alias binding, not basename guesses.
+            continue
         matches = _run_query(query, tree.root_node)
 
         for _pattern_idx, captures in matches:
@@ -80,12 +90,15 @@ def ts_build_dep_graph(
                 resolved = os.path.normpath(os.path.join(scan_path, resolved))
 
             # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            dependency_key = file_keys.get(str(Path(resolved).resolve()))
+            if dependency_key is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(dependency_key)
+            graph[dependency_key]["importers"].add(filepath)
+
+    if php_symbols:
+        add_php_class_reference_edges(graph, php_symbols)
 
     # Finalize: add counts.
     for data in graph.values():
