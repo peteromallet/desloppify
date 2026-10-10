@@ -11,18 +11,19 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.app.cli_support.parser import create_parser as _create_parser
-from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.command_runtime import CommandRuntime
+from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.app.commands.registry import CommandHandler, get_command_handlers
 from desloppify.base.config import load_config
+from desloppify.base.discovery.paths import get_default_scan_path, get_project_root
 from desloppify.base.discovery.source import set_exclusions
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
-from desloppify.base.discovery.paths import get_default_scan_path, get_project_root
 from desloppify.base.registry import detector_names, on_detector_registered
 from desloppify.base.runtime_state import runtime_scope
+from desloppify.engine.plan_state import plan_path_for_state
 from desloppify.languages import available_langs
 from desloppify.state_io import load_state
 
@@ -268,7 +269,10 @@ def main() -> None:
 
     try:
         with runtime_scope() as runtime:
-            inferred = _project_root_from_state_path(getattr(args, "state", None))
+            explicit_state = getattr(args, "state", None)
+            if explicit_state:
+                runtime.plan_file = plan_path_for_state(Path(explicit_state).resolve())
+            inferred = _project_root_from_state_path(explicit_state)
             if inferred is not None:
                 runtime.project_root = inferred
             _warn_if_running_installed_package_from_checkout()

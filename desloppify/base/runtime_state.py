@@ -92,6 +92,7 @@ class RuntimeContext:
 
     exclusions: tuple[str, ...] = ()
     project_root: Path | None = None
+    plan_file: Path | None = None
     query_file: Path | None = None
     file_text_cache: FileTextCache = field(default_factory=FileTextCache)
     cache_enabled: bool = False

@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import argparse
 
+from desloppify.app.commands.helpers.command_runtime import command_runtime
 from desloppify.app.commands.helpers.guardrails import print_triage_guardrail_info
 from desloppify.app.commands.helpers.queue_progress import (
     QueueBreakdown,
     format_queue_headline,
 )
-from desloppify.app.commands.helpers.command_runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_issue_inventory
 from desloppify.app.commands.next.render_support import CLUSTER_TYPE_LABELS
 from desloppify.base.output.terminal import colorize, print_table
+from desloppify.engine._plan.sync.triage import compute_new_issue_ids
+from desloppify.engine._work_queue.context import queue_context
 from desloppify.engine._work_queue.core import (
     QueueBuildOptions,
 )
@@ -22,7 +24,6 @@ from desloppify.engine._work_queue.plan_order import (
 )
 from desloppify.engine.plan_state import load_plan
 from desloppify.engine.planning.queue_policy import build_execution_queue
-from desloppify.engine._plan.sync.triage import compute_new_issue_ids
 
 
 def _truncate(text: str, width: int) -> str:
@@ -179,15 +180,17 @@ def _build_queue_items(
     plan: dict,
     include_skipped: bool,
     effective_cluster: str | None,
+    config: dict | None = None,
 ) -> tuple[list[dict], dict]:
     """Build queue items with focus/collapse view transforms applied."""
+    context = queue_context(state, config=config, plan=plan)
     queue = build_execution_queue(
         state,
         options=QueueBuildOptions(
             count=None,
             status="open",
             include_subjective=True,
-            plan=plan,
+            context=context,
             include_skipped=include_skipped,
         ),
     )
@@ -249,6 +252,7 @@ def cmd_plan_queue(args: argparse.Namespace) -> None:
         plan=plan,
         include_skipped=include_skipped,
         effective_cluster=effective_cluster,
+        config=runtime.config,
     )
 
     sort_by = getattr(args, "sort", "priority")
