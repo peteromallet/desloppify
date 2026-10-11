@@ -13,7 +13,10 @@ from desloppify.engine._plan.schema import (
     ensure_plan_defaults,
     triage_clusters,
 )
-from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
+from desloppify.engine._plan.triage.snapshot import (
+    build_triage_snapshot,
+    coverage_open_ids,
+)
 from desloppify.engine._state.issue_semantics import is_triage_finding
 from desloppify.engine._state.schema import StateModel
 
@@ -219,10 +222,17 @@ def collect_triage_input(plan: PlanModel, state: StateModel) -> TriageInput:
         if cluster.get("auto") and not name.startswith(EPIC_PREFIX)
     }
     open_review, open_mechanical = _split_open_issue_buckets(issues)
+    # History remains live; only this cycle's required review coverage is frozen.
+    current_review_ids = set(open_review)
+    in_scope_ids = coverage_open_ids(plan, state)
+    open_review = {
+        issue_id: issue
+        for issue_id, issue in open_review.items()
+        if issue_id in in_scope_ids
+    }
     snapshot = build_triage_snapshot(plan, state)
 
     triaged_ids = set(meta.get("triaged_ids", []))
-    current_review_ids = set(open_review.keys())
     new_since = set(snapshot.new_since_triage_ids)
     resolved_since = triaged_ids - current_review_ids
     previously_dismissed = list(meta.get("dismissed_ids", []))
