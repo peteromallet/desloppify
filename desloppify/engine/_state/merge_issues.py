@@ -24,7 +24,7 @@ def find_suspect_detectors(
     force_resolve: bool,
     ran_detectors: set[str] | None = None,
 ) -> set[str]:
-    """Detectors that had open issues but likely did not actually run this scan."""
+    """Detectors without evidence of running in the current merge."""
     if force_resolve:
         return set()
 
@@ -43,14 +43,20 @@ def find_suspect_detectors(
         if isinstance(issue, dict) and is_import_only_issue(issue)
     }
 
+    if ran_detectors is not None:
+        existing_detectors = {issue.get("detector", "unknown") for issue in existing.values()}
+        reported_detectors = {
+            detector for detector, count in current_by_detector.items() if count > 0
+        }
+        # Explicit detector inventory also protects manually resolved groups
+        # with no open rows, as occurs during review-only imports.
+        suspect.update(existing_detectors - ran_detectors - reported_detectors)
+        return suspect
+
     for detector, previous_count in previous_open_by_detector.items():
         if detector in suspect:
             continue
         if current_by_detector.get(detector, 0) > 0:
-            continue
-        if ran_detectors is not None:
-            if detector not in ran_detectors:
-                suspect.add(detector)
             continue
         if previous_count >= 3:
             suspect.add(detector)
@@ -260,6 +266,16 @@ def upsert_issues(
             previous["zone"] = issue["zone"]
         if lang and not previous.get("lang"):
             previous["lang"] = lang
+
+        attestation = previous.get("resolution_attestation")
+        if (
+            previous["status"] == "wontfix"
+            and isinstance(attestation, dict)
+            and attestation.get("scan_verified")
+        ):
+            attestation["scan_verified"] = False
+            attestation.pop("scan_verified_at", None)
+            attestation.pop("scan_verification_text", None)
 
         if matched_ignore:
             previous["suppressed"] = True

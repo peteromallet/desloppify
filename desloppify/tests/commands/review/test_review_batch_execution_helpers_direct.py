@@ -249,7 +249,12 @@ def test_import_and_finalize_raises_when_followup_scan_fails(tmp_path: Path) -> 
         )
 
 
-def test_do_import_run_reuses_merge_result_boundary(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("scan_after_import", "dry_run"), [(False, True), (True, True), (True, False)]
+)
+def test_do_import_run_reuses_merge_result_boundary(
+    tmp_path: Path, monkeypatch, scan_after_import: bool, dry_run: bool
+) -> None:
     run_dir = tmp_path / "run"
     results_dir = run_dir / "results"
     results_dir.mkdir(parents=True)
@@ -307,22 +312,36 @@ def test_do_import_run_reuses_merge_result_boundary(tmp_path: Path, monkeypatch)
         lambda **kwargs: coverage_calls.append(kwargs),
     )
     monkeypatch.setattr(orchestrator_mod, "_do_import", lambda *_args, **_kwargs: None)
+    followup_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        orchestrator_mod,
+        "run_followup_scan",
+        lambda **kwargs: followup_calls.append(kwargs) or 0,
+    )
+    monkeypatch.setattr(orchestrator_mod, "_runtime_project_root", lambda: tmp_path)
+    state_file = tmp_path / ".desloppify/custom/state.json"
 
     orchestrator_mod.do_import_run(
         str(run_dir),
         state={},
         lang=SimpleNamespace(name="python"),
-        state_file=str(tmp_path / "state.json"),
+        state_file=str(state_file),
         config={},
         allow_partial=True,
-        scan_after_import=False,
-        dry_run=True,
+        scan_after_import=scan_after_import,
+        dry_run=dry_run,
     )
 
     assert len(merge_calls) == 1
     assert merge_calls[0]["merge_batch_results_fn"] is orchestrator_mod._merge_batch_results
     assert len(coverage_calls) == 1
     assert coverage_calls[0]["allow_partial"] is True
+    if scan_after_import and not dry_run:
+        assert len(followup_calls) == 1
+        assert followup_calls[0]["state_file"] == str(state_file)
+        assert followup_calls[0]["deps"].project_root == tmp_path
+    else:
+        assert followup_calls == []
 
 
 def test_do_import_run_recollects_batches_from_selected_indexes(tmp_path: Path, monkeypatch) -> None:

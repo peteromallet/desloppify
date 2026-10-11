@@ -207,6 +207,7 @@ def import_and_finalize(
         followup_code = run_followup_scan_fn(
             lang_name=lang.name,
             scan_path=str(args.path),
+            state_file=state_file,
         )
         if followup_code != 0:
             raise CommandError(

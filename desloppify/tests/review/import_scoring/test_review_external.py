@@ -113,7 +113,8 @@ def test_external_submit_rejects_missing_session_metadata(tmp_path, monkeypatch)
     assert exc_info.value.exit_code == 1
 
 
-def test_external_submit_canonicalizes_and_imports(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scan_after_import", [False, True])
+def test_external_submit_canonicalizes_and_imports(tmp_path, monkeypatch, scan_after_import):
     session_dir = tmp_path / "sessions" / "ext_x"
     session_dir.mkdir(parents=True, exist_ok=True)
     blind = tmp_path / "blind.json"
@@ -151,6 +152,8 @@ def test_external_submit_canonicalizes_and_imports(tmp_path, monkeypatch):
 
     monkeypatch.setattr(runtime_paths_mod, "EXTERNAL_SESSION_ROOT", tmp_path / "sessions")
     monkeypatch.setattr(external_mod, "do_import", _capture_import)
+    followup = MagicMock(return_value=0)
+    monkeypatch.setattr(external_mod, "run_followup_scan", followup)
 
     lang = MagicMock()
     lang.name = "python"
@@ -160,8 +163,9 @@ def test_external_submit_canonicalizes_and_imports(tmp_path, monkeypatch):
         session_id="ext_x",
         state=state,
         lang=lang,
-        state_file=tmp_path / "state.json",
+        state_file=tmp_path / ".desloppify/custom/state.json",
         config={},
+        scan_after_import=scan_after_import,
     )
 
     assert "import_path" in captured
@@ -177,6 +181,10 @@ def test_external_submit_canonicalizes_and_imports(tmp_path, monkeypatch):
     persisted = json.loads(session_path.read_text())
     assert persisted["status"] == "submitted"
     assert "submitted_at" in persisted
+    if scan_after_import:
+        assert followup.call_args.kwargs["state_file"] == tmp_path / ".desloppify/custom/state.json"
+    else:
+        followup.assert_not_called()
 
 
 def test_external_submit_dry_run_uses_validate_import(tmp_path, monkeypatch):

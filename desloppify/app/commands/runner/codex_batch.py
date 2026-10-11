@@ -215,6 +215,7 @@ def run_followup_scan(
     lang_name: str,
     scan_path: str,
     deps: FollowupScanDeps,
+    state_file: str | Path | None = None,
     force_queue_bypass: bool = False,
 ) -> int:
     """Run a follow-up scan and return a non-zero status when it fails."""
@@ -228,6 +229,8 @@ def run_followup_scan(
         "--path",
         scan_path,
     ]
+    if state_file is not None:
+        scan_cmd.extend(["--state", str(Path(state_file).resolve())])
     if force_queue_bypass:
         followup_attest = (
             "I understand this is not the intended workflow and "

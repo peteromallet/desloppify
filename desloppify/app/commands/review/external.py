@@ -584,6 +584,7 @@ def do_external_submit(
         code = run_followup_scan(
             lang_name=lang.name,
             scan_path=scan_path,
+            state_file=state_file,
             deps=FollowupScanDeps(
                 project_root=_runtime_project_root(),
                 timeout_seconds=FOLLOWUP_SCAN_TIMEOUT_SECONDS,
