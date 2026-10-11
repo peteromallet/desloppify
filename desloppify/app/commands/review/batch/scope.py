@@ -13,7 +13,6 @@ from desloppify.intelligence.review.feedback_contract import (
     TRUSTED_IMPORT_COVERAGE_OVERRIDE_FLAG,
 )
 
-
 _SUPPORTED_RUNNERS = {"codex", "opencode", "rovodev"}
 
 
@@ -235,6 +234,8 @@ def enforce_trusted_import_coverage_gate(
     colorize_fn,
 ) -> None:
     """Block trusted assessment import when selected assessment dimensions are missing."""
+    selected = set(selected_dims)
+    missing_dims = [dimension for dimension in missing_dims if dimension in selected]
     if not selected_dims or not missing_dims:
         return
     if allow_partial:
