@@ -11,8 +11,8 @@ from desloppify.base.registry import DETECTORS
 from desloppify.engine._plan.cluster_semantics import ACTION_TYPE_AUTO_FIX
 from desloppify.engine._plan.constants import is_triage_id
 from desloppify.engine._state.issue_semantics import (
-    is_review_finding,
     is_assessment_request,
+    is_review_finding,
 )
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.types import WorkQueueItem
@@ -169,6 +169,7 @@ def primary_command_for_issue(
             fixer
             for fixer in meta.fixers
             if supported_fixers is not None and fixer in supported_fixers
+            and fixer_matches_issue(item, fixer)
         ]
         if available_fixers:
             return f"desloppify autofix {available_fixers[0]} --dry-run"
@@ -180,10 +181,31 @@ def primary_command_for_issue(
     return f'desloppify plan resolve "{item.get("id", "")}" --note "<what you did>" --confirm'
 
 
+def fixer_matches_issue(item: WorkQueueItem | dict[str, Any], fixer: str) -> bool:
+    """Return whether detector metadata assigns this fixer to this issue subtype."""
+    detector = item.get("detector", "")
+    meta = DETECTORS.get(detector)
+    if meta is None:
+        return False
+    detail_match = next(
+        (
+            (detail_key, expected_value)
+            for candidate_fixer, detail_key, expected_value in meta.fixer_detail_matches
+            if candidate_fixer == fixer
+        ),
+        None,
+    )
+    if detail_match is None:
+        return fixer in meta.fixers
+    detail = detail_dict(item)
+    return detail.get(detail_match[0]) == detail_match[1]
+
+
 __all__ = [
     "ALL_STATUSES",
     "ATTEST_EXAMPLE",
     "detail_dict",
+    "fixer_matches_issue",
     "is_auto_fix_item",
     "is_review_issue",
     "is_subjective_issue",

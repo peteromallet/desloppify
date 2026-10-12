@@ -2,29 +2,30 @@
 
 from __future__ import annotations
 
+from desloppify.base.discovery.paths import read_code_snippet
 from desloppify.base.output.terminal import colorize, log
 from desloppify.base.output.user_message import print_user_message
-from desloppify.base.discovery.paths import read_code_snippet
 from desloppify.engine._scoring.results.core import (
     compute_health_breakdown,
     compute_score_impact,
     get_dimension_for_detector,
 )
 from desloppify.engine._state.issue_semantics import (
-    is_review_finding,
     is_assessment_request,
+    is_review_finding,
 )
 from desloppify.engine._work_queue.helpers import (
+    fixer_matches_issue,
     is_auto_fix_item,
     workflow_stage_name,
 )
 
+from .render_scoring import render_item_explain as _render_item_explain_impl
+from .render_scoring import render_score_impact as _render_score_impact_impl
 from .render_support import is_auto_fix_command
 from .render_support import render_cluster_item as _render_cluster_item
 from .render_support import render_compact_item as _render_compact_item
 from .render_support import render_grouped as _render_grouped
-from .render_scoring import render_item_explain as _render_item_explain_impl
-from .render_scoring import render_score_impact as _render_score_impact_impl
 from .render_workflow import render_workflow_action as _render_workflow_action_impl
 from .render_workflow import render_workflow_stage as _render_workflow_stage_impl
 from .render_workflow import step_full as _step_full_impl
@@ -130,7 +131,7 @@ def _render_plan_cluster_detail(
     if relevant:
         # Show full detail for relevant steps — this is the execution view
         print(colorize("\n  Your step(s):", "bold"))
-        for idx, step in relevant:
+        for _idx, step in relevant:
             for line in _step_full(step, indent="    "):
                 print(colorize(line, "dim"))
     elif single_item and not header_showed_plan:
@@ -235,10 +236,13 @@ def _render_auto_fix_batch_hint(item: dict, issues_scoped: dict) -> None:
     if not is_auto_fix_item(item) or not is_auto_fix_command(auto_fix_command):
         return
     detector_name = item.get("detector", "")
+    command_parts = str(auto_fix_command).split()
+    fixer = command_parts[2] if len(command_parts) > 2 else ""
     similar_count = sum(
         1
         for issue in issues_scoped.values()
         if issue.get("detector") == detector_name and issue["status"] == "open"
+        and fixer_matches_issue(issue, fixer)
     )
     if similar_count <= 1:
         return

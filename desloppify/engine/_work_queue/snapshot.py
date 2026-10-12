@@ -14,10 +14,6 @@ from desloppify.engine._plan.constants import (
     WORKFLOW_DEFERRED_DISPOSITION_ID,
     WORKFLOW_RUN_SCAN_ID,
 )
-from desloppify.engine._plan.schema import (
-    executable_objective_ids as _executable_objective_ids,
-    live_planned_queue_ids as _live_planned_queue_ids,
-)
 from desloppify.engine._plan.refresh_lifecycle import (
     LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT,
     LIFECYCLE_PHASE_EXECUTE,
@@ -29,12 +25,17 @@ from desloppify.engine._plan.refresh_lifecycle import (
     current_lifecycle_phase,
     derive_display_phase,
 )
+from desloppify.engine._plan.schema import (
+    executable_objective_ids as _executable_objective_ids,
+)
+from desloppify.engine._plan.schema import (
+    live_planned_queue_ids as _live_planned_queue_ids,
+)
 from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._state.issue_semantics import (
     counts_toward_objective_backlog,
     is_assessment_request,
-    is_review_work_item,
     is_triage_finding,
 )
 from desloppify.engine._state.schema import StateModel
@@ -219,6 +220,12 @@ def _subjective_partitions(
     candidates = build_subjective_items(
         state, scoped_issues, threshold=threshold, plan=plan
     )
+    # Skipped subjective candidates must not influence phase selection. Unlike
+    # issue candidates, these synthetic items are generated from assessment
+    # state and are otherwise unaware of plan dispositions. Filtering them
+    # here keeps the phase snapshot consistent with final queue visibility.
+    skipped_ids = set((plan or {}).get("skipped", {}))
+    candidates = [item for item in candidates if item.get("id") not in skipped_ids]
     initial = [item for item in candidates if item.get("initial_review")]
     postflight = [item for item in candidates if not item.get("initial_review")]
     return initial, postflight
@@ -244,7 +251,7 @@ def _workflow_partitions(
             build_score_checkpoint_item(plan, state),
             build_import_scores_item(plan, state),
             build_communicate_score_item(plan, state),
-            build_create_plan_item(plan),
+            build_create_plan_item(plan, state),
         )
         if item is not None
     ]
@@ -552,6 +559,20 @@ def build_queue_snapshot(
     )
 
     fresh_boundary = _is_fresh_boundary(effective_plan)
+    if effective_plan is not None:
+        queue_order = effective_plan.get("queue_order", [])
+        skipped_ids = set(effective_plan.get("skipped", {}))
+        queued_ids = {
+            issue_id
+            for issue_id in queue_order
+            if isinstance(issue_id, str) and issue_id not in skipped_ids
+        }
+        # The first scan seeds plan_start_scores after reconciliation. Keep
+        # initial reviews actionable when that same scan also queued them;
+        # the newly seeded baseline must not hide the work just created.
+        fresh_boundary = fresh_boundary or any(
+            item.get("id", "") in queued_ids for item in p.initial_review_items
+        )
 
     phase = _phase_for_snapshot(
         effective_plan,

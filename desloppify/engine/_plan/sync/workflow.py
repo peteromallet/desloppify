@@ -6,22 +6,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from desloppify.engine._plan.refresh_lifecycle import (
-    subjective_review_completed_for_scan,
-)
-from desloppify.engine._plan.policy import stale as stale_policy_mod
 from desloppify.engine._plan.constants import (
     SUBJECTIVE_PREFIX,
     TRIAGE_IDS,
-    normalize_queue_workflow_and_triage_prefix,
     WORKFLOW_COMMUNICATE_SCORE_ID,
     WORKFLOW_CREATE_PLAN_ID,
     WORKFLOW_IMPORT_SCORES_ID,
     WORKFLOW_SCORE_CHECKPOINT_ID,
     QueueSyncResult,
+    normalize_queue_workflow_and_triage_prefix,
+)
+from desloppify.engine._plan.policy import stale as stale_policy_mod
+from desloppify.engine._plan.policy.subjective import SubjectiveVisibility
+from desloppify.engine._plan.refresh_lifecycle import (
+    subjective_review_completed_for_scan,
 )
 from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
-from desloppify.engine._plan.policy.subjective import SubjectiveVisibility
 from desloppify.engine._state.schema import StateModel
 
 from .context import has_objective_backlog
@@ -359,6 +359,23 @@ def sync_create_plan_needed(
     """
     ensure_plan_defaults(plan)
     order: list[str] = plan["queue_order"]
+
+    # The create-plan action may be injected for an objective-only backlog
+    # before triage has ever run. Once a completed triage cycle exists and its
+    # review findings are all closed, that old prompt is stale: a new full
+    # triage run would have no review set to process.
+    triage_meta = plan.get("epic_triage_meta", {})
+    triage_was_completed = (
+        isinstance(triage_meta, dict) and bool(triage_meta.get("last_completed_at"))
+    )
+    if triage_was_completed and not stale_policy_mod.open_review_ids(state):
+        if WORKFLOW_CREATE_PLAN_ID not in order:
+            return _EMPTY()
+        order[:] = [item for item in order if item != WORKFLOW_CREATE_PLAN_ID]
+        skipped = plan.get("skipped", {})
+        if isinstance(skipped, dict):
+            skipped.pop(WORKFLOW_CREATE_PLAN_ID, None)
+        return QueueSyncResult(pruned=[WORKFLOW_CREATE_PLAN_ID])
 
     if WORKFLOW_CREATE_PLAN_ID in order:
         return _EMPTY()

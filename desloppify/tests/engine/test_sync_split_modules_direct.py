@@ -7,12 +7,12 @@ from types import SimpleNamespace
 import desloppify.engine._plan.auto_cluster_sync_issue as auto_cluster_sync_mod
 import desloppify.engine._plan.constants as plan_constants_mod
 import desloppify.engine._plan.refresh_lifecycle as refresh_lifecycle_mod
-import desloppify.engine._plan.sync as sync_pkg_mod
 import desloppify.engine._plan.scan_issue_reconcile as scan_reconcile_mod
-import desloppify.engine._plan.sync.review_import as reconcile_import_mod
 import desloppify.engine._plan.schema.helpers as schema_helpers_mod
+import desloppify.engine._plan.sync as sync_pkg_mod
 import desloppify.engine._plan.sync.auto_prune as sync_auto_prune_mod
 import desloppify.engine._plan.sync.context as sync_context_mod
+import desloppify.engine._plan.sync.review_import as reconcile_import_mod
 import desloppify.engine._plan.sync.triage_start_policy as triage_start_policy_mod
 import desloppify.engine._plan.sync.workflow as sync_workflow_mod
 import desloppify.engine._plan.triage.dismiss as triage_dismiss_mod
@@ -503,6 +503,55 @@ def test_sync_workflow_helpers_inject_expected_items(monkeypatch) -> None:
 
     monkeypatch.setattr(sync_workflow_mod.stale_policy_mod, "current_unscored_ids", lambda *_a, **_k: {"s"})
     assert sync_workflow_mod._no_unscored(state, policy=None) is False
+
+
+def test_sync_create_plan_prunes_stale_prompt_after_completed_triage() -> None:
+    plan = {
+        "queue_order": ["workflow::create-plan", "unused::still-open"],
+        "epic_triage_meta": {
+            "last_completed_at": "2026-10-12T00:00:00Z",
+            "triaged_ids": ["review::already-resolved"],
+        },
+    }
+    state = {
+        "issues": {
+            "unused::still-open": {
+                "id": "unused::still-open",
+                "status": "open",
+                "detector": "unused",
+                "file": "src/a.py",
+                "summary": "Still-open mechanical finding",
+                "tier": 3,
+                "confidence": "medium",
+            }
+        },
+        "scan_count": 5,
+        "last_scan": "2026-10-12T00:00:00Z",
+        "dimension_scores": {},
+    }
+    policy = SimpleNamespace(unscored_ids=set(), has_objective_backlog=True)
+
+    result = sync_workflow_mod.sync_create_plan_needed(plan, state, policy=policy)
+
+    assert result.pruned == ["workflow::create-plan"]
+    assert plan["queue_order"] == ["unused::still-open"]
+    plan["plan_start_scores"] = {"strict": 80.0}
+    plan["refresh_state"] = {
+        "postflight_scan_completed_at_scan_count": 5,
+        "lifecycle_phase": "execute",
+    }
+    queue = snapshot_mod.build_queue_snapshot(state, plan=plan)
+    assert [item["id"] for item in queue.execution_items] == ["unused::still-open"]
+
+
+def test_sync_create_plan_preserves_initial_objective_only_planning() -> None:
+    plan = {"queue_order": []}
+    state = {"issues": {"unused::first-cycle": {"status": "open", "detector": "unused"}}}
+    policy = SimpleNamespace(unscored_ids=set(), has_objective_backlog=True)
+
+    result = sync_workflow_mod.sync_create_plan_needed(plan, state, policy=policy)
+
+    assert result.injected == ["workflow::create-plan"]
 
 
 def test_sync_import_scores_prunes_stale_workflow_after_trusted_import() -> None:

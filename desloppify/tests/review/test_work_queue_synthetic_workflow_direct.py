@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from desloppify.engine._work_queue.ranking import item_sort_key
 import desloppify.engine._work_queue.synthetic_workflow as workflow_mod
+from desloppify.engine._work_queue.ranking import item_sort_key
 
 
 def test_build_score_checkpoint_item_returns_none_when_not_queued() -> None:
@@ -136,6 +136,32 @@ def test_build_create_plan_item_advances_to_next_pending_stage() -> None:
     assert tools[1]["command"] == (
         "desloppify plan triage --run-stages --runner claude --only-stages reflect"
     )
+
+
+def test_completed_triage_with_no_open_review_does_not_advertise_empty_triage() -> None:
+    from desloppify.engine._plan.constants import WORKFLOW_CREATE_PLAN_ID
+
+    plan = {
+        "queue_order": [WORKFLOW_CREATE_PLAN_ID],
+        "epic_triage_meta": {
+            "last_completed_at": "2026-10-12T00:00:00Z",
+            "triaged_ids": ["review::already-resolved"],
+            "triage_stages": {},
+        },
+    }
+
+    assert workflow_mod.build_create_plan_item(plan, {"issues": {}}) is None
+
+
+def test_triaged_ids_without_completion_timestamp_are_not_treated_as_completed() -> None:
+    from desloppify.engine._plan.constants import WORKFLOW_CREATE_PLAN_ID
+
+    plan = {
+        "queue_order": [WORKFLOW_CREATE_PLAN_ID],
+        "epic_triage_meta": {"triaged_ids": ["review::partial-snapshot"]},
+    }
+
+    assert workflow_mod.build_create_plan_item(plan, {"issues": {}}) is not None
 
 
 def test_triage_stage_order_contract_keeps_sense_check_before_commit() -> None:

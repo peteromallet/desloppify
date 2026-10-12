@@ -145,12 +145,13 @@ class TestCmdScanExecution:
 
         def _single_scan(args):
             calls.append(args.lang)
+            assert args.runtime is None
 
         monkeypatch.setattr(scan_cmd_mod, "_cmd_scan_by_language", scan_cmd_mod._cmd_scan_by_language)
         monkeypatch.setattr(scan_cmd_mod, "cmd_scan", _single_scan)
 
         scan_cmd_mod._cmd_scan_by_language(
-            SimpleNamespace(path=".", by_language=True, lang=None, state="custom.json")
+            SimpleNamespace(path=".", by_language=True, lang=None, state="custom.json", runtime=object())
         )
 
         assert calls == ["python", "rust"]

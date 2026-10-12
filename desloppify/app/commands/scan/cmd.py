@@ -220,6 +220,8 @@ def _cmd_scan_by_language(args: argparse.Namespace) -> None:
         lang_args.by_language = False
         lang_args.lang = lang_name
         lang_args.state = None
+        # The CLI builds a runtime before dispatch. Rebuild it for each language.
+        lang_args.runtime = None
         cmd_scan(lang_args)
 
 

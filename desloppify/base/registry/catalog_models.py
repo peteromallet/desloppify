@@ -69,6 +69,9 @@ class DetectorMeta:
     tier: int = 2  # T1-T4 scoring weight
     marks_dims_stale: bool = False  # Mechanical changes should stale subjective dimensions
     subjective_dimensions: tuple[str, ...] = ()  # Review dimensions this detector provides evidence for
+    # Optional (fixer, issue-detail-key, expected-value) rules for detectors
+    # that emit several issue subtypes with different applicable fixers.
+    fixer_detail_matches: tuple[tuple[str, str, str], ...] = ()
 
 
 __all__ = ["DISPLAY_ORDER", "DetectorMeta"]

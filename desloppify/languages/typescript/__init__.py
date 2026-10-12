@@ -136,7 +136,7 @@ class TypeScriptConfig(LangConfig):
             default_scan_profile="full",
             detect_markers=["package.json"],
             external_test_dirs=["tests", "test", "__tests__"],
-            test_file_extensions=[".ts", ".tsx"],
+            test_file_extensions=[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
             review_module_patterns_fn=ts_review_module_patterns,
             review_api_surface_fn=ts_review_api_surface,
             review_guidance=TS_REVIEW_GUIDANCE,

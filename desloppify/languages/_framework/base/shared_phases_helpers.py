@@ -66,7 +66,7 @@ def _find_external_test_files(
     *,
     get_project_root_fn: Callable[[], Path] = get_project_root,
 ) -> set[str]:
-    """Find test files in standard locations outside the scanned path."""
+    """Find tests outside the scan or using extensions absent from its inventory."""
     extra = set()
     path_root = path.resolve()
     project_root = get_project_root_fn()
@@ -76,11 +76,13 @@ def _find_external_test_files(
         directory = project_root / test_dir
         if not directory.is_dir():
             continue
-        if directory.resolve().is_relative_to(path_root):
+        inside_scan = directory.resolve().is_relative_to(path_root)
+        search_exts = tuple(ext for ext in exts if ext not in lang.extensions) if inside_scan else exts
+        if not search_exts:
             continue
         for root, _, files in os.walk(directory):
             for filename in files:
-                if any(filename.endswith(ext) for ext in exts):
+                if filename.endswith(search_exts):
                     extra.add(os.path.join(root, filename))
     return extra
 

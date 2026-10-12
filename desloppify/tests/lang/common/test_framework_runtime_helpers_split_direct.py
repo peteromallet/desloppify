@@ -22,6 +22,22 @@ class _ZoneMap:
         return "test"
 
 
+def test_in_scope_tests_with_other_extensions_are_discovered(tmp_path):
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "model.test.mjs").write_text("import '../src/model.ts';")
+    (tests / "model.test.ts").write_text("import '../src/model.ts';")
+    lang = SimpleNamespace(
+        external_test_dirs=["tests"],
+        test_file_extensions=[".ts", ".mjs"],
+        extensions=[".ts"],
+    )
+    found = shared_helpers_mod._find_external_test_files(
+        tmp_path, lang, get_project_root_fn=lambda: tmp_path,
+    )
+    assert found == {str(tests / "model.test.mjs")}
+
+
 def test_runtime_config_value_helpers() -> None:
     assert runtime_mod._is_numeric(1) is True
     assert runtime_mod._is_numeric(True) is False

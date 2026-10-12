@@ -8,9 +8,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from desloppify.engine.plan_triage import TRIAGE_STAGE_SPECS
+from desloppify.engine._plan.constants import (
+    confirmed_triage_stage_names,
+    recorded_unconfirmed_triage_stage_names,
+)
+from desloppify.engine._plan.refresh_lifecycle import (
+    current_lifecycle_phase,
+    subjective_review_completed_for_scan,
+)
+from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._state.issue_semantics import is_review_work_item
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.helpers import (
     detail_dict,
@@ -25,19 +33,11 @@ from desloppify.engine._work_queue.synthetic_workflow import (
     build_score_checkpoint_item,
 )
 from desloppify.engine._work_queue.types import WorkQueueItem
-from desloppify.engine._plan.constants import (
-    confirmed_triage_stage_names,
-    recorded_unconfirmed_triage_stage_names,
-)
-from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
-from desloppify.engine._plan.refresh_lifecycle import (
-    current_lifecycle_phase,
-    subjective_review_completed_for_scan,
-)
 from desloppify.engine.plan_triage import (
     TRIAGE_IDS,
     TRIAGE_STAGE_DEPENDENCIES,
     TRIAGE_STAGE_LABELS,
+    TRIAGE_STAGE_SPECS,
     triage_manual_stage_command,
     triage_run_stages_command,
     triage_runner_commands,
@@ -142,12 +142,7 @@ def build_triage_stage_items(plan: dict, state: dict) -> list[WorkQueueItem]:
     if not present_names:
         return []
 
-    issues = (state.get("work_items") or state.get("issues", {}))
-    open_review_count = sum(
-        1 for f in issues.values()
-        if f.get("status") == "open"
-        and is_triage_finding(f)
-    )
+    open_review_count = len(triage_snapshot.live_open_ids)
 
     label_map = dict(TRIAGE_STAGE_LABELS)
     items: list[WorkQueueItem] = []

@@ -9,7 +9,6 @@ from desloppify.base.exception_sets import CommandError
 
 from ..importing.flags import ReviewImportConfig
 from .execution import CollectBatchResultsRequest
-
 from .scope import (
     collect_reviewed_files_from_batches,
     enforce_trusted_import_coverage_gate,
@@ -143,9 +142,13 @@ def merge_and_write_results(
         merged_assessment_dims + merged_issue_dims
     )
     review_scope["imported_dimensions"] = merged_imported_dims
+    # A selected-dimension run only promises assessments for the dimensions
+    # included in its immutable packet.  Comparing against the language-wide
+    # scorecard here makes every intentional subset look incomplete and blocks
+    # trusted imports such as `--dimensions cross_module_architecture`.
     missing_after_import = print_import_dimension_coverage_notice(
         assessed_dims=merged_assessment_dims,
-        scored_dims=scored_dimensions,
+        scored_dims=packet_dimensions,
         scan_path=scan_path,
         colorize_fn=colorize_fn,
     )

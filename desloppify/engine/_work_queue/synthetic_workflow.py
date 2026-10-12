@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shlex
 
-from desloppify.engine.plan_triage import TRIAGE_STAGE_SPECS
 from desloppify.engine._plan.constants import (
     WORKFLOW_COMMUNICATE_SCORE_ID,
     WORKFLOW_CREATE_PLAN_ID,
@@ -20,12 +19,13 @@ from desloppify.engine._plan.refresh_lifecycle import (
 from desloppify.engine._plan.sync.workflow import (
     pending_import_scores_meta,
 )
+from desloppify.engine._work_queue.types import WorkflowActionItem
 from desloppify.engine.plan_triage import (
+    TRIAGE_STAGE_SPECS,
     triage_manual_stage_command,
     triage_run_stages_command,
     triage_runner_commands,
 )
-from desloppify.engine._work_queue.types import WorkflowActionItem
 
 
 def _workflow_action_item(
@@ -163,10 +163,22 @@ def build_score_checkpoint_item(plan: dict, state: dict) -> WorkflowActionItem |
     )
 
 
-def build_create_plan_item(plan: dict) -> WorkflowActionItem | None:
+def build_create_plan_item(
+    plan: dict,
+    state: dict | None = None,
+) -> WorkflowActionItem | None:
     """Build a synthetic work item for ``workflow::create-plan`` if queued."""
     if WORKFLOW_CREATE_PLAN_ID not in plan.get("queue_order", []):
         return None
+    if state is not None:
+        from desloppify.engine._plan.policy.stale import open_review_ids
+
+        meta = plan.get("epic_triage_meta", {})
+        triage_was_completed = isinstance(meta, dict) and bool(
+            meta.get("last_completed_at")
+        )
+        if triage_was_completed and not open_review_ids(state):
+            return None
 
     return _workflow_action_item(
         item_id=WORKFLOW_CREATE_PLAN_ID,

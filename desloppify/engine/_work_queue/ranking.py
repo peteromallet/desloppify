@@ -177,6 +177,11 @@ def build_issue_items(
             item,
             supported_fixers=supported_fixers,
         )
+        if (
+            item["action_type"] == "auto_fix"
+            and not item["primary_command"].startswith("desloppify autofix ")
+        ):
+            item["action_type"] = "manual_fix"
 
         if not scope_matches(item, scope):
             continue

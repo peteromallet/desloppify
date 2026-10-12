@@ -168,6 +168,25 @@ class TestPhase1OnlyInitialReviews:
         assert "obj-1" not in ids
         assert "obj-2" not in ids
 
+    def test_first_scan_baseline_does_not_hide_queued_initial_reviews(self, monkeypatch):
+        """A baseline seeded after reconciliation must not hide its initial reviews."""
+        state = _build_state(
+            OBJECTIVE_ISSUES,
+            [_placeholder_dim_entries(k) for k in DIM_KEYS],
+            strict_score=75.0,
+            overall_score=75.0,
+            objective_score=75.0,
+        )
+        plan = _reconcile(state, empty_plan(), monkeypatch)
+
+        assert plan["plan_start_scores"]["strict"] == 75.0
+        ids = _queue_ids(state, plan)
+
+        assert len(ids) == len(DIM_KEYS)
+        assert all(fid.startswith("subjective::") for fid in ids)
+        assert "obj-1" not in ids
+        assert "obj-2" not in ids
+
 
 # ---------------------------------------------------------------------------
 # Test 2: Complete reviews (between scans) → objectives unlock immediately

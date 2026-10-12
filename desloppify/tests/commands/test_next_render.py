@@ -289,13 +289,13 @@ def test_render_auto_fix_batch_hint(monkeypatch, capsys) -> None:
     monkeypatch.setattr(render_mod, "colorize", lambda t, _s: t)
 
     item = _issue_item(
-        primary_command="desloppify autofix unused_import --dry-run",
-        detector="unused_import",
+        primary_command="desloppify autofix unused-imports --dry-run",
+        detector="unused",
     )
     issues_scoped = {
-        "unused_import::a.py::x": {"detector": "unused_import", "status": "open"},
-        "unused_import::b.py::y": {"detector": "unused_import", "status": "open"},
-        "unused_import::c.py::z": {"detector": "unused_import", "status": "open"},
+        "unused::a.py::x": {"detector": "unused", "status": "open"},
+        "unused::b.py::y": {"detector": "unused", "status": "open"},
+        "unused::c.py::z": {"detector": "unused", "status": "open"},
     }
     render_mod.render_terminal_items(
         [item], {}, issues_scoped, group="item", explain=False,

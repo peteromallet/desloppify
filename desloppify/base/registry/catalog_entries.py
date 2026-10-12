@@ -44,6 +44,10 @@ DETECTORS: dict[str, DetectorMeta] = {
         "auto_fix",
         "fix code smells — dead useEffect, empty if chains",
         fixers=("dead-useeffect", "empty-if-chain"),
+        fixer_detail_matches=(
+            ("dead-useeffect", "smell_id", "dead_useeffect"),
+            ("empty-if-chain", "smell_id", "empty_if_chain"),
+        ),
         needs_judgment=True,
         standalone_threshold="medium",
         tier=3,

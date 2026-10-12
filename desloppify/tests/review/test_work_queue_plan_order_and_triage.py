@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from desloppify.engine._plan.refresh_lifecycle import carry_forward_subjective_review
+from desloppify.engine._work_queue.core import QueueBuildOptions
+from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 from desloppify.engine.planning.queue_policy import (
     build_backlog_queue,
     build_execution_queue,
 )
-from desloppify.engine._work_queue.core import QueueBuildOptions
-from desloppify.engine._work_queue.core import build_work_queue as _build_work_queue
 
 
 def build_work_queue(state, **kwargs):
@@ -42,6 +42,24 @@ def _state(issues: list[dict], *, dimension_scores: dict | None = None) -> dict:
         "issues": {f["id"]: f for f in issues},
         "dimension_scores": dimension_scores or {},
     }
+
+
+def test_triage_stage_count_includes_only_open_review_work_items():
+    from desloppify.engine._work_queue.synthetic import build_triage_stage_items
+
+    state = _state(
+        [
+            _issue("review::a", detector="review"),
+            _issue("review::b", detector="concerns"),
+            _issue("smells::src/a.py::x", detector="smells"),
+            _issue("unused::src/b.py::y", detector="unused"),
+        ]
+    )
+
+    items = build_triage_stage_items({"queue_order": ["triage::observe"]}, state)
+
+    assert [item["id"] for item in items] == ["triage::observe"]
+    assert items[0]["detail"]["total_review_issues"] == 2
 
 
 # ── Cluster collapse ─────────────────────────────────────
