@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from desloppify.engine._state.issue_semantics import is_review_work_item
+from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.helpers import scope_matches
 from desloppify.engine._work_queue.inputs import gather_subjective_items
 from desloppify.engine._work_queue.models import QueueBuildOptions, QueueVisibility
 from desloppify.engine._work_queue.ranking import build_issue_items
 from desloppify.engine._work_queue.snapshot import build_queue_snapshot
 from desloppify.engine._work_queue.types import WorkQueueItem
-from desloppify.engine._state.issue_semantics import is_review_work_item
-from desloppify.engine._state.schema import StateModel
 
 
 def select_queue_items(
@@ -77,9 +77,14 @@ def filter_snapshot_items(
             and not (has_objective_issue and is_review_work_item(item))
         ]
     if opts.scope:
+        # Workflow transitions remain in the unfiltered queue so a global
+        # empty boundary can still surface the required postflight scan. A
+        # scoped view only displays a transition when it matches that scope.
         filtered = [
             item for item in filtered
-            if item.get("kind") != "subjective_dimension" or scope_matches(item, opts.scope)
+            if item.get("kind")
+            not in {"subjective_dimension", "workflow_stage", "workflow_action"}
+            or scope_matches(item, opts.scope)
         ]
     return filtered
 

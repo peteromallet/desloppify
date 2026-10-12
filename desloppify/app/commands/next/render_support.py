@@ -13,10 +13,10 @@ from desloppify.app.commands.helpers.queue_progress import format_plan_delta
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._state.issue_semantics import is_review_finding
 from desloppify.engine._work_queue.helpers import is_auto_fix_item
-from desloppify.engine.work_queue import group_queue_items
 from desloppify.engine.planning.scorecard_projection import (
     scorecard_subjective_entries,
 )
+from desloppify.engine.work_queue import group_queue_items
 from desloppify.intelligence.integrity import subjective_review_open_breakdown
 
 _ACTION_TYPE_LABELS = {
@@ -259,10 +259,50 @@ def show_empty_queue(
     *,
     plan_start_strict: float | None = None,
     target_strict: float | None = None,
+    scope: str | None = None,
+    cluster: str | None = None,
+    status: str = "open",
+    full_queue_total: int | None = None,
 ) -> bool:
     del target_strict
     if queue.get("items"):
         return False
+
+    filter_label = None
+    filter_name = None
+    if scope:
+        filter_label = f"scope '{scope}'"
+        filter_name = "scope"
+    elif cluster:
+        filter_label = f"cluster '{cluster}'"
+        filter_name = "cluster"
+
+    if status != "open":
+        if filter_label:
+            print(colorize(
+                f"\n  No items match {filter_label} with status '{status}'.",
+                "green",
+            ))
+        else:
+            print(colorize(f"\n  No items match status '{status}'.", "green"))
+        return True
+
+    if filter_label:
+        item_word = "item" if full_queue_total == 1 else "items"
+        print(colorize(f"\n  No items match {filter_label}.", "green"))
+        if not full_queue_total:
+            return True
+        continuation = (
+            "run `desloppify plan focus --clear`, then `desloppify next` to continue."
+            if filter_name == "cluster"
+            else "run `desloppify next` without this scope to continue."
+        )
+        print(colorize(
+            f"  The full queue still has {full_queue_total} {item_word}; "
+            f"{continuation}",
+            "dim",
+        ))
+        return True
     if plan_start_strict is not None and strict is not None:
         delta = format_plan_delta(strict, plan_start_strict)
         delta_str = f" ({delta})" if delta else ""

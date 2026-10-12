@@ -17,12 +17,12 @@ from desloppify.base.output.user_message import print_user_message
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._work_queue.context import queue_context
 from desloppify.engine._work_queue.core import QueueBuildOptions
-from desloppify.engine._work_queue.policy import explain_queue
-from desloppify.engine._work_queue.snapshot import build_queue_snapshot
 from desloppify.engine._work_queue.plan_order import (
     collapse_clusters,
     filter_cluster_focus,
 )
+from desloppify.engine._work_queue.policy import explain_queue
+from desloppify.engine._work_queue.snapshot import build_queue_snapshot
 from desloppify.engine.plan_state import load_plan
 from desloppify.engine.planning.queue_policy import (
     build_backlog_queue,
@@ -168,6 +168,7 @@ def _render_empty_queue_view(
     ctx,
     target_strict: float,
     opts: NextOptions,
+    effective_cluster: str | None,
     guardrail_warnings: list[str],
     write_query_fn,
     command_name: str,
@@ -177,8 +178,9 @@ def _render_empty_queue_view(
     """Render and persist the empty queue state."""
     strict_score = score_snapshot(state).strict
     plan_start_strict = None
-    if show_plan_context and plan_for_queue:
-        plan_start_strict, _ = _plan_queue_context(
+    breakdown = None
+    if show_plan_context:
+        plan_start_strict, breakdown = _plan_queue_context(
             state=state,
             plan_data=plan_for_queue,
             context=ctx,
@@ -189,6 +191,10 @@ def _render_empty_queue_view(
         strict_score,
         plan_start_strict=plan_start_strict,
         target_strict=target_strict,
+        scope=opts.scope,
+        cluster=effective_cluster,
+        status=opts.status,
+        full_queue_total=breakdown.queue_total if breakdown else None,
     )
     _write_next_payload(
         queue=queue,
@@ -462,6 +468,7 @@ def _build_and_render_queue_view(
             ctx=ctx,
             target_strict=target_strict,
             opts=opts,
+            effective_cluster=effective_cluster,
             guardrail_warnings=guardrail_warnings,
             write_query_fn=deps.write_query_fn,
             command_name=view.command_name,
