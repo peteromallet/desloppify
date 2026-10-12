@@ -165,8 +165,8 @@ def print_organize_result(
     print_user_message(
         "Organize recorded. Before confirming — does the"
         " organize output match the reflect blueprint? Clusters"
-        " by file area (same PR), not by theme? Step count <"
-        " issue count (consolidated)? Cluster names describe"
+        " by file area (same PR), not by theme? Related issues"
+        " share an action step when one logical change covers them? Cluster names describe"
         " locations, not problem types? This should read like"
         " a set of PR plans."
     )

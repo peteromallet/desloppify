@@ -169,7 +169,7 @@ def _organize_stage_warnings(plan: dict) -> list[str]:
     high_ratio = _clusters_with_high_step_ratio(plan)
     if high_ratio:
         names = ", ".join(name for name, _, _, _ in high_ratio)
-        warnings.append(f"1:1 step-to-issue ratio: {names}")
+        warnings.append(f"More steps than issues: {names}")
     clusters = plan.get("clusters", {})
     orphaned = [
         name for name, cluster in clusters.items()

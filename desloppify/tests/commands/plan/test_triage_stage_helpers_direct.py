@@ -72,12 +72,6 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
                 "auto": False,
                 "issue_ids": ["review::a", "review::b"],
             },
-            "small_needs_more_steps": {
-                "auto": False,
-                "issue_ids": ["review::c", "review::d", "review::e"],
-                "description": "ok",
-                "action_steps": ["one", "two"],
-            },
             "large_has_steps": {
                 "auto": False,
                 "issue_ids": ["r1", "r2", "r3", "r4", "r5"],
@@ -92,10 +86,35 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
     assert "auto_cluster" not in gaps
     assert "empty_cluster" not in gaps
     assert gaps["needs_everything"] == ["description", "action_steps"]
-    assert gaps["small_needs_more_steps"] == [
-        "action_steps (have 2, need >= 3 for small cluster)"
-    ]
     assert "large_has_steps" not in gaps
+
+
+def test_unenriched_clusters_allows_one_step_for_related_small_issues() -> None:
+    plan = {
+        "clusters": {
+            "two_related": {
+                "auto": False,
+                "issue_ids": ["review::a", "review::b"],
+                "description": "one shared change",
+                "action_steps": [
+                    {"title": "Apply the shared change", "issue_refs": ["review::a", "review::b"]}
+                ],
+            },
+            "four_related": {
+                "auto": False,
+                "issue_ids": ["review::c", "review::d", "review::e", "review::f"],
+                "description": "one shared change",
+                "action_steps": [
+                    {
+                        "title": "Apply the shared change",
+                        "issue_refs": ["review::c", "review::d", "review::e", "review::f"],
+                    }
+                ],
+            },
+        }
+    }
+
+    assert stage_helpers_mod.unenriched_clusters(plan) == []
 
 
 def test_unclustered_review_issues_uses_state_when_provided() -> None:

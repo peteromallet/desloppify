@@ -173,7 +173,7 @@ def _clusters_with_high_step_ratio(
     *,
     max_ratio: float = 1.0,
 ) -> list[tuple[str, int, int, float]]:
-    """Return clusters where step count >= issue count (1:1 mapping)."""
+    """Return clusters where step count exceeds issue count."""
     results: list[tuple[str, int, int, float]] = []
     for name, cluster in _manual_clusters_with_issues(plan):
         steps = len(_cluster_steps(cluster))

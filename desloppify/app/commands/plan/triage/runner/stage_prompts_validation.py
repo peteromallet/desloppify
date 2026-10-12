@@ -45,7 +45,7 @@ def _validation_requirements(stage: str) -> str:
             "- Cluster descriptions must reflect current issues (not stale/skipped ones)\n"
             "- Clusters must group by file/area proximity, not by dimension or theme\n"
             "- A cluster whose issues span 5+ unrelated directories will be flagged\n"
-            "- Step count should be less than issue count (consolidate shared-file changes)\n"
+            "- Every manual cluster needs at least one action step; consolidate related issues into one step when they share a logical change\n"
             "- Stage must be recorded and confirmed\n"
         )
     if stage == "enrich":

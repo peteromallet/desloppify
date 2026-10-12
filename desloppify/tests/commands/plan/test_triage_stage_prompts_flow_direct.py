@@ -53,6 +53,11 @@ def test_stage_prompt_instruction_blocks_and_validation_requirements() -> None:
         text = prompts_validation_mod._validation_requirements(stage)
         assert text.startswith("## Validation Requirements")
 
+    organize_requirements = prompts_validation_mod._validation_requirements("organize")
+    assert "at least one action step" in organize_requirements
+    assert "Step count should be less than issue count" not in organize_requirements
+    assert "one step per file or logical change" in stage_prompts["ORGANIZE"]
+
 
 def test_sense_check_prompt_includes_shared_execution_constraints() -> None:
     prompt = prompts_instructions_mod._sense_check_instructions()

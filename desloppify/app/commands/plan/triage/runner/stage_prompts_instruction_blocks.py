@@ -312,7 +312,7 @@ Before recording, verify:
       simple code with a known smell over complex code with a hidden abstraction)
 - [ ] Every cluster name describes an area or specific change, not a problem type
 - [ ] No cluster has issues from 5+ unrelated directories (theme-group smell)
-- [ ] Step count < issue count (consolidation happened)
+- [ ] Every manual cluster has at least one action step, with related issues consolidated when they share a logical change
 - [ ] Every skip has a specific per-issue reason (not "low priority")
 - [ ] Overlapping clusters have --depends-on set
 - [ ] Cluster descriptions describe the WORK, not the PROBLEMS

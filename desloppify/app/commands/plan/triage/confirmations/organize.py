@@ -37,8 +37,8 @@ def _require_enriched_clusters(plan: dict, state: dict | None = None) -> bool:
     print(colorize(f"\n  Cannot confirm: {len(gaps)} cluster(s) still need enrichment.", "red"))
     for name, missing in gaps:
         print(colorize(f"    {name}: missing {', '.join(missing)}", "yellow"))
-    print(colorize("  Small clusters (<5 issues) need at least 1 action step per issue.", "dim"))
-    print(colorize('  Fix: desloppify plan cluster update <name> --steps "step1" "step2"', "dim"))
+    print(colorize("  Every cluster needs at least one action step; related issues may share a step.", "dim"))
+    print(colorize('  Fix: desloppify plan cluster update <name> --steps "step1"', "dim"))
     return False
 
 
@@ -83,10 +83,10 @@ def _print_cluster_shape_warnings(plan: dict) -> None:
 
     high_ratio = _clusters_with_high_step_ratio(plan)
     if high_ratio:
-        print(colorize(f"\n  Warning: {len(high_ratio)} cluster(s) have step count ≥ issue count:", "yellow"))
+        print(colorize(f"\n  Warning: {len(high_ratio)} cluster(s) have more steps than issues:", "yellow"))
         for name, steps, issues, ratio in high_ratio:
             print(colorize(f"    {name}: {steps} steps for {issues} issues ({ratio:.1f}x)", "yellow"))
-        print(colorize("  Steps should consolidate changes to the same file. 1:1 means each issue is its own step.", "dim"))
+        print(colorize("  Consolidate related changes; one step may cover several issues.", "dim"))
 
     _print_cluster_overlap_notes(plan, _cluster_file_overlaps(plan))
 
