@@ -26,6 +26,8 @@ def is_py_facade(filepath: str) -> dict | None:
     imports_from: list[str] = []
     for node in tree.body:
         if isinstance(node, ast.Import | ast.ImportFrom):
+            if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+                continue
             if isinstance(node, ast.ImportFrom) and node.module:
                 imports_from.append(node.module)
             elif isinstance(node, ast.Import):
