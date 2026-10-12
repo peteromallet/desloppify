@@ -14,6 +14,7 @@ from desloppify.app.commands.review.preflight import (
     review_rerun_preflight,
 )
 from desloppify.base.exception_sets import CommandError
+from desloppify.engine._work_queue.context import queue_context
 
 
 def _make_args(**overrides) -> SimpleNamespace:
@@ -136,6 +137,24 @@ def _mock_queue_context_with_reviews(
         policy=_mock_policy(objective_count),
         snapshot=snapshot,
     )
+
+
+def test_configured_target_is_forwarded_instead_of_queue_default():
+    """Review preflight uses the command target rather than the 85 default."""
+    state = _state_with_prior_review()
+    config = {"target_strict_score": 100.0}
+    observed_contexts = []
+
+    def capture_queue_context(current_state, **kwargs):
+        context = queue_context(current_state, **kwargs)
+        observed_contexts.append(context)
+        return context
+
+    with patch(_QUEUE_CONTEXT, side_effect=capture_queue_context):
+        review_rerun_preflight(state, _make_args(), config=config)
+
+    assert observed_contexts[0].target_strict == 100.0
+    assert queue_context(state, plan=None).target_strict == 85.0
 
 
 def test_blocked_when_open_objective_items(capsys):
@@ -754,6 +773,29 @@ def test_prepare_calls_preflight():
     ):
         cmd_review(_review_args())
         mock_pf.assert_called_once()
+
+
+def test_prepare_passes_runtime_config_to_preflight():
+    """Prepare preflight uses the same configured target as the command."""
+    from desloppify.app.commands.review.cmd import cmd_review
+
+    runtime = _mock_runtime()
+    runtime.config = {"target_strict_score": 100.0}
+    args = _review_args()
+    with (
+        patch(_PREFLIGHT) as mock_pf,
+        patch(_RUNTIME, return_value=runtime),
+        patch(_LANG, return_value=MagicMock(name="python")),
+        patch("desloppify.app.commands.review.cmd.do_prepare"),
+    ):
+        cmd_review(args)
+
+    mock_pf.assert_called_once_with(
+        runtime.state,
+        args,
+        state_file=runtime.state_path,
+        config=runtime.config,
+    )
 
 
 def test_run_batches_calls_preflight():
