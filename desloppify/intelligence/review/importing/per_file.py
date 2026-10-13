@@ -162,6 +162,7 @@ def import_review_issues(
         review_issues,
         options=MergeScanOptions(
             lang=lang_name,
+            scan_path=state.get("scan_path"),
             potentials={"review": potentials.get("review", 0)},
             merge_potentials=True,
         ),

@@ -153,6 +153,7 @@ def import_holistic_issues(
         review_issues,
         options=MergeScanOptions(
             lang=lang_name,
+            scan_path=state.get("scan_path"),
             potentials=merge_potentials_dict,
             merge_potentials=True,
         ),
