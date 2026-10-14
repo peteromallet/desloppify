@@ -121,3 +121,42 @@ def test_detect_test_coverage_uses_cmake_test_sources_for_direct_mapping(tmp_pat
         if entry["file"] == prod and entry["detail"]["kind"] in {"untested_module", "untested_critical"}
     ]
     assert untested == []
+
+
+def test_unreal_automation_quality_uses_actual_tests_and_assertions():
+    import logging
+    from types import SimpleNamespace
+    from desloppify.engine.detectors.coverage.mapping_analysis import analyze_test_quality
+
+    source = """
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FExample, "Engine.Example", Flags)
+bool FExample::RunTest(const FString&) {
+    TestTrue(TEXT("true"), true);
+    TestEqual<int32>(TEXT("equal"), 2, 2);
+    TestFalse(TEXT("false"), false);
+    // TestNotNull(TEXT("ignored comment"), Pointer);
+    return true;
+}
+"""
+    quality = analyze_test_quality(
+        {"example_tests.cpp"}, "cxx",
+        load_lang_module=lambda _: cxx_cov,
+        read_coverage_file_fn=lambda *_args, **_kwargs: SimpleNamespace(ok=True, content=source),
+        logger=logging.getLogger(__name__),
+    )["example_tests.cpp"]
+    assert quality["test_functions"] == 1
+    assert quality["assertions"] == 3
+    assert quality["quality"] == "thorough"
+
+
+def test_unreal_registration_variants_and_google_tests_remain_recognized():
+    for macro in ("IMPLEMENT_SIMPLE_AUTOMATION_TEST", "IMPLEMENT_COMPLEX_AUTOMATION_TEST", "IMPLEMENT_NETWORKED_AUTOMATION_TEST", "TEST", "TEST_F", "TEST_P"):
+        assert len(cxx_cov.TEST_FUNCTION_RE.findall(f"{macro}(FExample, Name, Flags)")) == 1
+    for call in ("TestEqual", "TestNotEqual", "TestTrue", "TestFalse", "TestNull", "TestNotNull", "ASSERT_EQ", "EXPECT_TRUE"):
+        assert any(pattern.search(f'{call}("check", Value);') for pattern in cxx_cov.ASSERT_PATTERNS)
+
+
+def test_unreal_heuristics_do_not_match_similarly_named_helpers():
+    source = "TestTrueValue(); FakeTestEqual(); IMPLEMENT_SIMPLE_AUTOMATION_TESTING(Example);"
+    assert not cxx_cov.TEST_FUNCTION_RE.search(source)
+    assert not any(pattern.search(source) for pattern in cxx_cov.ASSERT_PATTERNS)

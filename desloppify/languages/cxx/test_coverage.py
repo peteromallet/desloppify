@@ -8,10 +8,16 @@ from pathlib import Path
 
 from desloppify.base.text_utils import strip_c_style_comments
 
-ASSERT_PATTERNS = [re.compile(r"\bASSERT_[A-Z_]+\b"), re.compile(r"\bEXPECT_[A-Z_]+\b")]
+ASSERT_PATTERNS = [
+    re.compile(r"\bASSERT_[A-Z_]+\b"),
+    re.compile(r"\bEXPECT_[A-Z_]+\b"),
+    re.compile(r"\bTest(?:Equal|NotEqual|True|False|Null|NotNull)(?:<[^;\n]+?>)?\s*\("),
+]
 MOCK_PATTERNS = [re.compile(r"\bMOCK_METHOD\b"), re.compile(r"\bFakeIt\b")]
 SNAPSHOT_PATTERNS: list[re.Pattern[str]] = []
-TEST_FUNCTION_RE = re.compile(r"\bTEST(?:_F|_P)?\s*\(")
+TEST_FUNCTION_RE = re.compile(
+    r"\b(?:TEST(?:_F|_P)?|IMPLEMENT_(?:SIMPLE|COMPLEX|NETWORKED)_AUTOMATION_TEST)\s*\("
+)
 BARREL_BASENAMES: set[str] = set()
 _INCLUDE_RE = re.compile(r'(?m)^\s*#include\s*[<"]([^>"]+)[>"]')
 _SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx")
