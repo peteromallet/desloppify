@@ -146,3 +146,40 @@ def test_phase_cppcheck_uses_unique_issue_ids_for_same_line(tmp_path, monkeypatc
     assert len(issues) == 2
     assert issues[0]["id"] != issues[1]["id"]
     assert signals == {"cppcheck_issue": 2}
+
+
+def test_cppcheck_assigns_cpp_to_headers_without_reclassifying_c_sources(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cxx_phases, "find_cxx_files", lambda _path: ["src/api.h", "src/app.cpp", "src/legacy.c"])
+    def run(cmd, _path, _parser):
+        calls.append(cmd)
+        return ToolRunResult(entries=[], status="empty", returncode=0)
+    monkeypatch.setattr(cxx_phases, "run_tool_result", run)
+    cxx_phases.phase_cppcheck_issue(tmp_path, SimpleNamespace(detector_coverage={}, coverage_warnings=[]))
+    assert len(calls) == 2
+    assert "--language=c " in calls[0] and "legacy.c" in calls[0] and "api.h" not in calls[0]
+    assert "--language=c++ " in calls[1] and "api.h" in calls[1] and "app.cpp" in calls[1] and "legacy.c" not in calls[1]
+
+
+def test_cppcheck_analysis_notices_reduce_coverage_without_creating_code_defects(tmp_path, monkeypatch):
+    monkeypatch.setattr(cxx_phases, "find_cxx_files", lambda _path: ["src/app.cpp"])
+    messages = [
+        'information: missingInclude: Include file: "sdk.h" not found.',
+        'information: checkersReport: Active checkers: 100/200',
+        'error: unknownMacro: Configuration is required for SOME_API.',
+        'error: syntaxError: Cannot parse this configuration.',
+        'error: preprocessorErrorDirective: #error unsupported platform',
+        'error: bufferAccessOutOfBounds: Array index 3 is out of bounds.',
+        'warning: uninitvar: Uninitialized variable: value',
+    ]
+    monkeypatch.setattr(cxx_phases, "run_tool_result", lambda *_args: ToolRunResult(
+        entries=[{"file": "src/app.cpp", "line": index + 1, "message": message} for index, message in enumerate(messages)],
+        status="ok", returncode=0))
+    lang = SimpleNamespace(detector_coverage={}, coverage_warnings=[])
+    issues, signals = cxx_phases.phase_cppcheck_issue(tmp_path, lang)
+    assert len(issues) == 2
+    assert "bufferAccessOutOfBounds" in issues[0]["summary"]
+    assert "uninitvar" in issues[1]["summary"]
+    assert signals == {"cppcheck_issue": 2}
+    assert lang.detector_coverage["cppcheck_issue"]["reason"] == "tool_configuration"
+    assert len(lang.coverage_warnings) == 1
