@@ -1047,3 +1047,41 @@ def test_validate_skip_requirements_accepts_i_have_actually_attestation() -> Non
         ),
         note="Reviewed and intentionally accepted for now.",
     )
+
+
+@pytest.mark.parametrize("inventory_key", ["work_items", "issues"])
+@pytest.mark.parametrize("kind", ["temporary", "permanent", "false_positive"])
+def test_plan_skip_cluster_preserves_resolved_history(monkeypatch, inventory_key, kind):
+    import desloppify.app.commands.plan.shared.patterns as patterns_mod
+    inventory = {
+        key: {"id": key, "status": status, "detector": "unused", "file": "src/example.cpp", "summary": key}
+        for key, status in [("fixed-item", "fixed"), ("auto-item", "auto_resolved"),
+                            ("open-item", "open"), ("deferred-item", "deferred")]
+    }
+    state = {inventory_key: inventory, "scan_count": 2}
+    members = [*inventory, "synthetic-plan-item"]
+    plan = {"queue_order": members[:], "clusters": {"mixed-cluster": {"issue_ids": members[:]}}}
+    monkeypatch.setattr(override_skip_mod, "command_runtime", lambda _: SimpleNamespace(state=state, state_path=None))
+    monkeypatch.setattr(override_skip_mod, "require_issue_inventory", lambda _: True)
+    monkeypatch.setattr(override_skip_mod, "load_plan", lambda _path=None: plan)
+    monkeypatch.setattr(patterns_mod, "_collect_queue_ids", lambda *_: set(members))
+    monkeypatch.setattr(override_skip_mod, "_validate_temporary_skip_confirmation", lambda **_: True)
+    monkeypatch.setattr(override_skip_mod, "_validate_skip_requirements", lambda **_: True)
+    calls = []
+    monkeypatch.setattr(override_skip_mod, "_apply_state_skip_resolution",
+                        lambda **kwargs: calls.append(("state", kwargs["issue_ids"])))
+    def skip(_plan, ids, **_kwargs):
+        calls.append(("plan", ids))
+        return len(ids)
+    monkeypatch.setattr(override_skip_mod, "skip_items", skip)
+    monkeypatch.setattr(override_skip_mod, "append_log_entry", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(override_skip_mod, "invalidate_postflight_scan", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(override_skip_mod, "_save_skip_plan_state", lambda **_: None)
+    override_skip_mod.cmd_plan_skip(argparse.Namespace(
+        patterns=["mixed-cluster"], reason="reviewed", confirm=True, review_after=1,
+        permanent=kind == "permanent", false_positive=kind == "false_positive",
+        note="reviewed", attest="I have actually reviewed these and am not gaming the score"))
+    expected = ["open-item", "deferred-item", "synthetic-plan-item"]
+    assert calls == [("state", expected), ("plan", expected)]
+    assert inventory["fixed-item"]["status"] == "fixed"
+    assert inventory["auto-item"]["status"] == "auto_resolved"

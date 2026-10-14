@@ -221,6 +221,11 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
     plan_file = _plan_file_for_state(state_file)
     plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
+    # Cluster membership can retain resolved history even though normal issue
+    # patterns target open work. Never overwrite completed fixes with a skip.
+    inventory = state.get("work_items", state.get("issues", {}))
+    issue_ids = [issue_id for issue_id in issue_ids
+                 if inventory.get(issue_id, {}).get("status") not in {"fixed", "auto_resolved"}]
     if not issue_ids:
         print(colorize("  No matching issues found.", "yellow"))
         return
