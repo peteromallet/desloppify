@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 import desloppify.app.commands.show.cmd as show_cmd_mod
 import desloppify.app.commands.show.scope as show_scope_mod
 import desloppify.state as state_mod
@@ -322,6 +324,20 @@ class TestCmdShowBackendIntegration:
         )
         monkeypatch.setattr(show_cmd_mod, "compute_narrative", lambda *a, **k: {})
         monkeypatch.setattr(show_cmd_mod, "resolve_lang", lambda _args: None)
+
+    def test_show_missing_pattern_exits_as_invalid_usage(self, monkeypatch, capsys):
+        self._patch_common(
+            monkeypatch,
+            state={"last_scan": "2026-01-01", "issues": {}, "scan_path": "."},
+        )
+        monkeypatch.setattr(show_cmd_mod, "check_skill_version", lambda: None)
+        monkeypatch.setattr(show_cmd_mod, "check_config_staleness", lambda _config: None)
+        monkeypatch.setattr(show_cmd_mod, "print_triage_guardrail_info", lambda **_kwargs: None)
+        args = SimpleNamespace(pattern=None, status="open", chronic=False, no_budget=True)
+        with pytest.raises(SystemExit) as error:
+            cmd_show(args)
+        assert error.value.code == 2
+        assert "Pattern required (or use --chronic)" in capsys.readouterr().out
 
     def test_show_uses_shared_queue_for_pattern_filter(self, monkeypatch, capsys):
         self._patch_common(

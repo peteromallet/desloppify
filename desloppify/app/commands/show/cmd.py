@@ -132,7 +132,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
     ok, pattern, status_filter, scope = resolve_show_scope(args)
     if not ok or pattern is None:
-        return
+        raise SystemExit(2)
 
     lang = resolve_lang(args)
     lang_name = lang.name if lang else None
