@@ -611,3 +611,21 @@ def test_detect_cxx_security_ignores_findings_outside_scoped_files(
 
     assert len(result.entries) == 1
     assert result.entries[0]["file"] == str(source.resolve())
+
+
+def test_security_api_names_do_not_match_identifier_substrings():
+    assert security_mod._normalize_kind("syntaxError", "Code 'namespace ChartedTargets {' is invalid C code.") is None
+    assert security_mod._normalize_kind("dangerousFunction", "The function 'gets' is unsafe") == "unsafe_c_string"
+    assert security_mod._normalize_kind("clang-analyzer-security.insecureAPI.strcpy", "Call to strcpy is insecure") == "unsafe_c_string"
+
+
+def test_cppcheck_configuration_and_unused_symbols_are_not_security_findings():
+    for check_id, message in [
+        ("missingInclude", 'Include file: "Misc/SecureHash.h" not found.'),
+        ("unusedFunction", "The function 'SpawnCommand' is never used."),
+        ("syntaxError", "Code 'namespace ChartedTargets {' is invalid C code."),
+        ("unknownMacro", "If SECURITY_CHECK is a macro then please configure it."),
+    ]:
+        assert not security_mod._looks_security_finding("cppcheck", check_id, message)
+    assert security_mod._looks_security_finding("cppcheck", "bufferAccessOutOfBounds", "Buffer access out of bounds: possible overflow")
+    assert security_mod._looks_security_finding("cppcheck", "dangerousFunctionSystem", "Using system can be unsafe")
