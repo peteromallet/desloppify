@@ -683,3 +683,15 @@ class TestNextjsIntegration:
             )
 
         assert len(entries) == 1
+
+
+def test_exact_build_roots_do_not_suppress_uncompiled_namesakes(tmp_path):
+    compiled = _write_file(tmp_path / "compiled/unit.cpp")
+    unused = _write_file(tmp_path / "unused/unit.cpp")
+    graph = {
+        str(compiled): {**_graph_entry(), "is_entry_point": True},
+        str(unused): _graph_entry(),
+    }
+    entries, total = detect_orphaned_files(tmp_path, graph, [".cpp"])
+    assert total == 2
+    assert [entry["file"] for entry in entries] == [str(unused)]

@@ -76,3 +76,19 @@ def test_build_dep_graph_distinguishes_angle_vs_quoted_include_resolution(tmp_pa
     assert str(include_header.resolve()) in imports
     assert str(local_header.resolve()) in imports
     assert str((tmp_path / "src" / "widget.hpp").resolve()) not in imports
+
+
+def test_compile_database_marks_only_actual_translation_unit_roots(tmp_path):
+    compiled = _write(tmp_path, "compiled/unit.cpp", "int compiled() { return 1; }\n")
+    unused = _write(tmp_path, "unused/unit.cpp", "int unused() { return 0; }\n")
+    header = _write(tmp_path, "include/pch.hpp", "#pragma once\n")
+    malformed = _write(tmp_path, "missing-command.cpp", "int missing() { return 0; }\n")
+    (tmp_path / "compile_commands.json").write_text(json.dumps([
+        {"directory": str(tmp_path), "file": str(compiled), "arguments": ["clang++", "-c", str(compiled)]},
+        {"directory": str(tmp_path), "file": str(header), "command": f"clang++ -x c++-header {header}"},
+        {"directory": str(tmp_path), "file": str(malformed)},
+    ]))
+    graph = build_cxx_dep_graph(tmp_path)
+    assert graph[str(compiled.resolve())]["is_entry_point"] is True
+    for path in (unused, header, malformed):
+        assert not graph[str(path.resolve())].get("is_entry_point", False)

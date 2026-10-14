@@ -16,6 +16,8 @@ from desloppify.languages._framework.treesitter.imports.resolvers_backend import
 )
 from desloppify.languages.cxx.extractors import find_cxx_files
 
+_TRANSLATION_UNIT_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".cxx"})
+
 _INCLUDE_RE = re.compile(r'(?m)^\s*#include\s*([<"])([^>"]+)[>"]')
 
 
@@ -159,7 +161,13 @@ def _build_from_compile_commands(
             if isinstance(directory_value, str) and directory_value.strip()
             else path
         )
-        include_dirs = _extract_include_dirs(_parse_command_tokens(entry), directory)
+        tokens = _parse_command_tokens(entry)
+        if not tokens:
+            continue
+        # Translation units named by a compilation database are build roots, not include-imported files.
+        if Path(source).suffix.lower() in _TRANSLATION_UNIT_SUFFIXES:
+            graph[source]["is_entry_point"] = True
+        include_dirs = _extract_include_dirs(tokens, directory)
         source_file = Path(source)
         for include_spec, is_quoted in _read_include_specs(source):
             resolved = _resolve_with_compile_commands(

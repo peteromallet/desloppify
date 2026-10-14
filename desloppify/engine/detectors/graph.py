@@ -1,6 +1,7 @@
 """Language-agnostic dependency graph algorithms.
 
 The graph structure is: {resolved_path: {"imports": set, "importers": set, "import_count": int, "importer_count": int}}
+Nodes may also carry is_entry_point=True when a language builder has explicit build/runtime-root evidence.
 Language-specific modules build the graph; this module provides shared algorithms.
 """
 
