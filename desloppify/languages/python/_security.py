@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 
 from desloppify.base.config import load_config
+from desloppify.base.discovery.file_paths import rel
 from desloppify.base.discovery.source import collect_exclude_dirs
 from desloppify.languages._framework.base.types import DetectorCoverageStatus, LangSecurityResult
 from desloppify.languages.python.detectors.bandit_adapter import detect_with_bandit
@@ -55,8 +56,13 @@ def detect_python_security(files, zone_map) -> LangSecurityResult:
         scan_root, zone_map, exclude_dirs=exclude_dirs, skip_tests=skip_tests,
     )
     coverage = result.status.coverage()
+    # Bandit walks the scan root itself, so keep only findings in files that
+    # source discovery returned: that set already honours every exclusion rule
+    # (component, prefix and glob), which bandit's --exclude cannot express.
+    scanned = {rel(f) for f in files}
+    entries = [entry for entry in result.entries if entry["file"] in scanned]
     return LangSecurityResult(
-        entries=result.entries,
+        entries=entries,
         files_scanned=result.files_scanned,
         coverage=coverage,
     )

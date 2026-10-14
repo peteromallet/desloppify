@@ -434,3 +434,53 @@ class TestDotsOnlyImport:
                 main_key = k
         assert main_key is not None
         assert graph[main_key]["import_count"] >= 1
+
+
+# ── src-layout import resolution ──────────────────────────
+
+
+class TestSrcLayoutResolution:
+    def test_absolute_import_resolves_in_root_src_layout(self, tmp_path):
+        from desloppify.languages.python.detectors.deps_resolution import (
+            resolve_absolute_import,
+        )
+
+        module = tmp_path / "src" / "mypkg" / "core.py"
+        module.parent.mkdir(parents=True)
+        (module.parent / "__init__.py").write_text("")
+        module.write_text("CONST = 42\n")
+
+        assert resolve_absolute_import("mypkg.core", tmp_path) == str(module.resolve())
+
+    def test_absolute_import_resolves_in_nested_project_src_layout(self, tmp_path):
+        from desloppify.languages.python.detectors.deps_resolution import (
+            resolve_absolute_import,
+        )
+
+        module = tmp_path / "service" / "src" / "mypkg" / "sub" / "core.py"
+        module.parent.mkdir(parents=True)
+        (module.parent.parent / "__init__.py").write_text("")
+        (module.parent / "__init__.py").write_text("")
+        module.write_text("CONST = 42\n")
+
+        assert resolve_absolute_import("mypkg.sub.core", tmp_path) == str(module.resolve())
+
+    def test_nested_src_layout_marks_module_as_imported(self, tmp_path):
+        project = tmp_path / "service"
+        pkg = project / "src" / "mypkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("CONST = 42\n")
+        (pkg / "cli.py").write_text("from mypkg.core import CONST\n")
+
+        graph = build_dep_graph(tmp_path)
+        core_key = next(k for k in graph if k.endswith("core.py"))
+        assert graph[core_key]["importer_count"] == 1
+
+    def test_unknown_module_stays_unresolved(self, tmp_path):
+        from desloppify.languages.python.detectors.deps_resolution import (
+            resolve_absolute_import,
+        )
+
+        (tmp_path / "src").mkdir()
+        assert resolve_absolute_import("nowhere.module", tmp_path) is None

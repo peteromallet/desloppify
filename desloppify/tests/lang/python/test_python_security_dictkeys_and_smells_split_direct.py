@@ -236,3 +236,27 @@ def outer():
 
     used = nesting_mod._find_subscript_zero_refs(outer_fn, {"x"})
     assert used == {"x"}
+
+
+def test_python_security_drops_bandit_findings_outside_discovered_files(monkeypatch, tmp_path) -> None:
+    class _Status:
+        def coverage(self):
+            return {"detector": "security", "status": "full"}
+
+    monkeypatch.setattr(py_security_mod, "scan_root_from_files", lambda _files: tmp_path)
+    monkeypatch.setattr(py_security_mod, "collect_exclude_dirs", lambda _root: [])
+    monkeypatch.setattr(
+        py_security_mod,
+        "detect_with_bandit",
+        lambda _root, _zone_map, *, exclude_dirs, skip_tests=None: SimpleNamespace(
+            entries=[
+                {"file": "pkg/kept.py", "line": 1},
+                {"file": "excluded/dropped.py", "line": 2},
+            ],
+            files_scanned=2,
+            status=_Status(),
+        ),
+    )
+
+    result = py_security_mod.detect_python_security(["pkg/kept.py"], zone_map=None)
+    assert [entry["file"] for entry in result.entries] == ["pkg/kept.py"]

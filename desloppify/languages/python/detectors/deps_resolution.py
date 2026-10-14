@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from desloppify.base.discovery.paths import get_project_root
@@ -107,19 +108,47 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
 
 
 def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
+    """Resolve an absolute import within scan root, project root, then src layouts."""
     parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+    for import_root in _import_roots(scan_root.resolve(), get_project_root().resolve()):
+        target_base = import_root
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+
+def _import_roots(scan_root: Path, project_root: Path) -> tuple[Path, ...]:
+    """Directories an absolute import may be rooted at, most specific first.
+
+    Besides the scan and project roots, this covers the PEP 517 ``src`` layout
+    (``<root>/src/<pkg>``) and a package nested one level down in a multi-project
+    repo (``<root>/<project>/src/<pkg>``), whose modules are otherwise unresolvable
+    and get reported as orphaned.
+    """
+    roots: list[Path] = []
+    for base in (scan_root, project_root):
+        if base not in roots:
+            roots.append(base)
+    for base in (scan_root, project_root):
+        for src_root in _src_layout_roots(base):
+            if src_root not in roots:
+                roots.append(src_root)
+    return tuple(roots)
+
+
+@lru_cache(maxsize=32)
+def _src_layout_roots(base: Path) -> tuple[Path, ...]:
+    """``src`` directories directly under ``base`` or one project level below it."""
+    candidates = [base / "src"]
+    try:
+        children = sorted(child for child in base.iterdir() if child.is_dir())
+    except OSError:
+        children = []
+    candidates.extend(child / "src" for child in children if not child.name.startswith("."))
+    return tuple(candidate for candidate in candidates if candidate.is_dir())
 
 
 def try_resolve_path(target_base: Path) -> str | None:
