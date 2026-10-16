@@ -59,6 +59,13 @@ def detect_unused_imports(
     if not spec.import_query:
         return []
 
+    # Dart import usage needs library resolution: URI basenames are not local
+    # bindings, and even prefixed imports can supply implicitly used extensions.
+    # Leave unused-import diagnostics to the native analyzer; keep import queries
+    # available independently for dependency graph construction.
+    if spec.grammar == "dart":
+        return []
+
     try:
         parser, language = _get_parser(spec.grammar)
     except PARSE_INIT_ERRORS as exc:
