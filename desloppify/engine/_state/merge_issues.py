@@ -7,15 +7,15 @@ from collections.abc import Mapping
 from typing import Any
 
 from desloppify.base.discovery.file_paths import matches_exclusion
-from desloppify.engine.policy.zones import should_skip_issue
 from desloppify.engine._state.filtering import (
     issue_suppression_fingerprint,
     matched_ignore_pattern,
 )
 from desloppify.engine._state.issue_semantics import (
-    is_import_only_issue,
     is_assessment_request,
+    is_import_only_issue,
 )
+from desloppify.engine.policy.zones import should_skip_issue
 
 
 def find_suspect_detectors(
@@ -64,19 +64,29 @@ def _mark_scan_verified(
     *,
     note: str,
     attestation_text: str,
-) -> None:
-    """Record scan corroboration without changing the manual disposition."""
-    issue["suppressed"] = False
-    issue["suppressed_at"] = None
-    issue["suppression_pattern"] = None
-    issue["note"] = note
+) -> bool:
+    """Refresh corroboration and return whether it adds new absence evidence."""
     existing = issue.get("resolution_attestation")
     if not isinstance(existing, dict):
         existing = {}
         issue["resolution_attestation"] = existing
+    last_seen = str(issue.get("last_seen") or "")
+    verified_at = str(existing.get("scan_verified_at") or "")
+    # Rechecking the same absence only refreshes recency. A later sighting
+    # (possible for wontfix issues) or a changed verification scope is new.
+    new_evidence = (
+        not existing.get("scan_verified")
+        or existing.get("scan_verification_text") != attestation_text
+        or bool(last_seen and (not verified_at or last_seen > verified_at))
+    )
+    issue["suppressed"] = False
+    issue["suppressed_at"] = None
+    issue["suppression_pattern"] = None
+    issue["note"] = note
     existing["scan_verified"] = True
     existing["scan_verified_at"] = now
     existing["scan_verification_text"] = attestation_text
+    return new_evidence
 
 
 def verify_disappeared(
@@ -131,14 +141,14 @@ def verify_disappeared(
             ):
                 if previous_status != "open":
                     scope_note = f"Still absent in current scan scope ({scan_path})"
-                    _mark_scan_verified(
+                    if _mark_scan_verified(
                         previous,
                         now,
                         note=scope_note,
                         attestation_text=scope_note,
-                    )
-                    resolved_detectors.add(previous.get("detector", "unknown"))
-                    resolved_out_of_scope += 1
+                    ):
+                        resolved_detectors.add(previous.get("detector", "unknown"))
+                        resolved_out_of_scope += 1
                 continue
 
         if exclude and any(matches_exclusion(previous["file"], ex) for ex in exclude):
@@ -185,14 +195,14 @@ def verify_disappeared(
             if previous_status == "wontfix"
             else "Still absent from scan after manual resolution"
         )
-        _mark_scan_verified(
+        if _mark_scan_verified(
             previous,
             now,
             note=verification_note,
             attestation_text="Absent from detector output in latest scan",
-        )
-        resolved_detectors.add(previous.get("detector", "unknown"))
-        resolved += 1
+        ):
+            resolved_detectors.add(previous.get("detector", "unknown"))
+            resolved += 1
 
     return resolved, skipped_other_lang, resolved_out_of_scope, resolved_detectors
 
