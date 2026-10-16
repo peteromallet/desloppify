@@ -28,6 +28,7 @@ from desloppify.languages._framework.base.types import (
     DetectorEntry,
     LangRuntimeContract,
     LangSecurityResult,
+    SignatureExtractionUnavailable,
 )
 from desloppify.languages._framework.issue_factories import make_dupe_issues
 from desloppify.state_io import Issue
@@ -680,10 +681,30 @@ def phase_subjective_review(
 
 
 def phase_signature(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], dict[str, int]]:
-    """Shared phase runner: detect signature variance via lang.extract_functions."""
+    """Detect declaration variance without changing other function consumers."""
     from desloppify.engine.detectors.signature import detect_signature_variance
 
-    functions = _resolve_review_functions(path, lang)
+    signature_extractor = getattr(lang, "extract_signature_functions", None)
+    if signature_extractor is None:
+        functions = _resolve_review_functions(path, lang)
+    else:
+        try:
+            functions = signature_extractor(path)
+        except SignatureExtractionUnavailable as error:
+            _record_detector_coverage(
+                lang,
+                DetectorCoverageStatus(
+                    detector="signature",
+                    status="reduced",
+                    confidence=0.0,
+                    summary="Signature declarations could not be extracted safely.",
+                    impact="No signature conclusions were inferred from fallback function bodies.",
+                    remediation="Install the language parser and rerun the scan.",
+                    reason=str(error),
+                ),
+            )
+            log(f"         signature analysis unavailable: {error}")
+            return [], {}
 
     issues: list[Issue] = []
     potentials: dict[str, int] = {}

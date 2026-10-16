@@ -93,6 +93,7 @@ _FORWARDED_CONFIG_ATTRS = frozenset(
         "get_area",
         "detect_commands",
         "extract_functions",
+        "extract_signature_functions",
         "boundaries",
         "typecheck_cmd",
         "file_finder",

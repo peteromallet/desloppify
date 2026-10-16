@@ -25,6 +25,7 @@ from desloppify.languages.dart.extractors import (
     find_dart_files,
 )
 from desloppify.languages.dart.phases import phase_coupling, phase_structural
+from desloppify.languages.dart.signatures import extract_signature_functions
 from desloppify.languages.dart.review import (
     HOLISTIC_REVIEW_DIMENSIONS,
     LOW_VALUE_PATTERN,
@@ -97,6 +98,7 @@ class DartConfig(LangConfig):
             migration_pattern_pairs=MIGRATION_PATTERN_PAIRS,
             migration_mixed_extensions=MIGRATION_MIXED_EXTENSIONS,
             extract_functions=extract_functions,
+            extract_signature_functions=extract_signature_functions,
             zone_rules=DART_ZONE_RULES,
         )
 

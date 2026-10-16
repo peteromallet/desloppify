@@ -38,6 +38,10 @@ FunctionExtractor = Callable[[Path], list[FunctionInfo]]
 FileFinder = Callable[[Path], list[str]]
 
 
+class SignatureExtractionUnavailable(RuntimeError):
+    """A signature extractor cannot safely identify declarations this run."""
+
+
 @dataclass
 class DetectorPhase:
     """A single phase in the scan pipeline.
@@ -69,6 +73,7 @@ class LangRuntimeContract(Protocol):
     review_low_value_pattern: object | None
     file_finder: FileFinder | None
     extract_functions: FunctionExtractor | None
+    extract_signature_functions: FunctionExtractor | None
     get_area: Callable[[str], str] | None
     build_dep_graph: DepGraphBuilder
     detect_lang_security_detailed: Callable[[list[str], FileZoneMap | None], LangSecurityResult]
@@ -171,6 +176,10 @@ class LangConfig:
     # Integration depth: "full" | "standard" | "shallow" | "minimal"
     integration_depth: str = "full"
 
+    # Optional declaration-only input for signature analysis. Other function
+    # consumers retain extract_functions and its callback/body semantics.
+    extract_signature_functions: FunctionExtractor | None = None
+
     _default_runtime_settings: dict[str, object] = field(
         default_factory=dict, init=False, repr=False
     )
@@ -265,6 +274,7 @@ __all__ = [
     "FunctionExtractor",
     "LangConfig",
     "LangRuntimeContract",
+    "SignatureExtractionUnavailable",
     "LangSecurityResult",
     "LangValueSpec",
     "ScanCoverageRecord",

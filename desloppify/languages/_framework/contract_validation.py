@@ -23,6 +23,10 @@ def _validate_core_identity(name: str, cfg: LangConfig) -> list[str]:
         errors.append("file_finder must be callable")
     if not callable(cfg.extract_functions):
         errors.append("extract_functions must be callable")
+    if cfg.extract_signature_functions is not None and not callable(
+        cfg.extract_signature_functions
+    ):
+        errors.append("extract_signature_functions must be callable when provided")
     if cfg.default_scan_profile not in ALLOWED_SCAN_PROFILES:
         allowed = ", ".join(sorted(ALLOWED_SCAN_PROFILES))
         errors.append(f"default_scan_profile must be one of: {allowed}")
