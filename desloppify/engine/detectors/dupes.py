@@ -98,6 +98,21 @@ def _pair_key(fn_a: FunctionInfo, fn_b: FunctionInfo) -> PairKey:
     return (_function_identity(fn_a), _function_identity(fn_b))
 
 
+def _overlapping_source_spans(fn_a: FunctionInfo, fn_b: FunctionInfo) -> bool:
+    """Whether two functions in one file claim overlapping valid source lines."""
+    if fn_a.file != fn_b.file:
+        return False
+    a_start, a_end = fn_a.line, getattr(fn_a, "end_line", None)
+    b_start, b_end = fn_b.line, getattr(fn_b, "end_line", None)
+    if not all(isinstance(value, int) for value in (a_start, a_end, b_start, b_end)):
+        return False
+    if a_start < 1 or b_start < 1 or a_end < a_start or b_end < b_start:
+        return False
+    # FunctionInfo has no column offsets, so a single shared physical line
+    # cannot distinguish adjacent declarations from genuine overlap.
+    return max(a_start, b_start) < min(a_end, b_end)
+
+
 def _function_identity(fn: FunctionInfo) -> str:
     """Build a stable identity token for one function."""
     end_line = getattr(fn, "end_line", None)
@@ -188,6 +203,8 @@ def _load_cached_near_pairs(
 
         left_fn = functions[left_idx]
         right_fn = functions[right_idx]
+        if _overlapping_source_spans(left_fn, right_fn):
+            continue
         if left_fn.body_hash == right_fn.body_hash:
             continue
         pair_key = _pair_key(left_fn, right_fn)
@@ -254,6 +271,8 @@ def _collect_exact_duplicate_pairs(
             for j_pos in range(i_pos + 1, len(idxs)):
                 left_idx = idxs[i_pos]
                 right_idx = idxs[j_pos]
+                if _overlapping_source_spans(functions[left_idx], functions[right_idx]):
+                    continue
                 pair_key = _pair_key(functions[left_idx], functions[right_idx])
                 if pair_key in seen_pairs:
                     continue
@@ -301,6 +320,8 @@ def _collect_near_duplicate_pairs(
             near_candidates += 1
 
             pair_key = _pair_key(fn_a, fn_b)
+            if _overlapping_source_spans(fn_a, fn_b):
+                continue
             if pair_key in seen_pairs or fn_a.body_hash == fn_b.body_hash:
                 continue
             if active_indices is not None:

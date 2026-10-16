@@ -27,6 +27,12 @@ def _make_fn(
     )
 
 
+def _set_span(fn: FunctionInfo, start: int, end: int) -> FunctionInfo:
+    fn.line = start
+    fn.end_line = end
+    return fn
+
+
 class TestDetectDuplicates:
     def test_empty_input(self):
         entries, total = detect_duplicates([])
@@ -232,6 +238,127 @@ class TestDetectDuplicates:
         assert total == 4
         assert len(entries) == 2
         assert all(entry["kind"] == "exact" for entry in entries)
+
+    def test_exact_duplicates_skip_nested_and_identical_source_spans(self):
+        body = "return 1"
+        overlapping_pairs = [
+            [
+                _set_span(_make_fn("outer", "same.py", body), 1, 30),
+                _set_span(_make_fn("nested", "same.py", body), 5, 12),
+            ],
+            [
+                _set_span(_make_fn("same_span", "same.py", body), 40, 50),
+                _set_span(_make_fn("same_span_copy", "same.py", body), 40, 50),
+            ],
+        ]
+        for fns in overlapping_pairs:
+            entries, total = detect_duplicates(fns)
+            assert total == 2
+            assert entries == []
+
+        for file_a, file_b, start_a, end_a, start_b, end_b in (
+            ("same.py", "same.py", 60, 65, 70, 75),
+            ("same.py", "other.py", 1, 10, 1, 10),
+        ):
+            fns = [
+                _set_span(_make_fn("a", file_a, body), start_a, end_a),
+                _set_span(_make_fn("b", file_b, body), start_b, end_b),
+            ]
+            entries, total = detect_duplicates(fns)
+            assert total == 2
+            assert len(entries) == 1
+
+    def test_exact_duplicates_keep_ambiguous_single_line_intersections(self):
+        body = "return 1"
+        same_row = [
+            _set_span(_make_fn("first", "same.py", body, line=10), 10, 10),
+            _set_span(_make_fn("second", "same.py", body, line=10), 10, 10),
+        ]
+        boundary_touch = [
+            _set_span(_make_fn("first", "same.py", body), 1, 10),
+            _set_span(_make_fn("second", "same.py", body), 10, 20),
+        ]
+
+        for fns in (same_row, boundary_touch):
+            entries, total = detect_duplicates(fns)
+            assert total == 2
+            assert len(entries) == 1
+            assert entries[0]["kind"] == "exact"
+
+    def test_exact_duplicates_keep_pairs_with_missing_end_bounds(self):
+        fns = [
+            _set_span(_make_fn("first", "same.py", "return 1"), 10, 10),
+            _set_span(_make_fn("second", "same.py", "return 1"), 10, 10),
+        ]
+        fns[0].end_line = None  # type: ignore[assignment]
+
+        entries, total = detect_duplicates(fns)
+
+        assert total == 2
+        assert len(entries) == 1
+        assert entries[0]["kind"] == "exact"
+
+    def test_near_duplicates_skip_nested_and_identical_source_spans(self):
+        base = [f"value_{i} = compute({i})" for i in range(20)]
+        changed = base.copy()
+        changed[-1] = "value_19 = compute(other)"
+        for start_a, end_a, start_b, end_b in ((1, 40, 10, 30), (50, 70, 50, 70)):
+            fns = [
+                _set_span(
+                    _make_fn("a", "same.py", "\n".join(base), loc=20),
+                    start_a,
+                    end_a,
+                ),
+                _set_span(
+                    _make_fn("b", "same.py", "\n".join(changed), loc=20),
+                    start_b,
+                    end_b,
+                ),
+            ]
+            entries, total = detect_duplicates(fns, threshold=0.8)
+            assert total == 2
+            assert entries == []
+
+        for file_a, file_b, start_a, end_a, start_b, end_b in (
+            ("same.py", "same.py", 80, 100, 110, 130),
+            ("same.py", "other.py", 1, 40, 1, 40),
+        ):
+            fns = [
+                _set_span(
+                    _make_fn("a", file_a, "\n".join(base), loc=20), start_a, end_a
+                ),
+                _set_span(
+                    _make_fn("b", file_b, "\n".join(changed), loc=20), start_b, end_b
+                ),
+            ]
+            entries, total = detect_duplicates(fns, threshold=0.8)
+            assert total == 2
+            assert len(entries) == 1
+            assert entries[0]["kind"] == "near-duplicate"
+
+    def test_cached_near_pairs_prune_overlapping_spans(self):
+        base = [f"value_{i} = compute({i})" for i in range(20)]
+        changed = base.copy()
+        changed[-1] = "value_19 = compute(other)"
+        fns = [
+            _set_span(_make_fn("outer", "same.py", "\n".join(base), loc=20), 1, 40),
+            _set_span(_make_fn("nested", "same.py", "\n".join(changed), loc=20), 10, 30),
+        ]
+        function_meta, _ = dupes_mod._build_function_cache_map(fns)
+        left_id = dupes_mod._function_identity(fns[0])
+        right_id = dupes_mod._function_identity(fns[1])
+        cache: dict[str, object] = {
+            "version": dupes_mod._DUPES_CACHE_VERSION,
+            "threshold": 0.8,
+            "functions": function_meta,
+            "near_pairs": [{"a": left_id, "b": right_id, "similarity": 0.99}],
+        }
+
+        entries, total = detect_duplicates(fns, threshold=0.8, cache=cache)
+
+        assert total == 2
+        assert entries == []
+        assert cache["near_pairs"] == []
 
     def test_near_duplicate_cache_reuses_pairs_without_matcher(self, monkeypatch):
         base_lines = [f"    result = compute_value_{i}(x, y, z)" for i in range(20)]
