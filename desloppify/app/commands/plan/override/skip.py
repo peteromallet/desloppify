@@ -99,14 +99,13 @@ def _apply_state_skip_resolution(
     if status is None:
         return None
     state_data = state_mod.load_state(state_file)
-    for fid in issue_ids:
-        state_mod.resolve_issues(
-            state_data,
-            fid,
-            status,
-            note or "",
-            attestation=attestation,
-        )
+    state_mod.resolve_issue_ids(
+        state_data,
+        issue_ids,
+        status,
+        note or "",
+        attestation=attestation,
+    )
     return state_data
 
 
@@ -333,8 +332,7 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
     state_data: dict | None = None
     if need_reopen:
         state_data = state_mod.load_state(state_file)
-        for fid in need_reopen:
-            reopened.extend(state_mod.resolve_issues(state_data, fid, "open"))
+        reopened = state_mod.resolve_issue_ids(state_data, need_reopen, "open")
     reconcile_state = state_data or state
     transition_phase: str | None = None
     if invalidate_postflight_scan(plan, issue_ids=unskipped_ids, state=reconcile_state):
@@ -408,8 +406,7 @@ def cmd_plan_backlog(args: argparse.Namespace) -> None:
     ]
 
     if reopen_ids:
-        for fid in reopen_ids:
-            state_mod.resolve_issues(state_data, fid, "open")
+        state_mod.resolve_issue_ids(state_data, reopen_ids, "open")
 
     append_log_entry(
         plan,

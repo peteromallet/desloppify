@@ -32,6 +32,7 @@ from desloppify.engine._state.persistence import load_state, save_state, state_l
 from desloppify.engine._state.resolution import (
     coerce_assessment_score,
     match_issues,
+    resolve_issue_ids,
     resolve_issues,
 )
 from desloppify.engine._state.schema import (
@@ -110,6 +111,7 @@ __all__ = [
     "resolve_issue_noise_budget",
     "resolve_issue_noise_global_budget",
     "resolve_issue_noise_settings",
+    "resolve_issue_ids",
     "resolve_issues",
     "save_state",
     "scan_inventory_available",
