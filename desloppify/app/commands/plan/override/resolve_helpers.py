@@ -5,6 +5,7 @@ from __future__ import annotations
 from desloppify.app.commands.plan.shared.cluster_membership import cluster_issue_ids
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import (
+    STRATEGY_PREFIX,
     confirmed_triage_stage_names,
     is_synthetic_id,
     recorded_unconfirmed_triage_stage_names,
@@ -14,6 +15,7 @@ from desloppify.engine.plan_triage import (
     TRIAGE_STAGE_IDS,
     TRIAGE_STAGE_PREREQUISITES,
 )
+
 
 def check_cluster_guard(patterns: list[str], plan: dict, state: dict) -> bool:
     """Return True when a cluster-name resolve should be blocked."""
@@ -66,8 +68,16 @@ def print_cluster_guard(cluster_name: str, issue_ids: list[str], state: dict) ->
     )
 def split_synthetic_patterns(patterns: list[str]) -> tuple[list[str], list[str]]:
     """Partition synthetic workflow/triage patterns from real issue patterns."""
-    synthetic = [pattern for pattern in patterns if is_synthetic_id(pattern)]
-    remaining = [pattern for pattern in patterns if not is_synthetic_id(pattern)]
+    synthetic: list[str] = []
+    remaining: list[str] = []
+    for pattern in patterns:
+        # Strategize creates real state entries, even though their IDs are
+        # synthetic for queue ordering. Resolve them with normal persistence,
+        # matching and evidence validation rather than only purging the plan.
+        if is_synthetic_id(pattern) and not pattern.startswith(STRATEGY_PREFIX):
+            synthetic.append(pattern)
+        else:
+            remaining.append(pattern)
     return synthetic, remaining
 
 
