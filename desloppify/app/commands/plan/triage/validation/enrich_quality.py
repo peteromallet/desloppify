@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from ..review_coverage import cluster_issue_ids
+from ..stages.helpers import triage_scoped_plan
 from .enrich_checks import (
     _steps_missing_issue_refs,
     _steps_referencing_skipped_issues,
@@ -14,7 +16,6 @@ from .enrich_checks import (
     _steps_without_effort,
     _underspecified_steps,
 )
-from ..review_coverage import cluster_issue_ids
 
 Severity = Literal["failure", "warning"]
 
@@ -88,7 +89,7 @@ def _scoped_plan(plan: dict, triage_issue_ids: set[str] | None) -> dict:
     Returns the original plan unchanged when no triage scoping is needed.
     """
     if not triage_issue_ids:
-        return plan
+        return triage_scoped_plan(plan)
     active = _active_cluster_names(plan, triage_issue_ids)
     return {
         **plan,

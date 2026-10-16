@@ -7,15 +7,15 @@ from collections.abc import Mapping
 from typing import Any
 
 from desloppify.base.discovery.file_paths import matches_exclusion
-from desloppify.engine.policy.zones import should_skip_issue
 from desloppify.engine._state.filtering import (
     issue_suppression_fingerprint,
     matched_ignore_pattern,
 )
 from desloppify.engine._state.issue_semantics import (
-    is_import_only_issue,
     is_assessment_request,
+    is_import_only_issue,
 )
+from desloppify.engine.policy.zones import should_skip_issue
 
 
 def find_suspect_detectors(
@@ -64,8 +64,8 @@ def _mark_scan_verified(
     *,
     note: str,
     attestation_text: str,
-) -> None:
-    """Record scan corroboration without changing the manual disposition."""
+) -> bool:
+    """Refresh corroboration and return whether it adds new absence evidence."""
     issue["suppressed"] = False
     issue["suppressed_at"] = None
     issue["suppression_pattern"] = None
@@ -74,9 +74,14 @@ def _mark_scan_verified(
     if not isinstance(existing, dict):
         existing = {}
         issue["resolution_attestation"] = existing
+    new_evidence = (
+        not existing.get("scan_verified")
+        or existing.get("scan_verification_text") != attestation_text
+    )
     existing["scan_verified"] = True
     existing["scan_verified_at"] = now
     existing["scan_verification_text"] = attestation_text
+    return new_evidence
 
 
 def verify_disappeared(
@@ -123,6 +128,15 @@ def verify_disappeared(
         if previous.get("detector", "unknown") in suspect_detectors:
             continue
 
+        # Review imports only run review/concern detectors and cannot
+        # corroborate manually resolved mechanical findings.
+        if (
+            previous_status != "open"
+            and confirmed_detectors is not None
+            and previous.get("detector", "unknown") not in confirmed_detectors
+        ):
+            continue
+
         if scan_path and scan_path != ".":
             prefix = scan_path.rstrip("/") + "/"
             if (
@@ -131,14 +145,14 @@ def verify_disappeared(
             ):
                 if previous_status != "open":
                     scope_note = f"Still absent in current scan scope ({scan_path})"
-                    _mark_scan_verified(
+                    if _mark_scan_verified(
                         previous,
                         now,
                         note=scope_note,
                         attestation_text=scope_note,
-                    )
-                    resolved_detectors.add(previous.get("detector", "unknown"))
-                    resolved_out_of_scope += 1
+                    ):
+                        resolved_detectors.add(previous.get("detector", "unknown"))
+                        resolved_out_of_scope += 1
                 continue
 
         if exclude and any(matches_exclusion(previous["file"], ex) for ex in exclude):
@@ -185,14 +199,14 @@ def verify_disappeared(
             if previous_status == "wontfix"
             else "Still absent from scan after manual resolution"
         )
-        _mark_scan_verified(
+        if _mark_scan_verified(
             previous,
             now,
             note=verification_note,
             attestation_text="Absent from detector output in latest scan",
-        )
-        resolved_detectors.add(previous.get("detector", "unknown"))
-        resolved += 1
+        ):
+            resolved_detectors.add(previous.get("detector", "unknown"))
+            resolved += 1
 
     return resolved, skipped_other_lang, resolved_out_of_scope, resolved_detectors
 
@@ -205,6 +219,7 @@ def upsert_issues(
     *,
     lang: str | None,
     ignore_metadata: Mapping[str, Any] | None = None,
+    canonical_false_positive_ids: frozenset[str] = frozenset(),
 ) -> tuple[set[str], int, int, dict[str, int], int, set[str]]:
     """Insert new issues and update existing ones.
 
@@ -271,6 +286,13 @@ def upsert_issues(
         previous["suppressed_at"] = None
         previous["suppression_pattern"] = None
 
+        # A reappearing accepted finding ends its corroborated absence even
+        # when both scans share the same timestamp second.
+        if previous["status"] == "wontfix":
+            attestation = previous.get("resolution_attestation")
+            if isinstance(attestation, dict):
+                attestation["scan_verified"] = False
+
         if previous["status"] in ("fixed", "auto_resolved", "false_positive"):
             # Review-request issues are condition-based. When just
             # completed by an agent import, skip reopening to avoid a
@@ -293,7 +315,13 @@ def upsert_issues(
                 ),
             )
             reopened_count += 1
-            changed_detectors.add(detector)
+            # Keep raw reopen semantics, while excluding only a same-ID
+            # false positive that canonical plan policy will restore.
+            if (
+                previous_status != "false_positive"
+                or issue_id not in canonical_false_positive_ids
+            ):
+                changed_detectors.add(detector)
 
     return current_ids, new_count, reopened_count, by_detector, ignored_count, changed_detectors
 

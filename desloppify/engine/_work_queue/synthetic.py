@@ -6,11 +6,23 @@ subjective dimension items, and subjective score lookups.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from desloppify.engine.plan_triage import TRIAGE_STAGE_SPECS
+from desloppify.engine._plan.constants import (
+    confirmed_triage_stage_names,
+    recorded_unconfirmed_triage_stage_names,
+)
+from desloppify.engine._plan.refresh_lifecycle import (
+    current_lifecycle_phase,
+    subjective_review_completed_for_scan,
+)
+from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._state.issue_semantics import (
+    is_review_work_item,
+    is_triage_finding,
+)
 from desloppify.engine._state.schema import StateModel
 from desloppify.engine._work_queue.helpers import (
     detail_dict,
@@ -25,19 +37,11 @@ from desloppify.engine._work_queue.synthetic_workflow import (
     build_score_checkpoint_item,
 )
 from desloppify.engine._work_queue.types import WorkQueueItem
-from desloppify.engine._plan.constants import (
-    confirmed_triage_stage_names,
-    recorded_unconfirmed_triage_stage_names,
-)
-from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
-from desloppify.engine._plan.refresh_lifecycle import (
-    current_lifecycle_phase,
-    subjective_review_completed_for_scan,
-)
 from desloppify.engine.plan_triage import (
     TRIAGE_IDS,
     TRIAGE_STAGE_DEPENDENCIES,
     TRIAGE_STAGE_LABELS,
+    TRIAGE_STAGE_SPECS,
     triage_manual_stage_command,
     triage_run_stages_command,
     triage_runner_commands,
@@ -270,6 +274,26 @@ def build_subjective_items(
         assessed_at = str(payload.get("assessed_at", "")).strip()
         if assessed_at == "":
             return False
+        if refresh_reason == "review_issue_fixed":
+            # A later fix invalidates the assessment independently of its import.
+            # Suppress only when trusted review demonstrably covers that fix.
+            try:
+                assessed_time, imported_time, stale_time = (
+                    datetime.fromisoformat(timestamp)
+                    for timestamp in (
+                        assessed_at,
+                        latest_trusted_audit_ts,
+                        str(payload.get("stale_since", "")).strip(),
+                    )
+                )
+            except ValueError:
+                return False
+            if any(
+                timestamp.utcoffset() is None
+                for timestamp in (assessed_time, imported_time, stale_time)
+            ):
+                return False
+            return stale_time < assessed_time and assessed_time >= imported_time
         return assessed_at >= latest_trusted_audit_ts
 
     def _prepare_command(

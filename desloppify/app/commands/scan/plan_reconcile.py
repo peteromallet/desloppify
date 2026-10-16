@@ -3,36 +3,40 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from desloppify import state as state_mod
+from desloppify.app.commands.helpers.transition_messages import emit_transition_message
 from desloppify.app.commands.plan.triage.completion_flow import (
     count_log_activity_since,
 )
+from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
 from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
-from desloppify.app.commands.helpers.transition_messages import emit_transition_message
-from desloppify.base.config import target_strict_score_from_config
 from desloppify.engine._plan.constants import (
     WORKFLOW_COMMUNICATE_SCORE_ID,
     is_synthetic_id,
 )
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.persistence import load_plan, save_plan
-from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan
 from desloppify.engine._plan.refresh_lifecycle import (
     carry_forward_subjective_review,
     current_lifecycle_phase,
     mark_postflight_scan_completed,
+)
+from desloppify.engine._plan.scan_issue_reconcile import (
+    active_false_positive_skip_ids,
+    reconcile_plan_after_scan,
 )
 from desloppify.engine._plan.sync import (
     ReconcileResult,
     live_planned_queue_empty,
     reconcile_plan,
 )
-from desloppify.engine._plan.sync.dimensions import current_unscored_ids
 from desloppify.engine._plan.sync.context import is_mid_cycle
+from desloppify.engine._plan.sync.dimensions import current_unscored_ids
 from desloppify.engine._plan.sync.workflow import (
     clear_create_plan_sentinel,
     clear_score_communicated_sentinel,
@@ -49,6 +53,18 @@ from desloppify.engine._state.progression import (
 from desloppify.engine.work_queue import build_deferred_disposition_item
 
 logger = logging.getLogger(__name__)
+
+
+def load_scan_false_positive_skip_ids(state_path: Path | None) -> frozenset[str]:
+    """Read canonical false-positive dispositions for this exact scan state."""
+    if state_path is None:
+        return frozenset()
+    try:
+        plan = load_plan(state_path.parent / "plan.json")
+    except PLAN_LOAD_EXCEPTIONS as exc:
+        logger.warning("Scan skip dispositions unavailable (plan load failed): %s", exc)
+        return frozenset()
+    return active_false_positive_skip_ids(plan)
 
 
 def _reset_cycle_for_force_rescan(plan: dict[str, object]) -> bool:
@@ -172,7 +188,9 @@ def _has_objective_cycle(
 ) -> bool | None:
     """Return True when objective queue work exists and a cycle baseline should freeze."""
     try:
-        from desloppify.app.commands.helpers.queue_progress import plan_aware_queue_breakdown
+        from desloppify.app.commands.helpers.queue_progress import (
+            plan_aware_queue_breakdown,
+        )
 
         breakdown = plan_aware_queue_breakdown(state, plan)
     except PLAN_LOAD_EXCEPTIONS as exc:

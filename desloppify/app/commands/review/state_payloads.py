@@ -12,6 +12,7 @@ from desloppify.engine._state.schema_types_review import (
 class SubjectiveAssessmentPayload(TypedDict, total=False):
     score: float
     source: str
+    assessment_import_id: str
     assessed_at: str
     needs_review_refresh: bool
     stale_since: str

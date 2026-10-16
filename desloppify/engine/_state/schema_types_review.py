@@ -28,6 +28,7 @@ class SubjectiveAssessment(TypedDict, total=False):
 
     score: float
     source: str
+    assessment_import_id: str
     assessed_at: str
     reset_by: str
     placeholder: bool
@@ -58,6 +59,8 @@ class AssessmentImportAuditEntry(TypedDict, total=False):
     """Typed record for review assessment import events."""
 
     timestamp: str
+    assessment_import_id: str
+    reconciled_scan_count: int
     mode: str
     trusted: bool
     reason: str

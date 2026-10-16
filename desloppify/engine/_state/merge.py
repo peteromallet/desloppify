@@ -10,7 +10,8 @@ __all__ = [
     "merge_scan",
 ]
 
-from desloppify.base.registry import DETECTORS
+from desloppify.base.registry import DETECTORS, get_detector_meta
+from desloppify.engine._state import _recompute_stats
 from desloppify.engine._state.issue_semantics import ensure_work_item_semantics
 from desloppify.engine._state.merge_history import (
     _append_scan_history,
@@ -20,9 +21,9 @@ from desloppify.engine._state.merge_history import (
     _record_scan_metadata,
 )
 from desloppify.engine._state.merge_issues import (
-    verify_disappeared,
     find_suspect_detectors,
     upsert_issues,
+    verify_disappeared,
 )
 from desloppify.engine._state.schema import (
     ScanDiff,
@@ -31,11 +32,6 @@ from desloppify.engine._state.schema import (
     utc_now,
     validate_state_invariants,
 )
-
-
-from desloppify.engine._state import _recompute_stats
-
-from desloppify.base.registry import get_detector_meta
 
 
 def _latest_trusted_assessment_import_timestamp(state: StateModel) -> str:
@@ -56,6 +52,7 @@ def _preserve_fresh_assessment_on_reconcile(
     *,
     previous_last_scan: str,
     latest_trusted_import_ts: str,
+    state: StateModel | None = None,
 ) -> bool:
     """Suppress immediate re-staling after a fresh trusted review import.
 
@@ -64,6 +61,22 @@ def _preserve_fresh_assessment_on_reconcile(
     assessment was imported after the previous scan, we should not immediately
     invalidate it based on that older scan delta.
     """
+    import_id = payload.get("assessment_import_id")
+    if import_id:
+        # Imports perform their own merge and timestamp assessments before
+        # appending the audit. Bind the first follow-up scan to that exact
+        # import instead of depending on clock ordering between those writes.
+        for entry in reversed((state or {}).get("assessment_import_audit", []) or []):
+            if not isinstance(entry, dict) or entry.get("assessment_import_id") != import_id:
+                continue
+            scan_count = entry.get("reconciled_scan_count")
+            return (
+                entry.get("mode") in {"trusted_internal", "attested_external"}
+                and isinstance(scan_count, int)
+                and not isinstance(scan_count, bool)
+                and (state or {}).get("scan_count") == scan_count + 1
+            )
+        return False
     if previous_last_scan == "" or latest_trusted_import_ts == "":
         return False
     if latest_trusted_import_ts <= previous_last_scan:
@@ -125,6 +138,7 @@ def _mark_stale_on_mechanical_change(
             payload,
             previous_last_scan=previous_last_scan,
             latest_trusted_import_ts=latest_trusted_import_ts,
+            state=state,
         ):
             continue
         payload["needs_review_refresh"] = True
@@ -139,6 +153,7 @@ class MergeScanOptions:
     lang: str | None = None
     scan_path: str | None = None
     force_resolve: bool = False
+    canonical_false_positive_ids: frozenset[str] = frozenset()
     exclude: tuple[str, ...] = ()
     potentials: dict[str, int] | None = None
     merge_potentials: bool = False
@@ -199,6 +214,7 @@ def merge_scan(
             now,
             lang=resolved_options.lang,
             ignore_metadata=ignore_metadata,
+            canonical_false_positive_ids=resolved_options.canonical_false_positive_ids,
         )
     )
 

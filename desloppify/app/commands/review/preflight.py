@@ -1,8 +1,8 @@
 """Preflight guards for subjective review reruns.
 
 Blocks reruns while backlog remains (objective issues and/or subjective queue
-work), unless ``--force-review-rerun`` is set. Also clears stale subjective
-markers before a new cycle.
+work), unless ``--force-review-rerun`` is set. Queue context uses the command
+config. Also clears stale subjective markers before a new cycle.
 """
 
 from __future__ import annotations
@@ -124,8 +124,9 @@ def _objective_and_subjective_backlog(
     state: StateModel,
     *,
     blocking_dims: list[str],
+    config: dict | None = None,
 ) -> tuple[int, int]:
-    ctx = queue_context(state)
+    ctx = queue_context(state, config=config)
     if not blocking_dims:
         return ctx.snapshot.objective_execution_count, 0
 
@@ -215,6 +216,7 @@ def review_rerun_preflight(
     *,
     state_file=None,
     save_fn=save_state,
+    config: dict | None = None,
 ) -> None:
     """Single entry point: gate check -> clear stale -> save.
 
@@ -251,6 +253,7 @@ def review_rerun_preflight(
             objective_total, subjective_total = _objective_and_subjective_backlog(
                 state,
                 blocking_dims=blocking_dims,
+                config=config,
             )
             if objective_total > 0 or subjective_total > 0:
                 _print_backlog_blocked_message(

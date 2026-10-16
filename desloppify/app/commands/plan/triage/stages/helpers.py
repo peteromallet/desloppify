@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from desloppify.base.output.terminal import colorize
+from desloppify.engine._plan.cluster_semantics import (
+    EXECUTION_STATUS_DONE,
+    infer_cluster_execution_status,
+)
 from desloppify.engine._plan.constants import is_synthetic_id
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._state.issue_semantics import (
+    is_review_work_item,
+)
 from desloppify.engine.plan_triage import TRIAGE_IDS
 
 from ..review_coverage import (
@@ -63,7 +69,10 @@ def active_triage_issue_scope(
     """
     frozen = active_triage_issue_ids(plan, state)
     if not frozen:
-        return None
+        raw_scope = (plan.get("epic_triage_meta", {}) or {}).get(
+            "active_triage_issue_ids"
+        )
+        return set() if isinstance(raw_scope, list) and not raw_scope else None
     if state is None:
         return frozen
     return live_active_triage_issue_ids(plan, state)
@@ -79,10 +88,18 @@ def scoped_manual_clusters_with_issues(
     names = manual_clusters_with_issues(plan)
     if scope is None:
         return names
+    raw_scope = (plan.get("epic_triage_meta", {}) or {}).get("active_triage_issue_ids")
+    if not scope and isinstance(raw_scope, list) and not raw_scope:
+        # A workflow-only triage still validates its current manual work,
+        # without retroactively enriching completed historical clusters.
+        return [
+            name
+            for name in names
+            if infer_cluster_execution_status(clusters.get(name, {}))
+            != EXECUTION_STATUS_DONE
+        ]
     return [
-        name
-        for name in names
-        if set(cluster_issue_ids(clusters.get(name, {}))) & scope
+        name for name in names if set(cluster_issue_ids(clusters.get(name, {}))) & scope
     ]
 
 
@@ -159,24 +176,28 @@ def unclustered_review_issues(plan: dict, state: dict | None = None) -> list[str
         # defects are covered by cluster-level backlog decisions, not
         # per-item ledger entries.
         review_ids = [
-            fid for fid, finding in (state.get("work_items") or state.get("issues", {})).items()
-            if finding.get("status") == "open"
-            and is_review_work_item(finding)
+            fid
+            for fid, finding in (
+                state.get("work_items") or state.get("issues", {})
+            ).items()
+            if finding.get("status") == "open" and is_review_work_item(finding)
         ]
-        frozen_ids = (plan.get("epic_triage_meta", {}) or {}).get("active_triage_issue_ids")
+        frozen_ids = (plan.get("epic_triage_meta", {}) or {}).get(
+            "active_triage_issue_ids"
+        )
         if isinstance(frozen_ids, list) and frozen_ids:
             frozen_id_set = live_active_triage_issue_ids(plan, state)
             review_ids = [fid for fid in review_ids if fid in frozen_id_set]
     else:
         review_ids = [
-            fid for fid in plan.get("queue_order", [])
+            fid
+            for fid in plan.get("queue_order", [])
             if not is_synthetic_id(fid)
             and (fid.startswith("review::") or fid.startswith("concerns::"))
         ]
 
     return [
-        fid for fid in review_ids
-        if fid not in clustered_ids and fid not in skipped_ids
+        fid for fid in review_ids if fid not in clustered_ids and fid not in skipped_ids
     ]
 
 

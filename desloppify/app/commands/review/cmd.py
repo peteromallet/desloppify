@@ -6,8 +6,8 @@ import argparse
 import sys
 from dataclasses import dataclass
 
-from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.command_runtime import command_runtime
+from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.state import require_scan_metrics
 from desloppify.base.exception_sets import CommandError
 
@@ -135,7 +135,9 @@ def _run_review_mode(
         do_merge(args)
         return
     if opts.run_batches:
-        review_rerun_preflight(state, args, state_file=state_file)
+        review_rerun_preflight(
+            state, args, state_file=state_file, config=runtime.config
+        )
         do_run_batches(
             args,
             state,
@@ -158,7 +160,9 @@ def _run_review_mode(
         )
         return
     if opts.external_start:
-        review_rerun_preflight(state, args, state_file=state_file)
+        review_rerun_preflight(
+            state, args, state_file=state_file, config=runtime.config
+        )
         do_external_start(
             args,
             state,
@@ -209,7 +213,7 @@ def _run_review_mode(
             dry_run=opts.dry_run,
         )
         return
-    review_rerun_preflight(state, args, state_file=state_file)
+    review_rerun_preflight(state, args, state_file=state_file, config=runtime.config)
     do_prepare(args, state, lang, state_file, config=runtime.config)
 
 

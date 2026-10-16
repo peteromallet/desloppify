@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from desloppify.engine._plan.annotations import get_issue_note
+from desloppify.engine._plan.cluster_semantics import (
+    EXECUTION_STATUS_DONE,
+    cluster_is_active,
+)
 from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
-from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE, cluster_is_active
 from desloppify.engine._plan.operations.lifecycle import clear_focus_if_cluster_empty
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.operations.skip import resurface_stale_skips
@@ -349,6 +352,22 @@ def _reconcile_epic_clusters(
         result.changes += 1
 
 
+def active_false_positive_skip_ids(plan: PlanModel) -> frozenset[str]:
+    """Return exact skips that scan reconciliation will restore as false positives.
+
+    Only temporary skips expire via review_after. Explicit false-positive
+    skips remain active until removed or superseded.
+    """
+    superseded = plan.get("superseded", {})
+    return frozenset(
+        issue_id
+        for issue_id, entry in plan.get("skipped", {}).items()
+        if issue_id not in superseded
+        and isinstance(entry, dict)
+        and entry.get("kind") == "false_positive"
+    )
+
+
 def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
     """Sync state status for skipped issues that are still 'open'.
 
@@ -456,4 +475,5 @@ def reconcile_plan_after_scan(
 __all__ = [
     "ReconcileResult",
     "reconcile_plan_after_scan",
+    "active_false_positive_skip_ids",
 ]

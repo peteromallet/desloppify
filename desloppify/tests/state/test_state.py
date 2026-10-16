@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-
 from desloppify.engine._state import filtering as state_query_mod
 from desloppify.engine._state.issue_semantics import MECHANICAL_DEFECT, SCAN_ORIGIN
 from desloppify.engine._state.schema import CURRENT_VERSION
@@ -665,7 +664,7 @@ class TestMissingIssuesResolved:
         }
         st["issues"]["det::a.py::fn"] = old
 
-        diff = merge_scan(st, [], MergeScanOptions(lang="python", force_resolve=True))
+        diff = merge_scan(st, [], MergeScanOptions(lang="python", force_resolve=True, potentials={"det": 1}))
         assert diff["auto_resolved"] == 1
         assert st["issues"]["det::a.py::fn"]["status"] == "fixed"
         assert st["issues"]["det::a.py::fn"]["resolution_attestation"]["scan_verified"] is True

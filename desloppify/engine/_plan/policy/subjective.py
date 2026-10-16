@@ -12,7 +12,10 @@ from dataclasses import dataclass
 from desloppify.base.config import DEFAULT_TARGET_STRICT_SCORE
 from desloppify.base.enums import Status
 from desloppify.base.registry import DETECTORS
-from desloppify.engine._plan.schema import executable_objective_ids as _executable_objective_ids
+from desloppify.engine._plan.schema import (
+    executable_objective_ids as _executable_objective_ids,
+)
+from desloppify.engine._plan.schema import live_planned_queue_ids
 from desloppify.engine._state.filtering import issue_in_scan_scope
 from desloppify.engine._state.issue_semantics import counts_toward_objective_backlog
 from desloppify.engine._state.schema import StateModel
@@ -110,10 +113,12 @@ def compute_subjective_visibility(
 
     issues = (state.get("work_items") or state.get("issues", {}))
     skipped_ids = set((plan or {}).get("skipped", {}).keys())
+    forced_ids = live_planned_queue_ids(plan)
 
     # Count open, non-suppressed, objective issues.
     # Evidence-only issues (below standalone confidence threshold) are
-    # excluded — they still affect scores but are not actionable queue items.
+    # excluded unless explicitly queued, matching queue ranking. They still
+    # affect scores when they are not actionable queue items.
     # Issues outside scan_path and plan-skipped issues are also excluded
     # so the policy matches what the user actually sees in the queue.
     objective_issue_ids = [
@@ -122,7 +127,7 @@ def compute_subjective_visibility(
         if issue.get("status") == Status.OPEN
         and counts_toward_objective_backlog(issue)
         and not issue.get("suppressed")
-        and not _is_evidence_only(issue)
+        and (issue_id in forced_ids or not _is_evidence_only(issue))
         and issue_in_scan_scope(str(issue.get("file", "")), resolved_scan_path)
         and issue_id not in skipped_ids
     ]

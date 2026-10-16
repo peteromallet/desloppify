@@ -233,10 +233,11 @@ def test_reconcile_review_import_prunes_stale_triage_recovery_metadata(
     assert plan["epic_triage_meta"]["undispositioned_issue_count"] == 1
 
 
-def test_reconcile_module_exports_scan_reconcile_only() -> None:
+def test_reconcile_module_exports_scan_reconcile_api() -> None:
     assert scan_reconcile_mod.__all__ == [
         "ReconcileResult",
         "reconcile_plan_after_scan",
+        "active_false_positive_skip_ids",
     ]
     assert not hasattr(scan_reconcile_mod, "sync_plan_after_review_import")
     assert not hasattr(scan_reconcile_mod, "ReviewImportSyncResult")
