@@ -216,6 +216,17 @@ JS_SPEC = TreeSitterLangSpec(
     import_query="""
         (import_statement
             source: (string (string_fragment) @path)) @import
+        (export_statement
+            source: (string (string_fragment) @path)) @import
+        ((call_expression
+            function: (identifier) @function
+            arguments: (arguments
+                (string (string_fragment) @path))) @import
+            (#eq? @function "require"))
+        (call_expression
+            function: (import)
+            arguments: (arguments
+                (string (string_fragment) @path))) @import
     """,
     resolve_import=resolve_js_import,
     class_query="""
