@@ -19,6 +19,21 @@ _USING_STATIC_RE = re.compile(
 _NAMESPACE_RE = re.compile(
     r"(?m)^\s*namespace\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:;|\{)"
 )
+_NON_CODE_RE = re.compile(
+    r'//[^\n]*|/\*[\s\S]*?\*/'
+    r'|(?P<raw_quotes>"{3,})[\s\S]*?(?P=raw_quotes)'
+    r'|@"(?:""|[^"])*"'
+    r'|"(?:\\.|[^"\\])*"'
+    r"|'(?:\\.|[^'\\])*'"
+)
+_TYPE_DECLARATION_RE = re.compile(
+    r"\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+"
+    r"@?([A-Za-z_]\w*)"
+)
+_EXTENSION_METHOD_RE = re.compile(
+    r"\b([A-Za-z_]\w*)\s*(?:<[^{}();]+>)?\s*\(\s*this\b"
+)
+_IDENTIFIER_RE = re.compile(r"\b[A-Za-z_]\w*\b")
 _MAIN_METHOD_RE = re.compile(r"(?m)\bstatic\s+(?:async\s+)?(?:void|int)\s+Main\s*\(")
 _MAUI_APP_FACTORY_RE = re.compile(r"(?m)\bCreateMauiApp\s*\(")
 _PLATFORM_BASE_RE = re.compile(
@@ -85,6 +100,28 @@ def parse_file_metadata(filepath: str) -> tuple[str | None, set[str], bool]:
     usings.update(_USING_ALIAS_RE.findall(content))
     usings.update(_USING_STATIC_RE.findall(content))
     return namespace, usings, is_entrypoint_file(abs_path, content)
+
+
+def parse_file_symbols(filepath: str) -> tuple[set[str], set[str], set[str]]:
+    """Return declared types, reference identifiers and extension method names.
+
+    Namespace directives make names available, but do not themselves reference
+    types with the same name as a namespace segment. This remains lexical rather
+    than full symbol binding.
+    """
+    try:
+        content = Path(resolve_path(filepath)).read_text()
+    except (OSError, UnicodeDecodeError):
+        return set(), set(), set()
+    code = _NON_CODE_RE.sub(" ", content)
+    references = _NAMESPACE_RE.sub(" ", code)
+    for pattern in (_USING_RE, _USING_ALIAS_RE, _USING_STATIC_RE):
+        references = pattern.sub(" ", references)
+    return (
+        set(_TYPE_DECLARATION_RE.findall(code)),
+        set(_IDENTIFIER_RE.findall(references)),
+        set(_EXTENSION_METHOD_RE.findall(code)),
+    )
 
 
 def expand_namespace_matches(

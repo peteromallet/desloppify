@@ -488,6 +488,46 @@ try {
 
 
 class TestUnreachableCode:
+    def test_csharp_yield_return_resumes(self, tmp_path):
+        from desloppify.languages._framework.treesitter.analysis.smells import (
+            detect_unreachable_code,
+        )
+        from desloppify.languages._framework.treesitter.specs.compiled import CSHARP_SPEC
+
+        f = tmp_path / "Iterator.cs"
+        f.write_text("""class Iterator {
+    System.Collections.Generic.IEnumerable<int> Values() {
+        yield return 1;
+        foreach (var value in new[] { 2, 3 }) {
+            yield return value;
+            System.Console.WriteLine(value);
+        }
+        yield return 4;
+    }
+}
+""")
+
+        assert detect_unreachable_code([str(f)], CSHARP_SPEC) == []
+
+    def test_csharp_yield_break_terminates(self, tmp_path):
+        from desloppify.languages._framework.treesitter.analysis.smells import (
+            detect_unreachable_code,
+        )
+        from desloppify.languages._framework.treesitter.specs.compiled import CSHARP_SPEC
+
+        f = tmp_path / "Iterator.cs"
+        f.write_text("""class Iterator {
+    System.Collections.Generic.IEnumerable<int> Values() {
+        yield break;
+        yield return 1;
+    }
+}
+""")
+
+        assert detect_unreachable_code([str(f)], CSHARP_SPEC) == [
+            {"file": str(f), "line": 4, "after": "yield_statement"},
+        ]
+
     def test_detect_after_return(self, tmp_path):
         from desloppify.languages._framework.treesitter.analysis.smells import (
             detect_unreachable_code,

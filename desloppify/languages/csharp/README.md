@@ -241,7 +241,9 @@ How it works at a high level:
 3. Merge additional project references from `obj/project.assets.json` when available
 4. Map each source file to its nearest project file
 5. Build namespace to file index
-6. For each file, map `using` namespaces to possible target files
+6. For each file, map `using` namespaces to possible target files, resolving static/type-alias imports to their declared type where available
+   - Ordinary namespace imports require a referenced declared type or extension method; an unused sibling file does not become a dependency or gain direct test coverage
+   - Add same-namespace edges for code identifiers matching declared symbols, respecting project references and ignoring comments/string literals
 7. Restrict cross-project edges using project reference relationships
 8. Mark detected bootstrap/entrypoint files as graph roots (so they are not treated as orphaned)
 9. Return graph in shared detector format

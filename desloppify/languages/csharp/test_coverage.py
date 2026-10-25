@@ -5,8 +5,15 @@ from __future__ import annotations
 import os
 import re
 
+from desloppify.languages.csharp.detectors.deps_support_metadata import (
+    parse_file_metadata,
+    parse_file_symbols,
+)
+
+ALLOW_MODULE_NAME_FALLBACK = False
+
 USING_RE = re.compile(
-    r"^\s*using\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;", re.MULTILINE
+    r"^\s*(?:global\s+)?using\s+static\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;", re.MULTILINE
 )
 
 ASSERT_PATTERNS = [
@@ -44,24 +51,18 @@ def has_testable_logic(filepath: str, content: str) -> bool:
 def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
-    """Best-effort namespace-to-file resolution for direct using directives."""
+    """Resolve an explicit static using to the file declaring that qualified type."""
+    del test_path
     spec = spec.strip()
     if not spec:
         return None
 
-    leaf = spec.split(".")[-1]
-    if not leaf:
-        return None
-
-    suffix = f"/{leaf}.cs"
     for candidate in production_files:
-        normalized = candidate.replace("\\", "/")
-        if normalized.endswith(suffix) or normalized.endswith(f"/{leaf}.csx"):
+        namespace, _usings, _is_entrypoint = parse_file_metadata(candidate)
+        declared_types, _identifiers, _extensions = parse_file_symbols(candidate)
+        prefix = f"{namespace}." if namespace else ""
+        if any(spec == prefix + name for name in declared_types):
             return candidate
-        if test_path:
-            sibling = os.path.join(os.path.dirname(test_path), f"{leaf}.cs")
-            if sibling.replace("\\", "/") == normalized:
-                return candidate
     return None
 
 
@@ -71,7 +72,11 @@ def resolve_barrel_reexports(_filepath: str, _production_files: set[str]) -> set
 
 
 def parse_test_import_specs(content: str) -> list[str]:
-    """Extract using directives from C# test content."""
+    """Extract explicit type imports for source-based coverage supplementation.
+
+    Ordinary namespace imports and aliases require the dependency graph's symbol
+    resolution. A namespace leaf matching a filename does not establish coverage.
+    """
     return [m.group(1) for m in USING_RE.finditer(content)]
 
 

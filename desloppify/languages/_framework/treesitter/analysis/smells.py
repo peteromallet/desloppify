@@ -125,7 +125,6 @@ _TERMINATOR_TYPES = frozenset({
     "continue_statement", "continue",
     "throw_statement", "throw_expression",
     "raise_statement",
-    "yield_statement",  # Not strictly terminating, but often last in generators
 })
 
 # Node types whose children form a statement sequence.
@@ -199,7 +198,12 @@ def _check_sequence_for_unreachable(block_node, filepath: str, entries: list[dic
             # Only flag the first unreachable node per terminator.
             saw_terminator = False
 
-        if child.type in _TERMINATOR_TYPES:
+        # C# yield return suspends an iterator and resumes at the next statement;
+        # only yield break terminates it. Other languages' yields also resume.
+        is_yield_break = child.type == "yield_statement" and any(
+            token.type == "break" for token in child.children
+        )
+        if child.type in _TERMINATOR_TYPES or is_yield_break:
             saw_terminator = True
             terminator_type = child.type
 
