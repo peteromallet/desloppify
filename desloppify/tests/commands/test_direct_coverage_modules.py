@@ -232,7 +232,7 @@ def test_work_queue_split_modules_have_direct_behavior(monkeypatch):
     opts = QueueBuildOptions(
         status="open",
         subjective_threshold="oops",
-        context=SimpleNamespace(plan={"queue": []}),
+        context=SimpleNamespace(plan={"queue": []}, target_strict="oops"),
     )
     plan, scan_path, status, threshold = work_queue_inputs_mod.resolve_queue_inputs(
         opts,

@@ -28,7 +28,8 @@ def resolve_queue_inputs(
         raise ValueError(f"Unsupported status filter: {status}")
 
     try:
-        threshold = float(opts.subjective_threshold)
+        # The shared context owns the resolved target, just as it owns the plan.
+        threshold = float(ctx.target_strict if ctx is not None else opts.subjective_threshold)
     except (TypeError, ValueError):
         threshold = 100.0
     threshold = max(0.0, min(100.0, threshold))
