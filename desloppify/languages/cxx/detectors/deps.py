@@ -29,16 +29,23 @@ def _init_graph(files: list[str]) -> dict[str, dict[str, Any]]:
 
 def _production_file_index(files: list[str]) -> dict[str, str]:
     return {
-        os.path.normcase(_normalize_graph_path(filepath)): _normalize_graph_path(filepath)
+        os.path.normcase(_normalize_graph_path(filepath)): _normalize_graph_path(
+            filepath
+        )
         for filepath in files
     }
 
 
 def _coerce_source_files(path: Path) -> list[str]:
-    return [_normalize_graph_path(resolve_path(filepath)) for filepath in find_cxx_files(path)]
+    return [
+        _normalize_graph_path(resolve_path(filepath))
+        for filepath in find_cxx_files(path)
+    ]
 
 
-def _match_production_file(candidate: Path | str, file_index: dict[str, str]) -> str | None:
+def _match_production_file(
+    candidate: Path | str, file_index: dict[str, str]
+) -> str | None:
     normalized = os.path.normcase(_normalize_graph_path(candidate))
     return file_index.get(normalized)
 
@@ -54,15 +61,49 @@ def _read_include_specs(filepath: str) -> list[tuple[str, bool]]:
     ]
 
 
+def _expand_response_tokens(
+    tokens: list[str], directory: Path, active: frozenset[Path] = frozenset()
+) -> list[str]:
+    """Read compiler response files as arguments, never as shell commands."""
+    expanded: list[str] = []
+    for token in tokens:
+        if not token.startswith("@") or len(token) == 1:
+            expanded.append(token)
+            continue
+        response = Path(token[1:])
+        if not response.is_absolute():
+            response = directory / response
+        response = response.resolve()
+        if response in active or len(active) >= 16:
+            continue
+        try:
+            nested = shlex.split(
+                response.read_text(encoding="utf-8-sig"), posix=os.name != "nt"
+            )
+        except (OSError, UnicodeError, ValueError):
+            # Preserve unresolved arguments without inventing include paths.
+            expanded.append(token)
+            continue
+        expanded.extend(_expand_response_tokens(nested, directory, active | {response}))
+    return expanded
+
+
 def _parse_command_tokens(entry: dict[str, Any]) -> list[str]:
     arguments = entry.get("arguments")
     if isinstance(arguments, list):
-        return [str(token) for token in arguments]
-
-    command = entry.get("command")
-    if isinstance(command, str) and command.strip():
-        return shlex.split(command, posix=os.name != "nt")
-    return []
+        tokens = [str(token) for token in arguments]
+    else:
+        command = entry.get("command")
+        if not isinstance(command, str) or not command.strip():
+            return []
+        tokens = shlex.split(command, posix=os.name != "nt")
+    directory_value = entry.get("directory")
+    directory = (
+        Path(directory_value)
+        if isinstance(directory_value, str) and directory_value.strip()
+        else Path.cwd()
+    )
+    return _expand_response_tokens(tokens, directory.resolve())
 
 
 def _extract_include_dirs(tokens: list[str], directory: Path) -> list[Path]:
@@ -116,7 +157,9 @@ def _resolve_with_compile_commands(
     return _match_production_file(fallback, file_index)
 
 
-def _resolve_compile_command_source(entry: dict[str, Any], scan_root: Path) -> str | None:
+def _resolve_compile_command_source(
+    entry: dict[str, Any], scan_root: Path
+) -> str | None:
     file_value = entry.get("file")
     if not isinstance(file_value, str) or not file_value.strip():
         return None
@@ -147,6 +190,7 @@ def _build_from_compile_commands(
     if not isinstance(payload, list):
         return finalize_graph(graph)
 
+    visited_by_context: dict[tuple[Path, ...], set[str]] = {}
     for entry in payload:
         if not isinstance(entry, dict):
             continue
@@ -160,25 +204,36 @@ def _build_from_compile_commands(
             else path
         )
         include_dirs = _extract_include_dirs(_parse_command_tokens(entry), directory)
-        source_file = Path(source)
-        for include_spec, is_quoted in _read_include_specs(source):
-            resolved = _resolve_with_compile_commands(
-                include_spec,
-                is_quoted=is_quoted,
-                source_file=source_file,
-                scan_root=path,
-                include_dirs=include_dirs,
-                file_index=file_index,
-            )
-            if resolved is None or resolved == source:
+        pending = [source]
+        # Many translation units share include flags; process shared headers once per context.
+        visited = visited_by_context.setdefault(tuple(include_dirs), set())
+        while pending:
+            current = pending.pop()
+            if current in visited:
                 continue
-            graph[source]["imports"].add(resolved)
-            graph[resolved]["importers"].add(source)
+            visited.add(current)
+            for include_spec, is_quoted in _read_include_specs(current):
+                resolved = _resolve_with_compile_commands(
+                    include_spec,
+                    is_quoted=is_quoted,
+                    source_file=Path(current),
+                    scan_root=path,
+                    include_dirs=include_dirs,
+                    file_index=file_index,
+                )
+                if resolved is None or resolved == current:
+                    continue
+                graph[current]["imports"].add(resolved)
+                graph[resolved]["importers"].add(current)
+                if resolved not in visited:
+                    pending.append(resolved)
 
     return finalize_graph(graph)
 
 
-def _build_from_local_includes(path: Path, files: list[str]) -> dict[str, dict[str, Any]]:
+def _build_from_local_includes(
+    path: Path, files: list[str]
+) -> dict[str, dict[str, Any]]:
     graph = _init_graph(files)
     file_index = _production_file_index(files)
     scan_root = _normalize_graph_path(path)
