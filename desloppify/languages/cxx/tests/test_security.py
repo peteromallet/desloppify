@@ -611,3 +611,35 @@ def test_detect_cxx_security_ignores_findings_outside_scoped_files(
 
     assert len(result.entries) == 1
     assert result.entries[0]["file"] == str(source.resolve())
+
+
+def test_missing_widget_include_is_not_an_unsafe_gets_call(tmp_path):
+    entry = {
+        "file": str(tmp_path / "controller.cpp"),
+        "line": 11,
+        "severity": "information",
+        "check_id": "missingInclude",
+        "message": 'Include file: "Widgets/Input/SVirtualJoystick.h" not found.',
+        "source": "cppcheck",
+    }
+    assert security_mod._normalize_tool_entry(entry) is None
+
+
+def test_unsafe_string_api_names_require_identifier_boundaries():
+    for api in security_mod._UNSAFE_C_STRING_APIS:
+        assert security_mod._normalize_kind("", f"Calling '{api}()' is unsafe") == "unsafe_c_string"
+        assert security_mod._normalize_kind(f"clang-analyzer-security.insecureAPI.{api}", "") == "unsafe_c_string"
+        assert security_mod._normalize_kind("", f"Include file: my_{api}_wrapper.h not found") is None
+
+
+def test_cppcheck_configuration_failure_keeps_regex_security_fallback(tmp_path, monkeypatch):
+    source = tmp_path / "unsafe.cpp"
+    source.write_text("void copy(char* a, const char* b) { strcpy(a,b); }\n")
+    monkeypatch.setattr(security_mod.shutil, "which", lambda name: "/usr/bin/cppcheck" if name == "cppcheck" else None)
+    monkeypatch.setattr(security_mod, "run_tool_result", lambda *_: ToolRunResult(entries=[{
+        "file": str(source), "line": 1, "severity": "error", "check_id": "unknownMacro",
+        "message": "Unknown macro requires configuration", "source": "cppcheck",
+    }], status="ok", returncode=0))
+    result = security_mod.detect_cxx_security([str(source)], None)
+    assert result.coverage.status == "reduced"
+    assert any(e["detail"]["kind"] == "unsafe_c_string" and e["detail"]["source"] == "regex" for e in result.entries)
