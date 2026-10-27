@@ -955,6 +955,15 @@ from desloppify.base.discovery.source import collect_exclude_dirs  # noqa: E402
 
 
 class TestCollectExcludeDirs:
+    def test_relative_scan_root_returns_absolute_exclusions(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions", return_value=(".cache",)
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert str(tmp_path / ".cache") in result
+        assert all(Path(path).is_absolute() for path in result)
+
     def test_returns_absolute_paths(self, tmp_path):
         with patch(
             "desloppify.base.discovery.source.get_exclusions", return_value=()
