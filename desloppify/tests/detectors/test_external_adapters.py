@@ -962,6 +962,22 @@ class TestCollectExcludeDirs:
             result = collect_exclude_dirs(tmp_path)
         assert all(p.startswith(str(tmp_path)) for p in result)
 
+    def test_relative_scan_root_returns_absolute_paths(self, tmp_path, monkeypatch):
+        """Relative scan roots must still produce absolute excludes.
+
+        Bandit receives an absolute target and only matches absolute exclude
+        globs. ``temp/*`` does not match ``/repo/temp/file.py``.
+        """
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions",
+            return_value=("temp",),
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert all(Path(p).is_absolute() for p in result)
+        assert str(tmp_path / "temp") in result
+        assert str(tmp_path / ".venv") in result
+
     def test_includes_default_non_glob_entries(self, tmp_path):
         with patch(
             "desloppify.base.discovery.source.get_exclusions", return_value=()
