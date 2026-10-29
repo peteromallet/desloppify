@@ -10,6 +10,7 @@ duplicating the phase construction logic.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,7 +27,27 @@ if TYPE_CHECKING:
 # ── Phase factories ────────────────────────────────────────
 
 
-def make_ast_smells_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
+def _group_files_by_spec(
+    file_list: list[str],
+    spec: TreeSitterLangSpec,
+    spec_for_file: Callable[[str], TreeSitterLangSpec] | None,
+) -> list[tuple[TreeSitterLangSpec, list[str]]]:
+    """Assign each discovered file to exactly one grammar/query specification."""
+    # Resolver callables can be unhashable, so group by spec identity rather
+    # than imposing a new hashability requirement on existing spec callers.
+    groups: dict[int, tuple[TreeSitterLangSpec, list[str]]] = {}
+    for filepath in file_list:
+        file_spec = spec_for_file(filepath) if spec_for_file else spec
+        group = groups.setdefault(id(file_spec), (file_spec, []))
+        group[1].append(filepath)
+    return list(groups.values())
+
+
+def make_ast_smells_phase(
+    spec: TreeSitterLangSpec,
+    *,
+    spec_for_file: Callable[[str], TreeSitterLangSpec] | None = None,
+) -> DetectorPhase:
     """Create an AST smells phase: empty catches + unreachable code."""
 
     def run(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], dict[str, int]]:
@@ -35,12 +56,18 @@ def make_ast_smells_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
             detect_unreachable_code,
         )
 
-        file_list = lang.file_finder(path)
+        groups = _group_files_by_spec(lang.file_finder(path), spec, spec_for_file)
         issues: list[Issue] = []
         potentials: dict[str, int] = {}
 
+        catch_entries: list[dict] = []
+        unreachable_entries: list[dict] = []
+        for file_spec, files in groups:
+            catch_entries.extend(detect_empty_catches(files, file_spec))
+            unreachable_entries.extend(detect_unreachable_code(files, file_spec))
+
         catches = normalize_smell_matches(
-            detect_empty_catches(file_list, spec),
+            catch_entries,
             content_key="type",
             default_content="catch",
         )
@@ -55,7 +82,7 @@ def make_ast_smells_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
             log(f"         empty catch blocks: {len(catches)}")
 
         unreachable = normalize_smell_matches(
-            detect_unreachable_code(file_list, spec),
+            unreachable_entries,
             content_key="after",
             default_content="return",
         )
@@ -74,7 +101,11 @@ def make_ast_smells_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
     return DetectorPhase("AST smells", run)
 
 
-def make_cohesion_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
+def make_cohesion_phase(
+    spec: TreeSitterLangSpec,
+    *,
+    spec_for_file: Callable[[str], TreeSitterLangSpec] | None = None,
+) -> DetectorPhase:
     """Create a responsibility cohesion phase."""
 
     def run(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], dict[str, int]]:
@@ -82,11 +113,14 @@ def make_cohesion_phase(spec: TreeSitterLangSpec) -> DetectorPhase:
             detect_responsibility_cohesion,
         )
 
-        file_list = lang.file_finder(path)
+        groups = _group_files_by_spec(lang.file_finder(path), spec, spec_for_file)
         issues: list[Issue] = []
         potentials: dict[str, int] = {}
 
-        entries, checked = detect_responsibility_cohesion(file_list, spec)
+        entries: list[dict] = []
+        for file_spec, files in groups:
+            group_entries, _checked = detect_responsibility_cohesion(files, file_spec)
+            entries.extend(group_entries)
         for e in entries:
             families = ", ".join(e["families"][:4])
             issues.append(make_issue(

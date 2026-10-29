@@ -2,6 +2,43 @@
 
 This document explains what the C/C++ plugin needs for a full tool-backed scan.
 
+## Native C and C++ AST analysis
+
+Without build metadata, the `cxx` plugin uses the C Tree-sitter grammar for
+`.c` files and the C++ grammar for C++ sources and headers. This matters even
+when both grammars accept a file: for example, a C callback named `throw` is a function call,
+whereas C++ interprets `throw(value)` as an exception statement.
+
+When `compile_commands.json` is present at the scan root, AST smells and
+cohesion use its source-file compilation language. Both `arguments` and `command`
+entries are supported. Relative `directory` paths are resolved from the database
+directory, and source paths from the command's `directory`. Missing or malformed
+metadata falls back to file extensions.
+
+Supported overrides include GCC/Clang `-x c`, `-x c++`, their joined forms,
+header/preprocessed equivalents and `-x none`; the language in force at the
+source argument is used. MSVC `/TC`, `/TP`, `/TcFILE` and `/TpFILE` (including
+separate filenames and clang-cl's dash forms) are supported. Recognized C++
+drivers (`c++`, `g++`, `clang++`, versioned/cross-prefixed variants, optionally
+behind `ccache`, `sccache` or `distcc`) and Clang `--driver-mode` inform defaults.
+`-std=` alone does not determine the input language.
+
+Headers, including `.h`, retain C++ parsing because they may be shared with C++
+translation units; compilation entries do not change that policy. Conflicting C
+and C++ configurations for a source retain the plugin's previous C++ behavior,
+with a warning. Findings for that file have low confidence and list both
+`compilation_languages` in their details. This represents only the C++ context,
+not both configurations; C-specific results may be incomplete.
+
+This is not a compiler frontend: response files, forwarded frontend flags,
+arbitrary compiler wrappers, shell expansion and cross-host command syntax are
+not interpreted. Use
+`arguments` to avoid platform-specific shell quoting limits. Metadata is read
+once per AST phase, without a global cache. Dependency resolution and external
+tools continue to use build metadata separately. Function extraction for
+duplicate/signature analysis and structural complexity signals are separate
+from these AST phases.
+
 ## What "full" means for C/C++
 
 The C/C++ plugin can still scan a repository when external tooling is missing, but the deepest and most accurate analysis depends on build metadata and external analyzers.

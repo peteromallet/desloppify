@@ -37,6 +37,7 @@ def test_build_dep_graph_from_compile_commands(tmp_path):
     assert str(source.resolve()) in graph
     assert str(header.resolve()) in graph[str(source.resolve())]["imports"]
 
+
 def test_build_dep_graph_distinguishes_angle_vs_quoted_include_resolution(tmp_path):
     source = _write(
         tmp_path,
@@ -76,3 +77,27 @@ def test_build_dep_graph_distinguishes_angle_vs_quoted_include_resolution(tmp_pa
     assert str(include_header.resolve()) in imports
     assert str(local_header.resolve()) in imports
     assert str((tmp_path / "src" / "widget.hpp").resolve()) not in imports
+
+
+def test_relative_compile_directory_is_relative_to_database(tmp_path, monkeypatch):
+    source = _write(tmp_path, "src/main.c", '#include "generated.h"\n')
+    header = _write(tmp_path, "generated/generated.h", "#pragma once\n")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "compile_commands.json").write_text(
+        json.dumps(
+            [
+                {
+                    "directory": "build",
+                    "file": "../src/main.c",
+                    "arguments": ["cc", "-I../generated", "-c", "../src/main.c"],
+                }
+            ]
+        )
+    )
+    unrelated = tmp_path / "other"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    graph = build_cxx_dep_graph(tmp_path)
+
+    assert str(header) in graph[str(source)]["imports"]
