@@ -96,6 +96,40 @@ JAVA_SPEC = TreeSitterLangSpec(
     ),
 )
 
+# Kotlin operator conventions: imported operator extensions are called by
+# syntax, not by name.
+_KOTLIN_OPERATOR_USES: tuple[tuple[str, str], ...] = (
+    ("getValue", r"\bby\b"),
+    ("setValue", r"\bvar\b[^\n]*\bby\b"),
+    ("provideDelegate", r"\bby\b"),
+    ("contains", r"\bin\b"),
+    ("get", r"\["),
+    ("set", r"\]\s*[-+*/%]?="),
+    ("invoke", r"[\w)\]]\s*[({]"),
+    ("iterator", r"\bfor\s*\("),
+    ("hasNext", r"\bfor\s*\("),
+    ("next", r"\bfor\s*\("),
+    ("compareTo", r"[<>]"),
+    ("rangeTo", r"\.\."),
+    ("rangeUntil", r"\.\.<"),
+    ("plus", r"\+"),
+    ("minus", r"-"),
+    ("times", r"\*"),
+    ("div", r"/"),
+    ("rem", r"%"),
+    ("unaryPlus", r"\+"),
+    ("unaryMinus", r"-"),
+    ("not", r"!"),
+    ("inc", r"\+\+"),
+    ("dec", r"--"),
+    ("plusAssign", r"\+="),
+    ("minusAssign", r"-="),
+    ("timesAssign", r"\*="),
+    ("divAssign", r"/="),
+    ("remAssign", r"%="),
+    *((f"component{n}", r"\(\s*\w+\s*(?::[^,()]*)?,") for n in range(1, 10)),
+)
+
 KOTLIN_SPEC = TreeSitterLangSpec(
     grammar="kotlin",
     function_query="""
@@ -109,6 +143,7 @@ KOTLIN_SPEC = TreeSitterLangSpec(
             (identifier) @path) @import
     """,
     resolve_import=resolve_kotlin_import,
+    implicit_import_uses=_KOTLIN_OPERATOR_USES,
     class_query="""
         (class_declaration
             (type_identifier) @name
