@@ -7,6 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from desloppify.base.discovery.file_paths import matches_exclusion, rel
+from desloppify.base.discovery.source import DEFAULT_EXCLUSIONS, get_exclusions
 from desloppify.languages._framework.base.types import (
     DetectorPhase,
     FixerConfig,
@@ -57,6 +59,28 @@ def _record_tool_failure_coverage(
             coverage_warnings.append(dict(record))
 
 
+def _drop_excluded_entries(entries: list[dict[str, Any]], lang: Any) -> list[dict[str, Any]]:
+    """Drop findings in excluded paths.
+
+    External tools walk the tree themselves and do not know the scan's
+    exclusions, so e.g. a linter also reports copies of the code in nested
+    git worktrees or build output.
+    """
+    exclusions = (
+        *DEFAULT_EXCLUSIONS,
+        *get_exclusions(),
+        *(getattr(lang, "exclusions", None) or ()),
+    )
+    kept: list[dict[str, Any]] = []
+    for entry in entries:
+        # Same normalization as make_issue, so the check sees the stored path.
+        rel_path = rel(str(entry.get("file", "")))
+        if any(matches_exclusion(rel_path, exclusion) for exclusion in exclusions):
+            continue
+        kept.append(entry)
+    return kept
+
+
 def make_tool_phase(
     label: str,
     cmd: str,
@@ -81,7 +105,7 @@ def make_tool_phase(
                 result=run_result,
             )
             return [], {}
-        entries = list(run_result.entries)
+        entries = _drop_excluded_entries(run_result.entries, lang)
         meta = run_result.meta if isinstance(run_result.meta, dict) else {}
         meta_potential = meta.get("potential")
         potential = meta_potential if isinstance(meta_potential, int) else 0

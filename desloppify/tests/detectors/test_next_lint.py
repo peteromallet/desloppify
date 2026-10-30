@@ -184,3 +184,30 @@ def test_next_lint_tool_phase_records_coverage_warning_on_parser_error(monkeypat
     assert signals == {}
     assert lang.detector_coverage["next_lint"]["reason"] == "parser_error"
     assert lang.coverage_warnings and lang.coverage_warnings[0]["detector"] == "next_lint"
+
+
+def test_tool_phase_drops_findings_in_excluded_paths(monkeypatch, tmp_path):
+    """External tools walk the tree themselves; excluded paths must not leak in."""
+    import desloppify.languages._framework.generic_parts.tool_factories as factories_mod
+    from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
+
+    monkeypatch.chdir(tmp_path)
+    entries = [
+        {"file": "src/a.kt", "line": 1, "message": "kept"},
+        {"file": str(tmp_path / ".claude" / "worktrees" / "x" / "src" / "a.kt"), "line": 1, "message": "worktree"},
+        {"file": "app/build/generated/b.kt", "line": 2, "message": "build output"},
+        {"file": "vendor/c.kt", "line": 3, "message": "language exclusion"},
+    ]
+    monkeypatch.setattr(
+        factories_mod,
+        "run_tool_result",
+        lambda cmd, path, parser: ToolRunResult(entries=list(entries), status="ok"),
+    )
+    monkeypatch.setattr(factories_mod, "get_exclusions", lambda: (".claude/worktrees",))
+
+    phase = make_tool_phase("lint", "lint", "gnu", "lint_id", 2)
+    lang = SimpleNamespace(detector_coverage={}, coverage_warnings=[], exclusions=["vendor"])
+    issues, signals = phase.run(tmp_path, lang)
+
+    assert [issue["summary"] for issue in issues] == ["kept"]
+    assert signals == {"lint_id": 1}

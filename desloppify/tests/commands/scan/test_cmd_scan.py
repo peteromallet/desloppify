@@ -1,5 +1,7 @@
 """Tests for desloppify.app.commands.scan — scan helper functions."""
 
+import shutil
+import subprocess  # nosec B404
 from types import SimpleNamespace
 
 import pytest
@@ -503,6 +505,19 @@ class TestAuditExcludedDirs:
 
         result = audit_excluded_dirs(("utils",), [str(src)], tmp_path)
         assert result == []
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+    def test_git_ignored_dir_no_issue(self, tmp_path):
+        """Git-ignored dirs (IDE/tool state, local data) are never stale code."""
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        (tmp_path / ".gitignore").write_text("/.idea/\nlocal-data/\n")
+        for name in (".idea", "local-data", "old_lib"):
+            (tmp_path / name).mkdir()
+        src = tmp_path / "main.py"
+        src.write_text("print('hello')\n")
+
+        result = audit_excluded_dirs((".idea", "local-data", "old_lib"), [str(src)], tmp_path)
+        assert [issue["summary"].split("'")[1] for issue in result] == ["old_lib"]
 
 
 # ---------------------------------------------------------------------------

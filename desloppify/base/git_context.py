@@ -66,6 +66,35 @@ def detect_git_context() -> GitContext:
         return GitContext(available=False)
 
 
+def git_ignored_paths(paths: list[str], cwd: str) -> set[str]:
+    """Return the subset of ``paths`` (relative to ``cwd``) that git ignores.
+
+    Empty when git is missing or ``cwd`` is not inside a repository.
+    """
+    if not paths:
+        return set()
+    try:
+        git_path = shutil.which("git")
+        if not git_path:
+            raise FileNotFoundError("git not found")
+        # NUL-separated bytes: text mode would send "\r\n" on Windows, and
+        # git would then look up "path\r".
+        result = subprocess.run(  # nosec B603
+            [git_path, "-C", cwd, "check-ignore", "--stdin", "-z"],
+            input="\0".join(paths).encode("utf-8") + b"\0",
+            capture_output=True,
+            timeout=_GIT_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("git check-ignore unavailable: %s", exc)
+        return set()
+    # Exit 1 means none ignored; 128 means not a repository.
+    if result.returncode != 0:
+        return set()
+    ignored = set(result.stdout.decode("utf-8", errors="replace").split("\0"))
+    return {path for path in paths if path in ignored}
+
+
 def update_pr_body(pr_number: int, body: str) -> bool:
     """Update PR description via ``gh pr edit``.  Returns True on success."""
     try:
@@ -87,4 +116,4 @@ def update_pr_body(pr_number: int, body: str) -> bool:
         return False
 
 
-__all__ = ["GitContext", "detect_git_context", "update_pr_body"]
+__all__ = ["GitContext", "detect_git_context", "git_ignored_paths", "update_pr_body"]
