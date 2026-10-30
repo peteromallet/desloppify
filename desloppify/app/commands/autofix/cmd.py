@@ -15,6 +15,7 @@ from .apply_flow import (
     _report_dry_run,
     _warn_uncommitted_changes,
 )
+from .apply_retro import _result_item_count
 from .fixer_selection import resolve_fixer_config
 
 
@@ -34,10 +35,11 @@ def cmd_autofix(args: argparse.Namespace) -> None:
         print(colorize(f"No {fixer.label} found.", "green"))
         return
 
-    raw = fixer.fix(entries, dry_run=dry_run)
+    fix_kwargs = {"path": path} if fixer.takes_scan_path else {}
+    raw = fixer.fix(entries, dry_run=dry_run, **fix_kwargs)
     results = raw.entries
     skip_reasons = raw.skip_reasons
-    total_items = sum(len(r["removed"]) if "removed" in r else 1 for r in results)
+    total_items = sum(_result_item_count(r) for r in results)
     total_lines = sum(r.get("lines_removed", 0) for r in results)
     _print_fix_summary(fixer, results, total_items, total_lines, dry_run)
 

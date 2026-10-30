@@ -269,3 +269,96 @@ class TestFixNarrativeReminders:
         _ = capsys.readouterr().out
         context = captured_kwargs["context"]
         assert context.command == "autofix"
+
+
+# ---------------------------------------------------------------------------
+# Tool-backed (generic) fixers through the command
+# ---------------------------------------------------------------------------
+
+
+class TestToolBackedFixers:
+    """cmd_autofix runs tool-backed fixers with the scan path and reports per file."""
+
+    def _run(self, monkeypatch, fixer, *, dry_run):
+        from types import SimpleNamespace
+
+        import desloppify.app.commands.autofix.cmd as cmd_mod
+
+        applied = {}
+        monkeypatch.setattr(cmd_mod, "resolve_fixer_config", lambda _a, _n: (None, fixer))
+        monkeypatch.setattr(cmd_mod, "_warn_uncommitted_changes", lambda: None)
+        monkeypatch.setattr(cmd_mod, "show_fix_dry_run_samples", lambda *_a: None)
+        monkeypatch.setattr(cmd_mod, "_report_dry_run", lambda *_a: None)
+        monkeypatch.setattr(
+            cmd_mod,
+            "_apply_and_report",
+            lambda *a: applied.update(results=a[5], total_items=a[6]),
+        )
+        monkeypatch.setattr(fix_apply_mod, "rel", lambda p: p)
+        cmd_autofix(SimpleNamespace(fixer="lint", dry_run=dry_run, path="proj"))
+        return applied
+
+    def _fixer(self, calls):
+        def fix(entries, dry_run=False, path=None):
+            calls.append(path)
+            return FixResult(
+                entries=[{"file": "a.kt", "fixed": True, "fixed_count": 2, "summary": "2 fixed"}]
+            )
+
+        return FixerConfig(
+            label="Fix lint issues",
+            detect=lambda _p: [
+                {"file": "a.kt", "line": 1, "message": "x"},
+                {"file": "a.kt", "line": 2, "message": "y"},
+            ],
+            fix=fix,
+            detector="lint",
+            takes_scan_path=True,
+        )
+
+    def test_passes_scan_path_and_counts_items(self, monkeypatch, capsys):
+        from pathlib import Path
+
+        calls = []
+        applied = self._run(monkeypatch, self._fixer(calls), dry_run=False)
+        assert calls == [Path("proj")]
+        assert applied["total_items"] == 2
+        out = capsys.readouterr().out
+        assert "Fixed 2 Fix lint issues across 1 files" in out
+        assert "a.kt  →  2 fixed" in out
+
+    def test_fixers_without_flag_get_no_path(self, monkeypatch):
+        received = {}
+
+        def fix(entries, *, dry_run=False):
+            received["called"] = True
+            return FixResult(entries=[{"file": "a.ts", "removed": ["foo"]}])
+
+        fixer = FixerConfig(
+            label="unused imports",
+            detect=lambda _p: [{"file": "a.ts", "name": "foo", "line": 1}],
+            fix=fix,
+            detector="unused",
+        )
+        applied = self._run(monkeypatch, fixer, dry_run=False)
+        assert received == {"called": True}
+        assert applied["total_items"] == 1
+
+
+class TestDryRunPreview:
+    """show_fix_dry_run_samples shows flagged lines for tool-backed fixers."""
+
+    def test_tool_backed_results_show_flagged_lines(self, tmp_path, monkeypatch, capsys):
+        from desloppify.app.commands.autofix import preview as preview_mod
+
+        source = tmp_path / "a.kt"
+        source.write_text("fun a() {\n    val x = 1\n}\n", encoding="utf-8")
+        monkeypatch.setattr(preview_mod, "rel", lambda p: p)
+        entries = [{"file": str(source), "line": 2, "message": "Unexpected indentation"}]
+        results = [{"file": str(source), "fixed_count": 1, "summary": "1 issue"}]
+        preview_mod.show_fix_dry_run_samples(entries, results)
+        out = capsys.readouterr().out
+        assert "Sample flagged lines" in out
+        assert "Unexpected indentation (line 2)" in out
+        assert "val x = 1" in out
+        assert "skipped" not in out

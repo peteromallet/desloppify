@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess  # nosec B404
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -143,9 +144,10 @@ def make_generic_fixer(
     fix_cmd = tool["fix_cmd"]
     if fix_cmd is None:
         raise ValueError("make_generic_fixer requires tool['fix_cmd'] to be provided")
+    parser = PARSERS[tool["fmt"]]
     detect = make_detect_fn(
         tool["cmd"],
-        PARSERS[tool["fmt"]],
+        parser,
         run_subprocess=run_subprocess,
     )
 
@@ -156,8 +158,16 @@ def make_generic_fixer(
         **kwargs: Any,
     ) -> FixResult:
         del kwargs
-        if dry_run or not path:
-            return FixResult(entries=[{"file": e["file"], "line": e["line"]} for e in entries])
+        before = Counter(e["file"] for e in entries)
+        if dry_run:
+            return FixResult(
+                entries=[
+                    {"file": file, "fixed_count": count, "summary": _issue_count_label(count)}
+                    for file, count in before.items()
+                ]
+            )
+        if not path:
+            raise ValueError("generic fixers need the scan path to run their tool")
         runner = run_subprocess or subprocess.run
         try:
             runner(
@@ -170,11 +180,26 @@ def make_generic_fixer(
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return FixResult(entries=[], skip_reasons={"tool_unavailable": len(entries)})
-        remaining = detect(path)
-        fixed_count = max(0, len(entries) - len(remaining))
-        return FixResult(
-            entries=[{"file": e["file"], "fixed": True} for e in entries[:fixed_count]]
-        )
+        # The fix command's exit code is not a failure signal: formatters such as
+        # ktlint exit non-zero when violations they cannot fix remain. Re-run the
+        # check instead, and claim nothing when it cannot be read.
+        recheck = run_tool_result(tool["cmd"], path, parser, run_subprocess=run_subprocess)
+        if recheck.status == "error":
+            return FixResult(entries=[], skip_reasons={"recheck_failed": len(entries)})
+        after = Counter(e["file"] for e in recheck.entries)
+        results = []
+        for file, count in before.items():
+            fixed_count = count - after[file]
+            if fixed_count > 0:
+                results.append(
+                    {
+                        "file": file,
+                        "fixed": True,
+                        "fixed_count": fixed_count,
+                        "summary": f"{fixed_count} fixed",
+                    }
+                )
+        return FixResult(entries=results)
 
     return FixerConfig(
         label=f"Fix {tool['label']} issues",
@@ -183,7 +208,12 @@ def make_generic_fixer(
         detector=smell_id,
         verb="Fixed",
         dry_verb="Would fix",
+        takes_scan_path=True,
     )
+
+
+def _issue_count_label(count: int) -> str:
+    return f"{count} issue" if count == 1 else f"{count} issues"
 
 
 __all__ = [

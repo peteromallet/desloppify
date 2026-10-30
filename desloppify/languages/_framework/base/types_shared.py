@@ -89,6 +89,8 @@ class FixerConfig:
     dry_verb: str = "Would fix"
     # Signature: (path, state, prev_score, dry_run, *, lang=None) -> None
     post_fix: Callable[..., None] | None = None
+    # True when fix() runs an external tool and needs the scan path as `path=`.
+    takes_scan_path: bool = False
 
 
 @dataclass

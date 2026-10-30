@@ -213,6 +213,77 @@ class TestFixers:
             result = fixer.fix(entries, dry_run=False, path=Path("."))
         assert result.skip_reasons == {"tool_unavailable": 1}
 
+    def test_fixer_takes_scan_path(self):
+        tool = {
+            "label": "t", "cmd": "echo", "fmt": "gnu",
+            "id": "test_fixer_path_flag", "tier": 2, "fix_cmd": "echo --fix",
+        }
+        assert make_generic_fixer(tool).takes_scan_path is True
+
+    def test_fixer_dry_run_groups_issues_by_file(self):
+        tool = {
+            "label": "t", "cmd": "echo", "fmt": "gnu",
+            "id": "test_fixer_dry_group", "tier": 2, "fix_cmd": "echo --fix",
+        }
+        fixer = make_generic_fixer(tool)
+        entries = [
+            {"file": "a.x", "line": 1},
+            {"file": "a.x", "line": 2},
+            {"file": "b.x", "line": 3},
+        ]
+        result = fixer.fix(entries, dry_run=True)
+        assert result.entries == [
+            {"file": "a.x", "fixed_count": 2, "summary": "2 issues"},
+            {"file": "b.x", "fixed_count": 1, "summary": "1 issue"},
+        ]
+
+    def test_fixer_requires_path_to_apply(self):
+        tool = {
+            "label": "t", "cmd": "echo", "fmt": "gnu",
+            "id": "test_fixer_no_path", "tier": 2, "fix_cmd": "echo --fix",
+        }
+        fixer = make_generic_fixer(tool)
+        with pytest.raises(ValueError):
+            fixer.fix([{"file": "a.x", "line": 1}], dry_run=False)
+
+    def test_fixer_counts_fixed_issues_per_file(self):
+        tool = {
+            "label": "t", "cmd": "lint", "fmt": "gnu",
+            "id": "test_fixer_per_file", "tier": 2, "fix_cmd": "lint --fix",
+        }
+        outputs = [
+            subprocess.CompletedProcess(args="fix", returncode=1, stdout="", stderr=""),
+            subprocess.CompletedProcess(
+                args="lint", returncode=1, stdout="a.x:9: still wrong\n", stderr="",
+            ),
+        ]
+        fixer = make_generic_fixer(tool, run_subprocess=lambda *a, **k: outputs.pop(0))
+        entries = [
+            {"file": "a.x", "line": 1},
+            {"file": "a.x", "line": 2},
+            {"file": "b.x", "line": 3},
+        ]
+        result = fixer.fix(entries, dry_run=False, path=Path("."))
+        assert result.entries == [
+            {"file": "a.x", "fixed": True, "fixed_count": 1, "summary": "1 fixed"},
+            {"file": "b.x", "fixed": True, "fixed_count": 1, "summary": "1 fixed"},
+        ]
+        assert result.skip_reasons == {}
+
+    def test_fixer_claims_nothing_when_recheck_fails(self):
+        tool = {
+            "label": "t", "cmd": "lint", "fmt": "json",
+            "id": "test_fixer_recheck_fail", "tier": 2, "fix_cmd": "lint --fix",
+        }
+        outputs = [
+            subprocess.CompletedProcess(args="fix", returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args="lint", returncode=1, stdout="not json", stderr=""),
+        ]
+        fixer = make_generic_fixer(tool, run_subprocess=lambda *a, **k: outputs.pop(0))
+        result = fixer.fix([{"file": "a.x", "line": 1}], dry_run=False, path=Path("."))
+        assert result.entries == []
+        assert result.skip_reasons == {"recheck_failed": 1}
+
 
 # ── Capability report tests ──────────────────────────────
 
