@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from desloppify.base.registry import DetectorMeta, register_detector
@@ -42,6 +44,10 @@ class GenericLangOptions:
     external_test_dirs: list[str] | None = None
     test_file_extensions: list[str] | None = None
     custom_phases: list[DetectorPhase] | None = None
+    # Whole-graph builder (path, files) -> dep graph, for languages whose
+    # references cannot be resolved one import at a time (e.g. Kotlin packages).
+    # Takes precedence over the tree-sitter import query when set.
+    dep_graph_builder: Callable[[Path, list[str]], dict[str, dict[str, Any]]] | None = None
 
 
 def _register_generic_tool_specs(tool_specs: list[dict[str, Any]]) -> dict[str, FixerConfig]:
@@ -82,6 +88,8 @@ def _resolve_generic_extractors(
     dep_graph_fn = empty_dep_graph
     ts_spec = opts.treesitter_spec
     has_treesitter = False
+    if opts.dep_graph_builder is not None:
+        dep_graph_fn = _bind_dep_graph_builder(opts.dep_graph_builder, file_finder)
     if ts_spec is None:
         return file_finder, extract_fn, dep_graph_fn, has_treesitter, ts_spec
 
@@ -95,9 +103,19 @@ def _resolve_generic_extractors(
 
     has_treesitter = True
     extract_fn = make_ts_extractor(ts_spec, file_finder)
-    if ts_spec.import_query and ts_spec.resolve_import:
+    if dep_graph_fn is empty_dep_graph and ts_spec.import_query and ts_spec.resolve_import:
         dep_graph_fn = make_ts_dep_builder(ts_spec, file_finder)
     return file_finder, extract_fn, dep_graph_fn, has_treesitter, ts_spec
+
+
+def _bind_dep_graph_builder(
+    builder: Callable[[Path, list[str]], dict[str, dict[str, Any]]],
+    file_finder: Callable[[Path], list[str]],
+) -> Callable[[Path], dict[str, dict[str, Any]]]:
+    def build(path: Path) -> dict[str, dict[str, Any]]:
+        return builder(path, file_finder(path))
+
+    return build
 
 
 def _build_generic_phases(

@@ -7,6 +7,8 @@ gracefully degrades when the tool is not installed or times out.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from desloppify.engine.policy.zones import ZoneRule
@@ -61,6 +63,7 @@ def generic_lang(
     test_file_extensions: list[str] | None = None,
     frameworks: bool = False,
     custom_phases: list[DetectorPhase] | None = None,
+    dep_graph_builder: Callable[[Path, list[str]], dict[str, dict[str, Any]]] | None = None,
 ) -> LangConfig:
     """Build and register a generic language plugin from tool specs.
 
@@ -88,6 +91,7 @@ def generic_lang(
         external_test_dirs=external_test_dirs,
         test_file_extensions=test_file_extensions,
         custom_phases=custom_phases,
+        dep_graph_builder=dep_graph_builder,
     )
 
     from desloppify.languages import register_generic_lang
