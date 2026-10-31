@@ -665,7 +665,7 @@ class TestMissingIssuesResolved:
         }
         st["issues"]["det::a.py::fn"] = old
 
-        diff = merge_scan(st, [], MergeScanOptions(lang="python", force_resolve=True))
+        diff = merge_scan(st, [], MergeScanOptions(lang="python", potentials={"det": 1}))
         assert diff["auto_resolved"] == 1
         assert st["issues"]["det::a.py::fn"]["status"] == "fixed"
         assert st["issues"]["det::a.py::fn"]["resolution_attestation"]["scan_verified"] is True
