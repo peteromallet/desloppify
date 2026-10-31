@@ -683,3 +683,56 @@ class TestNextjsIntegration:
             )
 
         assert len(entries) == 1
+
+
+class TestNextjsPackageRoots:
+    def test_nested_next_app_does_not_hide_sibling_or_nested_package_orphans(self, tmp_path):
+        web = tmp_path / "apps" / "web"
+        web.mkdir(parents=True)
+        (web / "next.config.ts").write_text("export default {}")
+        (web / "package.json").write_text("{}")
+        routes = [
+            _write_file(web / "src/app/(app)/[id]/page.tsx"),
+            _write_file(web / "src/app/layout.tsx"),
+            _write_file(web / "src/app/api/route.ts"),
+            _write_file(web / "src/instrumentation.ts"),
+            _write_file(web / "src/proxy.ts"),
+        ]
+        orphan = _write_file(web / "src/unused.ts")
+        sibling = _write_file(tmp_path / "packages/cli/app/page.tsx")
+        nested = _write_file(web / "plugins/tool/app/page.tsx")
+        (web / "plugins/tool/package.json").write_text("{}")
+        graph = {str(file): _graph_entry() for file in [*routes, orphan, sibling, nested]}
+        entries, total = detect_orphaned_files(tmp_path, graph, [".ts", ".tsx"])
+        assert total == len(graph)
+        assert {entry["file"] for entry in entries} == {str(orphan), str(sibling), str(nested)}
+
+    def test_subdirectory_scan_uses_file_package_root_not_global_relative_path(self, tmp_path):
+        web = tmp_path / "apps/web"
+        web.mkdir(parents=True)
+        (web / "next.config.mjs").write_text("export default {}")
+        page = _write_file(web / "src/app/page.tsx")
+        instrumentation = _write_file(web / "src/instrumentation.ts")
+        graph = {str(file): _graph_entry() for file in [page, instrumentation]}
+        with patch("desloppify.engine.detectors.orphaned.rel", return_value="apps/web/src/not-an-entry.ts"):
+            entries, total = detect_orphaned_files(web / "src", graph, [".ts", ".tsx"])
+        assert total == 2
+        assert entries == []
+
+    def test_nested_next_detection_can_be_disabled(self, tmp_path):
+        web = tmp_path / "apps/web"
+        web.mkdir(parents=True)
+        (web / "next.config.ts").write_text("export default {}")
+        page = _write_file(web / "src/app/page.tsx")
+        entries, _ = detect_orphaned_files(
+            tmp_path, {str(page): _graph_entry()}, [".tsx"],
+            options=OrphanedDetectionOptions(detect_frameworks=False),
+        )
+        assert [entry["file"] for entry in entries] == [str(page)]
+
+    def test_convention_names_are_scoped_to_real_app_and_src_roots(self):
+        assert _is_nextjs_convention_entry("proxy.ts")
+        assert _is_nextjs_convention_entry("src/proxy.ts")
+        assert not _is_nextjs_convention_entry("lib/instrumentation.ts")
+        assert not _is_nextjs_convention_entry("components/app/page.tsx")
+        assert not _is_nextjs_convention_entry("src/app/_private/page.tsx")

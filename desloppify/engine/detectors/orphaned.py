@@ -7,8 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from desloppify.base.discovery.file_paths import rel
-from desloppify.base.discovery.file_paths import count_lines
+from desloppify.base.discovery.file_paths import count_lines, rel, resolve_path
 
 _DUNDER_ALL_RE = re.compile(r"^__all__\s*[:=]", re.MULTILINE)
 
@@ -38,6 +37,7 @@ _NEXTJS_APP_DIR_CONVENTIONS: set[str] = {
 # Files that are entry points at the project root (or src/)
 _NEXTJS_ROOT_CONVENTIONS: set[str] = {
     "middleware",
+    "proxy",
     "instrumentation",
     "instrumentation-client",
 }
@@ -46,19 +46,39 @@ _NEXTJS_EXTENSIONS: set[str] = {".ts", ".tsx", ".js", ".jsx"}
 
 
 def _detect_nextjs_project(path: Path) -> bool:
-    """Return True if the scan root looks like a Next.js project."""
+    """Return True if this directory declares a Next.js project."""
     for name in ("next.config.js", "next.config.mjs", "next.config.ts"):
-        if (path / name).exists():
+        if (path / name).is_file():
             return True
     return False
+
+
+def _nextjs_project_root(directory: Path, cache: dict[Path, Path | None]) -> Path | None:
+    """Find the nearest Next config without crossing another package boundary."""
+    visited = []
+    current = directory
+    while current not in cache:
+        visited.append(current)
+        if _detect_nextjs_project(current):
+            root = current
+            break
+        if (current / "package.json").is_file() or current.parent == current:
+            root = None
+            break
+        current = current.parent
+    else:
+        root = cache[current]
+    for parent in visited:
+        cache[parent] = root
+    return root
 
 
 def _is_nextjs_convention_entry(rel_path: str) -> bool:
     """Return True if *rel_path* is a Next.js App Router convention file.
 
     Checks:
-    - Files with convention names inside any ``app/`` directory segment
-    - Root-level convention files (middleware, instrumentation)
+    - Files with convention names inside ``app/`` or ``src/app/``
+    - Root-level convention files (middleware, proxy, instrumentation)
     """
     p = Path(rel_path)
     ext = p.suffix
@@ -70,15 +90,18 @@ def _is_nextjs_convention_entry(rel_path: str) -> bool:
 
     # Root-level conventions: middleware.ts, instrumentation.ts, etc.
     # These can live at the project root or inside src/
-    if stem in _NEXTJS_ROOT_CONVENTIONS and len(parts) <= 2:
+    if stem in _NEXTJS_ROOT_CONVENTIONS and (
+        len(parts) == 1 or (len(parts) == 2 and parts[0] == "src")
+    ):
         return True
 
-    # App directory conventions: any file inside an app/ segment
-    if stem in _NEXTJS_APP_DIR_CONVENTIONS:
-        if "app" in parts:
-            return True
-
-    return False
+    app_depth = 1 if parts[:1] == ("app",) else 2 if parts[:2] == ("src", "app") else 0
+    # Next excludes private folders from routing, including their convention files.
+    return bool(
+        stem in _NEXTJS_APP_DIR_CONVENTIONS
+        and app_depth
+        and not any(part.startswith("_") for part in parts[app_depth:-1])
+    )
 
 
 @dataclass
@@ -139,10 +162,8 @@ def detect_orphaned_files(
     dynamic_import_finder = resolved_options.dynamic_import_finder
     alias_resolver = resolved_options.alias_resolver
 
-    # Framework convention detection
-    is_nextjs = (
-        resolved_options.detect_frameworks and _detect_nextjs_project(path)
-    )
+    # Resolve framework ownership per file for monorepos and subtree scans.
+    nextjs_roots: dict[Path, Path | None] = {}
 
     dynamic_targets = (
         dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
@@ -163,8 +184,11 @@ def detect_orphaned_files(
         if basename in all_barrel_names:
             continue
 
-        if is_nextjs and _is_nextjs_convention_entry(r):
-            continue
+        if resolved_options.detect_frameworks:
+            source = Path(resolve_path(filepath))
+            project_root = _nextjs_project_root(source.parent, nextjs_roots)
+            if project_root and _is_nextjs_convention_entry(str(source.relative_to(project_root))):
+                continue
 
         if dynamic_targets and _is_dynamically_imported(
             filepath, dynamic_targets, alias_resolver
