@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from desloppify.base.discovery.file_paths import resolve_path
 from .cache import get_or_parse_tree
 from ..analysis.extractors import _get_parser, _make_query, _run_query, _unwrap_node
 
@@ -31,7 +32,17 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+
+    # Normalize different path styles to avoid broken links.
+    def _canonical(candidate: str) -> str:
+        if os.path.isabs(candidate):
+            return os.path.normpath(candidate)
+        scan_relative = os.path.normpath(os.path.join(scan_path, candidate))
+        if os.path.exists(scan_relative):
+            return scan_relative
+        return resolve_path(candidate)
+
+    file_set = {_canonical(f): f for f in file_list}
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -71,21 +82,18 @@ def ts_build_dep_graph(
                 ).strip("\"'`")
                 import_text = f"{prefix_text}\\{import_text}"
 
-            resolved = spec.resolve_import(import_text, filepath, scan_path)
+            resolved = spec.resolve_import(import_text, _canonical(filepath), scan_path)
             if resolved is None:
                 continue
 
-            # Normalize to absolute path.
-            if not os.path.isabs(resolved):
-                resolved = os.path.normpath(os.path.join(scan_path, resolved))
-
-            # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            # Only track edges within the scanned file set
+            resolved_key = file_set.get(_canonical(resolved))
+            if resolved_key is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(resolved_key)
+            if resolved_key in graph:
+                graph[resolved_key]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():

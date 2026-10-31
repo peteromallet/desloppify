@@ -167,11 +167,12 @@ def resolve_lua_import(import_text: str, source_file: str, scan_path: str) -> st
 
 def resolve_js_import(import_text: str, source_file: str, scan_path: str) -> str | None:
     """Resolve JS/ESM relative imports to local files."""
-    del scan_path
     if not import_text or not import_text.startswith("."):
         return None
 
     base = os.path.dirname(source_file)
+    if not os.path.isabs(base):
+        base = os.path.join(scan_path, base)
     candidate = os.path.normpath(os.path.join(base, import_text))
     for ext in ("", ".js", ".jsx", ".mjs", ".cjs", "/index.js", "/index.jsx"):
         path = candidate + ext
