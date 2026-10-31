@@ -5,17 +5,18 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from functools import cache
 from pathlib import Path
 from typing import Any
 
 from desloppify.base.discovery.file_paths import rel, resolve_path
-from desloppify.base.search.grep import grep_files
-from desloppify.base.output.terminal import colorize, print_table
+from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.discovery.source import (
     find_source_files,
     find_ts_and_tsx_files,
 )
-from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.output.terminal import colorize, print_table
+from desloppify.base.search.grep import grep_files
 from desloppify.engine.detectors.graph import (
     detect_cycles,
     finalize_graph,
@@ -62,14 +63,20 @@ def build_dep_graph(
         lambda: {"imports": set(), "importers": set(), "external_imports": set()}
     )
     project_root = get_project_root()
-    tsconfig_root = _find_tsconfig_root(path, project_root)
-    tsconfig_paths = _load_tsconfig_paths(tsconfig_root)
+
+    @cache
+    def config_for_directory(directory: Path) -> tuple[Path, dict[str, str]]:
+        # A root scan can include packages with different meanings for the same
+        # alias. Resolve each import against its source's nearest config.
+        root = _find_tsconfig_root(directory, project_root)
+        return root, _load_tsconfig_paths(root)
 
     ts_files = find_ts_and_tsx_files(path)
     hits = grep_files(r"""(?:\bfrom\s+['"]|\bimport\s+['"])""", ts_files)
 
     for filepath, _lineno, content in hits:
         source_resolved = resolve_path(filepath)
+        tsconfig_root, tsconfig_paths = config_for_directory(Path(source_resolved).parent)
         graph[source_resolved]  # ensure entry exists
         for module_path in _extract_module_specifiers(content):
             if module_path.startswith(_DENO_EXTERNAL_PREFIXES):
@@ -90,6 +97,7 @@ def build_dep_graph(
         fw_hits = grep_files(r"""(?:\bfrom\s+['"]|\bimport\s+['"])""", fw_files)
         for filepath, _lineno, content in fw_hits:
             source_resolved = resolve_path(filepath)
+            tsconfig_root, tsconfig_paths = config_for_directory(Path(source_resolved).parent)
             graph[source_resolved]  # ensure entry exists
             for module_path in _extract_module_specifiers(content):
                 if module_path.startswith(_DENO_EXTERNAL_PREFIXES):

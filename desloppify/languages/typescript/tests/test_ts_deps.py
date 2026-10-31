@@ -29,6 +29,55 @@ def _write(tmp_path: Path, name: str, content: str) -> Path:
 
 
 class TestBuildDepGraph:
+    @pytest.mark.parametrize("extension", ["ts", "svelte", "vue", "astro"])
+    def test_root_scan_uses_each_importers_nearest_config(self, tmp_path, extension):
+        """Sibling packages' identical aliases must not resolve via the root config."""
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps(
+                {
+                    "compilerOptions": {"paths": {"@/*": ["./root/*"]}},
+                }
+            ),
+        )
+        root_target = _write(tmp_path, "root/value.ts", "export const value = 0;\n")
+        targets = []
+        sources = []
+        for package, directory in [("one", "src"), ("two", "lib")]:
+            _write(
+                tmp_path,
+                f"packages/{package}/tsconfig.json",
+                json.dumps(
+                    {
+                        "compilerOptions": {
+                            "baseUrl": directory,
+                            "paths": {"@/*": ["./*"]},
+                        },
+                    }
+                ),
+            )
+            target = _write(
+                tmp_path,
+                f"packages/{package}/{directory}/value.ts",
+                "export const value = 1;\n",
+            )
+            source = _write(
+                tmp_path,
+                f"packages/{package}/{directory}/nested/main.{extension}",
+                "import { value } from '@/value';\nexport const result = value;\n",
+            )
+            targets.append(str(target.resolve()))
+            sources.append(str(source.resolve()))
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        for source, target in zip(sources, targets, strict=True):
+            assert graph[source]["imports"] == {target}
+            assert graph[target]["importers"] == {source}
+            assert graph[target]["importer_count"] == 1
+        assert not graph.get(str(root_target.resolve()), {}).get("importers")
+
     def test_simple_relative_import(self, tmp_path):
         """Graph captures a simple relative import between two files."""
 
@@ -671,7 +720,9 @@ class TestAliasScanPath:
         orphan_files = {o["file"] for o in orphans}
         assert core_key not in orphan_files
 
-    def test_subdirectory_tsconfig_relative_imports_use_project_file_root(self, tmp_path):
+    def test_subdirectory_tsconfig_relative_imports_use_project_file_root(
+        self, tmp_path
+    ):
         """Relative imports should not double the tsconfig subdirectory prefix."""
         pkg = tmp_path / "packages" / "frontend" / "app"
         _write(pkg, "tsconfig.json", json.dumps({"compilerOptions": {}}))
@@ -699,9 +750,7 @@ class TestResolveAliasLongestPrefix:
     def test_longer_prefix_wins(self, tmp_path):
         """When aliases overlap, the longest matching prefix is used."""
         paths = {"@/": "app/", "@components/": "lib/components/"}
-        result = deps_resolve_mod.resolve_alias(
-            "@components/Button", paths, tmp_path
-        )
+        result = deps_resolve_mod.resolve_alias("@components/Button", paths, tmp_path)
         expected = (tmp_path / "lib/components/Button").resolve()
         assert result == expected
 
