@@ -143,6 +143,37 @@ def test_churn_and_rework_helpers_surface_expected_entries() -> None:
     assert loops[0].reopen_count == 2
 
 
+def test_investment_matches_scored_dimension_names() -> None:
+    work_items = dict([
+        _review_issue("review::a", dimension="logic_clarity", status="fixed"),
+        _review_issue("review::b", dimension="Logic clarity", status="fixed"),
+        ("coverage::c", {"detector": "test_coverage", "status": "fixed"}),
+    ])
+    trajectories = dimension_trajectories(
+        [], {"Logic clarity": {"strict": 90}, "Test health": {"strict": 80}}, work_items,
+    )
+    assert trajectories["Logic clarity"].recent_investment == 2
+    assert trajectories["Test health"].recent_investment == 1
+
+
+def test_backlog_groups_registered_detectors_and_preserves_custom_dimensions() -> None:
+    work_items = dict([
+        _review_issue("review::a", dimension="logic_clarity"),
+        _review_issue("review::b", dimension="Logic clarity"),
+        _review_issue("review::custom", dimension="project-specific quality"),
+        ("coverage::c", {"detector": "test_coverage", "status": "open"}),
+        ("smells::d", {"detector": "smells", "status": "open", "detail": None}),
+        ("queue::e", {"detector": "subjective_review", "status": "open",
+                       "detail": {"dimension_name": "Test strategy"}}),
+        ("unknown::f", {"detector": "unregistered", "status": "open"}),
+    ])
+    inventory = lifecycle_inventory({"work_items": work_items}, {})
+    assert inventory["backlog_by_dimension"] == {
+        "Logic clarity": 2, "Test health": 1, "Code quality": 1,
+        "Test strategy": 1, "project-specific quality": 1, "unknown": 1,
+    }
+
+
 def test_completed_cluster_summary_extracts_from_progression_and_plan_fallback() -> None:
     summaries = completed_cluster_summary_from_progression(
         [

@@ -7,8 +7,10 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from desloppify.base.subjective_dimension_catalog import DISPLAY_NAMES
 from desloppify.engine._plan.schema import PlanModel
 from desloppify.engine._plan.triage.core import detect_recurring_patterns
+from desloppify.engine._scoring.results.impact import get_dimension_for_detector
 from desloppify.engine._state.issue_semantics import is_review_work_item
 from desloppify.engine._state.schema import StateModel
 
@@ -165,19 +167,22 @@ def _trend_from_delta(delta: float, *, stagnant_threshold: float = 0.5) -> str:
 
 
 def _dimension_name_for_issue(issue: dict[str, Any]) -> str:
-    """Extract dimension from an issue.
+    """Use the same dimension labels as the score trajectories.
 
     Checks both ``detail.dimension`` (review issues) and
     ``detail.dimension_name`` (synthetic/work-queue items) because this
-    function is called on all work_items, not just review issues.
+    function is called on all work_items, not just review issues. Mechanical
+    findings usually carry no dimension detail; use their scoring policy.
     """
     detail = issue.get("detail", {})
     if isinstance(detail, dict):
         for key in ("dimension", "dimension_name"):
             value = detail.get(key)
             if isinstance(value, str) and value.strip():
-                return value.strip()
-    return "unknown"
+                name = value.strip()
+                return DISPLAY_NAMES.get(name, name)
+    dimension = get_dimension_for_detector(str(issue.get("detector", "")))
+    return dimension.name if dimension is not None else "unknown"
 
 
 def _open_review_and_resolved_review_issues(
