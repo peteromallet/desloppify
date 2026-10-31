@@ -98,6 +98,7 @@ class TestAutoResolveOutOfScope:
             now="2026-03-01T00:00:00+00:00",
             lang=None,
             scan_path="src",
+            confirmed_detectors={"smells"},
         )
         attestation = existing["f1"]["resolution_attestation"]
         assert existing["f1"]["status"] == "fixed"
@@ -168,6 +169,7 @@ class TestAutoResolveOutOfScope:
             now="2026-01-01T00:00:00+00:00",
             lang=None,
             scan_path="src",
+            confirmed_detectors={"smells"},
         )
         assert "smells" in detectors
 
