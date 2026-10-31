@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 import desloppify.languages.typescript.test_coverage as ts_cov
@@ -123,6 +126,75 @@ class TestNamingBasedMapping:
 
 
 class TestResolveTsImport:
+    @pytest.mark.parametrize("relative_paths", [False, True])
+    def test_nearest_package_alias(self, tmp_path, monkeypatch, relative_paths):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        root_prod = _write_file(tmp_path, "src/utils.ts")
+        _write_file(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["src/*"]}}}),
+        )
+        production = {root_prod}
+        for package in ("web", "admin"):
+            _write_file(
+                tmp_path,
+                f"apps/{package}/tsconfig.json",
+                json.dumps({"compilerOptions": {"paths": {"@/*": ["./source/*"]}}}),
+            )
+            production.add(_write_file(tmp_path, f"apps/{package}/source/utils.ts"))
+        if relative_paths:
+            production = {str(Path(p).relative_to(tmp_path)) for p in production}
+        for package in ("web", "admin"):
+            test = _write_file(tmp_path, f"apps/{package}/tests/behavior.test.ts")
+            expected = str(tmp_path / f"apps/{package}/source/utils.ts")
+            if relative_paths:
+                test = str(Path(test).relative_to(tmp_path))
+                expected = f"apps/{package}/source/utils.ts"
+            assert (
+                _resolve_import("@/utils", test, production, "typescript") == expected
+            )
+
+    def test_custom_alias_with_base_url(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "apps/web/tsconfig.json",
+            json.dumps(
+                {
+                    "compilerOptions": {
+                        "baseUrl": "./source",
+                        "paths": {"$lib/*": ["lib/*"]},
+                    }
+                }
+            ),
+        )
+        prod = _write_file(tmp_path, "apps/web/source/lib/utils.ts")
+        test = _write_file(tmp_path, "apps/web/test/behavior.test.ts")
+        assert _resolve_import("$lib/utils", test, {prod}, "typescript") == prod
+
+    def test_configured_alias_does_not_fall_back_to_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        monkeypatch.setattr(ts_cov, "get_src_path", lambda: tmp_path / "src")
+        prod = _write_file(tmp_path, "src/utils.ts")
+        _write_file(
+            tmp_path,
+            "apps/web/tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./missing/*"]}}}),
+        )
+        test = _write_file(tmp_path, "apps/web/test/behavior.test.ts")
+        assert _resolve_import("@/utils", test, {prod}, "typescript") is None
+
+    def test_relative_import_uses_project_root_not_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(tmp_path, "src/utils.ts")
+        assert (
+            _resolve_import(
+                "../utils", "src/test/behavior.test.ts", {"src/utils.ts"}, "typescript"
+            )
+            == "src/utils.ts"
+        )
+
     def test_relative_import_same_dir(self, tmp_path):
         """./utils resolves to sibling file."""
         prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
@@ -205,6 +277,24 @@ class TestResolveTsImport:
 
 
 class TestResolveBarrelReexports:
+    def test_package_aliases_expand_through_barrel(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "apps/web/tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["source/*"]}}}),
+        )
+        utils = _write_file(
+            tmp_path, "apps/web/source/utils.ts", "export const x = 1;\n"
+        )
+        barrel = _write_file(
+            tmp_path, "apps/web/source/index.ts", "export { x } from '@/utils';\n"
+        )
+        test = _write_file(
+            tmp_path, "apps/web/test/behavior.test.ts", "import { x } from '@/index';\n"
+        )
+        assert import_based_mapping({}, {test}, {utils, barrel}) == {utils, barrel}
+
     def test_named_reexports(self, tmp_path):
         """export { Foo } from './foo' resolves the re-exported module."""
         foo = _write_file(tmp_path, "src/foo.ts", "export const Foo = 1;\n")
@@ -885,9 +975,10 @@ class TestHasTestableLogic:
     def test_supabase_entrypoint_classified_separately(self, tmp_path):
         """Supabase edge index.ts should use runtime_entrypoint_no_direct_tests."""
         prod = _write_file(
-            tmp_path, "supabase/functions/stripe-webhook/index.ts",
-            "import { serve } from \"https://deno.land/std/http/server.ts\";\n"
-            "serve((_req) => new Response(\"ok\"));\n"
+            tmp_path,
+            "supabase/functions/stripe-webhook/index.ts",
+            'import { serve } from "https://deno.land/std/http/server.ts";\n'
+            'serve((_req) => new Response("ok"));\n'
             "// padding\n" * 8,
         )
         zone_map = _make_zone_map([prod])
@@ -900,9 +991,10 @@ class TestHasTestableLogic:
     def test_deno_serve_file_classified_as_runtime_entrypoint(self, tmp_path):
         """Deno serve entrypoint should not be classified as untested_module."""
         prod = _write_file(
-            tmp_path, "edge/handler.ts",
-            "import { serve } from \"jsr:@std/http/server\";\n"
-            "serve((_req) => new Response(\"ok\"));\n"
+            tmp_path,
+            "edge/handler.ts",
+            'import { serve } from "jsr:@std/http/server";\n'
+            'serve((_req) => new Response("ok"));\n'
             "// padding\n" * 8,
         )
         zone_map = _make_zone_map([prod])
