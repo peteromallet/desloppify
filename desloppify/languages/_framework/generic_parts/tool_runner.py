@@ -37,7 +37,7 @@ def _shell_argv(cmd: str) -> list[str]:
     """Return a platform-appropriate shell argv for shell-meta commands."""
     if os.name == "nt":
         return ["cmd.exe", "/d", "/s", "/c", cmd]
-    return ["/bin/sh", "-lc", cmd]
+    return ["/bin/sh", "-c", cmd]
 
 
 def resolve_command_argv(cmd: str) -> list[str]:

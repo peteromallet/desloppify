@@ -473,7 +473,7 @@ class TestMakeToolPhase:
         if os.name == "nt":
             assert argv == ["cmd.exe", "/d", "/s", "/c", "echo ok | cat"]
         else:
-            assert argv == ["/bin/sh", "-lc", "echo ok | cat"]
+            assert argv == ["/bin/sh", "-c", "echo ok | cat"]
 
 
     def test_resolve_command_argv_windows_backslash_path_preserved(self):
