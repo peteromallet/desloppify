@@ -9,6 +9,7 @@ import desloppify.base.discovery.paths as paths_api_mod
 import desloppify.languages.typescript.detectors.deps as deps_detector_mod
 import desloppify.languages.typescript.detectors.deps.resolve as deps_resolve_mod
 from desloppify.engine.detectors import orphaned as orphaned_detector_mod
+from desloppify.engine.detectors.graph import detect_cycles
 
 
 @pytest.fixture(autouse=True)
@@ -211,6 +212,74 @@ class TestBuildDepGraph:
         )
         orphan_files = {entry["file"] for entry in orphans}
         assert utils_key not in orphan_files
+
+    def test_jsdoc_example_import_does_not_create_edge_or_cycle(self, tmp_path):
+        """Example imports inside JSDoc blocks are not real dependencies."""
+
+        _write(
+            tmp_path,
+            "engine.ts",
+            "/**\n"
+            " * Usage:\n"
+            " * ```typescript\n"
+            " * import { RULES } from \"./rules\";\n"
+            " * ```\n"
+            " */\n"
+            "export function run() { return 1; }\n",
+        )
+        _write(
+            tmp_path,
+            "rules.ts",
+            "import { run } from './engine';\nexport const RULES = [run];\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+        engine_key = str((tmp_path / "engine.ts").resolve())
+        rules_key = str((tmp_path / "rules.ts").resolve())
+        assert engine_key in graph[rules_key]["imports"]
+        assert rules_key not in graph.get(engine_key, {}).get("imports", set())
+
+        cycles, _ = detect_cycles(graph)
+        assert cycles == []
+
+    def test_commented_out_imports_are_ignored(self, tmp_path):
+        """`//` and single-line `/* */` imports are skipped; real ones are kept."""
+
+        _write(tmp_path, "a.ts", "export const a = 1;\n")
+        _write(tmp_path, "b.ts", "export const b = 1;\n")
+        _write(tmp_path, "c.ts", "export const c = 1;\n")
+        _write(
+            tmp_path,
+            "main.ts",
+            "// import { a } from './a';\n"
+            "/* import { b } from './b'; */\n"
+            "/* note */ import { c } from './c'; // trailing\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+        main_key = str((tmp_path / "main.ts").resolve())
+        assert graph[main_key]["imports"] == {str((tmp_path / "c.ts").resolve())}
+
+    def test_regex_literal_with_comment_markers_keeps_later_imports(self, tmp_path):
+        """`/*` or `//` inside a regex literal must not hide imports after it."""
+
+        _write(tmp_path, "x.ts", "export const x = 1;\n")
+        _write(tmp_path, "y.ts", "export const y = 1;\n")
+        _write(
+            tmp_path,
+            "main.ts",
+            "const marker = /[/*]/;\n"
+            "const url = /https?:\\/\\//;\n"
+            "import { x } from './x';\n"
+            "import { y } from './y';\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+        main_key = str((tmp_path / "main.ts").resolve())
+        assert graph[main_key]["imports"] == {
+            str((tmp_path / "x.ts").resolve()),
+            str((tmp_path / "y.ts").resolve()),
+        }
 
 
 # ── ts_alias_resolver ────────────────────────────────────────
