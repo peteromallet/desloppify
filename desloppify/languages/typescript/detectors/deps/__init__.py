@@ -18,7 +18,6 @@ from desloppify.base.discovery.source import (
     read_file_text,
 )
 from desloppify.base.discovery.paths import get_project_root
-from desloppify.base.text_utils import strip_c_style_comments
 from desloppify.engine.detectors.graph import (
     detect_cycles,
     finalize_graph,
@@ -53,8 +52,43 @@ def _extract_module_specifiers(line: str) -> list[str]:
     return [match.group(1) for match in _IMPORT_SPEC_RE.finditer(line)]
 
 
+def _code_lines(content: str) -> list[str]:
+    """Return source lines with leading // and /* */ comments removed.
+
+    Only comments that start a line (after whitespace) are recognised. A
+    line can't start with a regex literal's `/*` or `//`, so this never
+    mistakes a regex like `/[/*]/` for a comment and drops later imports.
+    """
+    lines: list[str] = []
+    in_block = False
+    for line in content.splitlines():
+        rest = line
+        if in_block:
+            end = rest.find("*/")
+            if end == -1:
+                continue
+            rest = rest[end + 2 :]
+            in_block = False
+        while True:
+            stripped = rest.lstrip()
+            if stripped.startswith("//"):
+                rest = ""
+                break
+            if not stripped.startswith("/*"):
+                break
+            end = stripped.find("*/", 2)
+            if end == -1:
+                in_block = True
+                rest = ""
+                break
+            rest = stripped[end + 2 :]
+        if rest:
+            lines.append(rest)
+    return lines
+
+
 def _grep_imports_outside_comments(files: list[str]) -> list[tuple[str, str]]:
-    """Return (filepath, line) import hits, ignoring // and /* */ comments.
+    """Return (filepath, line) import hits, skipping commented-out lines.
 
     Usage examples in JSDoc blocks (`* import { x } from "./y"`) are not real
     edges and would otherwise create phantom import cycles.
@@ -68,7 +102,7 @@ def _grep_imports_outside_comments(files: list[str]) -> list[tuple[str, str]]:
         content = read_file_text(abs_path)
         if content is None:
             continue
-        for line in strip_c_style_comments(content).splitlines():
+        for line in _code_lines(content):
             if _IMPORT_HINT_RE.search(line):
                 hits.append((filepath, line))
     return hits

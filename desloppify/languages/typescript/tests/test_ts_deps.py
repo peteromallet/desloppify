@@ -260,6 +260,27 @@ class TestBuildDepGraph:
         main_key = str((tmp_path / "main.ts").resolve())
         assert graph[main_key]["imports"] == {str((tmp_path / "c.ts").resolve())}
 
+    def test_regex_literal_with_comment_markers_keeps_later_imports(self, tmp_path):
+        """`/*` or `//` inside a regex literal must not hide imports after it."""
+
+        _write(tmp_path, "x.ts", "export const x = 1;\n")
+        _write(tmp_path, "y.ts", "export const y = 1;\n")
+        _write(
+            tmp_path,
+            "main.ts",
+            "const marker = /[/*]/;\n"
+            "const url = /https?:\\/\\//;\n"
+            "import { x } from './x';\n"
+            "import { y } from './y';\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+        main_key = str((tmp_path / "main.ts").resolve())
+        assert graph[main_key]["imports"] == {
+            str((tmp_path / "x.ts").resolve()),
+            str((tmp_path / "y.ts").resolve()),
+        }
+
 
 # ── ts_alias_resolver ────────────────────────────────────────
 
