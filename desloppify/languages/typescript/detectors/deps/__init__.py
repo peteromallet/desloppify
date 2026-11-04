@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -14,8 +15,10 @@ from desloppify.base.output.terminal import colorize, print_table
 from desloppify.base.discovery.source import (
     find_source_files,
     find_ts_and_tsx_files,
+    read_file_text,
 )
 from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.text_utils import strip_c_style_comments
 from desloppify.engine.detectors.graph import (
     detect_cycles,
     finalize_graph,
@@ -38,6 +41,7 @@ from desloppify.languages.typescript.detectors.deps.runtime import (
 )
 
 _FRAMEWORK_EXTENSIONS = (".svelte", ".vue", ".astro")
+_IMPORT_HINT_RE = re.compile(r"""(?:\bfrom\s+['"]|\bimport\s+['"])""")
 _IMPORT_SPEC_RE = re.compile(
     r"""(?:from\s+|import\s+)(?:type\s+)?['"]([^'"]+)['"]"""
 )
@@ -47,6 +51,27 @@ _DENO_EXTERNAL_PREFIXES = ("http://", "https://", "npm:", "jsr:")
 def _extract_module_specifiers(line: str) -> list[str]:
     """Extract static import/export module specifiers from one source line."""
     return [match.group(1) for match in _IMPORT_SPEC_RE.finditer(line)]
+
+
+def _grep_imports_outside_comments(files: list[str]) -> list[tuple[str, str]]:
+    """Return (filepath, line) import hits, ignoring // and /* */ comments.
+
+    Usage examples in JSDoc blocks (`* import { x } from "./y"`) are not real
+    edges and would otherwise create phantom import cycles.
+    """
+    project_root = get_project_root()
+    hits: list[tuple[str, str]] = []
+    for filepath in files:
+        abs_path = (
+            filepath if os.path.isabs(filepath) else str(project_root / filepath)
+        )
+        content = read_file_text(abs_path)
+        if content is None:
+            continue
+        for line in strip_c_style_comments(content).splitlines():
+            if _IMPORT_HINT_RE.search(line):
+                hits.append((filepath, line))
+    return hits
 
 
 def build_dep_graph(
@@ -66,9 +91,9 @@ def build_dep_graph(
     tsconfig_paths = _load_tsconfig_paths(tsconfig_root)
 
     ts_files = find_ts_and_tsx_files(path)
-    hits = grep_files(r"""(?:\bfrom\s+['"]|\bimport\s+['"])""", ts_files)
+    hits = _grep_imports_outside_comments(ts_files)
 
-    for filepath, _lineno, content in hits:
+    for filepath, content in hits:
         source_resolved = resolve_path(filepath)
         graph[source_resolved]  # ensure entry exists
         for module_path in _extract_module_specifiers(content):
@@ -87,7 +112,7 @@ def build_dep_graph(
 
     fw_files = find_source_files(path, list(_FRAMEWORK_EXTENSIONS))
     if fw_files:
-        fw_hits = grep_files(r"""(?:\bfrom\s+['"]|\bimport\s+['"])""", fw_files)
+        fw_hits = grep_files(_IMPORT_HINT_RE.pattern, fw_files)
         for filepath, _lineno, content in fw_hits:
             source_resolved = resolve_path(filepath)
             graph[source_resolved]  # ensure entry exists
