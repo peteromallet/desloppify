@@ -31,7 +31,7 @@ def ts_build_dep_graph(
     query = _make_query(language, spec.import_query)
 
     scan_path = str(path.resolve())
-    file_set = set(file_list)
+    file_lookup = {os.path.abspath(filepath): filepath for filepath in file_list}
     graph: dict[str, dict[str, Any]] = {}
 
     # Initialize all files in the graph.
@@ -71,7 +71,7 @@ def ts_build_dep_graph(
                 ).strip("\"'`")
                 import_text = f"{prefix_text}\\{import_text}"
 
-            resolved = spec.resolve_import(import_text, filepath, scan_path)
+            resolved = spec.resolve_import(import_text, os.path.abspath(filepath), scan_path)
             if resolved is None:
                 continue
 
@@ -80,12 +80,12 @@ def ts_build_dep_graph(
                 resolved = os.path.normpath(os.path.join(scan_path, resolved))
 
             # Only track edges within the scanned file set.
-            if resolved not in file_set:
+            resolved_key = file_lookup.get(os.path.normpath(resolved))
+            if resolved_key is None:
                 continue
 
-            graph[filepath]["imports"].add(resolved)
-            if resolved in graph:
-                graph[resolved]["importers"].add(filepath)
+            graph[filepath]["imports"].add(resolved_key)
+            graph[resolved_key]["importers"].add(filepath)
 
     # Finalize: add counts.
     for data in graph.values():
