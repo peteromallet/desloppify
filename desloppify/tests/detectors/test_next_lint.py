@@ -1,4 +1,4 @@
-"""Tests for Next.js `next lint` parser + tool-phase integration."""
+"""Tests for the Next.js ESLint parser + tool-phase integration."""
 
 from __future__ import annotations
 
@@ -9,12 +9,20 @@ from types import SimpleNamespace
 
 import pytest
 
+from desloppify.languages._framework.frameworks.specs.nextjs import NEXTJS_SPEC
+from desloppify.languages._framework.generic_parts import tool_runner as tool_runner_mod
 from desloppify.languages._framework.generic_parts.parsers import (
     ToolParserError,
     parse_next_lint,
 )
 from desloppify.languages._framework.generic_support.core import make_tool_phase
-from desloppify.languages._framework.generic_parts import tool_runner as tool_runner_mod
+
+
+def test_nextjs_lint_tool_uses_eslint_cli():
+    lint = next(tool for tool in NEXTJS_SPEC.tools if tool.id == "next_lint")
+
+    assert lint.label == "Next.js ESLint"
+    assert lint.cmd == "npx --no-install eslint . --format json"
 
 
 def test_parse_next_lint_aggregates_per_file_and_relativizes_paths(monkeypatch, tmp_path):
@@ -57,14 +65,14 @@ def test_parse_next_lint_aggregates_per_file_and_relativizes_paths(monkeypatch, 
     first = next(e for e in entries if e["file"] == "app/page.tsx")
     assert first["line"] == 10
     assert first["id"] == "lint"
-    assert first["message"].startswith("next lint: Bad thing")
+    assert first["message"].startswith("Next.js ESLint: Bad thing")
     assert first["detail"]["count"] == 2
     assert len(first["detail"]["messages"]) == 2
 
     second = next(e for e in entries if e["file"] == "apps/web/relative.js")
     assert second["line"] == 1
     assert second["id"] == "lint"
-    assert second["message"].startswith("next lint: Line defaults to 1")
+    assert second["message"].startswith("Next.js ESLint: Line defaults to 1")
     assert second["detail"]["count"] == 1
 
 def test_parse_next_lint_raises_on_missing_json_array(tmp_path):
@@ -94,8 +102,8 @@ def test_next_lint_tool_phase_emits_issues_and_potential(monkeypatch, tmp_path):
     monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
 
     phase = make_tool_phase(
-        "next lint",
-        "npx --no-install next lint --format json",
+        "Next.js ESLint",
+        "npx --no-install eslint . --format json",
         "next_lint",
         "next_lint",
         2,
@@ -125,8 +133,8 @@ def test_next_lint_tool_phase_reports_potential_when_clean(monkeypatch, tmp_path
     monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
 
     phase = make_tool_phase(
-        "next lint",
-        "npx --no-install next lint --format json",
+        "Next.js ESLint",
+        "npx --no-install eslint . --format json",
         "next_lint",
         "next_lint",
         2,
@@ -147,8 +155,8 @@ def test_next_lint_tool_phase_records_coverage_warning_on_tool_missing(monkeypat
     monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
 
     phase = make_tool_phase(
-        "next lint",
-        "npx --no-install next lint --format json",
+        "Next.js ESLint",
+        "npx --no-install eslint . --format json",
         "next_lint",
         "next_lint",
         2,
@@ -171,8 +179,8 @@ def test_next_lint_tool_phase_records_coverage_warning_on_parser_error(monkeypat
     monkeypatch.setattr(tool_runner_mod.subprocess, "run", fake_run)
 
     phase = make_tool_phase(
-        "next lint",
-        "npx --no-install next lint --format json",
+        "Next.js ESLint",
+        "npx --no-install eslint . --format json",
         "next_lint",
         "next_lint",
         2,

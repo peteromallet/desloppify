@@ -8,7 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from desloppify.engine.planning import scan as plan_scan_mod
-from desloppify.languages._framework.frameworks.detection import detect_ecosystem_frameworks
+from desloppify.languages._framework.frameworks.detection import (
+    detect_ecosystem_frameworks,
+)
 from desloppify.languages._framework.node.frameworks.nextjs.info import (
     nextjs_info_from_evidence,
 )
@@ -187,7 +189,7 @@ def test_typescript_config_includes_nextjs_framework_phases_and_next_lint_is_slo
     cfg = TypeScriptConfig()
     labels = [getattr(p, "label", "") for p in cfg.phases]
     assert "Next.js framework smells" in labels
-    lint = next(p for p in cfg.phases if getattr(p, "label", "") == "next lint")
+    lint = next(p for p in cfg.phases if getattr(p, "label", "") == "Next.js ESLint")
     assert lint.slow is True
 
 
@@ -226,4 +228,4 @@ def test_next_lint_phase_is_skipped_when_include_slow_false():
     selected = plan_scan_mod._select_phases(run, include_slow=False, profile="full")
     labels = [getattr(p, "label", "") for p in selected]
     assert "Next.js framework smells" in labels
-    assert "next lint" not in labels
+    assert "Next.js ESLint" not in labels

@@ -543,8 +543,8 @@ NEXTJS_SPEC = FrameworkSpec(
     tools=(
         ToolIntegration(
             id="next_lint",
-            label="next lint",
-            cmd="npx --no-install next lint --format json",
+            label="Next.js ESLint",
+            cmd="npx --no-install eslint . --format json",
             fmt="next_lint",
             tier=2,
             slow=True,

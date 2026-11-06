@@ -228,7 +228,7 @@ def _relativize_to_project_root(filepath: str, *, scan_path: Path) -> str:
 
 
 def parse_next_lint(output: str, scan_path: Path) -> tuple[list[dict], dict]:
-    """Parse Next.js `next lint --format json` output.
+    """Parse ESLint CLI JSON output for a Next.js project.
 
     Returns ``(entries, meta)`` where:
     - entries are *per-file* aggregates: {file, line, message, id, detail}
@@ -264,7 +264,7 @@ def parse_next_lint(output: str, scan_path: Path) -> tuple[list[dict], dict]:
                 "file": rel,
                 "line": line if line > 0 else 1,
                 "id": "lint",
-                "message": f"next lint: {msg} ({len(messages)} issue(s) in file)",
+                "message": f"Next.js ESLint: {msg} ({len(messages)} issue(s) in file)",
                 "detail": {
                     "count": len(messages),
                     "messages": [
