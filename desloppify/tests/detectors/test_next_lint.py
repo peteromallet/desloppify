@@ -22,7 +22,7 @@ def test_nextjs_lint_tool_uses_eslint_cli():
     lint = next(tool for tool in NEXTJS_SPEC.tools if tool.id == "next_lint")
 
     assert lint.label == "Next.js ESLint"
-    assert lint.cmd == "npx --no-install eslint . --format json"
+    assert lint.cmd == "npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --format json"
 
 
 def test_parse_next_lint_aggregates_per_file_and_relativizes_paths(monkeypatch, tmp_path):
@@ -103,7 +103,7 @@ def test_next_lint_tool_phase_emits_issues_and_potential(monkeypatch, tmp_path):
 
     phase = make_tool_phase(
         "Next.js ESLint",
-        "npx --no-install eslint . --format json",
+        "npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --format json",
         "next_lint",
         "next_lint",
         2,
@@ -134,7 +134,7 @@ def test_next_lint_tool_phase_reports_potential_when_clean(monkeypatch, tmp_path
 
     phase = make_tool_phase(
         "Next.js ESLint",
-        "npx --no-install eslint . --format json",
+        "npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --format json",
         "next_lint",
         "next_lint",
         2,
@@ -156,7 +156,7 @@ def test_next_lint_tool_phase_records_coverage_warning_on_tool_missing(monkeypat
 
     phase = make_tool_phase(
         "Next.js ESLint",
-        "npx --no-install eslint . --format json",
+        "npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --format json",
         "next_lint",
         "next_lint",
         2,
@@ -180,7 +180,7 @@ def test_next_lint_tool_phase_records_coverage_warning_on_parser_error(monkeypat
 
     phase = make_tool_phase(
         "Next.js ESLint",
-        "npx --no-install eslint . --format json",
+        "npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --format json",
         "next_lint",
         "next_lint",
         2,

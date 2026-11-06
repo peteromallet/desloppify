@@ -107,7 +107,7 @@ When TypeScript or JavaScript scans run for a Next.js project, flow is:
 
 The Next.js spec runs:
 
-- `npx --no-install eslint . --format json`
+- `npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --format json`
 
 Behavior:
 
