@@ -205,10 +205,10 @@ DETECTORS: dict[str, DetectorMeta] = {
     ),
     "next_lint": DetectorMeta(
         "next_lint",
-        "Next.js ESLint",
+        "Next.js lint",
         "Code quality",
         "manual_fix",
-        "run the ESLint CLI and fix reported Next.js lint issues",
+        "run the configured Next.js lint command and fix reported issues",
         tier=2,
         marks_dims_stale=True,
         subjective_dimensions=("convention_outlier",),
