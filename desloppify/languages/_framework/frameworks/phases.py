@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.base.output.terminal import log as _log
-from desloppify.languages._framework.base.types import DetectorPhase, LangRuntimeContract
+from desloppify.languages._framework.base.types import (
+    DetectorPhase,
+    LangRuntimeContract,
+)
 from desloppify.languages._framework.generic_support.core import make_tool_phase
 from desloppify.state_io import Issue
 
@@ -148,7 +151,18 @@ def _framework_tool_phase(spec: FrameworkSpec, tool: ToolIntegration) -> Detecto
             return [], {}
 
         scan_root = detection.package_root
-        return tool_phase.run(scan_root, lang)
+        command = tool.cmd_resolver(scan_root) if tool.cmd_resolver else None
+        if command is None or command == tool.cmd:
+            return tool_phase.run(scan_root, lang)
+        resolved_tool_phase = make_tool_phase(
+            tool.label,
+            command,
+            tool.fmt,
+            tool.id,
+            tool.tier,
+            confidence=tool.confidence,
+        )
+        return resolved_tool_phase.run(scan_root, lang)
 
     return DetectorPhase(tool_phase.label, run, slow=tool_phase.slow)
 

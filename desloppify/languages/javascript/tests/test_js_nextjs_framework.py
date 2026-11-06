@@ -36,7 +36,7 @@ def test_javascript_plugin_includes_nextjs_framework_phases_and_next_lint_is_slo
     cfg = get_lang("javascript")
     labels = [getattr(p, "label", "") for p in cfg.phases]
     assert "Next.js framework smells" in labels
-    lint = next(p for p in cfg.phases if getattr(p, "label", "") == "next lint")
+    lint = next(p for p in cfg.phases if getattr(p, "label", "") == "Next.js lint")
     assert lint.slow is True
 
 

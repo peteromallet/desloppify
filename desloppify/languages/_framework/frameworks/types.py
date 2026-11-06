@@ -51,6 +51,7 @@ class ToolIntegration:
     tier: int
     slow: bool = False
     confidence: str = "medium"
+    cmd_resolver: Callable[[Path], str | None] | None = None
 
 
 @dataclass(frozen=True)

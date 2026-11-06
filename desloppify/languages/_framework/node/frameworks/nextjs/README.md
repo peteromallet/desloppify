@@ -23,7 +23,7 @@ Current scope includes:
 - Route handler and middleware context misuse
 - Next.js API misuse in wrong router contexts
 - Environment variable leakage in client modules
-- `next lint` integration as a framework quality gate (`next_lint` detector)
+- Next.js lint integration as a framework quality gate (`next_lint` detector)
 
 This module is intentionally heuristic-heavy (regex/file-structure based) so scans remain fast and robust without requiring full compiler semantics.
 
@@ -100,21 +100,24 @@ When TypeScript or JavaScript scans run for a Next.js project, flow is:
 1. Ecosystem framework detection (Node) evaluates deterministic presence signals from `package.json`.
 2. Next.js info derives App/Pages router roots from detection evidence (`marker_dir_hits`).
 3. Next.js framework smells phase runs all scanner functions and maps entries into normalized `nextjs` issues.
-4. `next lint` tool phase runs (slow) and maps ESLint JSON output into `next_lint` issues.
+4. The lint tool phase runs (slow) and maps JSON output into `next_lint` issues.
 5. Potentials are returned for scoring and state merge.
 
-## `next lint` behavior
+## Lint behavior
 
-The Next.js spec runs:
+The Next.js spec selects the command from the installed Next.js version:
 
-- `npx --no-install next lint --format json`
+- Next.js 16 or newer: `npx --no-install eslint "**/*.{js,jsx,ts,tsx}" --format json`
+- Older or unknown versions: `npx --no-install next lint --format json`
+
+Version detection checks `node_modules/next/package.json` from the app package root up through its ancestors, supporting hoisted workspace installs.
 
 Behavior:
 
 - If lint runs and returns JSON, file-level lint findings are emitted (one issue per file).
 - If lint cannot run or output cannot be parsed, coverage is degraded for `next_lint` (shown as a scan coverage warning).
 
-`next lint` runs as a slow phase (`DetectorPhase.slow=True`) so `--skip-slow` skips it automatically.
+Linting runs as a slow phase (`DetectorPhase.slow=True`) so `--skip-slow` skips it automatically.
 
 ## Smell families covered
 
@@ -153,6 +156,6 @@ When adding a new smell:
 - Scanners are heuristic, not compiler-accurate.
 - Some patterns are intentionally conservative to avoid noisy false positives.
 - Router/middleware checks rely on conventional Next.js file placement.
-- `next lint` requires project dependencies to be present for full lint execution.
+- ESLint requires project dependencies to be present for full lint execution.
 
 These tradeoffs are deliberate: fast scans with high-signal framework smells, while preserving a clear extension path when stronger analysis is needed.
