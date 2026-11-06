@@ -365,6 +365,31 @@ def test_plan_aware_queue_breakdown_no_plan():
     assert breakdown.focus_cluster is None
 
 
+def test_plan_aware_queue_breakdown_uses_context_subjective_target():
+    plan = {"queue_order": [], "skipped": {}}
+    snapshot = SimpleNamespace(
+        phase="scan",
+        execution_items=(),
+        all_objective_items=(),
+        all_initial_review_items=(),
+        all_postflight_assessment_items=(),
+        all_postflight_review_items=(),
+        all_scan_items=(),
+        all_postflight_workflow_items=(),
+        all_postflight_triage_items=(),
+    )
+    context = SimpleNamespace(plan=plan, target_strict=85.0, snapshot=snapshot)
+
+    with patch(
+        "desloppify.app.commands.helpers.queue_progress.build_execution_queue",
+        return_value={"total": 0, "items": []},
+    ) as build_queue:
+        plan_aware_queue_breakdown({"issues": {}}, context=context)
+
+    options = build_queue.call_args.kwargs["options"]
+    assert options.subjective_threshold == 85.0
+
+
 def test_plan_aware_queue_breakdown_with_focus():
     mock_result = {
         "total": 10,
