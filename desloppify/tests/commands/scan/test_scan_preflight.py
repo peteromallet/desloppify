@@ -230,6 +230,69 @@ def test_queue_with_only_run_scan_workflow_allows_scan():
         scan_queue_preflight(args)
 
 
+def test_scan_preflight_uses_configured_target_for_queue_context():
+    """Scan evaluates assessments at the same configured target as ``next``.
+
+    Using the library default of 95 instead of a project's target of 85 creates
+    artificial assessment work for dimensions scoring 88-94, so ``next`` says
+    to scan while scan preflight refuses.
+    """
+    from desloppify.app.commands.helpers.queue_progress import QueueBreakdown
+
+    args = SimpleNamespace(profile=None, force_rescan=False, state=None, lang="python")
+    plan = {
+        "plan_start_scores": {"strict": 85.0},
+        "queue_order": [
+            "strategy::test-health-recovery",
+            "stale_wontfix::src/example.py::old-finding",
+            "subjective::contract_coherence",
+        ],
+    }
+    default_target_breakdown = QueueBreakdown(
+        queue_total=4,
+        subjective=4,
+        workflow=0,
+        lifecycle_phase="assessment",
+    )
+    configured_target_breakdown = QueueBreakdown(queue_total=0, lifecycle_phase="scan")
+    configured_context = SimpleNamespace(
+        target_strict=85.0,
+        snapshot=SimpleNamespace(execution_items=()),
+    )
+    config = {"target_strict_score": 85.0}
+
+    def breakdown_for_context(_state, _plan, *, context=None):
+        return configured_target_breakdown if context is configured_context else default_target_breakdown
+
+    with (
+        patch(
+            "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+            return_value=_plan_status(plan),
+        ),
+        patch(
+            "desloppify.app.commands.scan.preflight.state_path",
+            return_value="/tmp/test-state.json",
+        ),
+        patch("desloppify.app.commands.scan.preflight.state_mod") as mock_state_mod,
+        patch(
+            "desloppify.app.commands.scan.preflight.plan_aware_queue_breakdown",
+            side_effect=breakdown_for_context,
+        ),
+        patch(
+            "desloppify.app.commands.scan.preflight.load_config",
+            return_value=config,
+        ),
+        patch(
+            "desloppify.app.commands.scan.preflight.queue_context",
+            return_value=configured_context,
+        ) as mock_context,
+    ):
+        state = {"issues": {}}
+        mock_state_mod.load_state.return_value = state
+        scan_queue_preflight(args)
+    mock_context.assert_called_once_with(state, config=config, plan=plan)
+
+
 # ── --force-rescan ──────────────────────────────────────────
 
 
