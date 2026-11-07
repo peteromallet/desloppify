@@ -264,11 +264,54 @@ class TestFixers:
             {"file": "b.x", "line": 3},
         ]
         result = fixer.fix(entries, dry_run=False, path=Path("."))
+        # a.x still has a violation of the same (only) rule, so none of its
+        # issues can be named as fixed: lines move under a formatter.
         assert result.entries == [
-            {"file": "a.x", "fixed": True, "fixed_count": 1, "summary": "1 fixed"},
-            {"file": "b.x", "fixed": True, "fixed_count": 1, "summary": "1 fixed"},
+            {"file": "a.x", "fixed": True, "fixed_count": 1, "summary": "1 fixed", "resolved": []},
+            {
+                "file": "b.x", "fixed": True, "fixed_count": 1, "summary": "1 fixed",
+                "resolved": ["test_fixer_per_file::3"],
+            },
         ]
         assert result.skip_reasons == {}
+
+    def test_fixer_resolves_rules_that_no_longer_fire(self):
+        from desloppify.languages._framework.generic_parts import parsers
+
+        def parse_ruled(output: str, scan_path: Path) -> list[dict]:
+            # Like ktlint's parser: the id names the rule, line and column.
+            rows = [row.split(":") for row in output.splitlines() if row]
+            return [
+                {"file": f, "line": int(n), "id": f"{rule}::{n}::{col}", "message": rule}
+                for f, n, col, rule in rows
+            ]
+
+        tool = {
+            "label": "t", "cmd": "lint", "fmt": "ruled",
+            "id": "test_fixer_by_rule", "tier": 2, "fix_cmd": "lint --fix",
+        }
+        # After the fix, only a long line remains in A.kt, now at line 12.
+        outputs = [
+            subprocess.CompletedProcess(args="fix", returncode=1, stdout="", stderr=""),
+            subprocess.CompletedProcess(
+                args="lint", returncode=1, stdout="A.kt:12:1:max-line-length\n", stderr="",
+            ),
+        ]
+        with patch.dict(parsers.PARSERS, {"ruled": parse_ruled}):
+            fixer = make_generic_fixer(tool, run_subprocess=lambda *a, **k: outputs.pop(0))
+        entries = [
+            {"file": "A.kt", "line": 3, "id": "argument-list-wrapping::3::9"},
+            {"file": "A.kt", "line": 3, "id": "argument-list-wrapping::3::40"},
+            {"file": "A.kt", "line": 8, "id": "max-line-length::8::101"},
+            {"file": "A.kt", "line": 10, "id": "max-line-length::10::101"},
+        ]
+        result = fixer.fix(entries, dry_run=False, path=Path("."))
+        assert result.entries == [
+            {
+                "file": "A.kt", "fixed": True, "fixed_count": 3, "summary": "3 fixed",
+                "resolved": ["argument-list-wrapping::3::9", "argument-list-wrapping::3::40"],
+            },
+        ]
 
     def test_fixer_claims_nothing_when_recheck_fails(self):
         tool = {

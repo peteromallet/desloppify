@@ -32,7 +32,9 @@ def _resolve_fixer_results(
     resolved_ids = []
     for result in results:
         result_file = rel(result["file"])
-        for symbol in result.get("removed", []):
+        # "removed": symbols a code fixer deleted; "resolved": issue names a
+        # tool-backed fixer confirmed gone on its re-check.
+        for symbol in [*result.get("removed", []), *result.get("resolved", [])]:
             issue_id = f"{detector}::{result_file}::{symbol}"
             if issue_id in work_items and work_items[issue_id]["status"] == "open":
                 work_items[issue_id]["status"] = "fixed"

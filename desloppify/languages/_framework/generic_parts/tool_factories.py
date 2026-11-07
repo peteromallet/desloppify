@@ -187,6 +187,9 @@ def make_generic_fixer(
         if recheck.status == "error":
             return FixResult(entries=[], skip_reasons={"recheck_failed": len(entries)})
         after = Counter(e["file"] for e in recheck.entries)
+        rules_left = Counter(
+            (e["file"], _rule_of(_issue_name(e, smell_id))) for e in recheck.entries
+        )
         results = []
         for file, count in before.items():
             fixed_count = count - after[file]
@@ -197,6 +200,7 @@ def make_generic_fixer(
                         "fixed": True,
                         "fixed_count": fixed_count,
                         "summary": f"{fixed_count} fixed",
+                        "resolved": _resolved_names(entries, file, rules_left, smell_id),
                     }
                 )
         return FixResult(entries=results)
@@ -210,6 +214,42 @@ def make_generic_fixer(
         dry_verb="Would fix",
         takes_scan_path=True,
     )
+
+
+def _issue_name(entry: dict[str, Any], smell_id: str) -> str:
+    """The name part of the issue id, as make_tool_phase builds it."""
+    return str(entry.get("id") or f"{smell_id}::{entry['line']}")
+
+
+def _rule_of(name: str) -> str:
+    """An issue name without its trailing line/column parts (`rule::12::5` -> `rule`)."""
+    parts = name.split("::")
+    while len(parts) > 1 and parts[-1].isdigit():
+        parts.pop()
+    return "::".join(parts)
+
+
+def _resolved_names(
+    entries: list[dict[str, Any]],
+    file: str,
+    rules_left: Counter,
+    smell_id: str,
+) -> list[str]:
+    """Names of the file's issues the fix certainly removed.
+
+    Issue names carry line numbers, and a formatter moves lines, so a
+    violation that survives can come back under a different name. Only a
+    rule that no longer fires anywhere in the file proves its issues are
+    gone; issues of a rule that still fires stay open for the next scan.
+    """
+    names = []
+    for entry in entries:
+        if entry["file"] != file:
+            continue
+        name = _issue_name(entry, smell_id)
+        if rules_left[(file, _rule_of(name))] == 0:
+            names.append(name)
+    return names
 
 
 def _issue_count_label(count: int) -> str:

@@ -152,6 +152,18 @@ class TestResolveFixerResults:
         resolved = _resolve_fixer_results(state, results, "unused", "unused-imports")
         assert len(resolved) == 2
 
+    def test_resolves_names_a_tool_fixer_confirmed(self, monkeypatch):
+        monkeypatch.setattr(fix_apply_mod, "rel", lambda p: p)
+
+        state = self._make_state_with_issues(
+            ("lint::a.ts::wrap::3::1", "open"),
+            ("lint::a.ts::max-line::9::1", "open"),
+        )
+        results = [{"file": "a.ts", "fixed_count": 2, "resolved": ["wrap::3::1"]}]
+        resolved = _resolve_fixer_results(state, results, "lint", "lint")
+        assert resolved == ["lint::a.ts::wrap::3::1"]
+        assert state["work_items"]["lint::a.ts::max-line::9::1"]["status"] == "open"
+
 
 # ---------------------------------------------------------------------------
 # _print_fix_summary
