@@ -16,6 +16,13 @@ if TYPE_CHECKING:
     from desloppify.languages.framework import LangRun
 
 
+def _result_item_count(result: dict) -> int:
+    """Items one fixer result covers: its removed symbols, its count, or one."""
+    if "removed" in result:
+        return len(result["removed"])
+    return int(result.get("fixed_count", 1))
+
+
 def _resolve_fixer_results(
     state: dict, results: list[dict], detector: str, fixer_name: str
 ) -> list[str]:
@@ -25,7 +32,9 @@ def _resolve_fixer_results(
     resolved_ids = []
     for result in results:
         result_file = rel(result["file"])
-        for symbol in result.get("removed", []):
+        # "removed": symbols a code fixer deleted; "resolved": issue names a
+        # tool-backed fixer confirmed gone on its re-check.
+        for symbol in [*result.get("removed", []), *result.get("resolved", [])]:
             issue_id = f"{detector}::{result_file}::{symbol}"
             if issue_id in work_items and work_items[issue_id]["status"] == "open":
                 work_items[issue_id]["status"] = "fixed"
@@ -91,12 +100,12 @@ def _cascade_unused_import_cleanup(
         print(colorize("  Cascade: no orphaned imports found", "dim"))
         return
 
-    removed_count = sum(len(result["removed"]) if "removed" in result else 1 for result in results)
+    removed_count = sum(_result_item_count(result) for result in results)
     removed_lines = sum(result.get("lines_removed", 0) for result in results)
     print(
         colorize(
             f"  Cascade: removed {removed_count} now-orphaned imports "
-            f"from {len(results)} files ({removed_lines} lines)",
+            f"from {len({result['file'] for result in results})} files ({removed_lines} lines)",
             "green",
         )
     )
@@ -115,6 +124,8 @@ _SKIP_REASON_LABELS = {
     "no_destr_context": "destructuring member without context",
     "out_of_range": "line out of range (stale data?)",
     "other": "other patterns (needs manual review)",
+    "tool_unavailable": "fix tool not found or timed out",
+    "recheck_failed": "could not re-run the check after fixing (see `desloppify scan`)",
 }
 
 
@@ -163,6 +174,7 @@ def _print_fix_retro(
 
 __all__ = [
     "_cascade_unused_import_cleanup",
+    "_result_item_count",
     "_print_fix_retro",
     "_resolve_fixer_results",
     "_warn_uncommitted_changes",

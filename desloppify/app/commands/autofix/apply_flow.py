@@ -54,7 +54,7 @@ def _print_fix_summary(
     lines_str = f" ({total_lines} lines)" if total_lines else ""
     print(
         colorize(
-            f"\n  {verb} {total_items} {fixer.label} across {len(results)} files{lines_str}\n",
+            f"\n  {verb} {total_items} {fixer.label} across {_file_count(results)} files{lines_str}\n",
             "bold",
         )
     )
@@ -69,7 +69,11 @@ def _print_fix_summary(
         extra = f"  ({result['lines_removed']} lines)" if result.get("lines_removed") else ""
         print(f"  {rel(result['file'])}{extra}  →  {symbols}")
     if len(results) > 30:
-        print(f"  ... and {len(results) - 30} more files")
+        print(f"  ... and {len(results) - 30} more")
+
+
+def _file_count(results: list[dict]) -> int:
+    return len({result["file"] for result in results})
 
 
 def _apply_and_report(
@@ -115,7 +119,7 @@ def _apply_and_report(
         {
             "command": "autofix",
             "fixer": fixer_name,
-            "files_fixed": len(results),
+            "files_fixed": _file_count(results),
             "items_fixed": total_items,
             "issues_resolved": len(resolved_ids),
             "overall_score": new.overall,
@@ -152,7 +156,7 @@ def _report_dry_run(
             "command": "autofix",
             "fixer": fixer_name,
             "dry_run": True,
-            "files_would_fix": len(results),
+            "files_would_fix": _file_count(results),
             "items_would_fix": total_items,
             "narrative": narrative,
         }
