@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from desloppify.base.coercions import coerce_confidence
-from desloppify.base.discovery.file_paths import matches_exclusion
+from desloppify.base.discovery.source import SourceDiscoveryOptions, find_source_files
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.output.terminal import log
 from desloppify.engine._state.filtering import make_issue
@@ -96,28 +96,43 @@ def _find_test_root_files(
     project_root: Path,
     patterns: list[str],
     exts: tuple[str, ...],
-    exclusions: list[str],
+    lang: LangRuntimeContract,
 ) -> set[str]:
-    """Find test files under project root matching ``test_roots`` globs."""
+    """Find test files matching ``test_roots`` globs among the scan's own candidates.
+
+    Candidates come from the same file discovery the scan uses (the language's
+    ``file_finder``, else ``find_source_files`` with the language exclusions),
+    so ``desloppify exclude`` entries and language file exclusions apply.
+    """
     regexes = [_glob_to_regex(p) for p in patterns if isinstance(p, str) and p.strip()]
     if not regexes:
         return set()
+    if lang.file_finder is not None:
+        candidates = lang.file_finder(project_root)
+    else:
+        exclusions = getattr(lang, "exclusions", None) or []
+        candidates = find_source_files(
+            project_root,
+            list(exts),
+            SourceDiscoveryOptions(
+                exclusions=tuple(exclusions), project_root=project_root
+            ),
+        )
     found: set[str] = set()
-    for root, dirs, files in os.walk(project_root):
-        dirs[:] = [
-            d
-            for d in dirs
-            if d != ".git" and not any(matches_exclusion(d, ex) for ex in exclusions)
-        ]
-        for filename in files:
-            if not any(filename.endswith(ext) for ext in exts):
-                continue
-            full = Path(root) / filename
-            if full.resolve().is_relative_to(path_root):
-                continue
+    for candidate in candidates:
+        if not candidate.endswith(exts):
+            continue
+        full = Path(candidate)
+        if not full.is_absolute():
+            full = project_root / full
+        if full.resolve().is_relative_to(path_root):
+            continue
+        try:
             rel_path = full.relative_to(project_root).as_posix()
-            if any(rx.match(rel_path) for rx in regexes):
-                found.add(str(full))
+        except ValueError:
+            continue
+        if any(rx.match(rel_path) for rx in regexes):
+            found.add(str(full))
     return found
 
 
@@ -149,13 +164,8 @@ def _find_external_test_files(
                     extra.add(os.path.join(root, filename))
     test_roots = getattr(lang, "test_roots", None)
     if isinstance(test_roots, list) and test_roots:
-        exclusions = getattr(lang, "exclusions", None)
         extra |= _find_test_root_files(
-            path_root,
-            project_root,
-            test_roots,
-            exts,
-            list(exclusions) if isinstance(exclusions, (list, tuple)) else [],
+            path_root, project_root, test_roots, exts, lang
         )
     return extra
 

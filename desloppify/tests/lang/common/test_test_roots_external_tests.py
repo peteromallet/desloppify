@@ -22,6 +22,7 @@ def _touch(root: Path, rel: str) -> str:
 
 
 def _lang(test_roots=None, **kw):
+    kw.setdefault("file_finder", None)
     return SimpleNamespace(
         external_test_dirs=["tests", "test", "__tests__"],
         test_file_extensions=[".ts", ".tsx"],
@@ -85,6 +86,29 @@ def test_empty_test_roots_is_unchanged_behavior(tmp_path):
 def test_node_modules_is_pruned(tmp_path):
     _touch(tmp_path, "node_modules/pkg/__tests__/a.test.ts")
     assert _find(tmp_path, _lang(["**/__tests__/**"])) == set()
+
+
+def test_runtime_exclusions_are_respected(tmp_path):
+    from desloppify.base.discovery import source as source_mod
+
+    _touch(tmp_path, "apps/retired/__tests__/a.test.ts")
+    keep = _touch(tmp_path, "apps/live/__tests__/a.test.ts")
+    source_mod.set_exclusions(["apps/retired"])
+    try:
+        found = _find(tmp_path, _lang(["apps/*/__tests__/**"]))
+    finally:
+        source_mod.set_exclusions([])
+    assert found == {keep}
+
+
+def test_typescript_file_finder_drops_d_ts(tmp_path, monkeypatch):
+    monkeypatch.setenv("DESLOPPIFY_ROOT", str(tmp_path))
+    from desloppify.languages.typescript.detectors.io import iter_typescript_sources
+
+    _touch(tmp_path, "apps/x/__tests__/types.d.ts")
+    keep = _touch(tmp_path, "apps/x/__tests__/a.test.ts")
+    found = _find(tmp_path, _lang(["apps/*/__tests__/**"], file_finder=iter_typescript_sources))
+    assert found == {keep}
 
 
 def test_test_roots_reach_runtime_through_overrides():
