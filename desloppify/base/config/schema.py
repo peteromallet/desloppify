@@ -47,6 +47,12 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     "zone_overrides": ConfigKey(
         dict, {}, "Manual zone overrides {rel_path: zone_name}"
     ),
+    "test_roots": ConfigKey(
+        list,
+        [],
+        "Globs (relative to project root) of test files outside the scan path, "
+        "e.g. apps/*/__tests__/**; counted as tests by test coverage",
+    ),
     "review_dimensions": ConfigKey(
         list,
         [],

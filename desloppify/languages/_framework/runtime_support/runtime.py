@@ -34,6 +34,7 @@ class LangRuntimeState:
     runtime_options: dict[str, Any] = field(default_factory=dict)
     large_threshold_override: int = 0
     props_threshold_override: int = 0
+    test_roots: list[str] = field(default_factory=list)
     detector_coverage: dict[str, DetectorCoverageRecord] = field(default_factory=dict)
     coverage_warnings: list[DetectorCoverageRecord] = field(default_factory=list)
 
@@ -53,6 +54,7 @@ class LangRunOverrides:
     runtime_options: dict[str, Any] | None = _UNSET
     large_threshold_override: int | None = _UNSET
     props_threshold_override: int | None = _UNSET
+    test_roots: list[str] | None = _UNSET
     detector_coverage: dict[str, DetectorCoverageRecord] | None = _UNSET
     coverage_warnings: list[DetectorCoverageRecord] | None = _UNSET
 
@@ -70,7 +72,7 @@ _LANG_OVERRIDE_DICT_FIELDS = frozenset(
         "detector_coverage",
     }
 )
-_LANG_OVERRIDE_LIST_FIELDS = frozenset({"coverage_warnings"})
+_LANG_OVERRIDE_LIST_FIELDS = frozenset({"coverage_warnings", "test_roots"})
 _LANG_OVERRIDE_INT_FIELDS = frozenset(
     {
         "large_threshold_override",

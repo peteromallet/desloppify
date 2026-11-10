@@ -103,6 +103,14 @@ class LangRunStateAccessors:
         self.state.props_threshold_override = int(value)
 
     @property
+    def test_roots(self) -> list[str]:
+        return self.state.test_roots
+
+    @test_roots.setter
+    def test_roots(self, value: list[str]) -> None:
+        self.state.test_roots = value
+
+    @property
     def detector_coverage(self) -> dict[str, DetectorCoverageRecord]:
         return self.state.detector_coverage
 

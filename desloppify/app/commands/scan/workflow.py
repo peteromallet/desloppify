@@ -215,6 +215,7 @@ def _configure_lang_runtime(
             runtime_options=lang_options,
             large_threshold_override=config.get("large_files_threshold", 0),
             props_threshold_override=config.get("props_threshold", 0),
+            test_roots=config.get("test_roots", []),
         ),
     )
 

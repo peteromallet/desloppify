@@ -78,6 +78,7 @@ class LangRuntimeContract(Protocol):
     large_threshold: int
     complexity_threshold: int
     props_threshold: int
+    test_roots: list[str]
 
     zone_map: FileZoneMap | None
     dep_graph: dict[str, dict[str, Any]] | None

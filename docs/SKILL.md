@@ -244,6 +244,7 @@ desloppify show --status open                     # all open findings
 desloppify plan skip --permanent "<id>" --note "reason" --attest "..." # accept debt
 desloppify exclude <path>                         # exclude a directory from scanning
 desloppify config show                            # show all config including excludes
+desloppify config set test_roots 'apps/*/__tests__/**'  # tests outside the scan path that count for test coverage (globs relative to project root)
 desloppify scan --path . --reset-subjective       # reset subjective baseline to 0
 ```
 
