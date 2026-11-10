@@ -12,7 +12,7 @@ from desloppify.base.discovery.paths import get_project_root, get_src_path
 from desloppify.base.text_utils import strip_c_style_comments
 
 TS_IMPORT_RE = re.compile(
-    r"""(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)(?:type\s+)?['\"]([^'\"]+)['\"]""",
+    r"""(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(?:type\s+)?['\"]([^'\"]+)['\"]""",
     re.MULTILINE,
 )
 TS_REEXPORT_RE = re.compile(
