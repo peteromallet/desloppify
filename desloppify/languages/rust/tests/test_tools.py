@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from desloppify.languages.rust.tools import (
+    CLIPPY_WARNING_CMD,
     build_rustdoc_warning_cmd,
     parse_cargo_errors,
     parse_clippy_messages,
@@ -837,3 +841,34 @@ def test_run_rustdoc_result_returns_error_for_unparsed_package_failure(tmp_path)
     assert result.error_kind == "tool_failed_unparsed_output"
     assert result.message is not None
     assert result.message.startswith("pkg-a:")
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="requires the Rust toolchain")
+def test_clippy_collects_diagnostics_from_dependents_after_dependency_warning(tmp_path):
+    toolchain = subprocess.run(
+        ["cargo", "clippy", "--version"], capture_output=True, text=True, check=False
+    )
+    if toolchain.returncode != 0:
+        pytest.skip("requires the Clippy component")
+    (tmp_path / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["first", "second"]\nresolver = "2"\n'
+    )
+    for package in ("first", "second"):
+        source = tmp_path / package / "src"
+        source.mkdir(parents=True)
+        dependencies = '\n[dependencies]\nfirst = { path = "../first" }\n' if package == "second" else ""
+        (source.parent / "Cargo.toml").write_text(
+            f'[package]\nname = "{package}"\nversion = "0.1.0"\nedition = "2021"\n{dependencies}'
+        )
+        source.joinpath("lib.rs").write_text(
+            "pub fn value(input: Option<usize>) -> usize { input.unwrap() }\n"
+        )
+    result = subprocess.run(
+        CLIPPY_WARNING_CMD, shell=True, cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    entries = parse_clippy_messages(result.stdout, tmp_path)
+    affected = {
+        entry["file"] for entry in entries if "clippy::unwrap_used" in entry["message"]
+    }
+    assert affected == {"first/src/lib.rs", "second/src/lib.rs"}
+    assert result.returncode == 0, result.stdout + result.stderr
