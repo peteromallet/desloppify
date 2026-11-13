@@ -11,11 +11,56 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.command_runtime import CommandRuntime
 from desloppify.app.commands.plan.override import io as override_io
 from desloppify.app.commands.plan.override import skip as override_skip
+from desloppify.app.commands.plan.override import resolve_cmd as override_resolve
 from desloppify.base.exception_sets import CommandError
 from desloppify.engine.plan_state import empty_plan, load_plan, save_plan
 from desloppify.engine.plan_ops import skip_items
 
 _ATTEST = "I have actually reviewed this and I am not gaming the score."
+
+
+@pytest.mark.parametrize("pattern", ["strategy::verify-ci", "strategy::*"])
+def test_resolving_strategy_persists_fixed_status(
+    set_project_root, monkeypatch, pattern
+) -> None:
+    monkeypatch.chdir(set_project_root)
+    state_file = set_project_root / ".desloppify" / "state-python.json"
+    issue_id = "strategy::verify-ci"
+    state = state_mod.empty_state()
+    state["last_scan"] = "2026-03-01T00:00:00+00:00"
+    state["scan_count"] = 3
+    state["work_items"][issue_id] = {
+        "id": issue_id,
+        "status": "open",
+        "detector": "strategy",
+        "tier": 2,
+        "summary": "Verify CI executes tests",
+        "file": "",
+        "confidence": "high",
+        "detail": {},
+    }
+    state_mod.save_state(state, state_file)
+    save_plan(_seed_plan(issue_id))
+
+    override_resolve.cmd_plan_resolve(
+        argparse.Namespace(
+            patterns=[pattern],
+            attest=_ATTEST,
+            note="Configured explicit test execution and verified the completed CI run.",
+            confirm=False,
+            force_resolve=False,
+            state=state_file,
+            lang="python",
+            path=".",
+            exclude=None,
+        )
+    )
+
+    resolved = state_mod.load_state(state_file)["work_items"][issue_id]
+    assert resolved["status"] == "fixed"
+    assert resolved["resolved_at"]
+    assert resolved["resolution_attestation"]["text"] == _ATTEST
+    assert issue_id not in load_plan()["queue_order"]
 
 
 def _seed_state() -> tuple[dict, str]:
@@ -117,7 +162,9 @@ def test_cmd_plan_skip_permanent_rollback_when_plan_write_fails(
         attest=_ATTEST,
     )
 
-    monkeypatch.setattr(override_skip, "resolve_ids_from_patterns", lambda *_a, **_k: [issue_id])
+    monkeypatch.setattr(
+        override_skip, "resolve_ids_from_patterns", lambda *_a, **_k: [issue_id]
+    )
 
     def _boom(*_args, **_kwargs):
         raise OSError("simulated plan write failure")
