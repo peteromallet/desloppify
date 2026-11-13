@@ -20,7 +20,7 @@ from desloppify.languages.rust.support import find_workspace_root
 
 CLIPPY_WARNING_CMD = (
     "cargo clippy --workspace --all-targets --all-features --message-format=json "
-    "-- -D warnings -W clippy::pedantic -W clippy::cargo -W clippy::unwrap_used "
+    "-- -W warnings -W clippy::pedantic -W clippy::cargo -W clippy::unwrap_used "
     "-W clippy::expect_used -W clippy::panic -W clippy::todo -W clippy::unimplemented "
     "2>&1"
 )
