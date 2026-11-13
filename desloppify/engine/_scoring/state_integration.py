@@ -14,16 +14,16 @@ from desloppify.engine._scoring.results.core import (
     compute_health_score,
     compute_score_bundle,
 )
+from desloppify.engine._scoring.state_coverage import (
+    apply_scan_coverage_to_dimension_scores as _apply_scan_coverage_to_dimension_scores,
+)
 from desloppify.engine._scoring.state_integration_subjective import (
     _apply_subjective_integrity_policy,
     _normalize_integrity_target,
     _subjective_integrity_baseline,
 )
-from desloppify.engine._scoring.state_coverage import (
-    apply_scan_coverage_to_dimension_scores as _apply_scan_coverage_to_dimension_scores,
-)
-from desloppify.engine._state.scope import path_scoped_issues
 from desloppify.engine._state.schema import StateModel, ensure_state_defaults
+from desloppify.engine._state.scope import path_scoped_issues
 
 _EMPTY_COUNTERS = tuple(sorted(issue_status_tokens()))
 
@@ -74,7 +74,7 @@ def _aggregate_scores(dim_scores: dict) -> dict[str, float]:
         "strict_score": compute_health_score(dim_scores, score_key="strict"),
         "objective_score": compute_health_score(mechanical),
         "verified_strict_score": compute_health_score(
-            mechanical,
+            dim_scores,
             score_key="verified_strict_score",
         ),
     }
@@ -205,7 +205,9 @@ def recompute_stats(
 ) -> None:
     """Recompute stats and canonical health scores from issues."""
     ensure_state_defaults(state)
-    issues = path_scoped_issues(state.get("work_items") or state.get("issues", {}), scan_path)
+    issues = path_scoped_issues(
+        state.get("work_items") or state.get("issues", {}), scan_path
+    )
     counters, tier_stats = _count_issues(issues)
     state["stats"] = {
         "total": sum(counters.values()),
