@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 import desloppify.engine._scoring.state_integration as scoring_mod
+from desloppify.engine._scoring.results.core import compute_score_bundle
 from desloppify.engine._state.scoring import suppression_metrics
 
 
@@ -43,6 +46,53 @@ def test_update_objective_health_verified_strict_penalizes_manual_fixed():
     scoring_mod._update_objective_health(state, issues)
     assert state["strict_score"] == 100.0
     assert state["verified_strict_score"] < state["strict_score"]
+
+
+@pytest.mark.parametrize("subjective_score", [64.0, 97.0])
+def test_persisted_verified_score_matches_bundle_with_subjective_assessments(
+    subjective_score,
+):
+    potentials = {"unused": 10}
+    assessments = {"naming_quality": {"score": subjective_score}}
+    issues = {
+        "f1": {
+            "detector": "unused",
+            "status": "fixed",
+            "confidence": "high",
+            "file": "a.py",
+            "zone": "production",
+            "tier": 2,
+        }
+    }
+    bundle = compute_score_bundle(
+        issues, potentials, subjective_assessments=assessments
+    )
+    state = {
+        "potentials": {"python": potentials},
+        "subjective_assessments": assessments,
+    }
+
+    scoring_mod._update_objective_health(state, issues)
+
+    assert state["overall_score"] == bundle.overall_score
+    assert state["objective_score"] == bundle.objective_score
+    assert state["strict_score"] == bundle.strict_score
+    assert state["verified_strict_score"] == bundle.verified_strict_score
+
+
+def test_subjective_only_verified_score_is_not_a_perfect_mechanical_default():
+    assessments = {"naming_quality": {"score": 64.0}}
+    bundle = compute_score_bundle({}, {"unused": 0}, subjective_assessments=assessments)
+    state = {
+        "potentials": {"python": {"unused": 0}},
+        "subjective_assessments": assessments,
+    }
+
+    scoring_mod._update_objective_health(state, {})
+
+    assert state["verified_strict_score"] == bundle.verified_strict_score
+    assert state["verified_strict_score"] < 100.0
+    assert state["objective_score"] == 100.0
 
 
 def test_suppression_metrics_aggregates_recent_history():
