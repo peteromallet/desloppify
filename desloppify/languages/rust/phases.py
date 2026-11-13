@@ -91,7 +91,7 @@ RUST_COMPLEXITY_SIGNALS = [
     ),
     ComplexitySignal(
         "error branching",
-        r"\b(?:unwrap|expect|panic!|todo!|unimplemented!)",
+        r"\b(?:unwrap(?:_err)?|expect(?:_err)?)\s*\(|\b(?:panic|todo|unimplemented)!",
         weight=2,
         threshold=4,
     ),
