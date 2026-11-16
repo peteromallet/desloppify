@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
-import os
+from pathlib import PurePosixPath, PureWindowsPath
 
+from desloppify.base.discovery.file_paths import normalize_path_separators
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 
@@ -15,24 +16,32 @@ from .metrics import _COMPLEXITY_TIER_UPGRADE, _MIN_LOC, _file_loc, _loc_weight
 _MAX_NO_TESTS_ENTRIES = 50
 
 
+def _relative_coverage_path(path: str) -> str:
+    """Match the forward-slash keys used by source discovery and file zones."""
+    root_prefix = normalize_path_separators(str(get_project_root())).rstrip("/") + "/"
+    normalized = normalize_path_separators(path)
+    if normalized.startswith(root_prefix):
+        return normalized[len(root_prefix) :]
+    # Absolute paths outside the project retain their original identity, as
+    # they do in zone maps provided by callers scanning an external directory.
+    if PureWindowsPath(path).is_absolute() or PurePosixPath(path).is_absolute():
+        return path
+    return normalized
+
+
 def _normalize_graph_paths(graph: dict) -> dict:
-    """Normalize graph paths to relative paths."""
-    root_prefix = str(get_project_root()) + os.sep
-
-    def _to_rel(path: str) -> str:
-        return path[len(root_prefix) :] if path.startswith(root_prefix) else path
-
-    needs_norm = any(k.startswith(root_prefix) for k in graph)
-    if not needs_norm:
-        return graph
-
+    """Normalize graph keys and both directions of dependency edges."""
     norm_graph: dict = {}
     for key, value in graph.items():
-        rel_key = _to_rel(key)
+        rel_key = _relative_coverage_path(key)
         norm_graph[rel_key] = {
             **value,
-            "imports": {_to_rel(imp) for imp in value.get("imports", set())},
+            "imports": {_relative_coverage_path(imp) for imp in value.get("imports", set())},
         }
+        if "importers" in value:
+            norm_graph[rel_key]["importers"] = {
+                _relative_coverage_path(imp) for imp in value["importers"]
+            }
     return norm_graph
 
 
@@ -44,17 +53,12 @@ def _discover_scorable_and_tests(
     extra_test_files: set[str] | None,
 ) -> tuple[set[str], set[str], set[str], int]:
     """Return (production_files, test_files, scorable_files, potential)."""
-    root_prefix = str(get_project_root()) + os.sep
-
-    def _to_rel(path: str) -> str:
-        return path[len(root_prefix) :] if path.startswith(root_prefix) else path
-
     all_files = zone_map.all_files()
     production_files = set(zone_map.include_only(all_files, Zone.PRODUCTION, Zone.SCRIPT))
     test_files = set(zone_map.include_only(all_files, Zone.TEST))
 
     if extra_test_files:
-        test_files |= {_to_rel(f) for f in extra_test_files}
+        test_files |= {_relative_coverage_path(f) for f in extra_test_files}
 
     scorable = {
         filepath
