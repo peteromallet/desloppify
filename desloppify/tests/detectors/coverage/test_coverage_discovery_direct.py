@@ -104,3 +104,52 @@ def test_normalize_graph_paths_rewrites_absolute_import_sets() -> None:
     assert "src/mod.py" in normalized
     assert normalized["src/mod.py"]["imports"] == {"src/other.py", "src/third.py"}
     assert normalized["src/mod.py"]["importer_count"] == 1
+
+
+def test_windows_graph_paths_match_zone_keys_and_keep_edges(monkeypatch) -> None:
+    monkeypatch.setattr(discovery_mod, "get_project_root", lambda: r"C:\repo")
+    graph = {
+        r"C:\repo\src\math.ts": {
+            "imports": {r"src\units.ts", "C:/repo/src/constants.ts"},
+            "importers": {r"C:\repo\tests\behavior.test.ts"},
+            "importer_count": 1,
+            "external_imports": {"node:assert/strict"},
+        }
+    }
+    normalized = discovery_mod._normalize_graph_paths(graph)
+    assert normalized == {
+        "src/math.ts": {
+            "imports": {"src/units.ts", "src/constants.ts"},
+            "importers": {"tests/behavior.test.ts"},
+            "importer_count": 1,
+            "external_imports": {"node:assert/strict"},
+        }
+    }
+    assert r"C:\repo\src\math.ts" in graph  # Caller-owned graph is unchanged.
+
+
+def test_relative_graph_still_normalizes_windows_separators(monkeypatch) -> None:
+    monkeypatch.setattr(discovery_mod, "get_project_root", lambda: r"C:\repo")
+    graph = {r"src\a.ts": {"imports": {r"src\b.ts"}}}
+    assert discovery_mod._normalize_graph_paths(graph) == {
+        "src/a.ts": {"imports": {"src/b.ts"}}
+    }
+
+
+def test_coverage_path_does_not_strip_similarly_named_sibling(monkeypatch) -> None:
+    monkeypatch.setattr(discovery_mod, "get_project_root", lambda: r"C:\repo")
+    assert discovery_mod._relative_coverage_path(r"C:\repository\src\a.ts") == (
+        r"C:\repository\src\a.ts"
+    )
+
+
+def test_windows_external_tests_match_relative_graph_keys(monkeypatch) -> None:
+    monkeypatch.setattr(discovery_mod, "get_project_root", lambda: r"C:\repo")
+    zone_map = _FakeZoneMap({Zone.PRODUCTION: {"src/a.ts"}})
+    monkeypatch.setattr(discovery_mod, "_file_loc", lambda _path: 30)
+    monkeypatch.setattr(discovery_mod, "_has_testable_logic", lambda _path, _lang: True)
+    _, tests, _, _ = discovery_mod._discover_scorable_and_tests(
+        graph={}, zone_map=zone_map, lang_name="typescript",
+        extra_test_files={r"C:\repo\tests\behavior.test.ts", r"tests\more.test.ts"},
+    )
+    assert tests == {"tests/behavior.test.ts", "tests/more.test.ts"}
