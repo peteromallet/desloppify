@@ -149,7 +149,8 @@ def collect_exclude_dirs(
         if "*" not in pat:
             patterns.add(pat)
     patterns.update(p for p in resolved_exclusions if p and "*" not in p)
-    return [str(scan_root / p) for p in sorted(patterns) if p]
+    absolute_root = scan_root.resolve()
+    return [str(absolute_root / p) for p in sorted(patterns) if p]
 
 
 def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:
