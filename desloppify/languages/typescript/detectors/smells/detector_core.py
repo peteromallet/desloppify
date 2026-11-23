@@ -9,6 +9,7 @@ from .helpers import (
     _strip_ts_comments,
     _track_brace_body,
 )
+from desloppify.languages.typescript.syntax.scanner import scan_code
 
 _MONSTER_FUNCTION_LOC = 150
 _HIGH_CYCLOMATIC_THRESHOLD = 15
@@ -100,6 +101,48 @@ def _find_opening_brace_line(lines: list[str], start: int, *, window: int = 5) -
     for idx in range(start, min(start + window, len(lines))):
         if "{" in lines[idx]:
             return idx
+    return None
+
+
+def _find_signature_aware_brace(
+    lines: list[str], start: int, *, max_scan: int = 200,
+) -> tuple[int, int] | None:
+    """Position (line, column) of a function's body brace, skipping signature braces.
+
+    The first ``{`` after a declaration may belong to a multi-line parameter
+    type annotation (``input: { ... }``) or a generic return type
+    (``): Promise<{ ... }> {``). Those braces never contain ``await``, so
+    treating them as the body produced async_no_await false positives. Skip
+    braces nested in (), [], or <> and return the first brace at depth zero.
+    """
+    paren = bracket = angle = brace = 0
+    for line_idx in range(start, min(start + max_scan, len(lines))):
+        prev_ch = ""
+        for col, ch, in_string in scan_code(lines[line_idx]):
+            if in_string:
+                prev_ch = ch
+                continue
+            if ch == "(":
+                paren += 1
+            elif ch == ")":
+                paren -= 1
+            elif ch == "[":
+                bracket += 1
+            elif ch == "]":
+                bracket -= 1
+            elif ch == "<" and paren == 0 and prev_ch not in ("=", "!", "<", ">"):
+                # "<" as a generic opener; comparisons in signatures are rare.
+                angle += 1
+            elif ch == ">" and paren == 0 and prev_ch not in ("=", "!", "<", "-"):
+                if angle > 0:
+                    angle -= 1
+            elif ch == "{":
+                if paren == 0 and bracket == 0 and angle == 0 and brace == 0:
+                    return line_idx, col
+                brace += 1
+            elif ch == "}":
+                brace -= 1
+            prev_ch = ch
     return None
 
 

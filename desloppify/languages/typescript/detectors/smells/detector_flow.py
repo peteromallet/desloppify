@@ -12,6 +12,7 @@ from .detector_core import (
     _FUNC_RE,
     _HANDLED_RE,
     _HIGH_CYCLOMATIC_THRESHOLD,
+    _find_signature_aware_brace,
     _IF_START,
     _MONSTER_FUNCTION_LOC,
     _MULTI_ELSE_IF_OPEN,
@@ -44,7 +45,23 @@ def _detect_async_no_await(ctx, smell_counts: dict[str, list[dict]]) -> None:
         if not match:
             continue
         name = match.group(1) or match.group(2)
-        body = _extract_function_body(ctx.lines, index)
+        # Signature-aware brace lookup: multi-line parameter/return type
+        # annotations open braces that never contain await, so the plain
+        # first-brace lookup flagged functions that do await. The body brace
+        # may also sit mid-line after the signature's `})`, so start the
+        # tracked text at the brace itself.
+        brace = _find_signature_aware_brace(ctx.lines, index)
+        if brace is None:
+            body = None
+        else:
+            brace_line, brace_col = brace
+            first_line = ctx.lines[brace_line]
+            tail = [first_line[brace_col:], *ctx.lines[brace_line + 1 :]]
+            end_line = _track_brace_body(tail, 0)
+            if end_line is None:
+                body = None
+            else:
+                body = "\n".join(tail[: end_line + 1])
         if body is not None and not re.search(r"\bawait\b", _code_text(body)):
             _emit(
                 smell_counts,
