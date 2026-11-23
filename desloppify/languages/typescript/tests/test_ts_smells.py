@@ -508,3 +508,42 @@ def test_entries_sorted_by_severity_then_count(tmp_path):
                 assert entries[i]["count"] >= entries[i + 1]["count"]
             else:
                 assert cur_sev <= next_sev
+
+
+def test_async_multiline_param_object_type_not_flagged(tmp_path):
+    """Awaits inside a body after a multi-line object param type are seen."""
+    _write(
+        tmp_path,
+        "ok.ts",
+        (
+            "export async function sendToArr(input: {\n"
+            "  service: \"radarr\" | \"sonarr\";\n"
+            "  mediaTitleId: string;\n"
+            "}): Promise<{ ok: true }> {\n"
+            "  const res = await fetch(`/api/arr/${input.service}/send`);\n"
+            "  return { ok: true };\n"
+            "}\n"
+        ),
+    )
+    entries, _ = detect_smells(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "async_no_await" not in ids
+
+
+def test_async_multiline_param_object_type_without_await_flagged(tmp_path):
+    """A genuinely await-free async fn with a multi-line signature is still caught."""
+    _write(
+        tmp_path,
+        "bad.ts",
+        (
+            "export async function computeStuff(input: {\n"
+            "  a: string;\n"
+            "  b: number;\n"
+            "}) {\n"
+            "  return input.a + input.b;\n"
+            "}\n"
+        ),
+    )
+    entries, _ = detect_smells(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "async_no_await" in ids
