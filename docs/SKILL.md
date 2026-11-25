@@ -8,7 +8,7 @@ description: >
 ---
 
 <!-- desloppify-begin -->
-<!-- desloppify-skill-version: 7 -->
+<!-- desloppify-skill-version: 8 -->
 
 # Desloppify
 
@@ -32,6 +32,10 @@ desloppify --lang python scan --path ./backend
 ```
 
 Each `--path` target should be a single coherent project. Scanning a parent that contains multiple programs mixes state and path context, producing unreliable results.
+
+### State and concurrency
+
+State is cwd/`--path`-relative: run every command from the same project root. Scanning a different tree from inside a checkout (a worktree, another repo) writes state for that tree and pollutes the state you were working from. Concurrent scans against the same tree race on that state, so run one at a time. `plan resolve` follows plan order: an item ahead of yours in the queue must be resolved, or `plan reorder`ed to the top, first. Rescans are gated while the queue still holds items, so clear the queue before starting the next cycle.
 
 ### Phase 1: Scan and review — understand the codebase
 
